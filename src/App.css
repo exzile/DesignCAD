@@ -3218,3 +3218,67 @@
   font-variant-numeric: tabular-nums;
   border: 1px solid rgba(255, 170, 0, 0.5);
 }
+
+/* ─── Extrude Panel (Fusion 360 style, floats top-right) ─── */
+.extrude-panel {
+  position: absolute;
+  right: 12px;
+  top: 80px;
+  z-index: 150;
+  width: 260px;
+  background: var(--bg-primary);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.16);
+  font-size: 12px;
+  overflow: hidden;
+}
+
+.extrude-input {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border-light);
+  border-radius: 4px;
+  padding: 0 6px;
+}
+
+.extrude-input input {
+  width: 60px;
+  background: transparent;
+  color: var(--text-primary);
+  border: none;
+  padding: 3px 0;
+  font-size: 11px;
+  text-align: right;
+  outline: none;
+  font-variant-numeric: tabular-nums;
+}
+
+.extrude-input input:disabled {
+  opacity: 0.4;
+}
+
+.extrude-unit {
+  color: var(--text-secondary);
+  font-size: 10px;
+  min-width: 22px;
+}
+
+.extrude-panel-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 6px;
+  padding: 10px 12px 12px;
+  border-top: 1px solid var(--border-light);
+  margin-top: 6px;
+}
+
+.extrude-panel-actions .btn {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 5px 10px;
+  font-size: 11px;
+}

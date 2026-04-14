@@ -46,7 +46,9 @@
       "Bash(npx npm-check-updates:*)",
       "Bash(npm list:*)",
       "Bash(dir \"C:/Users/joeyp/source/repos/exzile/DesignCAD\")",
-      "Bash(node_modules/.bin/tsc --noEmit)"
+      "Bash(node_modules/.bin/tsc --noEmit)",
+      "Bash(mkdir -p __TRACKED_VAR__/.claude/memory)",
+      "Bash(mkdir -p __TRACKED_VAR__/.claude/commands)"
     ]
   }
 }

@@ -458,7 +458,6 @@ function StatsPanel({ stats }: { stats: HeightMapStats }) {
 // ---------------------------------------------------------------------------
 
 export default function DuetHeightMap() {
-  const connected = usePrinterStore((s) => s.connected);
   const heightMap = usePrinterStore((s) => s.heightMap);
   const loadHeightMap = usePrinterStore((s) => s.loadHeightMap);
   const probeGrid = usePrinterStore((s) => s.probeGrid);
@@ -489,14 +488,6 @@ export default function DuetHeightMap() {
       setProbing(false);
     }
   }, [probeGrid]);
-
-  if (!connected) {
-    return (
-      <div className="duet-heightmap-empty">
-        <p>Connect to a printer to view the height map.</p>
-      </div>
-    );
-  }
 
   return (
     <div className="duet-heightmap">

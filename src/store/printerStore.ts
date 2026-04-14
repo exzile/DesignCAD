@@ -14,6 +14,66 @@ const MAX_TEMPERATURE_HISTORY = 200;
 const MAX_CONSOLE_HISTORY = 500;
 const STORAGE_KEY = 'dzign3d-duet-config';
 
+export interface PrintHistoryEntry {
+  timestamp: string;       // ISO-ish "YYYY-MM-DD HH:MM:SS" from eventlog
+  file: string | null;     // extracted filename if the line references one
+  kind: 'start' | 'finish' | 'cancel' | 'event';
+  message: string;         // raw line after the timestamp
+  durationSec?: number;    // parsed from "duration HH:MM:SS" phrases
+}
+
+// RepRapFirmware eventlog.txt format is loose, but lines generally look like:
+//   YYYY-MM-DD HH:MM:SS <message>
+// We extract the leading timestamp, then pattern-match for print lifecycle
+// events so the UI can filter or highlight them.
+const TIMESTAMP_RE = /^(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2})\s+(.*)$/;
+const DURATION_RE = /(\d+):(\d{2}):(\d{2})/;
+
+function extractFilename(msg: string): string | null {
+  // Matches `"something.gcode"` or `something.gcode` references
+  const quoted = msg.match(/"([^"]+\.(?:gcode|g|gco))"/i);
+  if (quoted) return quoted[1];
+  const bare = msg.match(/([A-Za-z0-9_./-]+\.(?:gcode|g|gco))/i);
+  return bare ? bare[1] : null;
+}
+
+function classifyLine(msg: string): PrintHistoryEntry['kind'] {
+  const lower = msg.toLowerCase();
+  if (lower.includes('finished print') || lower.includes('print complete') || lower.includes('print finished')) {
+    return 'finish';
+  }
+  if (lower.includes('cancel') && lower.includes('print')) {
+    return 'cancel';
+  }
+  if (lower.startsWith('m32 ') || lower.includes('starting print') || lower.includes('started printing')) {
+    return 'start';
+  }
+  return 'event';
+}
+
+function parseEventLog(text: string): PrintHistoryEntry[] {
+  const out: PrintHistoryEntry[] = [];
+  for (const raw of text.split(/\r?\n/)) {
+    const line = raw.trim();
+    if (!line) continue;
+    const m = line.match(TIMESTAMP_RE);
+    if (!m) continue;
+    const [, timestamp, message] = m;
+    const kind = classifyLine(message);
+    // Only keep print-related lines; everything else is noise
+    if (kind === 'event') continue;
+    const file = extractFilename(message);
+    let durationSec: number | undefined;
+    const d = message.match(DURATION_RE);
+    if (d) {
+      durationSec = Number(d[1]) * 3600 + Number(d[2]) * 60 + Number(d[3]);
+    }
+    out.push({ timestamp, file, kind, message, durationSec });
+  }
+  // Newest first
+  return out.reverse();
+}
+
 interface PrinterStore {
   // Connection
   connected: boolean;
@@ -41,13 +101,20 @@ interface PrinterStore {
   macros: DuetFileInfo[];
   macroPath: string;
 
+  // Filaments — names of sub-directories under 0:/filaments
+  filaments: string[];
+
+  // Print history — parsed from 0:/sys/eventlog.txt
+  printHistory: PrintHistoryEntry[];
+  printHistoryLoading: boolean;
+
   // Height map
   heightMap: DuetHeightMap | null;
 
   // UI state
   showPrinter: boolean;
   showSettings: boolean;
-  activeTab: 'dashboard' | 'console' | 'job' | 'files' | 'macros' | 'settings' | 'heightmap';
+  activeTab: 'dashboard' | 'status' | 'console' | 'job' | 'history' | 'files' | 'macros' | 'settings' | 'heightmap' | 'model';
   error: string | null;
   jogDistance: number;
   extrudeAmount: number;
@@ -99,6 +166,18 @@ interface PrinterStore {
   refreshMacros: () => Promise<void>;
   navigateMacros: (path: string) => Promise<void>;
   runMacro: (filename: string) => Promise<void>;
+
+  // Filaments
+  refreshFilaments: () => Promise<void>;
+  loadFilament: (toolNumber: number, name: string) => Promise<void>;
+  unloadFilament: (toolNumber: number) => Promise<void>;
+
+  // Firmware
+  uploadFirmware: (file: File) => Promise<void>;
+  installFirmware: () => Promise<void>;
+
+  // Print history
+  refreshPrintHistory: () => Promise<void>;
 
   // Height map
   loadHeightMap: () => Promise<void>;
@@ -158,6 +237,13 @@ export const usePrinterStore = create<PrinterStore>((set, get) => ({
   // Macros
   macros: [],
   macroPath: '0:/macros',
+
+  // Filaments
+  filaments: [],
+
+  // Print history
+  printHistory: [],
+  printHistoryLoading: false,
 
   // Height map
   heightMap: null,
@@ -233,6 +319,8 @@ export const usePrinterStore = create<PrinterStore>((set, get) => ({
       // Load initial file list
       const files = await service.listFiles('0:/gcodes').catch(() => [] as DuetFileInfo[]);
       const macros = await service.listFiles('0:/macros').catch(() => [] as DuetFileInfo[]);
+      const filamentEntries = await service.listFiles('0:/filaments').catch(() => [] as DuetFileInfo[]);
+      const filaments = filamentEntries.filter((e) => e.type === 'd').map((e) => e.name).sort();
 
       saveConfig(config);
 
@@ -242,6 +330,7 @@ export const usePrinterStore = create<PrinterStore>((set, get) => ({
         service,
         files,
         macros,
+        filaments,
         showPrinter: true,
         error: null,
       });
@@ -268,6 +357,7 @@ export const usePrinterStore = create<PrinterStore>((set, get) => ({
       files: [],
       selectedFile: null,
       macros: [],
+      filaments: [],
       heightMap: null,
       error: null,
     });
@@ -613,6 +703,97 @@ export const usePrinterStore = create<PrinterStore>((set, get) => ({
       await service.sendGCode(`M98 P"${macroPath}/${filename}"`);
     } catch (err) {
       set({ error: `Failed to run macro: ${(err as Error).message}` });
+    }
+  },
+
+  // --- Filaments ---
+
+  refreshFilaments: async () => {
+    const { service } = get();
+    if (!service) return;
+    try {
+      const entries = await service.listFiles('0:/filaments');
+      const names = entries.filter((e) => e.type === 'd').map((e) => e.name).sort();
+      set({ filaments: names });
+    } catch (err) {
+      set({ error: `Failed to list filaments: ${(err as Error).message}` });
+    }
+  },
+
+  loadFilament: async (toolNumber, name) => {
+    const { service } = get();
+    if (!service) return;
+    try {
+      // Select the tool first so M701 targets the correct extruder
+      await service.sendGCode(`T${toolNumber}`);
+      await service.sendGCode(`M701 S"${name}"`);
+    } catch (err) {
+      set({ error: `Failed to load filament: ${(err as Error).message}` });
+    }
+  },
+
+  unloadFilament: async (toolNumber) => {
+    const { service } = get();
+    if (!service) return;
+    try {
+      await service.sendGCode(`T${toolNumber}`);
+      await service.sendGCode('M702');
+    } catch (err) {
+      set({ error: `Failed to unload filament: ${(err as Error).message}` });
+    }
+  },
+
+  // --- Firmware ---
+
+  uploadFirmware: async (file) => {
+    const { service } = get();
+    if (!service) return;
+
+    set({ uploading: true, uploadProgress: 0, error: null });
+    try {
+      await service.uploadFile(
+        `0:/firmware/${file.name}`,
+        file,
+        (progress) => set({ uploadProgress: progress }),
+      );
+      set({ uploading: false, uploadProgress: 100 });
+    } catch (err) {
+      set({
+        uploading: false,
+        uploadProgress: 0,
+        error: `Firmware upload failed: ${(err as Error).message}`,
+      });
+      throw err;
+    }
+  },
+
+  installFirmware: async () => {
+    const { service } = get();
+    if (!service) return;
+    try {
+      await service.sendGCode('M997');
+    } catch (err) {
+      set({ error: `Failed to trigger firmware install: ${(err as Error).message}` });
+    }
+  },
+
+  // --- Print history ---
+
+  refreshPrintHistory: async () => {
+    const { service } = get();
+    if (!service) return;
+    set({ printHistoryLoading: true });
+    try {
+      const blob = await service.downloadFile('0:/sys/eventlog.txt');
+      const text = await blob.text();
+      const entries = parseEventLog(text);
+      set({ printHistory: entries, printHistoryLoading: false });
+    } catch (err) {
+      set({
+        printHistory: [],
+        printHistoryLoading: false,
+        error: `Failed to load print history: ${(err as Error).message}`,
+      });
     }
   },
 

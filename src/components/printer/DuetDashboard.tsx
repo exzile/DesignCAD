@@ -1,9 +1,9 @@
 import React, { useState, useMemo, useCallback } from 'react';
 import {
   Thermometer, Home, ArrowUp, ArrowDown, Power, Play, Fan,
-  Gauge, Droplets, Activity, Cpu, Clock, ChevronUp, ChevronDown,
+  Gauge, Droplets, Cpu, Clock, ChevronUp, ChevronDown,
   MoveHorizontal, Zap, FileText, Server, HardDrive, Wifi, MonitorSmartphone,
-  Wrench, XCircle,
+  Wrench, XCircle, Package,
 } from 'lucide-react';
 import { usePrinterStore } from '../../store/printerStore';
 
@@ -11,6 +11,7 @@ import { usePrinterStore } from '../../store/printerStore';
 // Theme — shared CSS-var tokens so all pages follow the active theme
 // ---------------------------------------------------------------------------
 import { colors as COLORS } from '../../utils/theme';
+import DuetCustomButtons from './DuetCustomButtons';
 
 // Semantic heater-state colors (not theme-dependent — always meaningful)
 const HEATER_STATE = {
@@ -1051,9 +1052,13 @@ function toolStateColor(state: string): string {
 function ToolSelectorPanel() {
   const model = usePrinterStore((s) => s.model);
   const sendGCode = usePrinterStore((s) => s.sendGCode);
+  const filaments = usePrinterStore((s) => s.filaments);
+  const loadFilament = usePrinterStore((s) => s.loadFilament);
+  const unloadFilament = usePrinterStore((s) => s.unloadFilament);
   const tools = model.tools ?? [];
   const heaters = model.heat?.heaters ?? [];
   const fans = model.fans ?? [];
+  const extrudersModel = model.move?.extruders ?? [];
   const currentTool = model.state?.currentTool ?? -1;
 
   const [editingTemps, setEditingTemps] = useState<Record<string, string>>({});
@@ -1255,6 +1260,51 @@ function ToolSelectorPanel() {
               </div>
             )}
 
+            {/* Filament management — current filament + load/unload */}
+            {tool.extruders.length > 0 && (() => {
+              const extruderIdx = tool.filamentExtruder >= 0
+                ? tool.filamentExtruder
+                : tool.extruders[0];
+              const loaded = extrudersModel[extruderIdx]?.filament ?? '';
+              return (
+                <div style={{ marginBottom: 8 }}>
+                  <div style={{ fontSize: 10, color: COLORS.textDim, marginBottom: 4 }}>Filament</div>
+                  <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+                    <Package size={12} color={COLORS.textDim} />
+                    <select
+                      style={{
+                        ...inputStyle(),
+                        flex: 1,
+                        minWidth: 0,
+                        width: 'auto',
+                      }}
+                      value={loaded}
+                      onChange={(e) => {
+                        const name = e.target.value;
+                        if (name) loadFilament(tool.number, name);
+                      }}
+                      title={loaded ? `Loaded: ${loaded}` : 'No filament loaded'}
+                    >
+                      <option value="">{loaded ? loaded : '— none —'}</option>
+                      {filaments
+                        .filter((n) => n !== loaded)
+                        .map((n) => (
+                          <option key={n} value={n}>{n}</option>
+                        ))}
+                    </select>
+                    <button
+                      style={btnStyle('default', true)}
+                      onClick={() => unloadFilament(tool.number)}
+                      disabled={!loaded}
+                      title="Unload filament (M702)"
+                    >
+                      Unload
+                    </button>
+                  </div>
+                </div>
+              );
+            })()}
+
             {/* Assigned extruders and fans */}
             <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', fontSize: 11 }}>
               {tool.extruders.length > 0 && (
@@ -1289,25 +1339,8 @@ function ToolSelectorPanel() {
 // ---------------------------------------------------------------------------
 
 export default function DuetDashboard() {
-  const connected = usePrinterStore((s) => s.connected);
   const error = usePrinterStore((s) => s.error);
   const setError = usePrinterStore((s) => s.setError);
-
-  if (!connected) {
-    return (
-      <div style={{
-        display: 'flex', alignItems: 'center', justifyContent: 'center',
-        height: '100%', color: COLORS.textDim, fontSize: 14,
-        background: COLORS.bg,
-      }}>
-        <div style={{ textAlign: 'center' }}>
-          <Activity size={40} style={{ opacity: 0.3, marginBottom: 12 }} />
-          <div>Not connected to printer</div>
-          <div style={{ fontSize: 11, marginTop: 4 }}>Configure connection in Settings</div>
-        </div>
-      </div>
-    );
-  }
 
   return (
     <div style={{
@@ -1363,6 +1396,11 @@ export default function DuetDashboard() {
           <ExtruderControlPanel />
           <AtxPowerPanel />
           <MacroPanel />
+        </div>
+
+        {/* Full-width custom buttons */}
+        <div style={{ gridColumn: '1 / -1' }}>
+          <DuetCustomButtons />
         </div>
 
         {/* Full-width system info */}

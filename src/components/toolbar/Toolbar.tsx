@@ -29,7 +29,7 @@ import type { Tool, Feature } from '../../types/cad';
 
 // ─── Types ─────────────────────────────────────────────────────────────────
 
-type Workspace = 'design' | 'prepare';
+type Workspace = 'design' | 'prepare' | 'printer';
 
 type DesignTab = 'solid' | 'surface' | 'mesh' | 'sheet-metal' | 'plastic' | 'manage' | 'utilities';
 type PrepareTab = 'plate' | 'profiles' | 'slice' | 'export';
@@ -323,7 +323,7 @@ export default function Toolbar() {
   const setSnapEnabled = useCADStore((s) => s.setSnapEnabled);
   const gridVisible = useCADStore((s) => s.gridVisible);
   const setGridVisible = useCADStore((s) => s.setGridVisible);
-  const setShowExtrudeDialog = useCADStore((s) => s.setShowExtrudeDialog);
+  const startExtrudeTool = useCADStore((s) => s.startExtrudeTool);
   const setShowExportDialog = useCADStore((s) => s.setShowExportDialog);
   const setActiveDialog = useCADStore((s) => s.setActiveDialog);
   const addFeature = useCADStore((s) => s.addFeature);
@@ -376,17 +376,20 @@ export default function Toolbar() {
       setStatusMessage('Create a sketch first before extruding');
       return;
     }
-    setShowExtrudeDialog(true);
+    startExtrudeTool();
   };
 
   const handleWorkspaceSwitch = (ws: Workspace) => {
     setWorkspace(ws);
     setWsDropdownOpen(false);
-    setWorkspaceMode(ws === 'prepare' ? 'prepare' : 'design');
+    setWorkspaceMode(ws);
   };
 
-  // Determine current tabs and active tab
-  const currentTabs = workspace === 'design' ? designTabs : prepareTabs;
+  // Determine current tabs and active tab. Printer workspace has no ribbon tabs
+  // — the Duet UI brings its own internal tab bar.
+  const currentTabs = workspace === 'design' ? designTabs
+    : workspace === 'prepare' ? prepareTabs
+    : [];
   const activeTab: RibbonTab = inSketch ? 'sketch' : (workspace === 'design' ? designTab : prepareTab);
 
   const handleTabClick = (tabId: RibbonTab) => {
@@ -683,7 +686,7 @@ export default function Toolbar() {
             className="ribbon-workspace-btn"
             onClick={() => setWsDropdownOpen(!wsDropdownOpen)}
           >
-            {workspace === 'design' ? 'DESIGN' : 'PREPARE'}
+            {workspace === 'design' ? 'DESIGN' : workspace === 'prepare' ? 'PREPARE' : '3D PRINTER'}
             <ChevronDown size={11} style={{ marginLeft: 4 }} />
           </button>
           {wsDropdownOpen && (
@@ -699,6 +702,12 @@ export default function Toolbar() {
                 onClick={() => handleWorkspaceSwitch('prepare')}
               >
                 Prepare (3D Print)
+              </button>
+              <button
+                className={`ribbon-workspace-option ${workspace === 'printer' ? 'active' : ''}`}
+                onClick={() => handleWorkspaceSwitch('printer')}
+              >
+                3D Printer
               </button>
             </div>
           )}

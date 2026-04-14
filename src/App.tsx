@@ -3,7 +3,6 @@ import Toolbar from './components/toolbar/Toolbar';
 import Timeline from './components/panels/Timeline';
 import ComponentTree from './components/panels/ComponentTree';
 import StatusBar from './components/panels/StatusBar';
-import ExtrudeDialog from './components/dialogs/ExtrudeDialog';
 import ExportDialog from './components/dialogs/ExportDialog';
 import DuetPrinterPanel from './components/printer/DuetPrinterPanel';
 import DuetSettings from './components/printer/DuetSettings';
@@ -56,11 +55,12 @@ function App() {
           <DuetPrinterPanel />
           <Timeline />
         </div>
-      ) : (
+      ) : workspaceMode === 'prepare' ? (
         <SlicerWorkspace />
+      ) : (
+        <DuetPrinterPanel fullscreen />
       )}
       <StatusBar />
-      <ExtrudeDialog />
       <ExportDialog />
       <DuetSettings />
       <ActiveDialog />

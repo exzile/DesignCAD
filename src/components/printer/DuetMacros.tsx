@@ -13,7 +13,6 @@ import {
 import { usePrinterStore } from '../../store/printerStore';
 
 export default function DuetMacros() {
-  const connected = usePrinterStore((s) => s.connected);
   const macros = usePrinterStore((s) => s.macros);
   const macroPath = usePrinterStore((s) => s.macroPath);
   const refreshMacros = usePrinterStore((s) => s.refreshMacros);
@@ -116,14 +115,6 @@ export default function DuetMacros() {
     },
     [macroPath, service, refreshMacros, setError],
   );
-
-  if (!connected) {
-    return (
-      <div className="duet-macros-empty">
-        <p>Connect to a printer to manage macros.</p>
-      </div>
-    );
-  }
 
   return (
     <div className="duet-macros">

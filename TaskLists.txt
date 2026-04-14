@@ -1,0 +1,70 @@
+DZIGN3D — TASK LIST
+====================
+
+3D PRINTER WORKSPACE — DUET UI GAPS vs DWC
+-------------------------------------------
+Gaps identified by comparing src/components/printer/* with the DWC v3 panel
+and route inventory at github.com/Duet3D/DuetWebControl. Ordered by user impact.
+
+PRIORITY 1 — operator-facing wins
+[ ] 1. Filament management UI
+       - Per-tool load / unload / change (M701 / M702 / M703)
+       - List filaments from 0:/filaments, show currently loaded
+       - Add inline control on each tool row in the dashboard tool selector
+       - Add a Filaments sub-page (or expand the existing Files > Filaments view)
+
+[ ] 2. Job estimations panel
+       - File-based ETA, filament-based ETA, layer-based ETA
+       - Filament used vs total per extruder
+       - Current / total layer, layer time, warm-up time
+       - Source: model.job.timesLeft, model.job.layer, model.job.file.filament[]
+       - New section in DuetJobStatus.tsx (or split into JobEstimationsPanel)
+
+[x] 3. Status detail page (endstops / sensors / probe)
+       - Endstop hit state per axis (model.sensors.endstops)
+       - Z-probe live value + threshold (model.sensors.probes)
+       - Analog inputs / GPIO (model.sensors.analog, model.state.gpOut)
+       - Driver status flags (stalls, over-temperature warnings)
+       - MCU + board temperatures, VIN, V12
+       - Add a new "Status" tab in DuetPrinterPanel between Dashboard and Console
+
+[x] 4. Split Settings into sub-pages
+       - General (units, language placeholder)
+       - Appearance (theme: light/dark/auto)
+       - Behaviour (confirm tool change, silent prompts, auto-reconnect)
+       - Notifications (toast duration, sound, severity filter)
+       - Machine (axis limits read-only, motor currents, board info)
+       - About (firmware version, DWC-equivalent version, board details)
+       - Refactor DuetSettings.tsx into a tabbed shell
+
+PRIORITY 2 — extras
+[x] 5. Firmware update UI
+       - Upload .bin / .uf2 to 0:/firmware
+       - Trigger M997 with confirmation
+       - Show current firmware version + board electronics info
+
+[x] 6. Print history / job log
+       - Read 0:/sys/eventlog.txt (or model.job.lastFileName history)
+       - Table of past prints: file, duration, result, filament used
+       - Re-print button
+
+[x] 7. Custom user buttons
+       - User-defined dashboard buttons that send arbitrary G-code
+       - Persist in cadStore or localStorage
+       - Reuse the existing macro panel grid layout
+
+PRIORITY 3 — developer / power-user (optional)
+[x] 8. Object Model browser
+       - Live tree view of the Duet object model JSON
+       - Search + collapsible nodes
+       - Read-only
+
+[ ] 9. Plugins page
+       - Skip unless we ship plugin support — DWC plugin format is Vue-specific
+
+EXPLICITLY OUT OF SCOPE
+-----------------------
+- CNC mode panels (Spindle, CNC axes, CNC dashboard) — FFF-only printer focus
+- Multi-machine switcher — single-printer connection by design
+- Internationalization (i18n)
+- Workspace layout editor (custom panel arrangements)

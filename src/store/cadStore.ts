@@ -1,7 +1,10 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import * as THREE from 'three';
-import type { Tool, ViewMode, SketchPlane, Sketch, SketchEntity, Feature, Parameter } from '../types/cad';
+import type { Tool, ViewMode, SketchPlane, Sketch, SketchEntity, Feature, Parameter, BooleanOperation } from '../types/cad';
+
+export type ExtrudeDirection = 'normal' | 'symmetric' | 'reverse';
+export type ExtrudeOperation = Extract<BooleanOperation, 'new-body' | 'join' | 'cut'>;
 import { evaluateExpression, resolveParameters } from '../utils/expressionEval';
 import { GeometryEngine } from '../engine/GeometryEngine';
 
@@ -104,8 +107,8 @@ interface CADState {
   setViewMode: (mode: ViewMode) => void;
 
   // Workspace mode
-  workspaceMode: 'design' | 'prepare';
-  setWorkspaceMode: (mode: 'design' | 'prepare') => void;
+  workspaceMode: 'design' | 'prepare' | 'printer';
+  setWorkspaceMode: (mode: 'design' | 'prepare' | 'printer') => void;
 
   // Sketch state
   activeSketch: Sketch | null;
@@ -113,6 +116,7 @@ interface CADState {
   sketchPlaneSelecting: boolean;  // true when user is picking a plane
   setSketchPlaneSelecting: (selecting: boolean) => void;
   startSketch: (plane: SketchPlane) => void;
+  startSketchOnFace: (normal: THREE.Vector3, origin: THREE.Vector3) => void;
   editSketch: (id: string) => void;
   finishSketch: () => void;
   cancelSketch: () => void;
@@ -167,11 +171,19 @@ interface CADState {
   cameraTargetOrbit: THREE.Vector3 | null;
   setCameraTargetOrbit: (v: THREE.Vector3 | null) => void;
 
-  // Extrude dialog
-  showExtrudeDialog: boolean;
-  setShowExtrudeDialog: (show: boolean) => void;
+  // Extrude tool (Fusion 360-style interactive extrude)
+  extrudeSelectedSketchId: string | null;
+  setExtrudeSelectedSketchId: (id: string | null) => void;
   extrudeDistance: number;
   setExtrudeDistance: (distance: number) => void;
+  extrudeDirection: ExtrudeDirection;
+  setExtrudeDirection: (d: ExtrudeDirection) => void;
+  extrudeOperation: ExtrudeOperation;
+  setExtrudeOperation: (o: ExtrudeOperation) => void;
+  startExtrudeTool: () => void;
+  startExtrudeFromFace: (boundary: THREE.Vector3[], normal: THREE.Vector3, centroid: THREE.Vector3) => void;
+  cancelExtrudeTool: () => void;
+  commitExtrude: () => void;
 
   // Export dialog
   showExportDialog: boolean;
@@ -219,9 +231,22 @@ function getPlaneNormal(plane: SketchPlane): THREE.Vector3 {
   }
 }
 
+// Default values shared between startExtrudeTool and resetExtrudeState
+const EXTRUDE_DEFAULTS = {
+  extrudeSelectedSketchId: null,
+  extrudeDistance: 10,
+  extrudeDirection: 'normal' as ExtrudeDirection,
+  extrudeOperation: 'new-body' as ExtrudeOperation,
+};
+
 export const useCADStore = create<CADState>()(persist((set, get) => ({
   activeTool: 'select',
-  setActiveTool: (tool) => set({ activeTool: tool, measurePoints: [] }),
+  setActiveTool: (tool) => set({
+    activeTool: tool,
+    measurePoints: [],
+    // Reset transient extrude state when switching away from the extrude tool
+    ...(tool !== 'extrude' ? EXTRUDE_DEFAULTS : {}),
+  }),
 
   viewMode: '3d',
   setViewMode: (mode) => set({ viewMode: mode }),
@@ -272,6 +297,49 @@ export const useCADStore = create<CADState>()(persist((set, get) => ({
       statusMessage: `Sketching on ${plane} plane`,
     });
   },
+  startSketchOnFace: (normal, origin) => {
+    // Normalize the face normal once
+    const n = normal.clone().normalize();
+    const o = origin.clone();
+
+    const sketch: Sketch = {
+      id: crypto.randomUUID(),
+      name: `Sketch ${get().sketches.length + 1}`,
+      plane: 'custom',
+      planeNormal: n,
+      planeOrigin: o,
+      entities: [],
+      constraints: [],
+      dimensions: [],
+      fullyConstrained: false,
+    };
+
+    // Camera looks AT the face from `origin + normal * distance` along -normal.
+    // Pick an "up" vector that lies in the face plane (least aligned world axis,
+    // then orthogonalized against the normal so it's truly in-plane).
+    const ax = Math.abs(n.x), ay = Math.abs(n.y), az = Math.abs(n.z);
+    let candidateUp: THREE.Vector3;
+    if (ay <= ax && ay <= az) candidateUp = new THREE.Vector3(0, 1, 0);
+    else if (ax <= az)        candidateUp = new THREE.Vector3(1, 0, 0);
+    else                      candidateUp = new THREE.Vector3(0, 0, 1);
+    // Project candidateUp onto the plane: up = candidateUp - (candidateUp·n) * n
+    const up = candidateUp.clone().sub(n.clone().multiplyScalar(candidateUp.dot(n))).normalize();
+
+    const camDir = n.clone().multiplyScalar(50);
+    const camPos = o.clone().add(camDir);
+    const m = new THREE.Matrix4().lookAt(camPos, o, up);
+    const targetQuat = new THREE.Quaternion().setFromRotationMatrix(m);
+
+    set({
+      activeSketch: sketch,
+      sketchPlaneSelecting: false,
+      viewMode: 'sketch',
+      activeTool: 'line',
+      cameraTargetQuaternion: targetQuat,
+      cameraTargetOrbit: o,
+      statusMessage: 'Sketching on face',
+    });
+  },
   editSketch: (id) => {
     // If already editing a sketch, finish it first so it isn't lost
     if (get().activeSketch) get().finishSketch();
@@ -280,12 +348,27 @@ export const useCADStore = create<CADState>()(persist((set, get) => ({
     const sketch = sketches.find((s) => s.id === id);
     if (!sketch) return;
 
-    // Reuse the same camera-orient logic as startSketch
-    const normal = getPlaneNormal(sketch.plane);
-    const camDir = normal.clone().multiplyScalar(5);
-    const up = sketch.plane === 'XY' ? new THREE.Vector3(0, 0, -1) : new THREE.Vector3(0, 1, 0);
-    const m = new THREE.Matrix4();
-    m.lookAt(camDir, new THREE.Vector3(0, 0, 0), up);
+    // Reuse the same camera-orient logic as startSketch.
+    // For 'custom' planes the normal/origin are stored on the sketch.
+    const isCustom = sketch.plane === 'custom';
+    const normal = isCustom ? sketch.planeNormal.clone().normalize() : getPlaneNormal(sketch.plane);
+    const origin = isCustom ? sketch.planeOrigin.clone() : new THREE.Vector3(0, 0, 0);
+
+    let up: THREE.Vector3;
+    if (isCustom) {
+      const ax = Math.abs(normal.x), ay = Math.abs(normal.y), az = Math.abs(normal.z);
+      const candidate =
+        ay <= ax && ay <= az ? new THREE.Vector3(0, 1, 0)
+        : ax <= az          ? new THREE.Vector3(1, 0, 0)
+        :                     new THREE.Vector3(0, 0, 1);
+      up = candidate.sub(normal.clone().multiplyScalar(candidate.dot(normal))).normalize();
+    } else {
+      up = sketch.plane === 'XY' ? new THREE.Vector3(0, 0, -1) : new THREE.Vector3(0, 1, 0);
+    }
+
+    const camDist = isCustom ? 50 : 5;
+    const camPos = origin.clone().add(normal.clone().multiplyScalar(camDist));
+    const m = new THREE.Matrix4().lookAt(camPos, origin, up);
     const targetQuat = new THREE.Quaternion().setFromRotationMatrix(m);
 
     set({
@@ -296,8 +379,8 @@ export const useCADStore = create<CADState>()(persist((set, get) => ({
       viewMode: 'sketch',
       activeTool: 'line',
       cameraTargetQuaternion: targetQuat,
-      cameraTargetOrbit: new THREE.Vector3(0, 0, 0),
-      statusMessage: `Editing ${sketch.name} on ${sketch.plane} plane`,
+      cameraTargetOrbit: origin,
+      statusMessage: `Editing ${sketch.name}${isCustom ? ' on face' : ` on ${sketch.plane} plane`}`,
     });
   },
   finishSketch: () => {
@@ -430,10 +513,114 @@ export const useCADStore = create<CADState>()(persist((set, get) => ({
   cameraTargetOrbit: null,
   setCameraTargetOrbit: (v) => set({ cameraTargetOrbit: v }),
 
-  showExtrudeDialog: false,
-  setShowExtrudeDialog: (show) => set({ showExtrudeDialog: show }),
-  extrudeDistance: 10,
+  ...EXTRUDE_DEFAULTS,
+  setExtrudeSelectedSketchId: (id) => set({ extrudeSelectedSketchId: id }),
   setExtrudeDistance: (distance) => set({ extrudeDistance: distance }),
+  setExtrudeDirection: (d) => set({ extrudeDirection: d }),
+  setExtrudeOperation: (o) => set({ extrudeOperation: o }),
+  startExtrudeTool: () => {
+    set({
+      activeTool: 'extrude',
+      ...EXTRUDE_DEFAULTS,
+      extrudeSelectedSketchId: null, // Wait for the user to pick — no auto-select
+      statusMessage: 'Click a profile or face to extrude',
+    });
+  },
+  startExtrudeFromFace: (boundary, normal, centroid) => {
+    if (boundary.length < 3) {
+      set({ statusMessage: 'Cannot extrude — face boundary too small' });
+      return;
+    }
+    // Build a synthetic Sketch in the 'custom' face plane. Each consecutive
+    // pair of boundary points becomes a 'line' SketchEntity. The loop is
+    // closed by the final segment from boundary[n-1] back to boundary[0].
+    const points: SketchPoint[] = boundary.map((p) => ({
+      id: crypto.randomUUID(),
+      x: p.x, y: p.y, z: p.z,
+    }));
+    const entities: SketchEntity[] = [];
+    for (let i = 0; i < points.length; i++) {
+      const next = (i + 1) % points.length;
+      entities.push({
+        id: crypto.randomUUID(),
+        type: 'line',
+        points: [points[i], points[next]],
+      });
+    }
+    const { sketches } = get();
+    const pressPullCount = sketches.filter((s) => s.name.startsWith('Press Pull Profile')).length;
+    const sketch: Sketch = {
+      id: crypto.randomUUID(),
+      name: `Press Pull Profile ${pressPullCount + 1}`,
+      plane: 'custom',
+      planeNormal: normal.clone().normalize(),
+      planeOrigin: centroid.clone(),
+      entities,
+      constraints: [],
+      dimensions: [],
+      fullyConstrained: false,
+    };
+    set({
+      sketches: [...sketches, sketch],
+      extrudeSelectedSketchId: sketch.id,
+      extrudeDirection: 'normal',
+      statusMessage: 'Press-pull profile selected — drag arrow or set distance, then OK',
+    });
+  },
+  cancelExtrudeTool: () => {
+    // Discard any auto-generated press-pull profiles that were never committed
+    const { sketches, features } = get();
+    const usedSketchIds = new Set(features.map((f) => f.sketchId).filter(Boolean));
+    const cleanedSketches = sketches.filter(
+      (s) => !s.name.startsWith('Press Pull Profile') || usedSketchIds.has(s.id),
+    );
+    set({
+      activeTool: 'select',
+      ...EXTRUDE_DEFAULTS,
+      sketches: cleanedSketches,
+      statusMessage: 'Extrude cancelled',
+    });
+  },
+  commitExtrude: () => {
+    const {
+      extrudeSelectedSketchId, extrudeDistance, extrudeDirection,
+      extrudeOperation, sketches, features, units,
+    } = get();
+    if (!extrudeSelectedSketchId) {
+      set({ statusMessage: 'No profile selected' });
+      return;
+    }
+    const sketch = sketches.find(s => s.id === extrudeSelectedSketchId);
+    if (!sketch) {
+      set({ statusMessage: 'Selected profile not found' });
+      return;
+    }
+    if (extrudeDistance <= 0) {
+      set({ statusMessage: 'Distance must be > 0' });
+      return;
+    }
+    const feature: Feature = {
+      id: crypto.randomUUID(),
+      name: `Extrude ${features.filter(f => f.type === 'extrude').length + 1}`,
+      type: 'extrude',
+      sketchId: extrudeSelectedSketchId,
+      params: {
+        distance: extrudeDirection === 'symmetric' ? extrudeDistance / 2 : extrudeDistance,
+        distanceExpr: String(extrudeDistance),
+        direction: extrudeDirection,
+        operation: extrudeOperation,
+      },
+      visible: true,
+      suppressed: false,
+      timestamp: Date.now(),
+    };
+    set({
+      features: [...features, feature],
+      activeTool: 'select',
+      ...EXTRUDE_DEFAULTS,
+      statusMessage: `Extruded ${sketch.name} by ${extrudeDistance}${units}`,
+    });
+  },
 
   showExportDialog: false,
   setShowExportDialog: (show) => set({ showExportDialog: show }),

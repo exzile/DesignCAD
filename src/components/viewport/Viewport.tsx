@@ -10,6 +10,8 @@ import ViewCube from './ViewCube';
 import CanvasControls from './CanvasControls';
 import SketchPalette from './SketchPalette';
 import MeasurePanel from './MeasurePanel';
+import ExtrudeTool from './ExtrudeTool';
+import ExtrudePanel from './ExtrudePanel';
 import type { SketchEntity, SketchPoint, Sketch, Feature } from '../../types/cad';
 
 /** Syncs the Three.js scene background / clear color with the active theme */
@@ -75,8 +77,12 @@ function ExtrudeItem({ feature, sketch }: { feature: Feature; sketch: Sketch }) 
     [sketch, distance],
   );
   useEffect(() => {
+    if (mesh) {
+      mesh.userData.pickable = true;
+      mesh.userData.featureId = feature.id;
+    }
     return () => { mesh?.geometry.dispose(); };
-  }, [mesh]);
+  }, [mesh, feature.id]);
   if (!mesh) return null;
   return <primitive object={mesh} />;
 }
@@ -91,8 +97,12 @@ function RevolveItem({ feature, sketch }: { feature: Feature; sketch: Sketch }) 
     [sketch, angle, axis],
   );
   useEffect(() => {
+    if (mesh) {
+      mesh.userData.pickable = true;
+      mesh.userData.featureId = feature.id;
+    }
     return () => { mesh?.geometry.dispose(); };
-  }, [mesh]);
+  }, [mesh, feature.id]);
   if (!mesh) return null;
   return <primitive object={mesh} />;
 }
@@ -120,6 +130,22 @@ function ExtrudedBodies() {
 function ImportedModels() {
   const features = useCADStore((s) => s.features);
 
+  // Tag imported meshes as pickable so the SketchPlaneSelector can hit-test them
+  useEffect(() => {
+    features.filter(f => f.type === 'import' && f.mesh).forEach((f) => {
+      const mesh = f.mesh!;
+      mesh.userData.pickable = true;
+      mesh.userData.featureId = f.id;
+      // Also tag any descendant meshes (Group imports)
+      mesh.traverse((obj) => {
+        if ((obj as THREE.Mesh).isMesh) {
+          obj.userData.pickable = true;
+          obj.userData.featureId = f.id;
+        }
+      });
+    });
+  }, [features]);
+
   return (
     <>
       {features.filter(f => f.type === 'import' && f.visible && f.mesh).map((feature) => (
@@ -133,6 +159,26 @@ function SketchPlaneIndicator() {
   const activeSketch = useCADStore((s) => s.activeSketch);
 
   if (!activeSketch) return null;
+
+  // Custom face plane: position + orient indicator using the stored normal/origin
+  if (activeSketch.plane === 'custom') {
+    const quat = new THREE.Quaternion().setFromUnitVectors(
+      new THREE.Vector3(0, 0, 1),
+      activeSketch.planeNormal.clone().normalize(),
+    );
+    return (
+      <mesh position={activeSketch.planeOrigin} quaternion={quat}>
+        <planeGeometry args={[200, 200]} />
+        <meshBasicMaterial
+          color={0x4488ff}
+          transparent
+          opacity={0.05}
+          side={THREE.DoubleSide}
+          depthWrite={false}
+        />
+      </mesh>
+    );
+  }
 
   // Rotations must produce a mesh whose normal matches the sketch plane normal:
   //   PlaneGeometry default faces +Z (vertical wall). Rotating by -90° around X
@@ -313,10 +359,16 @@ function SketchInteraction() {
     //   XY = horizontal ground   → Y-normal  (0, 1, 0)
     //   XZ = vertical front wall → Z-normal  (0, 0, 1)
     //   YZ = vertical side wall  → X-normal  (1, 0, 0)
+    //   custom = face plane → use stored planeNormal & planeOrigin
     switch (activeSketch.plane) {
       case 'XY': return new THREE.Plane(new THREE.Vector3(0, 1, 0), 0);
       case 'XZ': return new THREE.Plane(new THREE.Vector3(0, 0, 1), 0);
       case 'YZ': return new THREE.Plane(new THREE.Vector3(1, 0, 0), 0);
+      case 'custom': {
+        const n = activeSketch.planeNormal.clone().normalize();
+        // Plane equation: n·p + d = 0, where d = -n·origin
+        return new THREE.Plane(n, -n.dot(activeSketch.planeOrigin));
+      }
       default:   return new THREE.Plane(new THREE.Vector3(0, 1, 0), 0);
     }
   }, [activeSketch]);
@@ -350,8 +402,8 @@ function SketchInteraction() {
   useEffect(() => {
     if (!activeSketch || activeTool === 'select') return;
 
-    // Plane-aware tangent axes — same as GeometryEngine.getPlaneAxes
-    const { t1, t2 } = GeometryEngine.getPlaneAxes(activeSketch.plane);
+    // Plane-aware tangent axes — works for named planes AND custom face planes
+    const { t1, t2 } = GeometryEngine.getSketchAxes(activeSketch);
 
     // Project a 3-D point difference onto the plane's 2-D local axes
     const projectToPlane = (pt: SketchPoint, origin: SketchPoint) => {
@@ -760,8 +812,10 @@ function SketchInteraction() {
     const start = drawingPoints[0];
     const startV = new THREE.Vector3(start.x, start.y, start.z);
 
-    // Plane-aware axis vectors via GeometryEngine helper
-    const { t1, t2 } = GeometryEngine.getPlaneAxes(activeSketch?.plane ?? 'XZ');
+    // Plane-aware axis vectors via GeometryEngine helper (named planes + custom face planes)
+    const { t1, t2 } = activeSketch
+      ? GeometryEngine.getSketchAxes(activeSketch)
+      : GeometryEngine.getPlaneAxes('XZ');
 
     const addLine = (pts: THREE.Vector3[], mat?: THREE.LineBasicMaterial | THREE.LineDashedMaterial) => {
       const m = mat ?? material;
@@ -999,7 +1053,9 @@ function SketchInteraction() {
     const startVec = new THREE.Vector3(startPt.x, startPt.y, startPt.z);
     const delta = mousePos.clone().sub(startVec);
     const len = delta.length();
-    const { t1, t2 } = GeometryEngine.getPlaneAxes(activeSketch?.plane ?? 'XZ');
+    const { t1, t2 } = activeSketch
+      ? GeometryEngine.getSketchAxes(activeSketch)
+      : GeometryEngine.getPlaneAxes('XZ');
     const angRad = Math.atan2(delta.dot(t2), delta.dot(t1));
     const angDeg = (angRad * 180) / Math.PI;
     const du = delta.dot(t1);
@@ -1087,6 +1143,17 @@ function SketchInteraction() {
     </>
   );
 }
+
+// Pre-built unit circle (radius 8) positions for the face-hover ring — module-level
+// so we don't rebuild a Float32Array on every pointermove that updates faceHit state.
+const FACE_RING_POSITIONS = (() => {
+  const pts: number[] = [];
+  for (let i = 0; i <= 64; i++) {
+    const a = (i / 64) * Math.PI * 2;
+    pts.push(Math.cos(a) * 8, Math.sin(a) * 8, 0);
+  }
+  return new Float32Array(pts);
+})();
 
 /** Measure tool — click two points to measure distance, shows line + label in 3D scene */
 function MeasureInteraction() {
@@ -1307,7 +1374,15 @@ function WorldAxes() {
  *   XZ  vertical front, Z-normal → group rotation [-PI/2, 0, 0    ]  (Y→Z)
  *   YZ  vertical side,  X-normal → group rotation [0,     0, PI/2 ]  (Y→-X)
  */
-function SketchPlaneGrid({ plane }: { plane: 'XY' | 'XZ' | 'YZ' }) {
+function SketchPlaneGrid({
+  plane,
+  customNormal,
+  customOrigin,
+}: {
+  plane: 'XY' | 'XZ' | 'YZ' | 'custom';
+  customNormal?: THREE.Vector3;
+  customOrigin?: THREE.Vector3;
+}) {
   const themeColors = useThemeStore((s) => s.colors);
 
   // 1000-unit grid, 100 divisions → 10-unit major cells (matching section grid of GroundPlaneGrid)
@@ -1324,6 +1399,20 @@ function SketchPlaneGrid({ plane }: { plane: 'XY' | 'XZ' | 'YZ' }) {
       (mats as THREE.Material[]).forEach((m) => m.dispose());
     };
   }, [helper]);
+
+  // Custom face plane: orient the grid (whose default normal is +Y) to the face
+  // normal via a quaternion, and position it at the face origin.
+  if (plane === 'custom' && customNormal && customOrigin) {
+    const quat = new THREE.Quaternion().setFromUnitVectors(
+      new THREE.Vector3(0, 1, 0),
+      customNormal.clone().normalize(),
+    );
+    return (
+      <group position={customOrigin} quaternion={quat}>
+        <primitive object={helper} />
+      </group>
+    );
+  }
 
   const groupRotation: [number, number, number] =
     plane === 'XZ' ? [-Math.PI / 2, 0, 0] :
@@ -1363,16 +1452,27 @@ function GroundPlaneGrid() {
 function SketchPlaneSelector() {
   const selecting = useCADStore((s) => s.sketchPlaneSelecting);
   const startSketch = useCADStore((s) => s.startSketch);
+  const startSketchOnFace = useCADStore((s) => s.startSketchOnFace);
   const setSketchPlaneSelecting = useCADStore((s) => s.setSketchPlaneSelecting);
+  const setStatusMessage = useCADStore((s) => s.setStatusMessage);
   const [hovered, setHovered] = useState<string | null>(null);
-  const { gl } = useThree();
+  // Highlighted face hit (world-space normal + click point)
+  const [faceHit, setFaceHit] = useState<{ point: THREE.Vector3; normal: THREE.Vector3 } | null>(null);
+  // Mirror faceHit into a ref so the pointermove handler can read it without
+  // becoming a useEffect dep (which would cause listener re-attachment on every hover).
+  const faceHitRef = useRef(faceHit);
+  useEffect(() => { faceHitRef.current = faceHit; }, [faceHit]);
+  // Stable scratch objects for the hot-path raycasting handlers
+  const _mouse = useRef(new THREE.Vector2());
+  const _normalMatrix = useRef(new THREE.Matrix3());
+  const { gl, camera, raycaster, scene } = useThree();
 
-  // Change cursor when hovering a plane
+  // Change cursor when hovering a plane or a face
   useEffect(() => {
     if (!selecting) return;
-    gl.domElement.style.cursor = hovered ? 'pointer' : 'crosshair';
+    gl.domElement.style.cursor = (hovered || faceHit) ? 'pointer' : 'crosshair';
     return () => { gl.domElement.style.cursor = 'auto'; };
-  }, [selecting, hovered, gl]);
+  }, [selecting, hovered, faceHit, gl]);
 
   // Escape to cancel
   useEffect(() => {
@@ -1383,6 +1483,73 @@ function SketchPlaneSelector() {
     window.addEventListener('keydown', handleKey);
     return () => window.removeEventListener('keydown', handleKey);
   }, [selecting, setSketchPlaneSelecting]);
+
+  // Face raycasting against pickable meshes
+  useEffect(() => {
+    if (!selecting) return;
+
+    const collectPickable = (): THREE.Mesh[] => {
+      const out: THREE.Mesh[] = [];
+      scene.traverse((obj) => {
+        const m = obj as THREE.Mesh;
+        if (m.isMesh && obj.userData?.pickable) out.push(m);
+      });
+      return out;
+    };
+
+    const updateMouseFromEvent = (event: { clientX: number; clientY: number }) => {
+      const rect = gl.domElement.getBoundingClientRect();
+      _mouse.current.set(
+        ((event.clientX - rect.left) / rect.width) * 2 - 1,
+        -((event.clientY - rect.top) / rect.height) * 2 + 1,
+      );
+    };
+
+    const handlePointerMove = (event: PointerEvent) => {
+      updateMouseFromEvent(event);
+      raycaster.setFromCamera(_mouse.current, camera);
+      const hits = raycaster.intersectObjects(collectPickable(), false);
+      if (hits.length > 0 && hits[0].face) {
+        const hit = hits[0];
+        // Transform face normal from local to world space (reusing scratch matrix)
+        const normal = hit.face!.normal.clone()
+          .applyMatrix3(_normalMatrix.current.getNormalMatrix(hit.object.matrixWorld))
+          .normalize();
+        setFaceHit({ point: hit.point.clone(), normal });
+        setStatusMessage(`Face: normal (${normal.x.toFixed(2)}, ${normal.y.toFixed(2)}, ${normal.z.toFixed(2)})`);
+      } else if (faceHitRef.current) {
+        setFaceHit(null);
+      }
+    };
+
+    const handleClick = (event: MouseEvent) => {
+      if (event.button !== 0) return;
+      // Re-raycast on click (faceHit may be stale or null if pointer didn't move)
+      updateMouseFromEvent(event);
+      raycaster.setFromCamera(_mouse.current, camera);
+      const hits = raycaster.intersectObjects(collectPickable(), false);
+      if (hits.length > 0 && hits[0].face) {
+        const hit = hits[0];
+        const normal = hit.face!.normal.clone()
+          .applyMatrix3(_normalMatrix.current.getNormalMatrix(hit.object.matrixWorld))
+          .normalize();
+        // Stop event propagation so the origin-plane meshes don't also fire
+        event.stopPropagation();
+        startSketchOnFace(normal, hit.point.clone());
+        setFaceHit(null);
+      }
+    };
+
+    const canvas = gl.domElement;
+    canvas.addEventListener('pointermove', handlePointerMove);
+    // Use capture phase so we run BEFORE R3F's onClick handlers on the origin planes
+    canvas.addEventListener('click', handleClick, true);
+    return () => {
+      canvas.removeEventListener('pointermove', handlePointerMove);
+      canvas.removeEventListener('click', handleClick, true);
+      setFaceHit(null);
+    };
+  }, [selecting, gl, camera, raycaster, scene, startSketchOnFace, setStatusMessage]);
 
   if (!selecting) return null;
 
@@ -1462,6 +1629,39 @@ function SketchPlaneSelector() {
           </group>
         );
       })}
+
+      {/* Face hover highlight — yellow translucent disc oriented to the face */}
+      {faceHit && (() => {
+        // Quaternion that rotates the disc's local +Z (its face normal) to the world face normal
+        const q = new THREE.Quaternion().setFromUnitVectors(
+          new THREE.Vector3(0, 0, 1),
+          faceHit.normal,
+        );
+        // Push the disc out slightly along the normal so it doesn't z-fight the face
+        const offset = faceHit.normal.clone().multiplyScalar(0.05);
+        const pos = faceHit.point.clone().add(offset);
+        return (
+          <group position={pos} quaternion={q}>
+            <mesh>
+              <circleGeometry args={[8, 32]} />
+              <meshBasicMaterial
+                color={0xffcc33}
+                transparent
+                opacity={0.45}
+                side={THREE.DoubleSide}
+                depthWrite={false}
+              />
+            </mesh>
+            {/* Border ring — uses pre-built positions hoisted at module scope */}
+            <lineLoop>
+              <bufferGeometry>
+                <bufferAttribute attach="attributes-position" args={[FACE_RING_POSITIONS, 3]} />
+              </bufferGeometry>
+              <lineBasicMaterial color={0xffcc33} transparent opacity={0.9} />
+            </lineLoop>
+          </group>
+        );
+      })()}
     </group>
   );
 }
@@ -1654,8 +1854,15 @@ export default function Viewport() {
         {gridVisible && !activeSketch && <GroundPlaneGrid />}
 
         {/* Sketch-plane grid — shown only while a sketch is active */}
-        {activeSketch && (activeSketch.plane === 'XY' || activeSketch.plane === 'XZ' || activeSketch.plane === 'YZ') && (
+        {activeSketch && activeSketch.plane !== 'custom' && (
           <SketchPlaneGrid plane={activeSketch.plane} />
+        )}
+        {activeSketch && activeSketch.plane === 'custom' && (
+          <SketchPlaneGrid
+            plane="custom"
+            customNormal={activeSketch.planeNormal}
+            customOrigin={activeSketch.planeOrigin}
+          />
         )}
 
         {/* Plane selection for Create Sketch */}
@@ -1668,6 +1875,7 @@ export default function Viewport() {
         <SketchPlaneIndicator />
         <SketchInteraction />
         <MeasureInteraction />
+        <ExtrudeTool />
 
         {/* Camera controller — also feeds quaternion to ViewCube */}
         <CameraController onQuaternionChange={handleQuaternionChange} />
@@ -1706,6 +1914,9 @@ export default function Viewport() {
 
       {/* Measure Panel (Fusion 360 style results panel) */}
       <MeasurePanel />
+
+      {/* Extrude Panel (Fusion 360 style properties panel) */}
+      <ExtrudePanel />
     </div>
   );
 }

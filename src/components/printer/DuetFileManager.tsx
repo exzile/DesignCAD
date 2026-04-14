@@ -942,14 +942,6 @@ export default function DuetFileManager() {
     [service, currentDirectory, setError],
   );
 
-  if (!connected) {
-    return (
-      <div style={styles.container}>
-        <div style={styles.empty}>Not connected to printer</div>
-      </div>
-    );
-  }
-
   return (
     <div style={styles.container}>
       {/* Tab bar */}

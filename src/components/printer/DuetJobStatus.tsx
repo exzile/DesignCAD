@@ -189,6 +189,49 @@ function ProgressSection() {
   );
 }
 
+// --- Job Info (slicer, layer heights, simulated time, file size) ----------
+
+function JobInfo() {
+  const model = usePrinterStore((s) => s.model);
+  const job = model.job;
+  if (!job?.file) return null;
+
+  const f = job.file;
+  const objectCount = job.build?.objects?.length ?? 0;
+  const slicer = f.generatedBy?.trim();
+  const sliceTime = f.simulatedTime > 0 ? f.simulatedTime : f.printTime;
+
+  return (
+    <div className="job-section">
+      <div className="job-section-title">
+        <FileText size={14} /> Job Info
+      </div>
+      <div className="job-detail-grid">
+        {slicer && <JobDetailRow label="Slicer" value={slicer} />}
+        {sliceTime > 0 && (
+          <JobDetailRow
+            label={f.simulatedTime > 0 ? 'Simulated time' : 'Estimated time'}
+            value={formatTime(sliceTime)}
+          />
+        )}
+        {f.layerHeight > 0 && (
+          <JobDetailRow label="Layer height" value={`${f.layerHeight.toFixed(2)} mm`} />
+        )}
+        {f.firstLayerHeight > 0 && (
+          <JobDetailRow label="First layer" value={`${f.firstLayerHeight.toFixed(2)} mm`} />
+        )}
+        {f.height > 0 && (
+          <JobDetailRow label="Object height" value={`${f.height.toFixed(2)} mm`} />
+        )}
+        {f.size > 0 && <JobDetailRow label="File size" value={formatBytes(f.size)} />}
+        {objectCount > 0 && (
+          <JobDetailRow label="Objects" value={String(objectCount)} />
+        )}
+      </div>
+    </div>
+  );
+}
+
 // --- Time Estimates --------------------------------------------------------
 
 function TimeEstimates() {
@@ -198,6 +241,11 @@ function TimeEstimates() {
 
   const elapsed = job.duration ?? 0;
   const warmUp = job.warmUpDuration ?? 0;
+  const layerTime = job.layerTime ?? 0;
+  const layers = job.layers ?? [];
+  const avgLayerTime = layers.length > 0
+    ? layers.reduce((sum, l) => sum + (l.duration ?? 0), 0) / layers.length
+    : 0;
   const tl = job.timesLeft;
 
   // Pick best remaining estimate (prefer file, then slicer, then filament, then layer)
@@ -212,6 +260,12 @@ function TimeEstimates() {
       </div>
       <div className="job-detail-grid">
         <JobDetailRow label="Elapsed" value={formatTime(elapsed)} />
+        {layerTime > 0 && (
+          <JobDetailRow label="Current layer time" value={formatTime(layerTime)} />
+        )}
+        {avgLayerTime > 0 && (
+          <JobDetailRow label="Avg layer time" value={formatTime(avgLayerTime)} />
+        )}
         {tl && tl.file > 0 && (
           <JobDetailRow label="Remaining (file)" value={formatTime(tl.file)} />
         )}
@@ -249,12 +303,20 @@ function FilamentUsage() {
   const requiredFilament = job.file?.filament ?? [];
   const totalRequired = requiredFilament.reduce((a, b) => a + b, 0);
 
-  // Estimate used filament from layer data
-  const usedFilament = (job.layers ?? []).reduce((sum, layer) => {
-    return sum + (layer.filament ?? []).reduce((a, b) => a + b, 0);
-  }, 0);
+  // Per-extruder used totals from layer data
+  const perExtruderUsed: number[] = [];
+  for (const layer of job.layers ?? []) {
+    const f = layer.filament ?? [];
+    for (let i = 0; i < f.length; i++) {
+      perExtruderUsed[i] = (perExtruderUsed[i] ?? 0) + f[i];
+    }
+  }
+  const usedFilament = perExtruderUsed.reduce((a, b) => a + b, 0);
 
   if (totalRequired <= 0 && usedFilament <= 0) return null;
+
+  // Show per-extruder rows when there's more than one extruder
+  const multiExtruder = requiredFilament.length > 1 || perExtruderUsed.length > 1;
 
   return (
     <div className="job-section">
@@ -272,6 +334,16 @@ function FilamentUsage() {
             value={formatFilament(Math.max(0, totalRequired - usedFilament))}
           />
         )}
+        {multiExtruder && requiredFilament.map((req, i) => {
+          const used = perExtruderUsed[i] ?? 0;
+          return (
+            <JobDetailRow
+              key={i}
+              label={`E${i}`}
+              value={`${formatFilament(used)} / ${formatFilament(req)}`}
+            />
+          );
+        })}
       </div>
     </div>
   );
@@ -839,15 +911,10 @@ function ObjectCancellation() {
 
 export default function DuetJobStatus() {
   const model = usePrinterStore((s) => s.model);
-  const connected = usePrinterStore((s) => s.connected);
 
   const status = model.state?.status ?? 'idle';
   const hasJob = status === 'processing' || status === 'paused' || status === 'pausing'
     || status === 'resuming' || status === 'simulating' || status === 'cancelling';
-
-  if (!connected) {
-    return <NoJobMessage />;
-  }
 
   if (!hasJob) {
     return <NoJobMessage />;
@@ -858,6 +925,7 @@ export default function DuetJobStatus() {
       <PrintStatusHeader />
       <ProgressSection />
       <ObjectCancellation />
+      <JobInfo />
       <TimeEstimates />
       <FilamentUsage />
       <TemperatureChart />

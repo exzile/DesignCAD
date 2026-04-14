@@ -1,15 +1,18 @@
 import React, { useCallback } from 'react';
 import {
-  LayoutDashboard, Terminal, Play, FolderOpen, FileCode, Grid3x3,
-  Settings, X, OctagonAlert, Wifi, WifiOff, Minimize2,
+  LayoutDashboard, Activity, Terminal, Play, FolderOpen, FileCode, Grid3x3,
+  History, Braces, Settings, X, OctagonAlert, Wifi, WifiOff, Minimize2,
 } from 'lucide-react';
 import { usePrinterStore } from '../../store/printerStore';
 import DuetDashboard from './DuetDashboard';
+import DuetStatus from './DuetStatus';
 import DuetConsole from './DuetConsole';
 import DuetJobStatus from './DuetJobStatus';
+import DuetPrintHistory from './DuetPrintHistory';
 import DuetFileManager from './DuetFileManager';
 import DuetMacros from './DuetMacros';
 import DuetHeightMap from './DuetHeightMap';
+import DuetObjectModelBrowser from './DuetObjectModelBrowser';
 import DuetMessageBox from './DuetMessageBox';
 import DuetNotifications from './DuetNotifications';
 
@@ -23,11 +26,14 @@ import { colors as COLORS } from '../../utils/theme';
 // ---------------------------------------------------------------------------
 const TABS = [
   { key: 'dashboard' as const, label: 'Dashboard', Icon: LayoutDashboard },
+  { key: 'status' as const, label: 'Status', Icon: Activity },
   { key: 'console' as const, label: 'Console', Icon: Terminal },
   { key: 'job' as const, label: 'Job', Icon: Play },
+  { key: 'history' as const, label: 'History', Icon: History },
   { key: 'files' as const, label: 'Files', Icon: FolderOpen },
   { key: 'macros' as const, label: 'Macros', Icon: FileCode },
   { key: 'heightmap' as const, label: 'Height Map', Icon: Grid3x3 },
+  { key: 'model' as const, label: 'Model', Icon: Braces },
 ];
 
 type TabKey = (typeof TABS)[number]['key'];
@@ -55,6 +61,17 @@ const styles: Record<string, React.CSSProperties> = {
     resize: 'horizontal',
     overflow: 'hidden',
     minWidth: 360,
+  },
+  fullscreen: {
+    flex: 1,
+    minHeight: 0,
+    display: 'flex',
+    flexDirection: 'column',
+    background: COLORS.bg,
+    fontFamily: "'Inter', 'Segoe UI', sans-serif",
+    color: COLORS.text,
+    fontSize: 13,
+    overflow: 'hidden',
   },
   header: {
     display: 'flex',
@@ -126,7 +143,9 @@ const styles: Record<string, React.CSSProperties> = {
     padding: '8px 12px',
     background: 'none',
     border: 'none',
-    borderBottom: '2px solid transparent',
+    borderBottomWidth: 2,
+    borderBottomStyle: 'solid',
+    borderBottomColor: 'transparent',
     color: COLORS.textDim,
     cursor: 'pointer',
     fontSize: 12,
@@ -181,7 +200,7 @@ const styles: Record<string, React.CSSProperties> = {
 // ---------------------------------------------------------------------------
 // Component
 // ---------------------------------------------------------------------------
-export default function DuetPrinterPanel() {
+export default function DuetPrinterPanel({ fullscreen = false }: { fullscreen?: boolean } = {}) {
   const showPrinter = usePrinterStore((s) => s.showPrinter);
   const connected = usePrinterStore((s) => s.connected);
   const config = usePrinterStore((s) => s.config);
@@ -199,7 +218,7 @@ export default function DuetPrinterPanel() {
     }
   }, [emergencyStop]);
 
-  if (!showPrinter) return null;
+  if (!fullscreen && !showPrinter) return null;
 
   // Derive display values from model
   const machineStatus = model.state?.status ?? 'disconnected';
@@ -220,23 +239,29 @@ export default function DuetPrinterPanel() {
     switch (activeTab as TabKey) {
       case 'dashboard':
         return <DuetDashboard />;
+      case 'status':
+        return <DuetStatus />;
       case 'console':
         return <DuetConsole />;
       case 'job':
         return <DuetJobStatus />;
+      case 'history':
+        return <DuetPrintHistory />;
       case 'files':
         return <DuetFileManager />;
       case 'macros':
         return <DuetMacros />;
       case 'heightmap':
         return <DuetHeightMap />;
+      case 'model':
+        return <DuetObjectModelBrowser />;
       default:
         return <DuetDashboard />;
     }
   };
 
   return (
-    <div style={styles.overlay}>
+    <div style={fullscreen ? styles.fullscreen : styles.overlay}>
       {/* ---- Message Box Modal (M291 prompts) ---- */}
       {connected && <DuetMessageBox />}
 
@@ -280,16 +305,18 @@ export default function DuetPrinterPanel() {
           <Settings size={16} />
         </button>
 
-        {/* Close */}
-        <button
-          style={styles.headerBtn}
-          onClick={() => setShowPrinter(false)}
-          title="Close panel"
-          onMouseEnter={(e) => (e.currentTarget.style.color = COLORS.text)}
-          onMouseLeave={(e) => (e.currentTarget.style.color = COLORS.textDim)}
-        >
-          <X size={16} />
-        </button>
+        {/* Close (overlay only) */}
+        {!fullscreen && (
+          <button
+            style={styles.headerBtn}
+            onClick={() => setShowPrinter(false)}
+            title="Close panel"
+            onMouseEnter={(e) => (e.currentTarget.style.color = COLORS.text)}
+            onMouseLeave={(e) => (e.currentTarget.style.color = COLORS.textDim)}
+          >
+            <X size={16} />
+          </button>
+        )}
       </div>
 
       {/* ---- Error Banner ---- */}
@@ -325,46 +352,47 @@ export default function DuetPrinterPanel() {
         ))}
       </div>
 
-      {/* ---- Content ---- */}
-      <div style={styles.content}>
-        {!connected ? (
-          <div
+      {/* ---- Disconnect banner (non-blocking — tabs still render) ---- */}
+      {!connected && (
+        <div
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: 10,
+            padding: '8px 14px',
+            background: 'rgba(239,68,68,0.08)',
+            borderBottom: `1px solid ${COLORS.panelBorder}`,
+            color: COLORS.textDim,
+            fontSize: 12,
+            flexShrink: 0,
+          }}
+        >
+          <WifiOff size={14} color={COLORS.danger} />
+          <span>Not connected to a Duet3D board — showing empty state.</span>
+          <div style={{ flex: 1 }} />
+          <button
             style={{
+              background: COLORS.accent,
+              color: '#fff',
+              border: 'none',
+              borderRadius: 4,
+              padding: '4px 12px',
+              cursor: 'pointer',
+              fontWeight: 600,
+              fontSize: 11,
               display: 'flex',
-              flexDirection: 'column',
               alignItems: 'center',
-              justifyContent: 'center',
-              height: '100%',
-              gap: 16,
-              padding: 32,
-              textAlign: 'center',
+              gap: 4,
             }}
+            onClick={() => setShowSettings(true)}
           >
-            <WifiOff size={40} color={COLORS.textDim} />
-            <p style={{ color: COLORS.textDim, margin: 0 }}>
-              Not connected to a Duet3D board
-            </p>
-            <button
-              style={{
-                background: COLORS.accent,
-                color: '#fff',
-                border: 'none',
-                borderRadius: 6,
-                padding: '8px 20px',
-                cursor: 'pointer',
-                fontWeight: 600,
-                fontSize: 13,
-              }}
-              onClick={() => setShowSettings(true)}
-            >
-              <Wifi size={14} style={{ marginRight: 6, verticalAlign: -2 }} />
-              Configure Connection
-            </button>
-          </div>
-        ) : (
-          renderTabContent()
-        )}
-      </div>
+            <Wifi size={12} /> Connect
+          </button>
+        </div>
+      )}
+
+      {/* ---- Content ---- */}
+      <div style={styles.content}>{renderTabContent()}</div>
 
       {/* ---- Status Footer ---- */}
       <div style={styles.footer}>
