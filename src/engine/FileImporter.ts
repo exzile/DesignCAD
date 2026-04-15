@@ -1,6 +1,17 @@
 import * as THREE from 'three';
 
 export class FileImporter {
+  private static readonly IMPORT_MATERIAL = new THREE.MeshPhysicalMaterial({
+    color: 0x8899aa,
+    metalness: 0.3,
+    roughness: 0.4,
+    side: THREE.DoubleSide,
+  });
+
+  private static createImportMaterial(): THREE.MeshPhysicalMaterial {
+    return this.IMPORT_MATERIAL.clone();
+  }
+
   /**
    * Import a STEP file and return a Three.js group.
    * Uses a simplified mesh approximation since full OpenCascade
@@ -80,12 +91,7 @@ export class FileImporter {
     const geometry = new STLLoader().parse(buffer);
     geometry.computeVertexNormals();
 
-    const material = new THREE.MeshPhysicalMaterial({
-      color: 0x8899aa,
-      metalness: 0.3,
-      roughness: 0.4,
-      side: THREE.DoubleSide,
-    });
+    const material = this.createImportMaterial();
 
     const mesh = new THREE.Mesh(geometry, material);
     mesh.castShadow = true;
@@ -104,12 +110,7 @@ export class FileImporter {
     const group = new OBJLoader().parse(text);
     group.name = file.name.replace(/\.[^.]+$/, '');
 
-    const material = new THREE.MeshPhysicalMaterial({
-      color: 0x8899aa,
-      metalness: 0.3,
-      roughness: 0.4,
-      side: THREE.DoubleSide,
-    });
+    const material = this.createImportMaterial();
 
     group.traverse((child) => {
       if (child instanceof THREE.Mesh) {
@@ -180,9 +181,7 @@ export class FileImporter {
       for (const obj of objects) {
         const geo = this.parseAmfObject(obj);
         if (geo) {
-          group.add(new THREE.Mesh(geo, new THREE.MeshPhysicalMaterial({
-            color: 0x8899aa, metalness: 0.3, roughness: 0.4, side: THREE.DoubleSide,
-          })));
+          group.add(new THREE.Mesh(geo, this.createImportMaterial()));
         }
       }
     } else {
@@ -192,9 +191,7 @@ export class FileImporter {
         if (obj.getAttribute('type') === 'support') continue;
         const geo = this.parseThreeMFObject(obj);
         if (geo) {
-          const mesh = new THREE.Mesh(geo, new THREE.MeshPhysicalMaterial({
-            color: 0x8899aa, metalness: 0.3, roughness: 0.4, side: THREE.DoubleSide,
-          }));
+          const mesh = new THREE.Mesh(geo, this.createImportMaterial());
           mesh.castShadow = true;
           group.add(mesh);
         }

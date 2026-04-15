@@ -5,6 +5,7 @@ import type {
   DuetGCodeFileInfo,
   DuetHeightMap,
 } from '../types/duet';
+import { fetchOrThrow, requestJsonOrText } from './httpRequest';
 
 /**
  * Comprehensive Duet3D API service supporting both standalone (RepRapFirmware)
@@ -56,18 +57,7 @@ export class DuetService {
     url: string,
     init?: RequestInit
   ): Promise<T> {
-    const response = await fetch(url, init);
-    if (!response.ok) {
-      const text = await response.text().catch(() => '');
-      throw new Error(
-        `Duet request failed: ${response.status} ${response.statusText} – ${text}`
-      );
-    }
-    const contentType = response.headers.get('content-type') ?? '';
-    if (contentType.includes('application/json')) {
-      return (await response.json()) as T;
-    }
-    return (await response.text()) as unknown as T;
+    return requestJsonOrText<T>(url, init, 'Duet request failed');
   }
 
   // ---------------------------------------------------------------------------
@@ -417,14 +407,11 @@ export class DuetService {
   async sendGCode(code: string): Promise<string> {
     if (this.config.mode === 'sbc') {
       const url = `${this.baseUrl}/machine/code`;
-      const res = await fetch(url, {
+      const res = await fetchOrThrow(url, {
         method: 'POST',
         headers: { 'Content-Type': 'text/plain' },
         body: code,
-      });
-      if (!res.ok) {
-        throw new Error(`G-code send failed: ${res.status}`);
-      }
+      }, 'G-code send failed');
       return res.text();
     }
 

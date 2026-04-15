@@ -22,6 +22,7 @@ import type {
 // Theme — use shared CSS-var tokens so all workspaces follow the active theme
 // =============================================================================
 import { colors, sharedStyles } from '../../utils/theme';
+import { normalizeRotationRadians, normalizeScale } from '../../utils/slicerTransforms';
 
 const panelStyle: React.CSSProperties = {
   background: colors.panel,
@@ -133,12 +134,8 @@ function PlateObjectMesh({
   }, []);
 
   const pos = obj.position as { x: number; y: number; z?: number };
-  const rot = typeof (obj as any).rotation === 'number'
-    ? { x: 0, y: 0, z: ((obj as any).rotation * Math.PI) / 180 }
-    : (obj as any).rotation ?? { x: 0, y: 0, z: 0 };
-  const scl = typeof (obj as any).scale === 'number'
-    ? { x: (obj as any).scale, y: (obj as any).scale, z: (obj as any).scale }
-    : (obj as any).scale ?? { x: 1, y: 1, z: 1 };
+  const rot = normalizeRotationRadians((obj as any).rotation);
+  const scl = normalizeScale((obj as any).scale);
 
   const handleClick = useCallback((e: ThreeEvent<MouseEvent>) => {
     e.stopPropagation();
@@ -213,7 +210,7 @@ function PlateObjectMesh({
 // =============================================================================
 // 3D Scene: GCode Preview (layer lines)
 // =============================================================================
-function GCodePreview({
+function InlineGCodePreview({
   sliceResult,
   currentLayer,
   showTravel,
@@ -337,7 +334,7 @@ function SlicerScene() {
       ))}
 
       {previewMode === 'preview' && sliceResult && (
-        <GCodePreview
+        <InlineGCodePreview
           sliceResult={sliceResult}
           currentLayer={previewLayer}
           showTravel={previewShowTravel}
@@ -942,16 +939,8 @@ function ObjectsPanel() {
   }, [selectedId, updatePlateObject]);
 
   const pos = selectedObj ? (selectedObj.position as { x: number; y: number; z: number }) : null;
-  const rot = selectedObj
-    ? (typeof (selectedObj as any).rotation === 'number'
-        ? { x: 0, y: 0, z: (selectedObj as any).rotation }
-        : ((selectedObj as any).rotation ?? { x: 0, y: 0, z: 0 }))
-    : null;
-  const scl = selectedObj
-    ? (typeof (selectedObj as any).scale === 'number'
-        ? { x: (selectedObj as any).scale, y: (selectedObj as any).scale, z: (selectedObj as any).scale }
-        : ((selectedObj as any).scale ?? { x: 1, y: 1, z: 1 }))
-    : null;
+  const rot = selectedObj ? normalizeRotationRadians((selectedObj as any).rotation) : null;
+  const scl = selectedObj ? normalizeScale((selectedObj as any).scale) : null;
 
   const numStyle: React.CSSProperties = { ...inputStyle, width: 52, padding: '2px 4px', fontSize: 11 };
   const xyzRow = (

@@ -9,6 +9,7 @@ import {
   DEFAULT_PRINTER_PROFILES, DEFAULT_MATERIAL_PROFILES, DEFAULT_PRINT_PROFILES,
 } from '../types/slicer';
 import { Slicer } from '../engine/Slicer';
+import { normalizeRotationDegreesToRadians, normalizeScale } from '../utils/slicerTransforms';
 import { usePrinterStore } from './printerStore';
 
 const STORAGE_KEY = 'dzign3d-slicer-profiles';
@@ -576,16 +577,8 @@ export const useSlicerStore = create<SlicerStore>()(persist((set, get) => ({
         .filter((obj) => obj.geometry)
         .map((obj) => {
           const pos = (obj.position as { x: number; y: number; z?: number });
-          const rot = typeof (obj as any).rotation === 'number'
-            ? { x: 0, y: 0, z: ((obj as any).rotation * Math.PI) / 180 }
-            : {
-                x: (((obj as any).rotation?.x) ?? 0) * Math.PI / 180,
-                y: (((obj as any).rotation?.y) ?? 0) * Math.PI / 180,
-                z: (((obj as any).rotation?.z) ?? 0) * Math.PI / 180,
-              };
-          const scl = typeof (obj as any).scale === 'number'
-            ? { x: (obj as any).scale, y: (obj as any).scale, z: (obj as any).scale }
-            : ((obj as any).scale ?? { x: 1, y: 1, z: 1 });
+          const rot = normalizeRotationDegreesToRadians((obj as any).rotation);
+          const scl = normalizeScale((obj as any).scale);
 
           const transform = new THREE.Matrix4();
           transform.compose(

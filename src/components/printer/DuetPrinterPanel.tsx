@@ -40,6 +40,19 @@ const TABS = [
 
 type TabKey = (typeof TABS)[number]['key'];
 
+const TAB_COMPONENTS: Record<TabKey, React.ComponentType> = {
+  dashboard: DuetDashboard,
+  status: DuetStatus,
+  console: DuetConsole,
+  job: DuetJobStatus,
+  history: DuetPrintHistory,
+  files: DuetFileManager,
+  filaments: DuetFilamentManager,
+  macros: DuetMacros,
+  heightmap: DuetHeightMap,
+  model: DuetObjectModelBrowser,
+};
+
 // ---------------------------------------------------------------------------
 // Inline styles
 // ---------------------------------------------------------------------------
@@ -237,32 +250,7 @@ export default function DuetPrinterPanel({ fullscreen = false }: { fullscreen?: 
   // -----------------------------------------------------------------------
   // Render active tab content
   // -----------------------------------------------------------------------
-  const renderTabContent = () => {
-    switch (activeTab as TabKey) {
-      case 'dashboard':
-        return <DuetDashboard />;
-      case 'status':
-        return <DuetStatus />;
-      case 'console':
-        return <DuetConsole />;
-      case 'job':
-        return <DuetJobStatus />;
-      case 'history':
-        return <DuetPrintHistory />;
-      case 'files':
-        return <DuetFileManager />;
-      case 'filaments':
-        return <DuetFilamentManager />;
-      case 'macros':
-        return <DuetMacros />;
-      case 'heightmap':
-        return <DuetHeightMap />;
-      case 'model':
-        return <DuetObjectModelBrowser />;
-      default:
-        return <DuetDashboard />;
-    }
-  };
+  const ActiveTabComponent = TAB_COMPONENTS[(activeTab as TabKey)] ?? DuetDashboard;
 
   return (
     <div style={fullscreen ? styles.fullscreen : styles.overlay}>
@@ -396,7 +384,7 @@ export default function DuetPrinterPanel({ fullscreen = false }: { fullscreen?: 
       )}
 
       {/* ---- Content ---- */}
-      <div style={styles.content}>{renderTabContent()}</div>
+      <div style={styles.content}><ActiveTabComponent /></div>
 
       {/* ---- Status Footer ---- */}
       <div style={styles.footer}>

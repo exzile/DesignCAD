@@ -325,6 +325,15 @@ interface CADState {
   // D104 surface sweep
   sweepBodyKind: 'solid' | 'surface';
   setSweepBodyKind: (k: 'solid' | 'surface') => void;
+  // D71 sweep upgrades
+  sweepOrientation: 'perpendicular' | 'parallel';
+  sweepTwistAngle: number;
+  sweepTaperAngle: number;
+  sweepGuideRailId: string | null;
+  setSweepOrientation: (v: 'perpendicular' | 'parallel') => void;
+  setSweepTwistAngle: (v: number) => void;
+  setSweepTaperAngle: (v: number) => void;
+  setSweepGuideRailId: (v: string | null) => void;
   startSweepTool: () => void;
   cancelSweepTool: () => void;
   commitSweep: () => void;
@@ -334,6 +343,15 @@ interface CADState {
   setLoftProfileSketchIds: (ids: string[]) => void;
   loftBodyKind: 'solid' | 'surface';
   setLoftBodyKind: (k: 'solid' | 'surface') => void;
+  // D72 loft upgrades
+  loftClosed: boolean;
+  loftStartCondition: 'free' | 'tangent' | 'curvature';
+  loftEndCondition: 'free' | 'tangent' | 'curvature';
+  loftRailSketchId: string | null;
+  setLoftClosed: (v: boolean) => void;
+  setLoftStartCondition: (v: 'free' | 'tangent' | 'curvature') => void;
+  setLoftEndCondition: (v: 'free' | 'tangent' | 'curvature') => void;
+  setLoftRailSketchId: (v: string | null) => void;
   startLoftTool: () => void;
   cancelLoftTool: () => void;
   commitLoft: () => void;
@@ -1677,6 +1695,15 @@ export const useCADStore = create<CADState>()(persist((set, get) => ({
   setSweepPathSketchId: (id) => set({ sweepPathSketchId: id }),
   sweepBodyKind: 'solid',
   setSweepBodyKind: (k) => set({ sweepBodyKind: k }),
+  // D71 sweep upgrades
+  sweepOrientation: 'perpendicular' as const,
+  sweepTwistAngle: 0,
+  sweepTaperAngle: 0,
+  sweepGuideRailId: null,
+  setSweepOrientation: (v) => set({ sweepOrientation: v }),
+  setSweepTwistAngle: (v) => set({ sweepTwistAngle: v }),
+  setSweepTaperAngle: (v) => set({ sweepTaperAngle: v }),
+  setSweepGuideRailId: (v) => set({ sweepGuideRailId: v }),
   startSweepTool: () => {
     const extrudable = get().sketches.filter((s) => s.entities.length > 0);
     if (extrudable.length < 2) {
@@ -1685,7 +1712,7 @@ export const useCADStore = create<CADState>()(persist((set, get) => ({
     }
     set({ activeTool: 'sweep', sweepProfileSketchId: null, sweepPathSketchId: null, statusMessage: 'Sweep — pick a profile sketch, then a path sketch in the panel' });
   },
-  cancelSweepTool: () => set({ activeTool: 'select', sweepProfileSketchId: null, sweepPathSketchId: null, statusMessage: 'Sweep cancelled' }),
+  cancelSweepTool: () => set({ activeTool: 'select', sweepProfileSketchId: null, sweepPathSketchId: null, sweepOrientation: 'perpendicular', sweepTwistAngle: 0, sweepTaperAngle: 0, sweepGuideRailId: null, statusMessage: 'Sweep cancelled' }),
   commitSweep: () => {
     const { sweepProfileSketchId, sweepPathSketchId, sweepBodyKind, sketches, features, units } = get();
     if (!sweepProfileSketchId || !sweepPathSketchId) {
@@ -1726,6 +1753,15 @@ export const useCADStore = create<CADState>()(persist((set, get) => ({
   setLoftProfileSketchIds: (ids) => set({ loftProfileSketchIds: ids }),
   loftBodyKind: 'solid',
   setLoftBodyKind: (k) => set({ loftBodyKind: k }),
+  // D72 loft upgrades
+  loftClosed: false,
+  loftStartCondition: 'free' as const,
+  loftEndCondition: 'free' as const,
+  loftRailSketchId: null,
+  setLoftClosed: (v) => set({ loftClosed: v }),
+  setLoftStartCondition: (v) => set({ loftStartCondition: v }),
+  setLoftEndCondition: (v) => set({ loftEndCondition: v }),
+  setLoftRailSketchId: (v) => set({ loftRailSketchId: v }),
   startLoftTool: () => {
     const extrudable = get().sketches.filter((s) => s.entities.length > 0);
     if (extrudable.length < 2) {

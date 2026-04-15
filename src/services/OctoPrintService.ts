@@ -1,3 +1,5 @@
+import { fetchOrThrow, requestJsonOrText } from './httpRequest';
+
 export interface OctoPrintConfig {
   url: string;       // e.g. "http://octopi.local" or "http://192.168.1.100"
   apiKey: string;     // OctoPrint API key from settings
@@ -95,21 +97,13 @@ export class OctoPrintService {
 
   private async request<T>(path: string, options?: RequestInit): Promise<T> {
     const url = `${this.config.url}/api${path}`;
-    const response = await fetch(url, {
+    return requestJsonOrText<T>(url, {
       ...options,
       headers: {
         ...this.headers,
         ...options?.headers,
       },
-    });
-
-    if (!response.ok) {
-      const text = await response.text().catch(() => '');
-      throw new Error(`OctoPrint API error ${response.status}: ${text}`);
-    }
-
-    if (response.status === 204) return {} as T;
-    return response.json();
+    }, 'OctoPrint API error');
   }
 
   // ===== Connection =====
@@ -229,15 +223,11 @@ export class OctoPrintService {
     if (startPrint) formData.append('print', 'true');
 
     const url = `${this.config.url}/api/files/local`;
-    const response = await fetch(url, {
+    await fetchOrThrow(url, {
       method: 'POST',
       headers: { 'X-Api-Key': this.config.apiKey },
       body: formData,
-    });
-
-    if (!response.ok) {
-      throw new Error(`Upload failed: ${response.status}`);
-    }
+    }, 'Upload failed');
   }
 
   async deleteFile(filename: string, origin = 'local'): Promise<void> {

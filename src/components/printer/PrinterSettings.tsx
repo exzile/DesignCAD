@@ -48,7 +48,7 @@ export default function PrinterSettings() {
     <div className="dialog-overlay">
       <div className="dialog">
         <div className="dialog-header">
-          <h3>Printer Connection</h3>
+          <h3>Duet Printer Connection</h3>
           <button className="dialog-close" onClick={() => setShowSettings(false)}>
             <X size={16} />
           </button>
@@ -62,13 +62,13 @@ export default function PrinterSettings() {
               </div>
             ) : (
               <div className="banner info">
-                Connect to your 3D printer via OctoPrint
+                Connect to your Duet controller
               </div>
             )}
           </div>
 
           <div className="form-group">
-            <label>OctoPrint URL</label>
+            <label>Duet Host URL</label>
             <input
               type="text"
               value={url}
@@ -77,21 +77,21 @@ export default function PrinterSettings() {
               disabled={connected}
             />
             <span className="form-hint">
-              The address of your OctoPrint instance
+              The base address of your Duet controller (e.g. http://duet.local)
             </span>
           </div>
 
           <div className="form-group">
-            <label>API Key</label>
+            <label>Password</label>
             <input
               type="password"
               value={apiKey}
               onChange={(e) => setApiKey(e.target.value)}
-              placeholder="Your OctoPrint API key"
+              placeholder="Duet password"
               disabled={connected}
             />
             <span className="form-hint">
-              Found in OctoPrint Settings &gt; API &gt; Global API Key
+              Password configured in RepRapFirmware for HTTP access
             </span>
           </div>
 
@@ -110,11 +110,10 @@ export default function PrinterSettings() {
           <div className="help-section">
             <h4>Setup Guide</h4>
             <ol>
-              <li>Install OctoPrint on a Raspberry Pi connected to your printer</li>
-              <li>Open OctoPrint in your browser</li>
-              <li>Go to Settings &gt; API</li>
-              <li>Copy the Global API Key</li>
-              <li>Enter the URL and API key above</li>
+              <li>Ensure your Duet board is connected to your network</li>
+              <li>Open the Duet web interface in a browser</li>
+              <li>Confirm HTTP access is enabled and password is set</li>
+              <li>Enter the host URL and password above</li>
             </ol>
             <p className="help-note">
               Both your computer and printer must be on the same network.
