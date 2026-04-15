@@ -12,8 +12,8 @@ DESIGN WORKSPACE — OPEN ITEMS
 [x] D33. Draft (dialog + feature record shipped — DraftDialog.tsx)
 [x] D34. Thread (cosmetic + modeled — ThreadDialog.tsx, ISO/ANSI/NPT standards)
 [x] D35. Offset Face (OffsetFaceDialog.tsx); Split Body (SplitBodyDialog.tsx)
-[ ] D71. Sweep upgrade — Path+Guide Rail, Path+Guide Surface, Twist/Taper Angle options
-[ ] D72. Loft upgrade — Rails/Centerline, G0/G1/G2 end conditions, Closed Loft option
+[x] D71. Sweep upgrade — orientation, twist/taper angle, guide rail selector in SweepPanel
+[x] D72. Loft upgrade — rail sketch, start/end conditions (G0/G1/G2), closed loft in LoftPanel
 
 ── SOLID MODIFY ──────────────────────────────────────────────
 [~] D6.  3D Fillet — no-op; blocked on edge picker

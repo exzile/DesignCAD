@@ -1770,7 +1770,7 @@ export const useCADStore = create<CADState>()(persist((set, get) => ({
     }
     set({ activeTool: 'loft', loftProfileSketchIds: ['', ''], statusMessage: 'Loft — select 2+ profile sketches in the panel, then OK' });
   },
-  cancelLoftTool: () => set({ activeTool: 'select', loftProfileSketchIds: [], statusMessage: 'Loft cancelled' }),
+  cancelLoftTool: () => set({ activeTool: 'select', loftProfileSketchIds: [], loftClosed: false, loftStartCondition: 'free', loftEndCondition: 'free', loftRailSketchId: null, statusMessage: 'Loft cancelled' }),
   commitLoft: () => {
     const { loftProfileSketchIds, loftBodyKind, sketches, features, units } = get();
     const validIds = loftProfileSketchIds.filter(Boolean);
