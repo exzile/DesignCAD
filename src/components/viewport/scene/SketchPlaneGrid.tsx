@@ -2,6 +2,7 @@ import { useEffect, useMemo } from 'react';
 import { Grid } from '@react-three/drei';
 import * as THREE from 'three';
 import { useThemeStore } from '../../../store/themeStore';
+import { useCADStore } from '../../../store/cadStore';
 
 /**
  * Grid shown while a sketch is active — aligned to the sketch plane.
@@ -25,10 +26,15 @@ export default function SketchPlaneGrid({
   customOrigin?: THREE.Vector3;
 }) {
   const themeColors = useThemeStore((s) => s.colors);
+  const globalGridSize = useCADStore((s) => s.gridSize);
+  const sketchGridSize = useCADStore((s) => s.sketchGridSize);
+  const cellSize = sketchGridSize ?? globalGridSize;
+  // GridHelper(size, divisions) — keep total size at 1000, divisions = total/cellSize
+  const divisions = Math.round(Math.max(10, Math.min(500, 1000 / cellSize)));
 
   const helper = useMemo(
-    () => new THREE.GridHelper(1000, 100, themeColors.gridSection, themeColors.gridCell),
-    [themeColors.gridSection, themeColors.gridCell],
+    () => new THREE.GridHelper(1000, divisions, themeColors.gridSection, themeColors.gridCell),
+    [divisions, themeColors.gridSection, themeColors.gridCell],
   );
 
   useEffect(() => {

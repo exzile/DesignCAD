@@ -656,11 +656,16 @@ const setStatusMessage = useCADStore((s) => s.setStatusMessage);
         { icon: <Circle size={MI} />, label: 'Center to Center Slot', onClick: () => { setActiveTool('slot-center'); setStatusMessage('Center Slot: click first centre, then second centre, then width'); } },
         { icon: <Circle size={MI} />, label: 'Overall Slot', onClick: () => { setActiveTool('slot-overall'); setStatusMessage('Overall Slot: click first end, then second end, then width'); } },
         { icon: <Circle size={MI} />, label: 'Center Point Slot', onClick: () => { setActiveTool('slot-center-point'); setStatusMessage('Center Point Slot: click centre, then end, then width'); } },
-        { icon: <Circle size={MI} />, label: 'Three Point Arc Slot', onClick: comingSoon('Three Point Arc Slot') },
-        { icon: <Circle size={MI} />, label: 'Center Point Arc Slot', onClick: comingSoon('Center Point Arc Slot') },
+        { icon: <Circle size={MI} />, label: 'Three Point Arc Slot', onClick: () => { setActiveTool('slot-3point-arc'); setStatusMessage('Three Point Arc Slot: click arc start, arc end, point on arc, then width'); } },
+        { icon: <Circle size={MI} />, label: 'Center Point Arc Slot', onClick: () => { setActiveTool('slot-center-arc'); setStatusMessage('Center Point Arc Slot: click arc centre, arc start, arc end, then width'); } },
       ],
     },
-    { separator: true, icon: <Waypoints size={MI} />, label: 'Spline', onClick: () => { setActiveTool('spline' as Tool); setStatusMessage('Spline: click to place fit points, right-click to finish'); } },
+    { separator: true, icon: <Waypoints size={MI} />, label: 'Spline', onClick: () => { setActiveTool('spline' as Tool); setStatusMessage('Spline: click to place fit points, right-click to finish'); },
+      submenu: [
+        { icon: <Waypoints size={MI} />, label: 'Fit Point Spline', onClick: () => { setActiveTool('spline' as Tool); setStatusMessage('Spline: click to place fit points, right-click to finish'); } },
+        { icon: <Waypoints size={MI} />, label: 'Control Point Spline', onClick: () => { setActiveTool('spline-control' as Tool); setStatusMessage('Control Point Spline: click to add control points, right-click to commit'); } },
+      ],
+    },
     { icon: <Waypoints size={MI} />, label: 'Conic Curve', onClick: () => { setActiveTool('conic' as Tool); setStatusMessage('Conic: click start, then end, then shoulder point — set ρ in palette'); } },
     { separator: true, icon: <CircleDot size={MI} />, label: 'Point', onClick: () => setActiveTool('point' as Tool) },
     { separator: true, icon: <ArrowUpFromLine size={MI} />, label: 'Project / Include', onClick: comingSoon('Project') },
@@ -1188,7 +1193,12 @@ const setStatusMessage = useCADStore((s) => s.setStatusMessage);
               />
               <ToolButton icon={<CircleDot size={20} />}          label="Ellipse"   onClick={() => { setActiveTool('ellipse'); setStatusMessage('Ellipse: click centre, then major-axis, then minor-axis endpoint'); }}  colorClass="icon-blue" />
               <ToolButton icon={<CircleDot size={20} />}          label="Point"     tool="point"                     colorClass="icon-blue" />
-              <ToolButton icon={<Waypoints size={20} />}          label="Spline"    onClick={() => { setActiveTool('spline' as Tool); setStatusMessage('Spline: click to place fit points, right-click to finish'); }}   colorClass="icon-blue" />
+              <ToolButton icon={<Waypoints size={20} />}          label="Spline"    onClick={() => { setActiveTool('spline' as Tool); setStatusMessage('Spline: click to place fit points, right-click to finish'); }}   colorClass="icon-blue"
+                dropdown={[
+                  { label: 'Fit Point Spline', icon: <Waypoints size={14} />, onClick: () => { setActiveTool('spline' as Tool); setStatusMessage('Spline: click to place fit points, right-click to finish'); } },
+                  { label: 'Control Point Spline', icon: <Waypoints size={14} />, onClick: () => { setActiveTool('spline-control' as Tool); setStatusMessage('Control Point Spline: click to add control points, right-click to commit'); } },
+                ]}
+              />
             </RibbonSection>
 
             {/* ── MODIFY ─────────────────────────────────── */}

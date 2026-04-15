@@ -169,6 +169,9 @@ interface CADState {
   // Grid & snap
   gridSize: number;
   setGridSize: (size: number) => void;
+  /** S7: Per-sketch grid spacing override (null = use global gridSize). */
+  sketchGridSize: number | null;
+  setSketchGridSize: (size: number | null) => void;
   snapEnabled: boolean;
   setSnapEnabled: (enabled: boolean) => void;
 
@@ -177,6 +180,8 @@ interface CADState {
   setSketchPolygonSides: (sides: number) => void;
   sketchFilletRadius: number;
   setSketchFilletRadius: (r: number) => void;
+  sketchSlotWidth: number;
+  setSketchSlotWidth: (w: number) => void;
   // Sketch pattern state (D22/D23)
   sketchRectPatternCountX: number;
   sketchRectPatternCountY: number;
@@ -972,6 +977,8 @@ export const useCADStore = create<CADState>()(persist((set, get) => ({
 
   gridSize: 10,
   setGridSize: (size) => set({ gridSize: size }),
+  sketchGridSize: null,
+  setSketchGridSize: (size) => set({ sketchGridSize: size }),
   snapEnabled: true,
   setSnapEnabled: (enabled) => set({ snapEnabled: enabled }),
   gridVisible: true,
@@ -980,6 +987,8 @@ export const useCADStore = create<CADState>()(persist((set, get) => ({
   setSketchPolygonSides: (sides) => set({ sketchPolygonSides: Math.max(3, Math.min(128, Math.round(sides))) }),
   sketchFilletRadius: 2,
   setSketchFilletRadius: (r) => set({ sketchFilletRadius: Math.max(0.01, r) }),
+  sketchSlotWidth: 4,
+  setSketchSlotWidth: (w) => set({ sketchSlotWidth: Math.max(0.01, w) }),
 
   sketchRectPatternCountX: 3,
   sketchRectPatternCountY: 2,

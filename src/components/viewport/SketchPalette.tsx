@@ -24,6 +24,9 @@ export default function SketchPalette() {
   const setSnapEnabled = useCADStore((s) => s.setSnapEnabled);
   const gridVisible = useCADStore((s) => s.gridVisible);
   const setGridVisible = useCADStore((s) => s.setGridVisible);
+  const gridSize = useCADStore((s) => s.gridSize);
+  const sketchGridSize = useCADStore((s) => s.sketchGridSize);
+  const setSketchGridSize = useCADStore((s) => s.setSketchGridSize);
   const polygonSides = useCADStore((s) => s.sketchPolygonSides);
   const setPolygonSides = useCADStore((s) => s.setSketchPolygonSides);
   const filletRadius = useCADStore((s) => s.sketchFilletRadius);
@@ -67,6 +70,9 @@ export default function SketchPalette() {
   const isTangentCircleTool = activeTool === 'circle-2tangent';
   const isConicTool = activeTool === 'conic';
   const isBlendCurveTool = activeTool === 'blend-curve';
+  const slotWidth = useCADStore((s) => s.sketchSlotWidth);
+  const setSlotWidth = useCADStore((s) => s.setSketchSlotWidth);
+  const isArcSlotTool = activeTool === 'slot-3point-arc' || activeTool === 'slot-center-arc';
 
   // Reset dismissed state each time a new sketch session starts
   useEffect(() => {
@@ -177,6 +183,25 @@ export default function SketchPalette() {
               <span className="sketch-palette-checkmark" />
             </label>
           </div>
+          {/* S7: Per-sketch grid size override */}
+          {gridVisible && (
+            <div className="sketch-palette-row">
+              <span className="sketch-palette-label">Grid Size</span>
+              <input
+                type="number"
+                className="sketch-palette-input"
+                min={0.1}
+                step={1}
+                value={sketchGridSize ?? gridSize}
+                onChange={(e) => {
+                  const v = parseFloat(e.target.value);
+                  setSketchGridSize(Number.isFinite(v) && v > 0 ? v : null);
+                }}
+                title="Per-sketch grid spacing (overrides global)"
+                style={{ width: 60 }}
+              />
+            </div>
+          )}
 
           {/* Snap — synced with CAD store */}
           <div className="sketch-palette-row">
@@ -286,6 +311,22 @@ export default function SketchPalette() {
                 <option value="g1">G1</option>
                 <option value="g2">G2</option>
               </select>
+            </div>
+          )}
+
+          {/* Arc slot width — visible while arc slot tools are active */}
+          {isArcSlotTool && (
+            <div className="sketch-palette-row">
+              <span className="sketch-palette-label">Slot Width</span>
+              <input
+                type="number"
+                min={0.01}
+                step={0.5}
+                value={slotWidth}
+                onChange={(e) => { const v = Number(e.target.value); if (!Number.isNaN(v) && v > 0) setSlotWidth(v); }}
+                className="measure-select"
+                style={{ width: 64 }}
+              />
             </div>
           )}
 

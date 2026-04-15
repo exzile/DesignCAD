@@ -8,11 +8,14 @@ export type Tool =
   | 'rectangle'
   | 'arc'
   | 'spline'
+  | 'spline-control'
   | 'polygon'
   | 'slot'
   | 'slot-center'
   | 'slot-overall'
   | 'slot-center-point'
+  | 'slot-3point-arc'
+  | 'slot-center-arc'
   | 'rectangle-3point'
   | 'rectangle-center'
   | 'circle-2point'
@@ -143,7 +146,8 @@ export type ConstraintType =
   | 'horizontal'
   | 'vertical'
   | 'fix'
-  | 'midpoint';
+  | 'midpoint'
+  | 'curvature';  // G2 curvature continuity between spline and adjacent curve (D51/S10)
 
 export interface SketchConstraint {
   id: string;

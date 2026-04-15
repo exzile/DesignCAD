@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { STLExporter as ThreeSTLExporter } from 'three/examples/jsm/exporters/STLExporter.js';
 import { OBJExporter } from 'three/examples/jsm/exporters/OBJExporter.js';
+import { zipSync } from 'fflate';
 
 const _stlExporter = new ThreeSTLExporter();
 const _objExporter = new OBJExporter();
@@ -28,18 +29,14 @@ export class ThreeMFExporter {
   static async export(object: THREE.Object3D, name = 'Dzign3D_Model'): Promise<Blob> {
     const { vertices, triangles } = this.collectMeshData(object);
 
-    const modelXml = this.buildModelXml(vertices, triangles, name);
-    const contentTypes = this.buildContentTypes();
-    const rels = this.buildRels();
+    const enc = new TextEncoder();
+    const zipped = zipSync({
+      '[Content_Types].xml': enc.encode(this.buildContentTypes()),
+      '_rels/.rels':         enc.encode(this.buildRels()),
+      '3D/3dmodel.model':    enc.encode(this.buildModelXml(vertices, triangles, name)),
+    });
 
-    // Build ZIP manually (minimal implementation)
-    const files: ZipEntry[] = [
-      { name: '[Content_Types].xml', data: new TextEncoder().encode(contentTypes) },
-      { name: '_rels/.rels', data: new TextEncoder().encode(rels) },
-      { name: '3D/3dmodel.model', data: new TextEncoder().encode(modelXml) },
-    ];
-
-    return this.buildZip(files);
+    return new Blob([zipped], { type: 'application/vnd.ms-package.3dmanufacturing-3dmodel+xml' });
   }
 
   private static collectMeshData(object: THREE.Object3D): {
@@ -140,97 +137,4 @@ export class ThreeMFExporter {
 </Relationships>`;
   }
 
-  private static buildZip(entries: ZipEntry[]): Blob {
-    const parts: Uint8Array[] = [];
-    const centralDir: Uint8Array[] = [];
-    let offset = 0;
-
-    for (const entry of entries) {
-      const nameBytes = new TextEncoder().encode(entry.name);
-      const data = entry.data;
-
-      // Local file header
-      const localHeader = new ArrayBuffer(30 + nameBytes.length);
-      const lhView = new DataView(localHeader);
-      lhView.setUint32(0, 0x04034b50, true); // signature
-      lhView.setUint16(4, 20, true); // version needed
-      lhView.setUint16(6, 0, true); // flags
-      lhView.setUint16(8, 0, true); // compression (stored)
-      lhView.setUint16(10, 0, true); // mod time
-      lhView.setUint16(12, 0, true); // mod date
-      lhView.setUint32(14, this.crc32(data), true); // crc32
-      lhView.setUint32(18, data.length, true); // compressed size
-      lhView.setUint32(22, data.length, true); // uncompressed size
-      lhView.setUint16(26, nameBytes.length, true); // name length
-      lhView.setUint16(28, 0, true); // extra length
-      new Uint8Array(localHeader).set(nameBytes, 30);
-
-      parts.push(new Uint8Array(localHeader));
-      parts.push(data);
-
-      // Central directory entry
-      const cdEntry = new ArrayBuffer(46 + nameBytes.length);
-      const cdView = new DataView(cdEntry);
-      cdView.setUint32(0, 0x02014b50, true); // signature
-      cdView.setUint16(4, 20, true); // version made by
-      cdView.setUint16(6, 20, true); // version needed
-      cdView.setUint16(8, 0, true); // flags
-      cdView.setUint16(10, 0, true); // compression
-      cdView.setUint16(12, 0, true); // mod time
-      cdView.setUint16(14, 0, true); // mod date
-      cdView.setUint32(16, this.crc32(data), true); // crc32
-      cdView.setUint32(20, data.length, true); // compressed size
-      cdView.setUint32(24, data.length, true); // uncompressed size
-      cdView.setUint16(28, nameBytes.length, true); // name length
-      cdView.setUint16(30, 0, true); // extra length
-      cdView.setUint16(32, 0, true); // comment length
-      cdView.setUint16(34, 0, true); // disk number
-      cdView.setUint16(36, 0, true); // internal attrs
-      cdView.setUint32(38, 0, true); // external attrs
-      cdView.setUint32(42, offset, true); // local header offset
-      new Uint8Array(cdEntry).set(nameBytes, 46);
-
-      centralDir.push(new Uint8Array(cdEntry));
-      offset += 30 + nameBytes.length + data.length;
-    }
-
-    // Central directory
-    const cdOffset = offset;
-    let cdSize = 0;
-    for (const cd of centralDir) {
-      parts.push(cd);
-      cdSize += cd.length;
-    }
-
-    // End of central directory
-    const eocd = new ArrayBuffer(22);
-    const eocdView = new DataView(eocd);
-    eocdView.setUint32(0, 0x06054b50, true); // signature
-    eocdView.setUint16(4, 0, true); // disk number
-    eocdView.setUint16(6, 0, true); // cd disk
-    eocdView.setUint16(8, entries.length, true); // entries on disk
-    eocdView.setUint16(10, entries.length, true); // total entries
-    eocdView.setUint32(12, cdSize, true); // cd size
-    eocdView.setUint32(16, cdOffset, true); // cd offset
-    eocdView.setUint16(20, 0, true); // comment length
-    parts.push(new Uint8Array(eocd));
-
-    return new Blob(parts.map(p => p.buffer as ArrayBuffer), { type: 'application/vnd.ms-package.3dmanufacturing-3dmodel+xml' });
   }
-
-  private static crc32(data: Uint8Array): number {
-    let crc = 0xFFFFFFFF;
-    for (let i = 0; i < data.length; i++) {
-      crc ^= data[i];
-      for (let j = 0; j < 8; j++) {
-        crc = (crc >>> 1) ^ (crc & 1 ? 0xEDB88320 : 0);
-      }
-    }
-    return (crc ^ 0xFFFFFFFF) >>> 0;
-  }
-}
-
-interface ZipEntry {
-  name: string;
-  data: Uint8Array;
-}

@@ -371,6 +371,118 @@ export function renderSketchPreview(ctx: SketchPreviewCtx): void {
         break;
       }
 
+      // Control Point Spline preview: B-spline hull with tension=0 + control polygon
+      case 'spline-control': {
+        if (drawingPoints.length === 0) {
+          addLine([startV, mousePos]);
+        } else {
+          const pts3d = drawingPoints.map((p) => new THREE.Vector3(p.x, p.y, p.z));
+          pts3d.push(mousePos.clone());
+          // CatmullRom with tension=0 approximates a uniform B-spline
+          const curve = new THREE.CatmullRomCurve3(pts3d, false, 'catmullrom', 0);
+          const previewPts = curve.getPoints(Math.max(50, pts3d.length * 16));
+          addLine(previewPts);
+          // Control polygon — thin lines connecting each hull point
+          addLine(pts3d);
+          // Square markers at each placed control point (distinguishes from fit-point circles)
+          const sq = 0.12;
+          for (const cp of drawingPoints) {
+            const cv = new THREE.Vector3(cp.x, cp.y, cp.z);
+            const c0 = cv.clone().addScaledVector(t1,  sq).addScaledVector(t2,  sq);
+            const c1 = cv.clone().addScaledVector(t1, -sq).addScaledVector(t2,  sq);
+            const c2 = cv.clone().addScaledVector(t1, -sq).addScaledVector(t2, -sq);
+            const c3 = cv.clone().addScaledVector(t1,  sq).addScaledVector(t2, -sq);
+            addLine([c0, c1, c2, c3, c0]);
+          }
+        }
+        break;
+      }
+
+      case 'slot-3point-arc': {
+        // Clicks 0-1: show line from last point to mouse
+        // Click 2: show circumscribed arc through P0, pMid, mouse
+        // Click 3: show outer + inner arc outline + caps
+        if (drawingPoints.length < 2) {
+          const lastPt = drawingPoints[drawingPoints.length - 1];
+          addLine([new THREE.Vector3(lastPt.x, lastPt.y, lastPt.z), mousePos]);
+        } else if (drawingPoints.length === 2) {
+          // Show arc preview through P0, P2 (click 1 & 2) with mouse as pMid
+          const cc = circumcenter2D(
+            drawingPoints[0], drawingPoints[1],
+            { x: mousePos.x, y: mousePos.y, z: mousePos.z },
+            t1, t2
+          );
+          if (cc) {
+            const cV = new THREE.Vector3(cc.center.x, cc.center.y, cc.center.z);
+            const d0 = new THREE.Vector3(drawingPoints[0].x - cc.center.x, drawingPoints[0].y - cc.center.y, drawingPoints[0].z - cc.center.z);
+            const d2 = new THREE.Vector3(drawingPoints[1].x - cc.center.x, drawingPoints[1].y - cc.center.y, drawingPoints[1].z - cc.center.z);
+            const sa = Math.atan2(d0.dot(t2), d0.dot(t1));
+            const ea = Math.atan2(d2.dot(t2), d2.dot(t1));
+            const segs = 48;
+            const arcPts: THREE.Vector3[] = [];
+            for (let i = 0; i <= segs; i++) {
+              const a = sa + (i / segs) * (ea - sa);
+              arcPts.push(cV.clone().addScaledVector(t1, Math.cos(a) * cc.radius).addScaledVector(t2, Math.sin(a) * cc.radius));
+            }
+            addLine(arcPts);
+          } else {
+            addLine([new THREE.Vector3(drawingPoints[1].x, drawingPoints[1].y, drawingPoints[1].z), mousePos]);
+          }
+        } else {
+          // 3 points placed, mouse sets width — show slot outline preview
+          const p0 = drawingPoints[0];
+          const p2 = drawingPoints[1];
+          const pMid = drawingPoints[2];
+          const cc = circumcenter2D(p0, pMid, p2, t1, t2);
+          if (cc) {
+            const { center: C, radius: R } = cc;
+            const cV = new THREE.Vector3(C.x, C.y, C.z);
+            const toMouse = new THREE.Vector3(mousePos.x - C.x, mousePos.y - C.y, mousePos.z - C.z);
+            const halfWidth = Math.abs(toMouse.length() - R);
+            if (halfWidth > 0.001) {
+              addLine(circlePoints(cV, R + halfWidth));
+              if (R > halfWidth) addLine(circlePoints(cV, R - halfWidth));
+            }
+          }
+        }
+        break;
+      }
+      case 'slot-center-arc': {
+        if (drawingPoints.length < 2) {
+          const lastPt = drawingPoints[drawingPoints.length - 1];
+          addLine([new THREE.Vector3(lastPt.x, lastPt.y, lastPt.z), mousePos]);
+        } else if (drawingPoints.length === 2) {
+          // Show arc from P0 sweeping to mouse around C
+          const C = drawingPoints[0];
+          const p0 = drawingPoints[1];
+          const R = new THREE.Vector3(p0.x - C.x, p0.y - C.y, p0.z - C.z).length();
+          const cV = new THREE.Vector3(C.x, C.y, C.z);
+          const d0 = new THREE.Vector3(p0.x - C.x, p0.y - C.y, p0.z - C.z);
+          const dM = mousePos.clone().sub(cV);
+          const sa = Math.atan2(d0.dot(t2), d0.dot(t1));
+          const ea = Math.atan2(dM.dot(t2), dM.dot(t1));
+          const segs = 48;
+          const arcPts: THREE.Vector3[] = [];
+          for (let i = 0; i <= segs; i++) {
+            const a = sa + (i / segs) * (ea - sa);
+            arcPts.push(cV.clone().addScaledVector(t1, Math.cos(a) * R).addScaledVector(t2, Math.sin(a) * R));
+          }
+          addLine(arcPts);
+        } else {
+          // 3 points placed, mouse sets width — show slot outline preview
+          const C = drawingPoints[0];
+          const p0 = drawingPoints[1];
+          const R = new THREE.Vector3(p0.x - C.x, p0.y - C.y, p0.z - C.z).length();
+          const cV = new THREE.Vector3(C.x, C.y, C.z);
+          const toMouse = mousePos.clone().sub(cV);
+          const halfWidth = Math.abs(toMouse.length() - R);
+          if (halfWidth > 0.001) {
+            addLine(circlePoints(cV, R + halfWidth));
+            if (R > halfWidth) addLine(circlePoints(cV, R - halfWidth));
+          }
+        }
+        break;
+      }
       case 'blend-curve': {
         void blendCurveMode;
         if (drawingPoints.length >= 2) {

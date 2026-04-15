@@ -12,9 +12,9 @@
     <PackageJsonScriptsClean Condition="$(PackageJsonScriptsClean) == ''">npx rimraf dist</PackageJsonScriptsClean>
     <PackageJsonDependenciesReactThreeDrei Condition="$(PackageJsonDependenciesReactThreeDrei) == ''">^10.7.7</PackageJsonDependenciesReactThreeDrei>
     <PackageJsonDependenciesReactThreeFiber Condition="$(PackageJsonDependenciesReactThreeFiber) == ''">^9.6.0</PackageJsonDependenciesReactThreeFiber>
+    <PackageJsonDependenciesFflate Condition="$(PackageJsonDependenciesFflate) == ''">^0.8.2</PackageJsonDependenciesFflate>
     <PackageJsonDependenciesLucideReact Condition="$(PackageJsonDependenciesLucideReact) == ''">^1.8.0</PackageJsonDependenciesLucideReact>
     <PackageJsonDependenciesMathjs Condition="$(PackageJsonDependenciesMathjs) == ''">^15.2.0</PackageJsonDependenciesMathjs>
-    <PackageJsonDependenciesOpencascadeJs Condition="$(PackageJsonDependenciesOpencascadeJs) == ''">^1.1.1</PackageJsonDependenciesOpencascadeJs>
     <PackageJsonDependenciesReact Condition="$(PackageJsonDependenciesReact) == ''">^19.2.5</PackageJsonDependenciesReact>
     <PackageJsonDependenciesReactDom Condition="$(PackageJsonDependenciesReactDom) == ''">^19.2.5</PackageJsonDependenciesReactDom>
     <PackageJsonDependenciesThree Condition="$(PackageJsonDependenciesThree) == ''">^0.183.2</PackageJsonDependenciesThree>

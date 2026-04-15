@@ -926,6 +926,122 @@ export function commitSketchTool(ctx: SketchCommitCtx): void {
           }
           break;
         }
+        case 'slot-3point-arc': {
+          // Three Point Arc Slot: click 1 = arc start P0, click 2 = arc end P2,
+          // click 3 = point on arc (determines curvature), click 4 = width.
+          if (drawingPoints.length === 0) {
+            setDrawingPoints([sketchPoint]);
+            setStatusMessage('Arc Slot: arc start placed — click arc end point');
+          } else if (drawingPoints.length === 1) {
+            setDrawingPoints([...drawingPoints, sketchPoint]);
+            setStatusMessage('Arc Slot: arc end placed — click a point on the arc');
+          } else if (drawingPoints.length === 2) {
+            setDrawingPoints([...drawingPoints, sketchPoint]);
+            setStatusMessage('Arc Slot: arc defined — click to set slot width');
+          } else {
+            const p0 = drawingPoints[0];
+            const p2 = drawingPoints[1];
+            const pMid = drawingPoints[2];
+            const cc = circumcenter2D(p0, pMid, p2, t1, t2);
+            if (!cc) { setStatusMessage('Arc points are collinear — try again'); setDrawingPoints([]); break; }
+            const { center: C, radius: R } = cc;
+            const cV = new THREE.Vector3(C.x, C.y, C.z);
+            // half-width = distance from arc (at nearest point) to click4, via perp offset
+            const toClick4 = new THREE.Vector3(sketchPoint.x - C.x, sketchPoint.y - C.y, sketchPoint.z - C.z);
+            const distToC = toClick4.length();
+            const halfWidth = Math.abs(distToC - R);
+            if (halfWidth < 0.001) { setStatusMessage('Slot width too small'); setDrawingPoints([]); break; }
+            // Arc angles
+            const startAngle = Math.atan2(
+              new THREE.Vector3(p0.x - C.x, p0.y - C.y, p0.z - C.z).dot(t2),
+              new THREE.Vector3(p0.x - C.x, p0.y - C.y, p0.z - C.z).dot(t1),
+            );
+            const endAngle = Math.atan2(
+              new THREE.Vector3(p2.x - C.x, p2.y - C.y, p2.z - C.z).dot(t2),
+              new THREE.Vector3(p2.x - C.x, p2.y - C.y, p2.z - C.z).dot(t1),
+            );
+            // Determine sweep direction using pMid
+            const midAngle = Math.atan2(
+              new THREE.Vector3(pMid.x - C.x, pMid.y - C.y, pMid.z - C.z).dot(t2),
+              new THREE.Vector3(pMid.x - C.x, pMid.y - C.y, pMid.z - C.z).dot(t1),
+            );
+            // Check if midAngle is between startAngle and endAngle CCW
+            const normalizeAngle = (a: number, ref: number) => {
+              let d = a - ref;
+              while (d < 0) d += Math.PI * 2;
+              return d;
+            };
+            const midFromStart = normalizeAngle(midAngle, startAngle);
+            const endFromStart = normalizeAngle(endAngle, startAngle);
+            // If mid is not between start and end CCW, swap to make the arc go the other way
+            const [arcSA, arcEA] = midFromStart < endFromStart
+              ? [startAngle, endAngle]
+              : [endAngle, startAngle];
+            // Outer arc (R + halfWidth) and inner arc (R - halfWidth)
+            const rOuter = R + halfWidth;
+            const rInner = Math.max(0.001, R - halfWidth);
+            addSketchEntity({ id: crypto.randomUUID(), type: 'arc', points: [{ id: crypto.randomUUID(), x: C.x, y: C.y, z: C.z }], radius: rOuter, startAngle: arcSA, endAngle: arcEA });
+            addSketchEntity({ id: crypto.randomUUID(), type: 'arc', points: [{ id: crypto.randomUUID(), x: C.x, y: C.y, z: C.z }], radius: rInner, startAngle: arcSA, endAngle: arcEA });
+            // Cap arcs at P0 and P2 ends (semicircles perpendicular to the slot arc)
+            const capCenter0: SketchPoint = { id: crypto.randomUUID(), x: p0.x, y: p0.y, z: p0.z };
+            const capCenter2: SketchPoint = { id: crypto.randomUUID(), x: p2.x, y: p2.y, z: p2.z };
+            // Tangent at arc endpoint = perpendicular to radial direction in plane
+            const radialAngle0 = arcSA;
+            const capAngle0 = radialAngle0 + Math.PI / 2;
+            const radialAngle2 = arcEA;
+            const capAngle2 = radialAngle2 - Math.PI / 2;
+            addSketchEntity({ id: crypto.randomUUID(), type: 'arc', points: [capCenter0], radius: halfWidth, startAngle: capAngle0, endAngle: capAngle0 + Math.PI });
+            addSketchEntity({ id: crypto.randomUUID(), type: 'arc', points: [capCenter2], radius: halfWidth, startAngle: capAngle2, endAngle: capAngle2 + Math.PI });
+            setStatusMessage(`Arc Slot added (R=${R.toFixed(2)}, w=${(halfWidth * 2).toFixed(2)})`);
+            setDrawingPoints([]);
+          }
+          break;
+        }
+        case 'slot-center-arc': {
+          // Center Point Arc Slot: click 1 = arc center C, click 2 = arc start P0,
+          // click 3 = arc end P2, click 4 = width.
+          if (drawingPoints.length === 0) {
+            setDrawingPoints([sketchPoint]);
+            setStatusMessage('Center Arc Slot: arc centre placed — click arc start');
+          } else if (drawingPoints.length === 1) {
+            setDrawingPoints([...drawingPoints, sketchPoint]);
+            setStatusMessage('Center Arc Slot: start placed — click arc end');
+          } else if (drawingPoints.length === 2) {
+            setDrawingPoints([...drawingPoints, sketchPoint]);
+            setStatusMessage('Center Arc Slot: arc defined — click to set slot width');
+          } else {
+            const C = drawingPoints[0];
+            const p0 = drawingPoints[1];
+            const p2 = drawingPoints[2];
+            const R = new THREE.Vector3(p0.x - C.x, p0.y - C.y, p0.z - C.z).length();
+            if (R < 0.001) { setStatusMessage('Arc too small'); setDrawingPoints([]); break; }
+            const startAngle = Math.atan2(
+              new THREE.Vector3(p0.x - C.x, p0.y - C.y, p0.z - C.z).dot(t2),
+              new THREE.Vector3(p0.x - C.x, p0.y - C.y, p0.z - C.z).dot(t1),
+            );
+            const endAngle = Math.atan2(
+              new THREE.Vector3(p2.x - C.x, p2.y - C.y, p2.z - C.z).dot(t2),
+              new THREE.Vector3(p2.x - C.x, p2.y - C.y, p2.z - C.z).dot(t1),
+            );
+            const toClick4 = new THREE.Vector3(sketchPoint.x - C.x, sketchPoint.y - C.y, sketchPoint.z - C.z);
+            const halfWidth = Math.abs(toClick4.length() - R);
+            if (halfWidth < 0.001) { setStatusMessage('Slot width too small'); setDrawingPoints([]); break; }
+            const rOuter = R + halfWidth;
+            const rInner = Math.max(0.001, R - halfWidth);
+            const cPt: SketchPoint = { id: crypto.randomUUID(), x: C.x, y: C.y, z: C.z };
+            addSketchEntity({ id: crypto.randomUUID(), type: 'arc', points: [{ ...cPt, id: crypto.randomUUID() }], radius: rOuter, startAngle, endAngle });
+            addSketchEntity({ id: crypto.randomUUID(), type: 'arc', points: [{ ...cPt, id: crypto.randomUUID() }], radius: rInner, startAngle, endAngle });
+            const capCenter0: SketchPoint = { id: crypto.randomUUID(), x: p0.x, y: p0.y, z: p0.z };
+            const capCenter2: SketchPoint = { id: crypto.randomUUID(), x: p2.x, y: p2.y, z: p2.z };
+            const capAngle0 = startAngle + Math.PI / 2;
+            const capAngle2 = endAngle - Math.PI / 2;
+            addSketchEntity({ id: crypto.randomUUID(), type: 'arc', points: [capCenter0], radius: halfWidth, startAngle: capAngle0, endAngle: capAngle0 + Math.PI });
+            addSketchEntity({ id: crypto.randomUUID(), type: 'arc', points: [capCenter2], radius: halfWidth, startAngle: capAngle2, endAngle: capAngle2 + Math.PI });
+            setStatusMessage(`Center Arc Slot added (R=${R.toFixed(2)}, w=${(halfWidth * 2).toFixed(2)})`);
+            setDrawingPoints([]);
+          }
+          break;
+        }
         // ── D10 Ellipse ────────────────────────────────────────────────
         // Click 1: centre, click 2: major-axis endpoint (sets major radius
         // + rotation), click 3: minor-axis endpoint (signed minor radius).
@@ -980,6 +1096,19 @@ export function commitSketchTool(ctx: SketchCommitCtx): void {
             setStatusMessage('Spline: first point placed — click to add more points, right-click to finish');
           } else {
             setStatusMessage(`Spline: ${n} points — click to continue, right-click to finish`);
+          }
+          break;
+        }
+
+        // ── S9 Control Point Spline (B-spline / Bezier hull) ───────────────
+        // Clicks accumulate hull control points; right-click commits.
+        case 'spline-control': {
+          setDrawingPoints([...drawingPoints, sketchPoint]);
+          const nc = drawingPoints.length + 1;
+          if (nc === 1) {
+            setStatusMessage('Control Point Spline: first control point placed — click to add more, right-click to finish');
+          } else {
+            setStatusMessage(`Control Point Spline: ${nc} control points — click to continue, right-click to finish`);
           }
           break;
         }

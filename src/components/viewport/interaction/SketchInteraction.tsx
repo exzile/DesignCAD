@@ -257,7 +257,7 @@ export default function SketchInteraction() {
     };
 
     // Right-click stops the current drawing operation at the last placed point;
-    // for spline tool it commits the curve if ≥2 points are placed.
+    // for spline/spline-control tools it commits the curve if ≥2 points are placed.
     const handleContextMenu = (event: MouseEvent) => {
       if (activeTool === 'spline' && drawingPoints.length >= 2) {
         event.preventDefault();
@@ -272,6 +272,25 @@ export default function SketchInteraction() {
         addSketchEntity({ id: crypto.randomUUID(), type: 'spline', points: splinePts });
         setDrawingPoints([]);
         setStatusMessage(`Spline added (${drawingPoints.length} fit points)`);
+        return;
+      }
+      if (activeTool === 'spline-control' && drawingPoints.length >= 2) {
+        event.preventDefault();
+        event.stopPropagation();
+        // B-spline-like curve: CatmullRom with tension=0 approximates uniform B-spline
+        const curve = new THREE.CatmullRomCurve3(
+          drawingPoints.map((p) => new THREE.Vector3(p.x, p.y, p.z)),
+          false,
+          'catmullrom',
+          0,
+        );
+        const sampledPts = curve.getPoints(Math.max(50, drawingPoints.length * 16));
+        const splinePts: typeof drawingPoints = sampledPts.map((p) => ({
+          id: crypto.randomUUID(), x: p.x, y: p.y, z: p.z,
+        }));
+        addSketchEntity({ id: crypto.randomUUID(), type: 'spline', points: splinePts });
+        setDrawingPoints([]);
+        setStatusMessage(`Control Point Spline added (${drawingPoints.length} control points)`);
         return;
       }
       if (drawingPoints.length > 0) {
