@@ -278,29 +278,24 @@ export class GeometryEngine {
    * bounding-box center. Returns null for empty sketches. Handles both named
    * and custom (face-based) planes.
    */
-  static getSketchProfileCentroid(sketch: Sketch): THREE.Vector3 | null {
-    if (sketch.plane === 'custom') {
-      const { t1, t2 } = this.getSketchAxes(sketch);
-      const origin = sketch.planeOrigin;
-      const box = new THREE.Box2();
-      for (const e of sketch.entities) {
-        for (const p of e.points) {
-          const d = new THREE.Vector3(p.x - origin.x, p.y - origin.y, p.z - origin.z);
-          box.expandByPoint(new THREE.Vector2(d.dot(t1), d.dot(t2)));
-        }
-      }
-      if (box.isEmpty()) return null;
-      const c2 = box.getCenter(new THREE.Vector2());
-      return origin.clone().addScaledVector(t1, c2.x).addScaledVector(t2, c2.y);
-    }
-    const shape = this.sketchToShape(sketch);
-    if (!shape) return null;
+  static getSketchProfileCentroid(sketch: Sketch, profileIndex?: number): THREE.Vector3 | null {
+    const { t1, t2 } = this.getSketchAxes(sketch);
+    const origin = sketch.planeOrigin;
+    const allShapes = this.entitiesToShapes(sketch.entities, (p) => {
+      const d = new THREE.Vector3(p.x - origin.x, p.y - origin.y, p.z - origin.z);
+      return { u: d.dot(t1), v: d.dot(t2) };
+    });
+    const shapes = profileIndex === undefined
+      ? allShapes
+      : (allShapes[profileIndex] ? [allShapes[profileIndex]] : []);
+    if (shapes.length === 0) return null;
     const box = new THREE.Box2();
-    for (const p of shape.getPoints(32)) box.expandByPoint(p);
+    for (const s of shapes) {
+      for (const p of s.getPoints(32)) box.expandByPoint(p);
+    }
     if (box.isEmpty()) return null;
     const c2 = box.getCenter(new THREE.Vector2());
-    const rot = this.getPlaneRotation(sketch.plane);
-    return new THREE.Vector3(c2.x, c2.y, 0).applyEuler(new THREE.Euler(rot[0], rot[1], rot[2]));
+    return origin.clone().addScaledVector(t1, c2.x).addScaledVector(t2, c2.y);
   }
 
   /**
@@ -308,33 +303,82 @@ export class GeometryEngine {
    * oriented in world space to match the extruded body. Caller owns disposal
    * of the geometry. Used for hit-testing/picking.
    */
-  static createSketchProfileMesh(sketch: Sketch, material: THREE.Material): THREE.Mesh | null {
-    if (sketch.plane === 'custom') {
-      // Reuse the projection used by extrudeCustomPlaneSketch: build a 2D
-      // shape in plane-local (u,v), then orient via the (t1, t2, n) basis.
-      const { t1, t2 } = this.getSketchAxes(sketch);
-      const normal = sketch.planeNormal.clone().normalize();
-      const origin = sketch.planeOrigin;
-      const proj = (p: SketchPoint): { u: number; v: number } => {
-        const d = new THREE.Vector3(p.x - origin.x, p.y - origin.y, p.z - origin.z);
-        return { u: d.dot(t1), v: d.dot(t2) };
-      };
-      const shape = this.entitiesToShape(sketch.entities, proj);
-      if (!shape) return null;
-      const geom = new THREE.ShapeGeometry(shape);
-      const mesh = new THREE.Mesh(geom, material);
-      const m = new THREE.Matrix4().makeBasis(t1, t2, normal);
-      mesh.quaternion.setFromRotationMatrix(m);
-      mesh.position.copy(origin);
-      return mesh;
-    }
-    const shape = this.sketchToShape(sketch);
-    if (!shape) return null;
-    const geom = new THREE.ShapeGeometry(shape);
+  static createSketchProfileMesh(sketch: Sketch, material: THREE.Material, profileIndex?: number): THREE.Mesh | null {
+    // Build in plane-local UV, then place back in world with the sketch basis.
+    // This keeps profile faces aligned with sketch wire geometry for ALL planes,
+    // including redefined named planes with non-zero planeOrigin.
+    const { t1, t2 } = this.getSketchAxes(sketch);
+    const normal = sketch.planeNormal.clone().normalize();
+    const origin = sketch.planeOrigin;
+    const allShapes = this.entitiesToShapes(sketch.entities, (p) => {
+      const d = new THREE.Vector3(p.x - origin.x, p.y - origin.y, p.z - origin.z);
+      return { u: d.dot(t1), v: d.dot(t2) };
+    });
+    const shapes = profileIndex === undefined
+      ? allShapes
+      : (allShapes[profileIndex] ? [allShapes[profileIndex]] : []);
+    if (shapes.length === 0) return null;
+    const geom = new THREE.ShapeGeometry(shapes);
     const mesh = new THREE.Mesh(geom, material);
-    const rot = this.getPlaneRotation(sketch.plane);
-    mesh.rotation.set(rot[0], rot[1], rot[2]);
+    const m = new THREE.Matrix4().makeBasis(t1, t2, normal);
+    mesh.quaternion.setFromRotationMatrix(m);
+    mesh.position.copy(origin);
     return mesh;
+  }
+
+  static createProfileSketch(sketch: Sketch, profileIndex: number): Sketch | null {
+    const shapes = this.sketchToShapes(sketch);
+    const shape = shapes[profileIndex];
+    if (!shape) return null;
+
+    const { t1, t2 } = this.getSketchAxes(sketch);
+    const origin = sketch.planeOrigin;
+    const raw = shape.getPoints(64);
+    if (raw.length < 3) return null;
+
+    const points2d = [...raw];
+    const first = points2d[0];
+    const last = points2d[points2d.length - 1];
+    // `Shape.getPoints()` may or may not repeat the first point at the end,
+    // even for closed shapes. Remove only a duplicated closing point.
+    if (last.distanceTo(first) <= 1e-5) points2d.pop();
+    if (points2d.length < 3) return null;
+
+    const pts3d = points2d.map((p) => ({
+      id: crypto.randomUUID(),
+      x: origin.x + t1.x * p.x + t2.x * p.y,
+      y: origin.y + t1.y * p.x + t2.y * p.y,
+      z: origin.z + t1.z * p.x + t2.z * p.y,
+    }));
+
+    const entities: SketchEntity[] = [];
+    for (let i = 0; i < pts3d.length; i++) {
+      const next = (i + 1) % pts3d.length;
+      entities.push({
+        id: crypto.randomUUID(),
+        type: 'line',
+        points: [pts3d[i], pts3d[next]],
+      });
+    }
+
+    return {
+      ...sketch,
+      id: `${sketch.id}::profile-${profileIndex}`,
+      name: `${sketch.name} • Profile ${profileIndex + 1}`,
+      entities,
+      constraints: [],
+      dimensions: [],
+      fullyConstrained: false,
+    };
+  }
+
+  static sketchToShapes(sketch: Sketch): THREE.Shape[] {
+    const { t1, t2 } = this.getSketchAxes(sketch);
+    const origin = sketch.planeOrigin;
+    return this.entitiesToShapes(sketch.entities, (p) => {
+      const d = new THREE.Vector3(p.x - origin.x, p.y - origin.y, p.z - origin.z);
+      return { u: d.dot(t1), v: d.dot(t2) };
+    });
   }
 
   /**
@@ -396,6 +440,63 @@ export class GeometryEngine {
       }
     }
     return hasContent ? shape : null;
+  }
+
+  /**
+   * Build one or more closed shapes from sketch entities.
+   * Keeps inherently closed primitives (rectangle/circle) as independent loops
+   * to avoid triangulation bridges between disjoint profiles.
+   */
+  private static entitiesToShapes(
+    entities: SketchEntity[],
+    proj: (p: SketchPoint) => { u: number; v: number },
+  ): THREE.Shape[] {
+    const shapes: THREE.Shape[] = [];
+    const chained: SketchEntity[] = [];
+
+    const getEntityEndpoints = (entity: SketchEntity): [{ u: number; v: number }, { u: number; v: number }] | null => {
+      if (entity.type === 'line' || entity.type === 'construction-line' || entity.type === 'centerline') {
+        if (entity.points.length < 2) return null;
+        return [proj(entity.points[0]), proj(entity.points[entity.points.length - 1])];
+      }
+      if (entity.type === 'arc') {
+        if (entity.points.length < 1 || !entity.radius) return null;
+        const c = proj(entity.points[0]);
+        const sa = entity.startAngle ?? 0;
+        const ea = entity.endAngle ?? Math.PI;
+        return [
+          { u: c.u + Math.cos(sa) * entity.radius, v: c.v + Math.sin(sa) * entity.radius },
+          { u: c.u + Math.cos(ea) * entity.radius, v: c.v + Math.sin(ea) * entity.radius },
+        ];
+      }
+      return null;
+    };
+
+    const isChainClosed = (chain: SketchEntity[]) => {
+      if (chain.length === 0) return false;
+      const first = getEntityEndpoints(chain[0]);
+      const last = getEntityEndpoints(chain[chain.length - 1]);
+      if (!first || !last) return false;
+      const du = first[0].u - last[1].u;
+      const dv = first[0].v - last[1].v;
+      return Math.hypot(du, dv) <= 1e-3;
+    };
+
+    for (const entity of entities) {
+      if (entity.type === 'rectangle' || entity.type === 'circle') {
+        const s = this.entitiesToShape([entity], proj);
+        if (s) shapes.push(s);
+      } else {
+        chained.push(entity);
+      }
+    }
+
+    if (isChainClosed(chained)) {
+      const chainedShape = this.entitiesToShape(chained, proj);
+      if (chainedShape) shapes.push(chainedShape);
+    }
+
+    return shapes;
   }
 
   static createSketchGeometry(sketch: Sketch): THREE.Group {
@@ -718,30 +819,41 @@ export class GeometryEngine {
     return mesh;
   }
 
-  static extrudeSketch(sketch: Sketch, distance: number): THREE.Mesh | null {
+  static extrudeSketch(sketch: Sketch, distance: number, profileIndex?: number): THREE.Mesh | null {
     if (sketch.entities.length === 0) return null;
 
-    // Custom face-based sketches: project entities to plane-local 2D, extrude,
-    // then position+orient the resulting mesh to align with the face.
+    // Keep custom-plane path explicit for clarity and to preserve face-based behavior.
     if (sketch.plane === 'custom') {
-      return this.extrudeCustomPlaneSketch(sketch, distance);
+      return this.extrudeCustomPlaneSketch(sketch, distance, profileIndex);
     }
 
-    const shape = this.sketchToShape(sketch);
-    if (!shape) return null;
+    const { t1, t2 } = this.getSketchAxes(sketch);
+    const origin = sketch.planeOrigin;
+    const normal = sketch.planeNormal.clone().normalize();
+    const proj = (p: SketchPoint): { u: number; v: number } => {
+      const d = new THREE.Vector3(p.x - origin.x, p.y - origin.y, p.z - origin.z);
+      return { u: d.dot(t1), v: d.dot(t2) };
+    };
+
+    const allShapes = this.entitiesToShapes(sketch.entities, proj);
+    const shapes = profileIndex === undefined
+      ? allShapes
+      : (allShapes[profileIndex] ? [allShapes[profileIndex]] : []);
+    if (shapes.length === 0) return null;
 
     const extrudeSettings: THREE.ExtrudeGeometryOptions = {
       depth: distance,
       bevelEnabled: false,
     };
 
-    const geometry = new THREE.ExtrudeGeometry(shape, extrudeSettings);
+    const geometry = new THREE.ExtrudeGeometry(shapes, extrudeSettings);
     const mesh = new THREE.Mesh(geometry, EXTRUDE_MATERIAL);
     mesh.castShadow = true;
     mesh.receiveShadow = true;
 
-    const rot = this.getPlaneRotation(sketch.plane);
-    mesh.rotation.set(rot[0], rot[1], rot[2]);
+    const m = new THREE.Matrix4().makeBasis(t1, t2, normal);
+    mesh.quaternion.setFromRotationMatrix(m);
+    mesh.position.copy(origin);
 
     return mesh;
   }
@@ -752,7 +864,7 @@ export class GeometryEngine {
    * sketch's tangent axes, builds a 2D shape, extrudes along +Z, then
    * positions and orients the mesh so its local +Z matches the face normal.
    */
-  private static extrudeCustomPlaneSketch(sketch: Sketch, distance: number): THREE.Mesh | null {
+  private static extrudeCustomPlaneSketch(sketch: Sketch, distance: number, profileIndex?: number): THREE.Mesh | null {
     const { t1, t2 } = this.getSketchAxes(sketch);
     const origin = sketch.planeOrigin;
     const normal = sketch.planeNormal.clone().normalize();
@@ -762,10 +874,13 @@ export class GeometryEngine {
       return { u: d.dot(t1), v: d.dot(t2) };
     };
 
-    const shape = this.entitiesToShape(sketch.entities, proj);
-    if (!shape) return null;
+    const allShapes = this.entitiesToShapes(sketch.entities, proj);
+    const shapes = profileIndex === undefined
+      ? allShapes
+      : (allShapes[profileIndex] ? [allShapes[profileIndex]] : []);
+    if (shapes.length === 0) return null;
 
-    const geometry = new THREE.ExtrudeGeometry(shape, { depth: distance, bevelEnabled: false });
+    const geometry = new THREE.ExtrudeGeometry(shapes, { depth: distance, bevelEnabled: false });
     const mesh = new THREE.Mesh(geometry, EXTRUDE_MATERIAL);
     mesh.castShadow = true;
     mesh.receiveShadow = true;
@@ -788,31 +903,20 @@ export class GeometryEngine {
   static extrudeSketchSurface(sketch: Sketch, distance: number): THREE.Mesh | null {
     if (sketch.entities.length === 0) return null;
 
-    // Get the profile outline points in plane-local 2D (u, v)
-    let outline2D: { u: number; v: number }[] = [];
-    if (sketch.plane === 'custom') {
-      const { t1, t2 } = this.getSketchAxes(sketch);
-      const origin = sketch.planeOrigin;
-      const proj = (p: SketchPoint) => {
-        const d = new THREE.Vector3(p.x - origin.x, p.y - origin.y, p.z - origin.z);
-        return { u: d.dot(t1), v: d.dot(t2) };
-      };
-      const shape = this.entitiesToShape(sketch.entities, proj);
-      if (!shape) return null;
-      outline2D = shape.getPoints(64).map((p) => ({ u: p.x, v: p.y }));
-    } else {
-      // Standard plane: project via plane axes so XY/XZ/YZ all work correctly
-      const { t1, t2 } = this.getSketchAxes(sketch);
-      const proj = (p: SketchPoint) => ({
-        u: t1.x * p.x + t1.y * p.y + t1.z * p.z,
-        v: t2.x * p.x + t2.y * p.y + t2.z * p.z,
-      });
-      const shape = this.entitiesToShape(sketch.entities, proj);
-      if (!shape) return null;
-      outline2D = shape.getPoints(64).map((p) => ({ u: p.x, v: p.y }));
-    }
+    // Get one or more profile outline loops in plane-local 2D (u, v)
+    const { t1, t2 } = this.getSketchAxes(sketch);
+    const origin = sketch.planeOrigin;
+    const proj = (p: SketchPoint) => {
+      const d = new THREE.Vector3(p.x - origin.x, p.y - origin.y, p.z - origin.z);
+      return { u: d.dot(t1), v: d.dot(t2) };
+    };
+    const shapes = this.entitiesToShapes(sketch.entities, proj);
+    if (shapes.length === 0) return null;
+    let outlineLoops2D: { u: number; v: number }[][] =
+      shapes.map((shape) => shape.getPoints(64).map((p) => ({ u: p.x, v: p.y })));
 
-    if (outline2D.length < 2) return null;
+    outlineLoops2D = outlineLoops2D.filter((loop) => loop.length >= 2);
+    if (outlineLoops2D.length === 0) return null;
 
     // Build wall-only geometry: for each pair of consecutive outline points,
     // emit a quad (2 triangles) bridging the bottom rail to the top rail.
@@ -831,11 +935,9 @@ export class GeometryEngine {
       indices.push(i, i + 1, i + 2, i, i + 2, i + 3);
     };
 
-    if (sketch.plane === 'custom') {
-      const { t1, t2 } = this.getSketchAxes(sketch);
-      const normal = sketch.planeNormal.clone().normalize();
-      const origin = sketch.planeOrigin;
+    const normal = sketch.planeNormal.clone().normalize();
 
+    for (const outline2D of outlineLoops2D) {
       for (let i = 0; i < outline2D.length - 1; i++) {
         const a = outline2D[i];
         const b = outline2D[i + 1];
@@ -853,41 +955,33 @@ export class GeometryEngine {
           ax + normal.x * distance, ay + normal.y * distance, az + normal.z * distance,
         );
       }
-
-      const geom = new THREE.BufferGeometry();
-      geom.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
-      geom.setIndex(indices);
-      geom.computeVertexNormals();
-      const mesh = new THREE.Mesh(geom, SURFACE_MATERIAL);
-      return mesh;
-    } else {
-      // Standard plane: outline2D uses (u=x, v=y) in plane-local coords.
-      // Build geometry in local space (Z = extrude axis), then apply plane rotation.
-      for (let i = 0; i < outline2D.length - 1; i++) {
-        const a = outline2D[i];
-        const b = outline2D[i + 1];
-        addWallQuad(
-          a.u, a.v, 0,
-          b.u, b.v, 0,
-          b.u, b.v, distance,
-          a.u, a.v, distance,
-        );
-      }
-
-      const geom = new THREE.BufferGeometry();
-      geom.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
-      geom.setIndex(indices);
-      geom.computeVertexNormals();
-
-      const mesh = new THREE.Mesh(geom, SURFACE_MATERIAL);
-      const rot = this.getPlaneRotation(sketch.plane);
-      mesh.rotation.set(rot[0], rot[1], rot[2]);
-      return mesh;
     }
+
+    const geom = new THREE.BufferGeometry();
+    geom.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
+    geom.setIndex(indices);
+    geom.computeVertexNormals();
+    return new THREE.Mesh(geom, SURFACE_MATERIAL);
   }
 
   static sketchToShape(sketch: Sketch): THREE.Shape | null {
-    return this.entitiesToShape(sketch.entities, (p) => ({ u: p.x, v: p.y }));
+    const shapes = this.sketchToShapes(sketch);
+    return shapes.length > 0 ? shapes[0] : null;
+  }
+
+  /** Returns true when the sketch resolves to a closed profile loop. */
+  static isSketchClosedProfile(sketch: Sketch): boolean {
+    if (sketch.entities.length === 0) return false;
+    const shapes = this.sketchToShapes(sketch);
+    if (shapes.length === 0) return false;
+
+    return shapes.every((shape) => {
+      const pts = shape.getPoints(64);
+      if (pts.length < 3) return false;
+      const first = pts[0];
+      const last = pts[pts.length - 1];
+      return first.distanceTo(last) <= 1e-4;
+    });
   }
 
   static createFilletGeometry(mesh: THREE.Mesh, _radius: number): THREE.Mesh {

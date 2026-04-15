@@ -392,6 +392,19 @@
   background: var(--bg-active);
   border-color: var(--accent);
   color: var(--accent);
+  animation: ribbon-tool-active-pulse 1.4s ease-in-out infinite;
+}
+
+@keyframes ribbon-tool-active-pulse {
+  0%,
+  100% {
+    box-shadow: 0 0 0 0 rgba(0, 120, 215, 0.28);
+    transform: translateY(0);
+  }
+  50% {
+    box-shadow: 0 0 0 4px rgba(0, 120, 215, 0.08);
+    transform: translateY(-1px);
+  }
 }
 
 .ribbon-button.disabled {
@@ -437,6 +450,12 @@
 
 .ribbon-button.active .ribbon-button-label {
   color: var(--accent);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ribbon-button.active {
+    animation: none;
+  }
 }
 
 .ribbon-dropdown-arrow {

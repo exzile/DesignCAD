@@ -5,12 +5,13 @@ import {
   type ExtrudeOperation,
 } from '../../store/cadStore';
 import ExpressionInput from '../ui/ExpressionInput';
+import { GeometryEngine } from '../../engine/GeometryEngine';
 
 export default function ExtrudePanel() {
   const activeTool = useCADStore((s) => s.activeTool);
   const sketches = useCADStore((s) => s.sketches);
-  const selectedId = useCADStore((s) => s.extrudeSelectedSketchId);
-  const setSelectedId = useCADStore((s) => s.setExtrudeSelectedSketchId);
+  const selectedIds = useCADStore((s) => s.extrudeSelectedSketchIds);
+  const setSelectedIds = useCADStore((s) => s.setExtrudeSelectedSketchIds);
   const distance = useCADStore((s) => s.extrudeDistance);
   const setDistance = useCADStore((s) => s.setExtrudeDistance);
   const direction = useCADStore((s) => s.extrudeDirection);
@@ -25,31 +26,47 @@ export default function ExtrudePanel() {
   const setThinThickness = useCADStore((s) => s.setExtrudeThinThickness);
   const thinSide = useCADStore((s) => s.extrudeThinSide);
   const setThinSide = useCADStore((s) => s.setExtrudeThinSide);
-  // D67 start options
   const startType = useCADStore((s) => s.extrudeStartType);
   const setStartType = useCADStore((s) => s.setExtrudeStartType);
   const startOffset = useCADStore((s) => s.extrudeStartOffset);
   const setStartOffset = useCADStore((s) => s.setExtrudeStartOffset);
-  // D68 extent type
   const extentType = useCADStore((s) => s.extrudeExtentType);
   const setExtentType = useCADStore((s) => s.setExtrudeExtentType);
-  // D69 taper angle
   const taperAngle = useCADStore((s) => s.extrudeTaperAngle);
   const setTaperAngle = useCADStore((s) => s.setExtrudeTaperAngle);
-  // D102 body kind
   const bodyKind = useCADStore((s) => s.extrudeBodyKind);
   const setBodyKind = useCADStore((s) => s.setExtrudeBodyKind);
   const units = useCADStore((s) => s.units);
 
-  // Hide the panel until the user has actually picked a profile in the viewport
-  if (activeTool !== 'extrude' || !selectedId) return null;
-
   const extrudable = sketches.filter((s) => s.entities.length > 0);
+  const profileOptions = extrudable.flatMap((sketch) => {
+    const count = GeometryEngine.sketchToShapes(sketch).length;
+    return Array.from({ length: count }, (_, index) => ({
+      id: `${sketch.id}::${index}`,
+      label: `${sketch.name} • Profile ${index + 1}`,
+      sketchId: sketch.id,
+    })).filter(({ sketchId, id }) => {
+      const source = extrudable.find((s) => s.id === sketchId);
+      if (!source) return false;
+      const profileIndex = Number(id.split('::')[1]);
+      return Number.isFinite(profileIndex) && GeometryEngine.createProfileSketch(source, profileIndex) !== null;
+    });
+  });
+
+  const selectedSketches = selectedIds
+    .map((id) => {
+      const [sketchId] = id.split('::');
+      return extrudable.find((s) => s.id === sketchId);
+    })
+    .filter(Boolean) as typeof extrudable;
+
+  const allClosedProfiles = selectedSketches.length > 0 && selectedSketches.every((s) => GeometryEngine.isSketchClosedProfile(s));
+  const effectiveBodyKind: 'solid' | 'surface' = allClosedProfiles ? bodyKind : 'surface';
   const isCutMode = distance < 0;
-  const canCommit = !!selectedId && (extentType === 'all' || Math.abs(distance) > 0.01);
-  // When the user drags the gizmo through zero, the Operation dropdown should
-  // reflect reality: negative distance == cut.
+  const canCommit = selectedIds.length > 0 && (extentType === 'all' || Math.abs(distance) > 0.01);
   const effectiveOperation = isCutMode ? 'cut' : operation;
+
+  if (activeTool !== 'extrude' || selectedIds.length === 0) return null;
 
   return (
     <div className="extrude-panel">
@@ -70,15 +87,19 @@ export default function ExtrudePanel() {
 
       <div className="sketch-palette-body">
         <div className="sketch-palette-row">
-          <span className="sketch-palette-label">Profile</span>
+          <span className="sketch-palette-label">Profiles</span>
           <select
             className="measure-select"
-            value={selectedId ?? ''}
-            onChange={(e) => setSelectedId(e.target.value || null)}
+            value={selectedIds}
+            multiple
+            size={Math.min(6, Math.max(2, profileOptions.length))}
+            onChange={(e) => {
+              const ids = Array.from(e.currentTarget.selectedOptions).map((o) => o.value);
+              setSelectedIds(ids);
+            }}
           >
-            <option value="" disabled>Select a profile</option>
-            {extrudable.map((s) => (
-              <option key={s.id} value={s.id}>{s.name}</option>
+            {profileOptions.map((o) => (
+              <option key={o.id} value={o.id}>{o.label}</option>
             ))}
           </select>
         </div>
@@ -96,7 +117,6 @@ export default function ExtrudePanel() {
           </select>
         </div>
 
-        {/* D67: Start options */}
         <div className="sketch-palette-row">
           <span className="sketch-palette-label">Start</span>
           <select
@@ -118,7 +138,6 @@ export default function ExtrudePanel() {
           </div>
         )}
 
-        {/* D68: Extent type */}
         <div className="sketch-palette-row">
           <span className="sketch-palette-label">Extent</span>
           <select
@@ -141,7 +160,7 @@ export default function ExtrudePanel() {
           </div>
         )}
 
-        {bodyKind === 'solid' && (
+        {effectiveBodyKind === 'solid' && (
           <>
             <div className="sketch-palette-row">
               <span className="sketch-palette-label">Operation</span>
@@ -158,7 +177,6 @@ export default function ExtrudePanel() {
               </select>
             </div>
 
-            {/* D69: Taper angle */}
             <div className="sketch-palette-row">
               <span className="sketch-palette-label">Taper</span>
               <div className="extrude-input">
@@ -174,7 +192,6 @@ export default function ExtrudePanel() {
               </div>
             </div>
 
-            {/* D66: Thin Extrude controls */}
             <div className="sketch-palette-row">
               <span className="sketch-palette-label">Thin Extrude</span>
               <label className="sketch-palette-check">
@@ -214,15 +231,14 @@ export default function ExtrudePanel() {
           </>
         )}
 
-        {/* D102: Body kind — Solid vs Surface */}
         <div className="sketch-palette-row">
           <span className="sketch-palette-label">Output</span>
           <select
             className="measure-select"
-            value={bodyKind}
+            value={effectiveBodyKind}
             onChange={(e) => setBodyKind(e.target.value as 'solid' | 'surface')}
           >
-            <option value="solid">Solid Body</option>
+            <option value="solid" disabled={!allClosedProfiles}>Solid Body</option>
             <option value="surface">Surface Body</option>
           </select>
         </div>

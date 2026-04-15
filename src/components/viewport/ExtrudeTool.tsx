@@ -1,4 +1,4 @@
-import { useRef, useState, useEffect } from 'react';
+import { useRef, useState, useEffect, useMemo } from 'react';
 import { useThree } from '@react-three/fiber';
 import * as THREE from 'three';
 import { useCADStore } from '../../store/cadStore';
@@ -9,38 +9,99 @@ import ExtrudePreview from './extrude/ExtrudePreview';
 import ExtrudeGizmo from './extrude/ExtrudeGizmo';
 import FaceHighlight from './extrude/FaceHighlight';
 
+function parseSelectionId(id: string): { sketchId: string; profileIndex: number | null } {
+  const parts = id.split('::');
+  if (parts.length === 2) {
+    const parsed = Number(parts[1]);
+    if (Number.isFinite(parsed)) return { sketchId: parts[0], profileIndex: parsed };
+  }
+  return { sketchId: id, profileIndex: null };
+}
+
+function buildSelectionId(sketchId: string, profileIndex: number): string {
+  return `${sketchId}::${profileIndex}`;
+}
+
 export default function ExtrudeTool() {
   const activeTool = useCADStore((s) => s.activeTool);
   const sketches = useCADStore((s) => s.sketches);
-  const selectedId = useCADStore((s) => s.extrudeSelectedSketchId);
-  const setSelectedId = useCADStore((s) => s.setExtrudeSelectedSketchId);
+  const selectedIds = useCADStore((s) => s.extrudeSelectedSketchIds);
+  const setSelectedIds = useCADStore((s) => s.setExtrudeSelectedSketchIds);
   const setStatusMessage = useCADStore((s) => s.setStatusMessage);
   const startExtrudeFromFace = useCADStore((s) => s.startExtrudeFromFace);
   const distance = useCADStore((s) => s.extrudeDistance);
   const direction = useCADStore((s) => s.extrudeDirection);
 
   const [hoveredId, setHoveredId] = useState<string | null>(null);
-  // Press-pull face hit (boundary in world space + normal + centroid)
   const [faceHit, setFaceHit] = useState<{
     boundary: THREE.Vector3[];
     normal: THREE.Vector3;
     centroid: THREE.Vector3;
   } | null>(null);
-  // Mirror to ref so the pointer handler doesn't depend on the state value
   const faceHitRef = useRef(faceHit);
   useEffect(() => { faceHitRef.current = faceHit; }, [faceHit]);
 
-  // Stable scratch refs for the hot-path raycaster (per gotchas memory)
   const _mouse = useRef(new THREE.Vector2());
   const { gl, camera, raycaster, scene } = useThree();
 
-  // Face raycaster — only active in extrude mode AND only while no profile is selected
-  useEffect(() => {
-    if (activeTool !== 'extrude' || selectedId) {
-      // Clear any stale highlight when leaving picker mode
-      if (faceHitRef.current) setFaceHit(null);
+  const extrudable = useMemo(() => sketches.filter((s) => s.entities.length > 0), [sketches]);
+
+  const profileEntries = useMemo(() => {
+    return extrudable.flatMap((sketch) => {
+      const count = GeometryEngine.sketchToShapes(sketch).length;
+      return Array.from({ length: count }, (_, profileIndex) => ({
+        sketch,
+        profileIndex,
+        selectionId: buildSelectionId(sketch.id, profileIndex),
+      })).filter(({ profileIndex }) => GeometryEngine.createProfileSketch(sketch, profileIndex) !== null);
+    });
+  }, [extrudable]);
+
+  const getSketchForSelection = (selectionId: string): Sketch | null => {
+    const { sketchId, profileIndex } = parseSelectionId(selectionId);
+    const sketch = sketches.find((s) => s.id === sketchId);
+    if (!sketch) return null;
+    if (profileIndex === null) return sketch;
+    return GeometryEngine.createProfileSketch(sketch, profileIndex);
+  };
+
+  const isSamePlane = (a: Sketch, b: Sketch) => {
+    const aN = a.planeNormal.clone().normalize();
+    const bN = b.planeNormal.clone().normalize();
+    const dot = aN.dot(bN);
+    if (Math.abs(Math.abs(dot) - 1) > 1e-3) return false;
+    const aD = aN.dot(a.planeOrigin);
+    const bD = dot >= 0 ? aN.dot(b.planeOrigin) : -aN.dot(b.planeOrigin);
+    return Math.abs(aD - bD) <= 1e-2;
+  };
+
+  const toggleSelection = (selectionId: string) => {
+    if (selectedIds.includes(selectionId)) {
+      const next = selectedIds.filter((id) => id !== selectionId);
+      setSelectedIds(next);
+      setStatusMessage(next.length > 0
+        ? `${next.length} profile${next.length > 1 ? 's' : ''} selected — drag arrow or set distance, then OK`
+        : 'Click a profile or face to extrude');
       return;
     }
+
+    const incoming = getSketchForSelection(selectionId);
+    if (!incoming) return;
+    if (selectedIds.length > 0) {
+      const first = getSketchForSelection(selectedIds[0]);
+      if (first && !isSamePlane(first, incoming)) {
+        setStatusMessage('Additional profiles must be on the same plane');
+        return;
+      }
+    }
+
+    const next = [...selectedIds, selectionId];
+    setSelectedIds(next);
+    setStatusMessage(`${next.length} profile${next.length > 1 ? 's' : ''} selected — drag arrow or set distance, then OK`);
+  };
+
+  useEffect(() => {
+    if (activeTool !== 'extrude') return;
 
     const collectPickable = (): THREE.Mesh[] => {
       const out: THREE.Mesh[] = [];
@@ -60,16 +121,16 @@ export default function ExtrudeTool() {
     };
 
     const handlePointerMove = (event: PointerEvent) => {
+      if (selectedIds.length > 0) {
+        if (faceHitRef.current) setFaceHit(null);
+        return;
+      }
       updateMouse(event);
       raycaster.setFromCamera(_mouse.current, camera);
       const hits = raycaster.intersectObjects(collectPickable(), false);
       if (hits.length > 0 && hits[0].faceIndex !== undefined && hits[0].face) {
         const hit = hits[0];
-        // Two pickable kinds: sketch profiles (have userData.sketchId) → just
-        // hover the existing R3F state; body faces → compute the boundary loop.
-        if (hit.object.userData?.sketchId) {
-          // The R3F onPointerOver on SketchProfile already handles hover styling,
-          // so we just clear any face hit and let R3F take the visual lead.
+        if (hit.object.userData?.profileKey) {
           if (faceHitRef.current) setFaceHit(null);
           return;
         }
@@ -89,18 +150,18 @@ export default function ExtrudeTool() {
       raycaster.setFromCamera(_mouse.current, camera);
       const hits = raycaster.intersectObjects(collectPickable(), false);
       if (hits.length === 0) return;
-      const hit = hits[0];
-      // Sketch profile? Route to setSelectedId via the store.
-      const skId = hit.object.userData?.sketchId as string | undefined;
-      if (skId) {
+      const profileHit = hits.find((h) => Boolean(h.object.userData?.profileKey));
+      if (profileHit) {
+        const profileKey = profileHit.object.userData?.profileKey as string | undefined;
+        if (!profileKey) return;
         event.stopPropagation();
-        setSelectedId(skId);
-        const sk = useCADStore.getState().sketches.find((s) => s.id === skId);
-        if (sk) setStatusMessage(`Profile "${sk.name}" selected — drag arrow or set distance, then OK`);
+        event.preventDefault();
+        toggleSelection(profileKey);
         return;
       }
-      // Body face → compute boundary + start press-pull
-      if (hit.faceIndex !== undefined && hit.face) {
+
+      const hit = hits[0];
+      if (selectedIds.length === 0 && hit.faceIndex !== undefined && hit.face) {
         const result = GeometryEngine.computeCoplanarFaceBoundary(hit.object as THREE.Mesh, hit.faceIndex!);
         if (result) {
           event.stopPropagation();
@@ -112,55 +173,42 @@ export default function ExtrudeTool() {
 
     const canvas = gl.domElement;
     canvas.addEventListener('pointermove', handlePointerMove);
-    // Capture phase so we win the race against R3F's onClick on SketchProfile meshes
     canvas.addEventListener('click', handleClick, true);
     return () => {
       canvas.removeEventListener('pointermove', handlePointerMove);
       canvas.removeEventListener('click', handleClick, true);
       setFaceHit(null);
     };
-  }, [activeTool, selectedId, gl, camera, raycaster, scene, startExtrudeFromFace, setStatusMessage]);
+  }, [activeTool, selectedIds, gl, camera, raycaster, scene, startExtrudeFromFace, setStatusMessage]);
 
   if (activeTool !== 'extrude') return null;
 
-  const extrudable = sketches.filter((s) => s.entities.length > 0);
-  const selectedSketch = extrudable.find((s) => s.id === selectedId);
-
-  const handleHover = (sketch: Sketch) => {
-    setHoveredId(sketch.id);
-    if (!selectedId) setStatusMessage(`Click "${sketch.name}" to extrude it`);
-  };
-
-  const handleUnhover = (id: string) => {
-    setHoveredId((prev) => (prev === id ? null : prev));
-  };
-
-  const handleSelect = (sketch: Sketch) => {
-    setSelectedId(sketch.id);
-    setStatusMessage(`Profile "${sketch.name}" selected — drag arrow or set distance, then OK`);
-  };
+  const selectedPreviewSketch = selectedIds.length > 0 ? getSketchForSelection(selectedIds[0]) : null;
 
   return (
     <group>
-      {extrudable.map((s) => (
+      {profileEntries.map(({ sketch, profileIndex, selectionId }) => (
         <SketchProfile
-          key={s.id}
-          sketch={s}
+          key={selectionId}
+          sketch={sketch}
+          profileIndex={profileIndex}
           state={
-            s.id === selectedId ? 'selected' :
-            s.id === hoveredId  ? 'hover'    : 'idle'
+            selectedIds.includes(selectionId) ? 'selected' :
+            selectionId === hoveredId ? 'hover' : 'idle'
           }
-          onSelect={() => handleSelect(s)}
-          onHover={() => handleHover(s)}
-          onUnhover={() => handleUnhover(s.id)}
+          onSelect={() => toggleSelection(selectionId)}
+          onHover={() => {
+            setHoveredId(selectionId);
+            if (selectedIds.length === 0) setStatusMessage(`Click to add ${sketch.name} profile ${profileIndex + 1}`);
+          }}
+          onUnhover={() => setHoveredId((prev) => (prev === selectionId ? null : prev))}
         />
       ))}
-      {/* Press-pull face highlight (only while no profile selected) */}
-      {!selectedId && faceHit && <FaceHighlight boundary={faceHit.boundary} />}
-      {selectedSketch && (
+      {selectedIds.length === 0 && faceHit && <FaceHighlight boundary={faceHit.boundary} />}
+      {selectedPreviewSketch && (
         <>
-          <ExtrudePreview sketch={selectedSketch} distance={distance} direction={direction} />
-          <ExtrudeGizmo sketch={selectedSketch} />
+          <ExtrudePreview sketch={selectedPreviewSketch} distance={distance} direction={direction} />
+          <ExtrudeGizmo sketch={selectedPreviewSketch} />
         </>
       )}
     </group>

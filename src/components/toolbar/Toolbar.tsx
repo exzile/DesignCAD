@@ -858,8 +858,8 @@ const setStatusMessage = useCADStore((s) => s.setStatusMessage);
                 ]}
                 onClick={beginSketchFlow}
               />
-              <ToolButton icon={<ArrowUpFromLine size={ICON_LG} />} label="Extrude" onClick={handleExtrude} large colorClass="icon-blue" />
-              <ToolButton icon={<RotateCcw size={ICON_LG} />} label="Revolve" onClick={handleRevolve} large colorClass="icon-blue" />
+              <ToolButton icon={<ArrowUpFromLine size={ICON_LG} />} label="Extrude" onClick={handleExtrude} active={activeTool === 'extrude'} large colorClass="icon-blue" />
+              <ToolButton icon={<RotateCcw size={ICON_LG} />} label="Revolve" onClick={handleRevolve} active={activeTool === 'revolve'} large colorClass="icon-blue" />
               <div className="ribbon-stack">
                 <ToolButton icon={<CircleDot size={ICON_SM} />} label="Hole" onClick={() => setActiveDialog('hole')} colorClass="icon-blue" />
                 <ToolButton icon={<Box size={ICON_SM} />} label="Shell" onClick={() => setActiveDialog('shell')} colorClass="icon-blue" />
@@ -909,8 +909,8 @@ const setStatusMessage = useCADStore((s) => s.setStatusMessage);
           <>
             <RibbonSection title="CREATE">
               <ToolButton icon={<PenTool size={ICON_LG} />} label="Sketch" onClick={beginSketchFlow} large colorClass="icon-blue" />
-              <ToolButton icon={<ArrowUpFromLine size={ICON_LG} />} label="Extrude" onClick={handleExtrude} large colorClass="icon-green" />
-              <ToolButton icon={<RotateCcw size={ICON_LG} />} label="Revolve" onClick={startRevolveTool} large colorClass="icon-green" />
+              <ToolButton icon={<ArrowUpFromLine size={ICON_LG} />} label="Extrude" onClick={handleExtrude} active={activeTool === 'extrude'} large colorClass="icon-green" />
+              <ToolButton icon={<RotateCcw size={ICON_LG} />} label="Revolve" onClick={startRevolveTool} active={activeTool === 'revolve'} large colorClass="icon-green" />
               <ToolButton icon={<Spline size={ICON_LG} />} label="Sweep" onClick={startSweepTool} large colorClass="icon-green" />
               <ToolButton icon={<Layers size={ICON_LG} />} label="Loft" onClick={startLoftTool} large colorClass="icon-green" />
               <ToolButton icon={<Diamond size={ICON_LG} />} label="Patch" onClick={startPatchTool} large colorClass="icon-green" />

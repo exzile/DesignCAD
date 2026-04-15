@@ -7,6 +7,7 @@ export type ExtrudeDirection = 'normal' | 'symmetric' | 'reverse';
 export type ExtrudeOperation = Extract<BooleanOperation, 'new-body' | 'join' | 'cut'>;
 import { evaluateExpression, resolveParameters } from '../utils/expressionEval';
 import { GeometryEngine } from '../engine/GeometryEngine';
+import { useComponentStore } from './componentStore';
 
 // ── IndexedDB storage adapter (same pattern as slicerStore) ────────────────
 function openCadDB(): Promise<IDBDatabase> {
@@ -50,58 +51,6 @@ const idbStorage = {
     } catch { /* ignore */ }
   },
 };
-
-// ── THREE.js serialization helpers ─────────────────────────────────────────
-/** Serialize a Sketch for JSON storage — converts THREE.Vector3 fields to {x,y,z} */
-type SerializedVector3 = { x: number; y: number; z: number };
-type SerializedSketch = Omit<Sketch, 'planeNormal' | 'planeOrigin'> & {
-  planeNormal: SerializedVector3;
-  planeOrigin: SerializedVector3;
-};
-
-function serializeSketch(sketch: Sketch): SerializedSketch {
-  return {
-    ...sketch,
-    planeNormal: { x: sketch.planeNormal.x, y: sketch.planeNormal.y, z: sketch.planeNormal.z },
-    planeOrigin: { x: sketch.planeOrigin.x, y: sketch.planeOrigin.y, z: sketch.planeOrigin.z },
-  };
-}
-
-/** Reconstruct THREE.Vector3 fields on a deserialized Sketch */
-function deserializeSketch(raw: SerializedSketch): Sketch {
-  return {
-    ...raw,
-    planeNormal: new THREE.Vector3(raw.planeNormal?.x ?? 0, raw.planeNormal?.y ?? 1, raw.planeNormal?.z ?? 0),
-    planeOrigin: new THREE.Vector3(raw.planeOrigin?.x ?? 0, raw.planeOrigin?.y ?? 0, raw.planeOrigin?.z ?? 0),
-  };
-}
-
-/** Serialize a Feature — strip the non-serializable mesh */
-function serializeFeature(feature: Feature): Omit<Feature, 'mesh'> {
-  const { mesh, ...rest } = feature;
-  return rest;
-}
-
-/** Rebuild a Feature's mesh from its sketch data */
-function rebuildFeatureMesh(feature: Feature, sketches: Sketch[]): Feature {
-  if (feature.mesh) return feature; // already has a mesh
-  const sketch = feature.sketchId ? sketches.find(s => s.id === feature.sketchId) : undefined;
-  if (!sketch) return feature;
-
-  try {
-    if (feature.type === 'extrude') {
-      const distance = (feature.params.distance as number) || 10;
-      feature.mesh = GeometryEngine.extrudeSketch(sketch, distance) ?? undefined;
-    } else if (feature.type === 'revolve') {
-      const angle = ((feature.params.angle as number) || 360) * (Math.PI / 180);
-      const axis = new THREE.Vector3(0, 1, 0);
-      feature.mesh = GeometryEngine.revolveSketch(sketch, angle, axis) ?? undefined;
-    }
-  } catch {
-    // Geometry reconstruction failed — feature will render without mesh
-  }
-  return feature;
-}
 
 interface CADState {
   // Tool state
@@ -286,7 +235,9 @@ interface CADState {
 
   // Extrude tool (Fusion 360-style interactive extrude)
   extrudeSelectedSketchId: string | null;
+  extrudeSelectedSketchIds: string[];
   setExtrudeSelectedSketchId: (id: string | null) => void;
+  setExtrudeSelectedSketchIds: (ids: string[]) => void;
   extrudeDistance: number;
   setExtrudeDistance: (distance: number) => void;
   extrudeDirection: ExtrudeDirection;
@@ -447,9 +398,42 @@ function getPlaneNormal(plane: SketchPlane): THREE.Vector3 {
   }
 }
 
+const toVector3 = (
+  value: unknown,
+  fallback: [number, number, number],
+): THREE.Vector3 => {
+  if (value instanceof THREE.Vector3) return value.clone();
+  if (Array.isArray(value) && value.length >= 3) {
+    return new THREE.Vector3(Number(value[0]) || 0, Number(value[1]) || 0, Number(value[2]) || 0);
+  }
+  if (value && typeof value === 'object') {
+    const v = value as { x?: number; y?: number; z?: number };
+    return new THREE.Vector3(Number(v.x) || 0, Number(v.y) || 0, Number(v.z) || 0);
+  }
+  return new THREE.Vector3(fallback[0], fallback[1], fallback[2]);
+};
+
+const deserializeSketch = (sketch: Sketch): Sketch => ({
+  ...sketch,
+  planeNormal: toVector3((sketch as unknown as { planeNormal: unknown }).planeNormal, [0, 1, 0]),
+  planeOrigin: toVector3((sketch as unknown as { planeOrigin: unknown }).planeOrigin, [0, 0, 0]),
+});
+
+const serializeFeature = (feature: Feature) => {
+  const { mesh, ...rest } = feature;
+  void mesh;
+  return rest;
+};
+
+const deserializeFeature = (feature: Feature): Feature => ({
+  ...feature,
+  mesh: undefined,
+});
+
 // Default values shared between startExtrudeTool and resetExtrudeState
 const EXTRUDE_DEFAULTS = {
   extrudeSelectedSketchId: null,
+  extrudeSelectedSketchIds: [] as string[],
   extrudeDistance: 10,
   extrudeDirection: 'normal' as ExtrudeDirection,
   extrudeOperation: 'new-body' as ExtrudeOperation,
@@ -1293,7 +1277,14 @@ export const useCADStore = create<CADState>()(persist((set, get) => ({
   setCameraTargetOrbit: (v) => set({ cameraTargetOrbit: v }),
 
   ...EXTRUDE_DEFAULTS,
-  setExtrudeSelectedSketchId: (id) => set({ extrudeSelectedSketchId: id }),
+  setExtrudeSelectedSketchId: (id) => set({
+    extrudeSelectedSketchId: id,
+    extrudeSelectedSketchIds: id ? [id] : [],
+  }),
+  setExtrudeSelectedSketchIds: (ids) => set({
+    extrudeSelectedSketchIds: ids,
+    extrudeSelectedSketchId: ids[0] ?? null,
+  }),
   setExtrudeDistance: (distance) => set({ extrudeDistance: distance }),
   setExtrudeDirection: (d) => set({ extrudeDirection: d }),
   setExtrudeOperation: (o) => set({ extrudeOperation: o }),
@@ -1355,6 +1346,7 @@ export const useCADStore = create<CADState>()(persist((set, get) => ({
     set({
       sketches: [...sketches, sketch],
       extrudeSelectedSketchId: sketch.id,
+      extrudeSelectedSketchIds: [sketch.id],
       extrudeDirection: 'normal',
       statusMessage: 'Press-pull profile selected — drag arrow or set distance, then OK',
     });
@@ -1375,18 +1367,37 @@ export const useCADStore = create<CADState>()(persist((set, get) => ({
   },
   commitExtrude: () => {
     const {
-      extrudeSelectedSketchId, extrudeDistance, extrudeDirection,
+      extrudeSelectedSketchId, extrudeSelectedSketchIds, extrudeDistance, extrudeDirection,
       extrudeOperation, extrudeThinEnabled, extrudeThinThickness, extrudeThinSide,
       extrudeStartType, extrudeStartOffset, extrudeExtentType, extrudeTaperAngle,
       extrudeBodyKind,
       sketches, features, units,
     } = get();
-    if (!extrudeSelectedSketchId) {
+    const selectedSketchIds =
+      extrudeSelectedSketchIds.length > 0
+        ? extrudeSelectedSketchIds
+        : (extrudeSelectedSketchId ? [extrudeSelectedSketchId] : []);
+    if (selectedSketchIds.length === 0) {
       set({ statusMessage: 'No profile selected' });
       return;
     }
-    const sketch = sketches.find(s => s.id === extrudeSelectedSketchId);
-    if (!sketch) {
+    const selectedProfiles = selectedSketchIds
+      .map((id) => {
+        const [sketchId, rawIndex] = id.split('::');
+        const sourceSketch = sketches.find((s) => s.id === sketchId);
+        if (!sourceSketch) return null;
+        if (rawIndex === undefined) {
+          return { sourceSketch, sketchForOp: sourceSketch, selectionId: id };
+        }
+        const parsed = Number(rawIndex);
+        if (!Number.isFinite(parsed)) return null;
+        const profileSketch = GeometryEngine.createProfileSketch(sourceSketch, parsed);
+        if (!profileSketch) return null;
+        return { sourceSketch, sketchForOp: profileSketch, selectionId: id };
+      })
+      .filter(Boolean) as { sourceSketch: Sketch; sketchForOp: Sketch; selectionId: string }[];
+
+    if (selectedProfiles.length === 0) {
       set({ statusMessage: 'Selected profile not found' });
       return;
     }
@@ -1400,49 +1411,88 @@ export const useCADStore = create<CADState>()(persist((set, get) => ({
     const absDistance = extrudeExtentType === 'all' ? 10000 : Math.abs(extrudeDistance);
     const finalDirection = isCutDrag ? 'reverse' : extrudeDirection;
     const finalOperation = isCutDrag ? 'cut' : extrudeOperation;
-    // Generate mesh: surface → thin → taper → standard
-    let featureMesh: THREE.Mesh | undefined;
-    if (extrudeBodyKind === 'surface') {
-      featureMesh = GeometryEngine.extrudeSketchSurface(sketch, absDistance) ?? undefined;
-    } else if (extrudeThinEnabled) {
-      featureMesh = GeometryEngine.extrudeThinSketch(sketch, absDistance, extrudeThinThickness, extrudeThinSide) ?? undefined;
-    } else if (Math.abs(extrudeTaperAngle) > 0.01) {
-      featureMesh = GeometryEngine.extrudeSketchWithTaper(sketch, absDistance, extrudeTaperAngle) ?? undefined;
+
+    const nextFeatures = [...features];
+    let createdCount = 0;
+    let firstCreatedSketchName: string | null = null;
+
+    for (const selected of selectedProfiles) {
+      const { sourceSketch, sketchForOp } = selected;
+      const isClosedProfile = GeometryEngine.isSketchClosedProfile(sketchForOp);
+      const resolvedBodyKind: 'solid' | 'surface' = (!isClosedProfile || extrudeBodyKind === 'surface') ? 'surface' : 'solid';
+
+      // Generate mesh: surface → thin → taper → standard
+      let featureMesh: THREE.Mesh | undefined;
+      if (resolvedBodyKind === 'surface') {
+        featureMesh = GeometryEngine.extrudeSketchSurface(sketchForOp, absDistance) ?? undefined;
+      } else if (extrudeThinEnabled) {
+        featureMesh = GeometryEngine.extrudeThinSketch(sketchForOp, absDistance, extrudeThinThickness, extrudeThinSide) ?? undefined;
+      } else if (Math.abs(extrudeTaperAngle) > 0.01) {
+        featureMesh = GeometryEngine.extrudeSketchWithTaper(sketchForOp, absDistance, extrudeTaperAngle) ?? undefined;
+      }
+
+      // Apply start offset: shift the mesh along the extrude normal
+      if (featureMesh && extrudeStartType === 'offset' && Math.abs(extrudeStartOffset) > 0.001) {
+        const n = GeometryEngine.getSketchExtrudeNormal(sketchForOp);
+        featureMesh.position.addScaledVector(n, extrudeStartOffset);
+      }
+
+      const featureId = crypto.randomUUID();
+      let componentId: string | undefined;
+      let bodyId: string | undefined;
+      if (finalOperation === 'new-body') {
+        const componentStore = useComponentStore.getState();
+        componentId = componentStore.activeComponentId;
+        const bodyCount = Object.keys(componentStore.bodies).length + 1;
+        const bodyLabel = `${resolvedBodyKind === 'surface' ? 'Surface' : 'Body'} ${bodyCount}`;
+        const createdBodyId = componentStore.addBody(componentId, bodyLabel);
+        if (createdBodyId) {
+          bodyId = createdBodyId;
+          componentStore.addFeatureToBody(createdBodyId, featureId);
+          if (featureMesh) componentStore.setBodyMesh(createdBodyId, featureMesh);
+        }
+      }
+
+      const feature: Feature = {
+        id: featureId,
+        name: `${extrudeThinEnabled ? 'Thin ' : ''}${finalOperation === 'cut' ? 'Cut' : 'Extrude'} ${features.filter(f => f.type === 'extrude').length + createdCount + 1}`,
+        type: 'extrude',
+        sketchId: sourceSketch.id,
+        bodyId,
+        componentId,
+        params: {
+          distance: finalDirection === 'symmetric' ? absDistance / 2 : absDistance,
+          distanceExpr: String(absDistance),
+          direction: finalDirection,
+          operation: finalOperation,
+          thin: extrudeThinEnabled,
+          thinThickness: extrudeThinThickness,
+          thinSide: extrudeThinSide,
+          startType: extrudeStartType,
+          startOffset: extrudeStartOffset,
+          extentType: extrudeExtentType,
+          taperAngle: extrudeTaperAngle,
+        },
+        visible: true,
+        suppressed: false,
+        timestamp: Date.now(),
+        mesh: featureMesh,
+        bodyKind: resolvedBodyKind,
+      };
+
+      nextFeatures.push(feature);
+      createdCount += 1;
+      if (!firstCreatedSketchName) firstCreatedSketchName = sourceSketch.name;
     }
-    // Apply start offset: shift the mesh along the extrude normal
-    if (featureMesh && extrudeStartType === 'offset' && Math.abs(extrudeStartOffset) > 0.001) {
-      const n = GeometryEngine.getSketchExtrudeNormal(sketch);
-      featureMesh.position.addScaledVector(n, extrudeStartOffset);
-    }
-    const feature: Feature = {
-      id: crypto.randomUUID(),
-      name: `${extrudeThinEnabled ? 'Thin ' : ''}${finalOperation === 'cut' ? 'Cut' : 'Extrude'} ${features.filter(f => f.type === 'extrude').length + 1}`,
-      type: 'extrude',
-      sketchId: extrudeSelectedSketchId,
-      params: {
-        distance: finalDirection === 'symmetric' ? absDistance / 2 : absDistance,
-        distanceExpr: String(absDistance),
-        direction: finalDirection,
-        operation: finalOperation,
-        thin: extrudeThinEnabled,
-        thinThickness: extrudeThinThickness,
-        thinSide: extrudeThinSide,
-        startType: extrudeStartType,
-        startOffset: extrudeStartOffset,
-        extentType: extrudeExtentType,
-        taperAngle: extrudeTaperAngle,
-      },
-      visible: true,
-      suppressed: false,
-      timestamp: Date.now(),
-      mesh: featureMesh,
-      bodyKind: extrudeBodyKind === 'surface' ? 'surface' : 'solid',
-    };
+
     set({
-      features: [...features, feature],
+      features: nextFeatures,
       activeTool: 'select',
       ...EXTRUDE_DEFAULTS,
-      statusMessage: `${extrudeBodyKind === 'surface' ? 'Surface ' : extrudeThinEnabled ? 'Thin ' : ''}${finalOperation === 'cut' ? 'Cut' : 'Extruded'} ${sketch.name}${extrudeExtentType === 'all' ? ' (All)' : ` by ${absDistance}${units}`}`,
+      statusMessage:
+        createdCount > 1
+          ? `${finalOperation === 'cut' ? 'Cut' : 'Extruded'} ${createdCount} profiles${extrudeExtentType === 'all' ? ' (All)' : ` by ${absDistance}${units}`}`
+          : `${finalOperation === 'cut' ? 'Cut' : 'Extruded'} ${firstCreatedSketchName ?? 'profile'}${extrudeExtentType === 'all' ? ' (All)' : ` by ${absDistance}${units}`}`,
     });
   },
 
@@ -1826,12 +1876,29 @@ export const useCADStore = create<CADState>()(persist((set, get) => ({
 {
   name: 'dzign3d-cad',
   storage: idbStorage as any,
+  version: 3,
+  migrate: (persistedState: unknown, _version: number) => {
+    const state = (persistedState ?? {}) as Partial<CADState>;
+    return {
+      ...state,
+      sketches: (state.sketches ?? []).map((s) => deserializeSketch(s as Sketch)),
+      features: (state.features ?? []).map((f) => deserializeFeature(f as Feature)),
+    };
+  },
 
-  // Only persist design data and user preferences — NOT ephemeral UI state
+  merge: (persistedState: unknown, currentState: CADState): CADState => {
+    const state = (persistedState ?? {}) as Partial<CADState>;
+    return {
+      ...currentState,
+      ...state,
+      activeSketch: state.activeSketch ? deserializeSketch(state.activeSketch as Sketch) : currentState.activeSketch,
+      sketches: (state.sketches ?? currentState.sketches).map((s) => deserializeSketch(s as Sketch)),
+      features: (state.features ?? currentState.features).map((f) => deserializeFeature(f as Feature)),
+    };
+  },
+
+  // Persist user preferences + model timeline/sketch data.
   partialize: (state) => ({
-    sketches: state.sketches.map(serializeSketch),
-    features: state.features.map(serializeFeature),
-    parameters: state.parameters,
     // User preferences
     gridSize: state.gridSize,
     snapEnabled: state.snapEnabled,
@@ -1843,20 +1910,10 @@ export const useCADStore = create<CADState>()(persist((set, get) => ({
     showEnvironment: state.showEnvironment,
     showShadows: state.showShadows,
     showGroundPlane: state.showGroundPlane,
+    // Model data
+    sketches: state.sketches,
+    features: state.features.map((f) => serializeFeature(f) as Feature),
+    parameters: state.parameters,
   }),
 
-  // After loading from IDB, reconstruct THREE.js objects and rebuild feature meshes
-  onRehydrateStorage: () => (state) => {
-    if (!state) return;
-    // Reconstruct THREE.Vector3 fields on sketches
-    if (state.sketches) {
-      const sketches = state.sketches as unknown as SerializedSketch[];
-      state.sketches = sketches.map((s) => deserializeSketch(s));
-    }
-    // Rebuild feature meshes from sketch + params
-    if (state.features && state.sketches) {
-      const features = state.features as Feature[];
-      state.features = features.map((f) => rebuildFeatureMesh(f, state.sketches));
-    }
-  },
 }));
