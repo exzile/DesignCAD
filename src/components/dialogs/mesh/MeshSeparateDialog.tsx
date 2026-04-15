@@ -3,23 +3,19 @@ import { X } from 'lucide-react';
 import { useCADStore } from '../../../store/cadStore';
 
 export function MeshSeparateDialog({ onClose }: { onClose: () => void }) {
-  const addFeature = useCADStore((s) => s.addFeature);
   const features = useCADStore((s) => s.features);
-  const [method, setMethod] = useState<'Disconnected Islands' | 'By Color' | 'By Normal'>('Disconnected Islands');
-  const [keepAll, setKeepAll] = useState(true);
+  const commitMeshSeparate = useCADStore((s) => s.commitMeshSeparate);
+  const setStatusMessage = useCADStore((s) => s.setStatusMessage);
+
+  const meshFeatures = features.filter((f) => f.mesh != null);
+  const [featureId, setFeatureId] = useState(meshFeatures[0]?.id ?? '');
 
   const handleOK = () => {
-    const n = features.filter((f) => f.name.startsWith('Mesh Separate')).length + 1;
-    addFeature({
-      id: crypto.randomUUID(),
-      name: `Mesh Separate ${n}`,
-      type: 'split-body',
-      params: { isMeshSeparate: true, method, keepAll },
-      bodyKind: 'mesh',
-      visible: true,
-      suppressed: false,
-      timestamp: Date.now(),
-    });
+    if (!featureId) {
+      setStatusMessage('Mesh Separate: select a feature first');
+      return;
+    }
+    commitMeshSeparate(featureId);
     onClose();
   };
 
@@ -32,22 +28,15 @@ export function MeshSeparateDialog({ onClose }: { onClose: () => void }) {
         </div>
         <div className="dialog-body">
           <div className="form-group">
-            <label>Method</label>
-            <select value={method} onChange={(e) => setMethod(e.target.value as typeof method)}>
-              <option value="Disconnected Islands">Disconnected Islands</option>
-              <option value="By Color">By Color</option>
-              <option value="By Normal">By Normal</option>
+            <label>Feature</label>
+            <select value={featureId} onChange={(e) => setFeatureId(e.target.value)}>
+              {meshFeatures.length === 0 && <option value="">No mesh features</option>}
+              {meshFeatures.map((f) => (
+                <option key={f.id} value={f.id}>{f.name}</option>
+              ))}
             </select>
           </div>
-          <div className="form-group form-group-inline">
-            <label>Keep All</label>
-            <input
-              type="checkbox"
-              checked={keepAll}
-              onChange={(e) => setKeepAll(e.target.checked)}
-            />
-          </div>
-          <p className="dialog-hint">Splits the mesh body into multiple bodies at disconnected islands.</p>
+          <p className="dialog-hint">Splits the mesh into separate bodies at disconnected islands.</p>
         </div>
         <div className="dialog-footer">
           <button className="btn btn-secondary" onClick={onClose}>Cancel</button>

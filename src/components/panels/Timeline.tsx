@@ -2,10 +2,10 @@ import { useState } from 'react';
 import {
   Eye, EyeOff, Trash2, PenTool, ArrowUpFromLine,
   RotateCcw, Blend, FileBox, ChevronDown, PauseCircle, PlayCircle,
-  SkipBack,
+  SkipBack, CheckSquare, Folder, FolderOpen, ChevronRight, Pencil,
 } from 'lucide-react';
 import { useCADStore } from '../../store/cadStore';
-import type { Feature } from '../../types/cad';
+import type { Feature, FeatureGroup } from '../../types/cad';
 
 function FeatureIcon({ type }: { type: Feature['type'] }) {
   switch (type) {
@@ -14,9 +14,78 @@ function FeatureIcon({ type }: { type: Feature['type'] }) {
     case 'revolve': return <RotateCcw size={14} />;
     case 'fillet': return <Blend size={14} />;
     case 'chamfer': return <ChevronDown size={14} />;
+    case 'base-feature': return <FileBox size={14} />;
     case 'import': return <FileBox size={14} />;
     default: return <FileBox size={14} />;
   }
+}
+
+// MM4 — Group header row
+function GroupHeader({ group }: { group: FeatureGroup }) {
+  const toggleFeatureGroup = useCADStore((s) => s.toggleFeatureGroup);
+  const renameFeatureGroup = useCADStore((s) => s.renameFeatureGroup);
+  const deleteFeatureGroup = useCADStore((s) => s.deleteFeatureGroup);
+  const [editing, setEditing] = useState(false);
+  const [editName, setEditName] = useState(group.name);
+
+  const commitRename = () => {
+    if (editName.trim()) renameFeatureGroup(group.id, editName.trim());
+    setEditing(false);
+  };
+
+  return (
+    <div
+      className="timeline-group-header"
+      style={{
+        display: 'flex',
+        alignItems: 'center',
+        gap: 4,
+        padding: '3px 6px',
+        background: 'var(--surface-2, #2a2a2a)',
+        borderRadius: 4,
+        marginBottom: 2,
+        cursor: 'pointer',
+        userSelect: 'none',
+      }}
+      onClick={() => toggleFeatureGroup(group.id)}
+    >
+      <span style={{ color: 'var(--accent, #5b9bd5)', flexShrink: 0 }}>
+        {group.collapsed ? <ChevronRight size={12} /> : <ChevronDown size={12} />}
+      </span>
+      <span style={{ color: 'var(--accent, #5b9bd5)', flexShrink: 0 }}>
+        {group.collapsed ? <Folder size={13} /> : <FolderOpen size={13} />}
+      </span>
+      {editing ? (
+        <input
+          autoFocus
+          value={editName}
+          onChange={(e) => setEditName(e.target.value)}
+          onBlur={commitRename}
+          onKeyDown={(e) => { if (e.key === 'Enter') commitRename(); if (e.key === 'Escape') setEditing(false); }}
+          onClick={(e) => e.stopPropagation()}
+          style={{ flex: 1, fontSize: 12, background: 'transparent', border: '1px solid var(--accent, #5b9bd5)', borderRadius: 2, color: 'inherit', padding: '0 3px' }}
+        />
+      ) : (
+        <span style={{ flex: 1, fontSize: 12, fontWeight: 600 }}>{group.name}</span>
+      )}
+      <button
+        className="timeline-action-btn"
+        onClick={(e) => { e.stopPropagation(); setEditName(group.name); setEditing(true); }}
+        title="Rename group"
+        style={{ padding: '1px 3px' }}
+      >
+        <Pencil size={11} />
+      </button>
+      <button
+        className="timeline-action-btn danger"
+        onClick={(e) => { e.stopPropagation(); deleteFeatureGroup(group.id); }}
+        title="Delete group"
+        style={{ padding: '1px 3px' }}
+      >
+        <Trash2 size={11} />
+      </button>
+    </div>
+  );
 }
 
 // D186: Open the dialog that originally committed this feature, pre-filled.
@@ -73,7 +142,7 @@ function editDialogFor(feature: Feature): string | null {
   }
 }
 
-function FeatureItem({ feature, index }: { feature: Feature; index: number }) {
+function FeatureItem({ feature, index, indented }: { feature: Feature; index: number; indented?: boolean }) {
   const toggleVisibility = useCADStore((s) => s.toggleFeatureVisibility);
   const toggleSuppressed = useCADStore((s) => s.toggleFeatureSuppressed);
   const removeFeature = useCADStore((s) => s.removeFeature);
@@ -85,6 +154,8 @@ function FeatureItem({ feature, index }: { feature: Feature; index: number }) {
   const rollbackIndex = useCADStore((s) => s.rollbackIndex);
   const setRollbackIndex = useCADStore((s) => s.setRollbackIndex);
   const setStatusMessage = useCADStore((s) => s.setStatusMessage);
+  const createFeatureGroup = useCADStore((s) => s.createFeatureGroup);
+  const [contextMenu, setContextMenu] = useState<{ x: number; y: number } | null>(null);
 
   const isSelected = selectedFeatureId === feature.id;
   // D190: feature is rolled back (skipped) if index > rollbackIndex (and rollbackIndex >= 0)
@@ -132,7 +203,16 @@ function FeatureItem({ feature, index }: { feature: Feature; index: number }) {
     }
   };
 
+  // MM4 right-click context menu
+  const handleContextMenu = (e: React.MouseEvent) => {
+    e.preventDefault();
+    setContextMenu({ x: e.clientX, y: e.clientY });
+  };
+
+  const closeContextMenu = () => setContextMenu(null);
+
   return (
+    <>
     <div
       className={`timeline-item ${isSelected ? 'selected' : ''} ${isRolledBack ? 'rolled-back' : ''}`}
       draggable
@@ -141,8 +221,9 @@ function FeatureItem({ feature, index }: { feature: Feature; index: number }) {
       onDrop={handleDrop}
       onClick={() => setSelectedFeatureId(isSelected ? null : feature.id)}
       onDoubleClick={handleDoubleClick}
-      title="Double-click to edit • Drag to reorder"
-      style={isRolledBack ? { opacity: 0.4 } : undefined}
+      onContextMenu={handleContextMenu}
+      title="Double-click to edit • Drag to reorder • Right-click for options"
+      style={{ ...(isRolledBack ? { opacity: 0.4 } : {}), ...(indented ? { paddingLeft: 20 } : {}) }}
     >
       <div className="timeline-item-icon">
         <FeatureIcon type={feature.type} />
@@ -191,15 +272,63 @@ function FeatureItem({ feature, index }: { feature: Feature; index: number }) {
         </button>
       </div>
     </div>
+    {contextMenu && (
+      <>
+        <div
+          style={{ position: 'fixed', inset: 0, zIndex: 999 }}
+          onClick={closeContextMenu}
+          onContextMenu={(e) => { e.preventDefault(); closeContextMenu(); }}
+        />
+        <div
+          style={{
+            position: 'fixed',
+            left: contextMenu.x,
+            top: contextMenu.y,
+            background: 'var(--surface-2, #2a2a2a)',
+            border: '1px solid var(--border, #444)',
+            borderRadius: 4,
+            zIndex: 1000,
+            minWidth: 150,
+            boxShadow: '0 4px 12px rgba(0,0,0,0.4)',
+            padding: '4px 0',
+          }}
+          onClick={(e) => e.stopPropagation()}
+        >
+          <button
+            style={{
+              display: 'flex', alignItems: 'center', gap: 8,
+              width: '100%', padding: '6px 12px',
+              background: 'none', border: 'none', cursor: 'pointer',
+              color: 'inherit', fontSize: 12, textAlign: 'left',
+            }}
+            onClick={() => {
+              createFeatureGroup('Group', [feature.id]);
+              closeContextMenu();
+            }}
+          >
+            <Folder size={12} />
+            Group Selected
+          </button>
+        </div>
+      </>
+    )}
+    </>
   );
 }
 
 export default function Timeline() {
-  const features = useCADStore((s) => s.features);
+  const allFeatures = useCADStore((s) => s.features);
+  const historyEnabled = useCADStore((s) => s.historyEnabled);
+  const featureGroups = useCADStore((s) => s.featureGroups);
   const rollbackIndex = useCADStore((s) => s.rollbackIndex);
   const setRollbackIndex = useCADStore((s) => s.setRollbackIndex);
+  const baseFeatureActive = useCADStore((s) => s.baseFeatureActive);
+  const finishBaseFeature = useCADStore((s) => s.finishBaseFeature);
   const [dragOverEnd, setDragOverEnd] = useState(false);
   const reorderFeature = useCADStore((s) => s.reorderFeature);
+
+  // MM1: Only show features that were recorded while history was enabled
+  const features = allFeatures.filter((f) => !f.suppressTimeline);
 
   const handleEndDrop = (e: React.DragEvent) => {
     const id = e.dataTransfer.getData('text/feature-id');
@@ -209,8 +338,85 @@ export default function Timeline() {
     setDragOverEnd(false);
   };
 
+  // MM4: Build grouped render list
+  // Collect groups that have at least one member feature
+  const activeGroupIds = new Set(features.map((f) => f.groupId).filter(Boolean) as string[]);
+  const relevantGroups = featureGroups.filter((g) => activeGroupIds.has(g.id));
+  const groupMap = new Map(relevantGroups.map((g) => [g.id, g]));
+  // Track which groupIds we've already rendered a header for
+  const renderedGroupHeaders = new Set<string>();
+
+  const renderFeatureList = () => {
+    const rows: React.ReactNode[] = [];
+    features.forEach((feature, i) => {
+      if (feature.groupId) {
+        const group = groupMap.get(feature.groupId);
+        if (group && !renderedGroupHeaders.has(group.id)) {
+          renderedGroupHeaders.add(group.id);
+          rows.push(<GroupHeader key={`group-${group.id}`} group={group} />);
+        }
+        if (!group || !group.collapsed) {
+          rows.push(<FeatureItem key={feature.id} feature={feature} index={i} indented={!!feature.groupId} />);
+        }
+      } else {
+        rows.push(<FeatureItem key={feature.id} feature={feature} index={i} />);
+      }
+    });
+    return rows;
+  };
+
   return (
     <div className="timeline-panel">
+      {/* MM1 — Direct Modeling mode notice */}
+      {!historyEnabled && (
+        <div
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: 8,
+            background: '#4a3800',
+            color: '#ffb300',
+            padding: '5px 10px',
+            fontSize: 12,
+            fontWeight: 600,
+            borderBottom: '1px solid #7a5e00',
+          }}
+        >
+          Design history not captured (Direct Modeling mode)
+        </div>
+      )}
+      {/* MM3 — Base Feature active banner */}
+      {baseFeatureActive && (
+        <div
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: 8,
+            background: '#7c5c00',
+            color: '#ffd966',
+            padding: '5px 10px',
+            fontSize: 12,
+            fontWeight: 600,
+            borderBottom: '1px solid #a07800',
+          }}
+        >
+          <span style={{ flex: 1 }}>Base Feature open — parametric recompute suppressed</span>
+          <button
+            onClick={finishBaseFeature}
+            title="Finish Base Feature"
+            style={{
+              display: 'flex', alignItems: 'center', gap: 4,
+              background: '#ffd966', color: '#3a2c00',
+              border: 'none', borderRadius: 3,
+              padding: '2px 8px', cursor: 'pointer',
+              fontSize: 11, fontWeight: 700,
+            }}
+          >
+            <CheckSquare size={12} />
+            Finish
+          </button>
+        </div>
+      )}
       <div className="timeline-header">
         <h3>Timeline</h3>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
@@ -235,9 +441,7 @@ export default function Timeline() {
           </div>
         ) : (
           <>
-            {features.map((feature, i) => (
-              <FeatureItem key={feature.id} feature={feature} index={i} />
-            ))}
+            {renderFeatureList()}
             <div
               className={`timeline-drop-target ${dragOverEnd ? 'active' : ''}`}
               style={{

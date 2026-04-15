@@ -9,6 +9,7 @@ export default function StatusBar() {
   const snapEnabled = useCADStore((s) => s.snapEnabled);
   const activeSketch = useCADStore((s) => s.activeSketch);
   const selectionFilter = useCADStore((s) => s.selectionFilter);
+  const historyEnabled = useCADStore((s) => s.historyEnabled);
 
   return (
     <div className="status-bar">
@@ -16,6 +17,11 @@ export default function StatusBar() {
         <span className="status-message">{statusMessage}</span>
       </div>
       <div className="status-right">
+        {!historyEnabled && (
+          <span className="status-badge" style={{ background: '#7a5e00', color: '#ffb300', fontWeight: 700 }}>
+            Direct Modeling
+          </span>
+        )}
         {activeSketch && (
           <span className="status-badge sketch-badge">
             Sketch: {activeSketch.plane}

@@ -20,6 +20,8 @@ export function ScaleDialog({ onClose }: { onClose: () => void }) {
   const addFeature = useCADStore((s) => s.addFeature);
   const updateFeatureParams = useCADStore((s) => s.updateFeatureParams);
   const setStatusMessage = useCADStore((s) => s.setStatusMessage);
+  const commitScale = useCADStore((s) => s.commitScale);
+  const selectedFeatureId = useCADStore((s) => s.selectedFeatureId);
 
   const handleApply = () => {
     const params: Record<string, string | number | boolean | number[]> = scaleType === 'uniform'
@@ -31,6 +33,11 @@ export function ScaleDialog({ onClose }: { onClose: () => void }) {
     if (editing) {
       updateFeatureParams(editing.id, params);
       setStatusMessage(`Updated scale ${label}`);
+    } else if (selectedFeatureId) {
+      const sx = scaleType === 'uniform' ? factor : factorX;
+      const sy = scaleType === 'uniform' ? factor : factorY;
+      const sz = scaleType === 'uniform' ? factor : factorZ;
+      commitScale(selectedFeatureId, sx, sy, sz);
     } else {
       const feature: Feature = {
         id: crypto.randomUUID(),

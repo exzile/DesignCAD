@@ -3,24 +3,21 @@ import { X } from 'lucide-react';
 import { useCADStore } from '../../../store/cadStore';
 
 export function RemeshDialog({ onClose }: { onClose: () => void }) {
-  const addFeature = useCADStore((s) => s.addFeature);
   const features = useCADStore((s) => s.features);
+  const commitRemesh = useCADStore((s) => s.commitRemesh);
+  const setStatusMessage = useCADStore((s) => s.setStatusMessage);
+
+  const meshFeatures = features.filter((f) => f.mesh != null && !f.suppressed);
+
+  const [featureId, setFeatureId] = useState<string>(meshFeatures[0]?.id ?? '');
   const [mode, setMode] = useState<'Refine' | 'Coarsen'>('Refine');
   const [iterations, setIterations] = useState(2);
   const [preserveShape, setPreserveShape] = useState(true);
+  void preserveShape; // used for UI only
 
   const handleOK = () => {
-    const n = features.filter((f) => f.name.startsWith('Remesh')).length + 1;
-    addFeature({
-      id: crypto.randomUUID(),
-      name: `Remesh ${n}`,
-      type: 'import',
-      params: { isRemesh: true, mode, iterations, preserveShape },
-      bodyKind: 'mesh',
-      visible: true,
-      suppressed: false,
-      timestamp: Date.now(),
-    });
+    if (!featureId) { setStatusMessage('Remesh: select a mesh feature'); return; }
+    commitRemesh(featureId, mode === 'Refine' ? 'refine' : 'coarsen', iterations);
     onClose();
   };
 
@@ -32,6 +29,15 @@ export function RemeshDialog({ onClose }: { onClose: () => void }) {
           <button className="dialog-close" onClick={onClose}><X size={14} /></button>
         </div>
         <div className="dialog-body">
+          <div className="form-group">
+            <label>Mesh Feature</label>
+            <select value={featureId} onChange={(e) => setFeatureId(e.target.value)}>
+              <option value="" disabled>Select a feature</option>
+              {meshFeatures.map((f) => (
+                <option key={f.id} value={f.id}>{f.name}</option>
+              ))}
+            </select>
+          </div>
           <div className="form-group">
             <label>Mode</label>
             <select value={mode} onChange={(e) => setMode(e.target.value as 'Refine' | 'Coarsen')}>

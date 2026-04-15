@@ -3,6 +3,8 @@ import { X } from 'lucide-react';
 import { useCADStore } from '../../../store/cadStore';
 
 export function MeshCombineDialog({ onClose }: { onClose: () => void }) {
+  const commitMeshCombine = useCADStore((s) => s.commitMeshCombine);
+  const selectedFeatureId = useCADStore((s) => s.selectedFeatureId);
   const addFeature = useCADStore((s) => s.addFeature);
   const features = useCADStore((s) => s.features);
   const [operation, setOperation] = useState<'Union' | 'Subtract' | 'Intersect'>('Union');
@@ -10,17 +12,22 @@ export function MeshCombineDialog({ onClose }: { onClose: () => void }) {
   const [keepTool, setKeepTool] = useState(false);
 
   const handleOK = () => {
-    const n = features.filter((f) => f.name.startsWith('Mesh Combine')).length + 1;
-    addFeature({
-      id: crypto.randomUUID(),
-      name: `Mesh Combine ${n}`,
-      type: 'import',
-      params: { isMeshCombine: true, operation, toolBody, keepTool },
-      bodyKind: 'mesh',
-      visible: true,
-      suppressed: false,
-      timestamp: Date.now(),
-    });
+    if (selectedFeatureId && toolBody) {
+      commitMeshCombine([selectedFeatureId, toolBody]);
+    } else {
+      // Fallback stub when bodies not selected
+      const n = features.filter((f) => f.name.startsWith('Mesh Combine')).length + 1;
+      addFeature({
+        id: crypto.randomUUID(),
+        name: `Mesh Combine ${n}`,
+        type: 'import',
+        params: { isMeshCombine: true, operation, toolBody, keepTool },
+        bodyKind: 'mesh',
+        visible: true,
+        suppressed: false,
+        timestamp: Date.now(),
+      });
+    }
     onClose();
   };
 

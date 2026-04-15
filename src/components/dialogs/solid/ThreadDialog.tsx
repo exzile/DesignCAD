@@ -3,6 +3,13 @@ import { X } from 'lucide-react';
 import { useCADStore } from '../../../store/cadStore';
 import type { Feature } from '../../../types/cad';
 
+// ISO Metric pitch lookup (nominal diameter in mm → pitch in mm)
+const ISO_PITCH: Record<string, number> = {
+  'M3x0.5': 0.5, 'M4x0.7': 0.7, 'M5x0.8': 0.8, 'M6x1.0': 1.0,
+  'M8x1.25': 1.25, 'M10x1.5': 1.5, 'M12x1.75': 1.75, 'M16x2.0': 2.0,
+  'M20x2.5': 2.5, 'M24x3.0': 3.0,
+};
+
 type ThreadStandard = 'iso-metric' | 'ansi-unified' | 'npt';
 
 export function ThreadDialog({ onClose }: { onClose: () => void }) {
@@ -22,6 +29,7 @@ export function ThreadDialog({ onClose }: { onClose: () => void }) {
   const [direction, setDirection] = useState<'right-hand' | 'left-hand'>((p.direction as 'right-hand' | 'left-hand') ?? 'right-hand');
 
   const addFeature = useCADStore((s) => s.addFeature);
+  const commitThread = useCADStore((s) => s.commitThread);
   const updateFeatureParams = useCADStore((s) => s.updateFeatureParams);
   const setStatusMessage = useCADStore((s) => s.setStatusMessage);
 
@@ -49,7 +57,14 @@ export function ThreadDialog({ onClose }: { onClose: () => void }) {
         suppressed: false,
         timestamp: Date.now(),
       };
-      addFeature(feature);
+      const added = addFeature(feature);
+      void added; // addFeature returns void
+      // For cosmetic threads, generate a helix overlay
+      if (threadType === 'cosmetic') {
+        const pitch = ISO_PITCH[designation] ?? 1.0;
+        const threadLength = fullLength ? length : length;
+        commitThread(feature.id, diameter / 2, pitch, threadLength);
+      }
       setStatusMessage(`Created ${threadType} thread: ${designation}`);
     }
     onClose();

@@ -3,23 +3,30 @@ import { X } from 'lucide-react';
 import { useCADStore } from '../../../store/cadStore';
 
 export function MeshReverseNormalDialog({ onClose }: { onClose: () => void }) {
+  const commitReverseNormal = useCADStore((s) => s.commitReverseNormal);
+  const selectedFeatureId = useCADStore((s) => s.selectedFeatureId);
   const addFeature = useCADStore((s) => s.addFeature);
   const features = useCADStore((s) => s.features);
   const [mode, setMode] = useState<'All Faces' | 'Selected Faces'>('All Faces');
   const [invertAll, setInvertAll] = useState(false);
 
   const handleOK = () => {
-    const n = features.filter((f) => f.name.startsWith('Reverse Normal')).length + 1;
-    addFeature({
-      id: crypto.randomUUID(),
-      name: `Reverse Normal ${n}`,
-      type: 'import',
-      params: { isMeshReverseNormal: true, mode, invertAll },
-      bodyKind: 'mesh',
-      visible: true,
-      suppressed: false,
-      timestamp: Date.now(),
-    });
+    if (selectedFeatureId) {
+      commitReverseNormal(selectedFeatureId);
+    } else {
+      // Fallback: record as a feature stub when no mesh is selected
+      const n = features.filter((f) => f.name.startsWith('Reverse Normal')).length + 1;
+      addFeature({
+        id: crypto.randomUUID(),
+        name: `Reverse Normal ${n}`,
+        type: 'import',
+        params: { isMeshReverseNormal: true, mode, invertAll },
+        bodyKind: 'mesh',
+        visible: true,
+        suppressed: false,
+        timestamp: Date.now(),
+      });
+    }
     onClose();
   };
 

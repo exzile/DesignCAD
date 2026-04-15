@@ -3,24 +3,21 @@ import { X } from 'lucide-react';
 import { useCADStore } from '../../../store/cadStore';
 
 export function MeshSmoothDialog({ onClose }: { onClose: () => void }) {
-  const addFeature = useCADStore((s) => s.addFeature);
   const features = useCADStore((s) => s.features);
+  const commitMeshSmooth = useCADStore((s) => s.commitMeshSmooth);
+  const setStatusMessage = useCADStore((s) => s.setStatusMessage);
+
+  const meshFeatures = features.filter((f) => f.mesh != null);
+  const [featureId, setFeatureId] = useState(meshFeatures[0]?.id ?? '');
   const [iterations, setIterations] = useState(5);
-  const [strength, setStrength] = useState(0.5);
-  const [preserveBoundary, setPreserveBoundary] = useState(true);
+  const [factor, setFactor] = useState(0.5);
 
   const handleOK = () => {
-    const n = features.filter((f) => f.name.startsWith('Mesh Smooth')).length + 1;
-    addFeature({
-      id: crypto.randomUUID(),
-      name: `Mesh Smooth ${n}`,
-      type: 'import',
-      params: { isMeshSmooth: true, iterations, strength, preserveBoundary },
-      bodyKind: 'mesh',
-      visible: true,
-      suppressed: false,
-      timestamp: Date.now(),
-    });
+    if (!featureId) {
+      setStatusMessage('Mesh Smooth: select a feature first');
+      return;
+    }
+    commitMeshSmooth(featureId, iterations, factor);
     onClose();
   };
 
@@ -33,6 +30,15 @@ export function MeshSmoothDialog({ onClose }: { onClose: () => void }) {
         </div>
         <div className="dialog-body">
           <div className="form-group">
+            <label>Feature</label>
+            <select value={featureId} onChange={(e) => setFeatureId(e.target.value)}>
+              {meshFeatures.length === 0 && <option value="">No mesh features</option>}
+              {meshFeatures.map((f) => (
+                <option key={f.id} value={f.id}>{f.name}</option>
+              ))}
+            </select>
+          </div>
+          <div className="form-group">
             <label>Iterations (1–20)</label>
             <input
               type="number"
@@ -43,22 +49,14 @@ export function MeshSmoothDialog({ onClose }: { onClose: () => void }) {
             />
           </div>
           <div className="form-group">
-            <label>Strength: {strength.toFixed(1)}</label>
+            <label>Strength: {factor.toFixed(1)}</label>
             <input
               type="range"
               min={0.1}
               max={1.0}
               step={0.1}
-              value={strength}
-              onChange={(e) => setStrength(parseFloat(e.target.value))}
-            />
-          </div>
-          <div className="form-group form-group-inline">
-            <label>Preserve Boundary</label>
-            <input
-              type="checkbox"
-              checked={preserveBoundary}
-              onChange={(e) => setPreserveBoundary(e.target.checked)}
+              value={factor}
+              onChange={(e) => setFactor(parseFloat(e.target.value))}
             />
           </div>
           <p className="dialog-hint">Applies Laplacian smoothing to soften rough or creased regions.</p>

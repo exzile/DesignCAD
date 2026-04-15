@@ -12,13 +12,9 @@ DESIGN WORKSPACE — OPEN ITEMS
 ═══════════════════════════════════════════════════════════════
 SOLID WORKSPACE AUDIT GAPS (Fusion 360 help page review)
 ═══════════════════════════════════════════════════════════════
-
-── SOLID CREATE ────────────────────────────────────────────── 
-[ ] D184. Automated Modeling — AI-driven design-alternative generator (very hard — deferred)
+ 
    
-── INSERT ────────────────────────────────────────────────────
-[x] D192. Decal — place a raster image onto a selected face as a visual decal (easy-medium)
-[x] D193. Attached Canvas — re-attach / edit an existing canvas placed on a plane (easy)
+── INSERT ──────────────────────────────────────────────────── 
 [ ] D194. Insert Fastener — fastener library browser to insert bolts/screws as solid bodies (very hard — deferred)
 [ ] D195. Derive — pull bodies/sketches/params from another file with live parametric link (very hard — deferred)
 
@@ -29,131 +25,17 @@ SOLID WORKSPACE AUDIT GAPS (Fusion 360 help page review)
 SKETCH SECOND AUDIT GAPS
 ═══════════════════════════════════════════════════════════════
 [ ] S4.  Isoparametric Curve — UV-parameter curve on a NURBS surface (deferred)
-
-── SKETCH CREATE (Fusion 360 doc audit) ────────────────────── 
-[x] S7.  3D Sketch mode — no multi-plane single-sketch support. Fusion lets you click a
-         new face or plane mid-sketch to change the active draw plane without ending the
-         sketch. Our sketches are locked to one plane for their entire lifetime.
-
-  
-
-═══════════════════════════════════════════════════════════════
-SURFACE WORKSPACE AUDIT GAPS (Fusion 360 doc audit)
-═══════════════════════════════════════════════════════════════
-
-── SURFACE CREATE ──────────────────────────────────────────── 
-[x] SFC7. Fill — Fusion: Surface > Create > Fill — creates a planar or blended patch from a
-         boundary of curves/edges with selectable G0/G1/G2 continuity per edge; not implemented
-         at all. Distinct from Patch (Patch takes a closed sketch profile; Fill picks individual
-         boundary edges/curves with per-edge continuity). No FillDialog, no store action, not
-         present in Surface CREATE ribbon. (medium-hard)
-[x] SFC8. Offset curve-to-surface — Fusion: Surface > Create > Offset — offsets an open or
-         closed curve/edge at a specified distance to create a new surface strip. Not the same as
-         Offset Surface (which offsets an existing surface body). Not present in our Surface CREATE
-         section. (medium)
-[x] SFC22. Surface Primitives — Fusion: Surface > Create > Primitives — creates open surface
-          bodies (Plane, Box, Sphere, Cylinder, Torus, Cone) with no solid interior; these are
-          surface quilts, not solid volumes. Completely absent from the Surface tab. Solid
-          primitives use addPrimitive() → PrimitiveBodies.tsx (Three.js BoxGeometry, etc.) with
-          closed caps; mesh primitives use MeshPrimitivesDialog with bodyKind:'mesh'. No
-          bodyKind:'surface' primitive path exists. Surface variants differ: Cylinder has no end
-          caps, Box is 6 disconnected face patches, Sphere/Torus/Cone are shell surfaces. Needs
-          a SurfacePrimitivesDialog, addSurfacePrimitive store action, and a SurfacePrimitiveBodies
-          renderer that generates open geometries. (medium)
-
-── SURFACE MODIFY (ALL ARE UI STUBS — no GeometryEngine calls) ───────────────────────────────
-[x] SFC9.  Offset Surface stub — OffsetSurfaceDialog calls addFeature() with type:'sweep' and
-          isSurfaceOffset:true; GeometryEngine never processes that flag. Needs a real
-          GeometryEngine.offsetSurface(mesh, distance) implementation and dedicated feature type.
-          (medium)
-[x] SFC10. Trim stub — SurfaceTrimDialog calls addFeature() with type:'split-body' and
-          isSurfaceTrim:true; no geometry computed. Needs GeometryEngine surface-trim logic
-          (intersect surface with trimming tools, discard selected regions). (hard)
-[x] SFC11. Extend stub — SurfaceExtendDialog calls addFeature() with type:'sweep' and
-          isSurfaceExtend:true; no geometry. Needs edge-extension logic (natural/tangent/
-          perpendicular extension mode). (medium-hard)
-[x] SFC12. Stitch stub — StitchDialog calls addFeature() with type:'thicken' and isStitch:true;
-          no geometry. Should merge adjacent surface bodies into a single quilt (or closed solid
-          if fully enclosed). (hard)
-[x] SFC13. Unstitch stub — UnstitchDialog calls addFeature() with type:'split-body' and
-          unstitch:true; no geometry. Should split a stitched quilt back into its component
-          surface faces. (hard)
-[x] SFC14. Surface Split stub — SurfaceSplitDialog calls addFeature() with type:'split-body'
-          and isSurfaceSplit:true; no geometry. Should split one surface body using another
-          surface or sketch as the splitting tool. (hard)
-[x] SFC15. Untrim stub — UntrimDialog calls addFeature() with type:'sweep' and isUntrim:true;
-          no geometry. Should restore a trimmed edge of a surface face to its original untrimmed
-          boundary. (hard)
-[x] SFC16. Merge stub — SurfaceMergeDialog calls addFeature() with type:'thicken' and
-          isSurfaceMerge:true; no geometry. Should merge two tangent or coincident surface faces
-          into a single face, removing the shared edge. (medium)
-[x] SFC17. Thicken stub — ThickenDialog has good UI (thickness, direction, operation) but calls
-          addFeature() only; no GeometryEngine.thicken() call. Shared with Solid tab. Needs
-          offset-mesh shell generation to produce a solid from a surface body. (medium-hard)
-
-── SURFACE MODIFY MISSING TOOLS ──────────────────────────────
-[x] SFC18. Delete Face — Fusion: Surface > Modify > Delete Face — removes selected faces from a
-          surface body/quilt; healing options (tangent/curvature patch or leave open). Not present
-          in our Surface MODIFY ribbon at all. (medium)
-          Note: Fillet and Chamfer are NOT part of Fusion 360's Surface > Modify — they are
-          Solid > Modify operations only and do not appear in the surface workspace.
-           
-
-═══════════════════════════════════════════════════════════════
-ASSEMBLY GAPS (Fusion 360 ASM-DESIGNS audit)
-═══════════════════════════════════════════════════════════════
  
-── ASSEMBLY — UI STUBS (no real implementation) ──────────────
-[ ] A17. As-Built Joint stub — AsBuiltJointDialog calls addFeature() with type:'import' and
-         asBuilt:true; it does NOT call componentStore.addJoint(), so no kinematic relationship
-         exists in the data model. Should be wired to addJoint the same way as JointDialog.
-         Also uses free-text input for component names instead of a component picker. (medium)
-[ ] A18. Rigid Group stub — RigidGroupDialog calls addFeature() with isRigidGroup:true; takes
-         component names as newline-delimited plain text. No real rigidification — components
-         are not locked together in componentStore. Should store a set of real component IDs
-         and prevent relative motion between them during Drive Joints. (medium)
-[x] A19. Drive Joints stub — DriveJointsDialog calls addFeature() with isDriveJoint:true;
-         no animation or playback logic. Should drive joint.rotationValue /
-         joint.translationValue over a timeline using setJointValue() in componentStore.
-         No animation loop, no playback controls, no timeline UI exists. (hard)
-[ ] A20. Motion Link stub — MotionLinkDialog calls addFeature() with isMotionLink:true;
-         no coupling logic. Should link two specific joint IDs so that moving one drives
-         the other at a configurable ratio + offset. Source/target are free-text fields
-         instead of real joint pickers. (medium)
-
-── ASSEMBLY — GROUND/UNGROUND COMPONENT ─────────────────────
-[ ] A21. Ground/Unground toggle UI — setComponentGrounded(id, bool) exists in componentStore
-         and ComponentNode shows an Anchor icon when grounded:true, but there is no UI
-         interaction to toggle it: no button in assembleMenuItems flyout, no right-click
-         context menu item in ComponentNode (context menu has New/Duplicate/Delete only).
-         Root Assembly is grounded:true by default but child components cannot be grounded
-         from the UI. Ground is fundamental — it fixes one component as the immovable reference
-         so joint simulation is meaningful. (easy — just wire setComponentGrounded to a
-         context menu item and add an Anchor toggle button)
+  
+ 
 
 ── ASSEMBLY — MISSING TOOLS ──────────────────────────────────
-[x] A22. Mirror Components — Fusion: Assemble > Mirror — mirrors an entire component (all
-         bodies/features) about XY/XZ/YZ or a construction plane. mirrorBody() exists for
-         individual bodies but no mirrorComponent() in componentStore. Not in assembleMenuItems.
-         (medium)
-[x] A23. Duplicate With Joints — Fusion: Assemble > Duplicate With Joints — duplicates a
-         component AND copies its associated joints (re-linking to the new component ID).
-         Currently comingSoon stub in assembleMenuItems. duplicateComponent() in componentStore
-         does not copy joints. (medium)
+ 
 [ ] A24. Constrain Components — Fusion: Assemble > Constrain Components — Inventor-style
          mate/flush/angle/tangent constraints as an alternative positioning system to Joints.
          Currently comingSoon stub. Requires a constraint solver for rigid body placement.
          (hard — deferred)
-[ ] A25. Enable All Contact — Fusion: Contact Sets panel has a global "Enable All" / "Disable
-         All" toggle. ContactSetsDialog only toggles individual ContactSetEntry items (via
-         onToggle per set); no bulk enable/disable button exists. (easy)
-[x] A26. Bill of Materials (BOM) — Fusion: Utilities > Bill of Materials — generates a table of
-         all components with quantity, part number, description, material, and mass. Not
-         implemented. Would require traversing the component tree and summarizing body materials.
-         (medium)
-[x] A27. Exploded View — Fusion: Assemble > Explode (or via Motion Study) — offsets each
-         component outward along its assembly axis for documentation diagrams. Not implemented;
-         no explode dialog, no explode store action. (hard)
+ 
 [ ] A28. Make Independent — Fusion: right-click a linked/referenced component > Make
          Independent — breaks the live reference to an external design file so the component
          becomes a local copy. Related to D195 Derive (deferred) and A13 Insert Component.
@@ -161,62 +43,127 @@ ASSEMBLY GAPS (Fusion 360 ASM-DESIGNS audit)
          — blocked until external reference loading is real)
 
 
+ 
+
+ 
 ═══════════════════════════════════════════════════════════════
-DESIGN MODELING MODES AUDIT GAPS (Fusion 360 ASM-DESIGN-MODELING-MODES)
+MESH WORKSPACE — UI STUB GAPS (no GeometryEngine compute)
 ═══════════════════════════════════════════════════════════════
 
-── HISTORY MODE TOGGLE ───────────────────────────────────────
-[ ] MM1. "Do Not Capture Design History" toggle — Fusion: right-click the root browser node
-         → "Do not capture design history" switches globally to Direct Modeling mode: timeline
-         is hidden, features are not recorded, and geometry is edited by push/pull on the body
-         directly. We have no historyEnabled flag, no mode switch, and no way to turn off the
-         timeline. The app is always-on parametric. Switching back to Parametric mode should
-         re-enable the timeline and begin recording features again. (hard — architectural)
+── MESH MODIFY STUBS ─────────────────────────────────────────
+ 
+[ ] MSH4. Erase and Fill stub — EraseAndFillDialog calls addFeature() with isEraseAndFill:true;
+          no geometry. Should remove the selected region of triangles and re-mesh the hole
+          using a smooth Laplacian patch. (hard)
+ 
+[ ] MSH6. Mesh Shell stub — MeshShellDialog calls addFeature() with isMeshShell:true;
+          no geometry. Should offset mesh inward/outward to create a hollow body with given
+          wall thickness (face-normal offset per vertex + cap). (hard)
+ 
+[ ] MSH9. Mesh Align stub — MeshAlignDialog calls addFeature() with isMeshAlign:true;
+          no geometry. Should compute a rigid transform to best-fit one mesh body onto
+          another (e.g., ICP or centroid-match). (hard) 
+[ ] MSH12. Convert Mesh to BRep stub — ConvertMeshToBRepDialog calls addFeature(
+           type:'import', isConvertMeshToBRep:true); no geometry. Needs GeometryEngine
+           to approximate mesh faces as planar/NURBS patches (Facet = keep triangles as
+           flat BRep faces; Prismatic = merge coplanar regions; Organic = fit smooth
+           surfaces). Very hard in full fidelity; a basic coplanar-merge approximation
+           is medium. (hard) 
 
-── UNDO / REDO ───────────────────────────────────────────────
-[ ] MM2. Undo / Redo stack — Quick Access Bar Undo and Redo buttons both call
-         setStatusMessage('coming soon'). No undoStack[], no state snapshotting, and no action
-         reversal system exists in cadStore. Fusion maintains a full command history across both
-         Parametric and Direct modes with Ctrl+Z / Ctrl+Y. Needs a snapshot or command-pattern
-         stack in cadStore and working keyboard shortcuts. (hard)
+═══════════════════════════════════════════════════════════════
+FORM WORKSPACE — MODIFY STUBS (blocked by missing pickers/solvers)
+═══════════════════════════════════════════════════════════════
+All Create and basic Modify tools (Box/Plane/Cylinder/Sphere/Torus/Quadball/Pipe/Face/
+Extrude/Revolve/Sweep/Loft, EditForm vertex drag, Subdivide, Crease/Uncrease, Freeze,
+Delete) are real implementations in FormInteraction.tsx + SubdivisionEngine. The eleven
+tools below are blocked in FormInteraction.tsx because they require pickers or solvers
+that do not yet exist.
 
-── BASE FEATURE ──────────────────────────────────────────────
-[ ] MM3. Base Feature stub — BaseFeatureDialog creates addFeature(type:'import',
-         params:{baseFeature:true}) but no non-parametric container logic exists. Fusion's Base
-         Feature freezes geometry at that point so that direct edits inside the container do not
-         trigger timeline recompute of downstream features; it bridges Direct and Parametric
-         modes. The dialog hint text describes this behavior but nothing in cadStore enforces it.
-         Needs: a container boundary in features[], a flag to suppress recompute for enclosed
-         operations, and a "Finish Base Feature" action to close the container. (medium)
+[ ] FM1. Insert Edge stub — form-insert-edge sets status "requires face-picker (blocked)";
+         click handler is a no-op. Needs a face-picker to identify which face to split and
+         a SubdivisionEngine.insertEdge() that adds a new edge loop across the face. (hard)
+[ ] FM2. Insert Point stub — form-insert-point sets status "requires edge-picker (blocked)".
+         Needs an edge-picker + SubdivisionEngine.insertPoint() to subdivide the picked
+         edge at the parametric click position. (medium-hard)
+[ ] FM3. Bridge stub — form-bridge sets status "requires edge-loop picker (blocked)".
+         Needs a two-step edge-loop picker + SubdivisionEngine.bridge() to generate quad
+         faces connecting two selected open boundary rings. (hard)
+[ ] FM4. Fill Hole stub — form-fill-hole sets status "requires boundary-edge picker
+         (blocked)". Needs a boundary-edge picker + SubdivisionEngine.fillHole() to cap
+         an open loop with a planar or minimal-surface patch. (medium-hard)
+[ ] FM5. Weld stub — form-weld sets status "requires multi-vertex picker (blocked)".
+         Needs multi-vertex selection + SubdivisionEngine.weld() to merge coincident or
+         near-coincident vertices into a single vertex. (medium)
+[ ] FM6. Unweld stub — form-unweld sets status "requires vertex-picker (blocked)".
+         Needs vertex-picker + SubdivisionEngine.unweld() to split a shared vertex into
+         per-face copies, opening a seam. (medium)
+[ ] FM7. Flatten stub — form-flatten sets status "requires plane-projection solver
+         (blocked)". Needs selection of vertices + a target plane, then projects each
+         vertex onto that plane while holding edge lengths. (medium-hard)
+[ ] FM8. Make Uniform stub — form-uniform sets status "requires length-equalizer
+         (blocked)". Needs SubdivisionEngine.makeUniform() to equalize edge lengths
+         across the cage via iterative Laplacian smoothing of edge midpoints. (medium-hard)
+[ ] FM9. Pull stub — form-pull sets status "requires limit-surface solver (blocked)".
+         Needs SubdivisionEngine.pullToLimitSurface() to move cage vertices toward the
+         Catmull-Clark limit positions (approximating a smooth surface fit). (hard)
+[ ] FM10. Interpolate stub — form-interpolate sets status "requires interpolation solver
+          (blocked)". Needs a through-point interpolation system: fit a control cage such
+          that the smooth limit surface passes through given world-space points. (very hard)
+[ ] FM11. Thicken Form stub — form-thicken sets status "requires offset-cage engine
+          (blocked)". Needs SubdivisionEngine.thickenCage() to offset each cage vertex
+          outward along its averaged normal, generating a double-sided shell cage body. (hard)
 
-── TIMELINE GROUPING ─────────────────────────────────────────
-[ ] MM4. Timeline feature grouping / folders — Fusion: select multiple timeline features,
-         right-click → "Group" creates a named, collapsible folder. Timeline.tsx renders a flat
-         list only; there is no grouping concept in features[] or cadStore (no parentGroupId,
-         no FeatureGroup type, no collapse state). Needs a FeatureGroup wrapper type, group
-         create/rename/delete actions in cadStore, and collapsible rendering in Timeline.tsx.
+═══════════════════════════════════════════════════════════════
+SHEET METAL WORKSPACE — ENTIRELY MISSING
+═══════════════════════════════════════════════════════════════
+All four Sheet Metal tools are inline setStatusMessage('Sheet Metal: X — coming soon')
+in Toolbar.tsx with zero dialog files, no store actions, and no GeometryEngine calls.
+No dialogs/sheet-metal/ folder exists. The entire workspace is a placeholder.
+
+[ ] SM1. Flange — Fusion: Sheet Metal > Create > Flange — extrudes a thin wall from a
+         selected edge, bending at a given angle with configurable relief cuts and K-factor.
+         Needs: FlangePath sheet metal feature type, GeometryEngine.sheetFlange(), store
+         action, dialog with edge-picker + angle + thickness + relief params. (hard)
+[ ] SM2. Bend — Fusion: Sheet Metal > Create > Bend — adds a bend line to an existing
+         sheet face; folds the face at that line. Needs: bend-line picker, BendDialog,
+         GeometryEngine.sheetBend() (rotate face around bend line with K-factor). (hard)
+[ ] SM3. Unfold — Fusion: Sheet Metal > Modify > Unfold — flattens a bent sheet metal
+         body into its flat-pattern layout. Needs: inverse of all bend transforms applied
+         to unfold face planes into a single flat geometry. (very hard)
+[ ] SM4. Flat Pattern — Fusion: Sheet Metal > Modify > Flat Pattern — persistent flat-
+         pattern view (separate from Unfold; stays linked to the parametric model and
+         updates on feature edits). Tied to Unfold + parametric recompute (MM5). (very hard)
+
+═══════════════════════════════════════════════════════════════
+PLASTIC WORKSPACE — MISSING TOOLS
+═══════════════════════════════════════════════════════════════
+SnapFit and LipGroove already have real dialogs (wired to openSnapFitDialog /
+openLipGrooveDialog). Boss and Draft are inline stubs with no dialog infrastructure.
+
+[x] PL1. Boss stub — Toolbar: onClick = setStatusMessage('Plastic: Boss — coming soon');
+         no dialog, no store action. Fusion: Boss creates a cylindrical boss (raised hub
+         with draft and fillet) for screw attachment. Needs BossDialog (diameter, height,
+         wall thickness, draft angle, head fillet) + GeometryEngine boss-geometry builder.
          (medium)
+[x] PL2. Plastic Draft stub — Toolbar: onClick = setStatusMessage('Plastic: Draft —
+         coming soon'); no dialog. Note: Solid > Modify > Draft already has DraftDialog
+         (SLD11 above); the Plastic tab version is meant to be a shortcut alias. Easiest
+         fix: wire PL2 onClick to setActiveDialog('draft') reusing the existing DraftDialog
+         rather than building a new one. (easy)
 
-── PARAMETRIC RECOMPUTE ──────────────────────────────────────
-[ ] MM5. Feature dependency graph / parametric recompute — Fusion recomputes all downstream
-         features when an upstream sketch or feature param is changed (e.g., editing an extrude
-         height updates a subsequent fillet automatically). updateFeatureParams() updates params
-         in-place only; no dependency graph edges exist in cadStore, and no recompute chain
-         propagates changes to dependent features. Needs a DAG of feature dependencies and a
-         topological recompute pass triggered by param edits. (very hard)
+═══════════════════════════════════════════════════════════════
+UTILITIES / MANAGE — MISSING FEATURES
+═══════════════════════════════════════════════════════════════
 
-── IN-CONTEXT EDITING ────────────────────────────────────────
-[ ] MM6. In-context component editing — Fusion: double-click a sub-component in the viewport or
-         browser to activate it while the full assembly remains visible as translucent context;
-         geometry from other components can be projected into the active sketch as reference.
-         activeComponentId exists in componentStore but all features still go into the global
-         features[] list regardless of which component is active; no cross-component reference
-         geometry system exists. (hard)
-[ ] MM7. "Finish Edit In Place" UX — Fusion shows a yellow "Finish Edit In Place" banner and
-         dims all non-active components when a sub-component is being edited in context.
-         No visual isolation, no dimming of other components, and no finish-editing workflow
-         exists in our app. Tied to MM6. (medium)
-
+[x] UTL1. Show All / Hide — Utilities tab DISPLAY section has Show All and Hide buttons
+          that both call setStatusMessage('Show All/Hide: coming soon'). Should toggle
+          feature.visible on all features (Show All) or on the currently selected feature
+          (Hide). useCADStore already has visible per feature; just wire the buttons. (easy)
+[x] UTL2. Save — Quick Access Bar Save button and the title area have no save logic;
+          onClick = setStatusMessage('Save: coming soon'). Needs serialization of cadStore
+          features[], sketches[], componentStore components/joints, and formBodies[] to
+          JSON, then download-as-file or IndexedDB persist. Undo/Redo (MM2) and Save are
+          tightly coupled — a save format should capture the full store snapshot. (hard)
 
 ═══════════════════════════════════════════════════════════════
 RECENTLY COMPLETED (this session)

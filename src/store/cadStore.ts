@@ -1,7 +1,7 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import * as THREE from 'three';
-import type { Tool, ViewMode, SketchPlane, Sketch, SketchEntity, SketchPoint, SketchConstraint, SketchDimension, Feature, Parameter, BooleanOperation, FormCage, FormSelection, FormElementType, ConstructionPlane, ConstructionAxis, ConstructionPoint, JointOriginRecord, InterferenceResult, ContactSetEntry } from '../types/cad';
+import type { Tool, ViewMode, SketchPlane, Sketch, SketchEntity, SketchPoint, SketchConstraint, SketchDimension, Feature, FeatureGroup, Parameter, BooleanOperation, FormCage, FormSelection, FormElementType, ConstructionPlane, ConstructionAxis, ConstructionPoint, JointOriginRecord, InterferenceResult, ContactSetEntry } from '../types/cad';
 import type { InsertComponentParams } from '../components/dialogs/assembly/InsertComponentDialog';
 import type { SnapFitParams } from '../components/dialogs/solid/SnapFitDialog';
 import type { LipGrooveParams } from '../components/dialogs/solid/LipGrooveDialog';
@@ -125,6 +125,18 @@ interface CADState {
   setRollbackIndex: (index: number) => void;
   selectedFeatureId: string | null;
   setSelectedFeatureId: (id: string | null) => void;
+
+  // MM3 — Base Feature container
+  baseFeatureActive: boolean;
+  openBaseFeature: (name: string) => void;
+  finishBaseFeature: () => void;
+
+  // MM4 — Timeline feature groups
+  featureGroups: FeatureGroup[];
+  createFeatureGroup: (name: string, featureIds: string[]) => void;
+  renameFeatureGroup: (groupId: string, name: string) => void;
+  deleteFeatureGroup: (groupId: string) => void;
+  toggleFeatureGroup: (groupId: string) => void;
 
   // Selection
   selectedEntityIds: string[];
@@ -432,6 +444,28 @@ interface CADState {
   reduceMesh: (featureId: string, reductionPercent: number) => void;
   // D115 Reverse Normals
   reverseNormals: (featureId: string) => void;
+
+  // UTL1 — Show All / Hide
+  showAllFeatures: () => void;
+  hideFeature: (id: string) => void;
+
+  // MSH8 — Reverse Normal (commit)
+  commitReverseNormal: (featureId: string) => void;
+
+  // MSH7 — Mesh Combine (commit)
+  commitMeshCombine: (featureIds: string[]) => void;
+
+  // MSH11 — Mesh Transform (commit)
+  commitMeshTransform: (featureId: string, params: { tx: number; ty: number; tz: number; rx: number; ry: number; rz: number; scale: number }) => void;
+
+  // SLD13 — Scale (commit)
+  commitScale: (featureId: string, sx: number, sy: number, sz: number) => void;
+
+  // SLD12 — Combine / Boolean (commit)
+  commitCombine: (targetFeatureId: string, toolFeatureId: string, operation: 'join' | 'cut' | 'intersect', keepTool: boolean) => void;
+
+  // SLD17 — Mirror feature (commit)
+  commitMirrorFeature: (featureId: string, plane: 'XY' | 'XZ' | 'YZ') => void;
 
   // D6 Fillet edge selection
   filletEdgeIds: string[];
@@ -776,6 +810,96 @@ interface CADState {
   openSurfacePrimitivesDialog(): void;
   closeSurfacePrimitivesDialog(): void;
   commitSurfacePrimitive(params: import('../components/dialogs/surface/SurfacePrimitivesDialog').SurfacePrimitiveParams): void;
+
+  // ── MM1 — Design history mode ───────────────────────────────────────────
+  historyEnabled: boolean;
+  toggleHistoryMode: () => void;
+
+  // ── MM2 — Undo / Redo ────────────────────────────────────────────────────
+  undoStack: string[];
+  redoStack: string[];
+  pushUndo(): void;
+  undo(): void;
+  redo(): void;
+
+  // ── SLD7 — Linear Pattern ─────────────────────────────────────────────────
+  commitLinearPattern(featureId: string, params: {
+    dirX: number; dirY: number; dirZ: number;
+    spacing: number; count: number;
+    dir2X?: number; dir2Y?: number; dir2Z?: number;
+    spacing2?: number; count2?: number;
+  }): void;
+
+  // ── SLD8 — Circular Pattern ───────────────────────────────────────────────
+  commitCircularPattern(featureId: string, params: {
+    axisX: number; axisY: number; axisZ: number;
+    originX: number; originY: number; originZ: number;
+    count: number; totalAngle: number;
+  }): void;
+
+  // ── MSH2 — Plane Cut ─────────────────────────────────────────────────────
+  commitPlaneCut(featureId: string, planeNormal: THREE.Vector3, planeOffset: number, keepSide: 'positive' | 'negative'): void;
+
+  // ── MSH3 — Make Closed Mesh ──────────────────────────────────────────────
+  commitMakeClosedMesh(featureId: string): void;
+
+  // ── MSH5 — Mesh Smooth ───────────────────────────────────────────────────
+  commitMeshSmooth(featureId: string, iterations: number, factor: number): void;
+
+  // ── MSH10 — Separate ─────────────────────────────────────────────────────
+  commitMeshSeparate(featureId: string): void;
+
+  // ── MSH13 — Mesh Section Sketch ──────────────────────────────────────────
+  commitMeshSectionSketch(featureId: string, plane: THREE.Plane): void;
+
+  // ── UTL2 — Save / Load ───────────────────────────────────────────────────
+  saveToFile(): void;
+  loadFromFile(json: string): void;
+
+  // ── SLD1 — Rib (dialog-based) ────────────────────────────────────────────
+  commitRibFromDialog(sketchId: string, thickness: number, height: number): void;
+
+  // ── SLD2 — Web (dialog-based) ────────────────────────────────────────────
+  commitWeb(sketchId: string, thickness: number, height: number): void;
+
+  // ── SLD4 — Rest ──────────────────────────────────────────────────────────
+  commitRest(params: { profileId: string; width: number; depth: number; thickness: number; normalX: number; normalY: number; normalZ: number; centerX: number; centerY: number; centerZ: number }): void;
+
+  // ── SLD5 — Thread (cosmetic) ─────────────────────────────────────────────
+  commitThread(featureId: string, radius: number, pitch: number, length: number): void;
+
+  // ── SLD9 — Pattern on Path ───────────────────────────────────────────────
+  commitPatternOnPath(featureId: string, sketchId: string, count: number): void;
+
+  // ── MSH1 — Remesh ────────────────────────────────────────────────────────
+  commitRemesh(featureId: string, mode: 'refine' | 'coarsen', iterations: number): void;
+
+  // ── PL1 — Boss ───────────────────────────────────────────────────────────
+  showBossDialog: boolean;
+  openBossDialog(): void;
+  closeBossDialog(): void;
+  commitBoss(params: { diameter: number; height: number; wallThickness: number; draftAngle: number; headFillet: number }): void;
+
+  // ── SLD10 — Shell ────────────────────────────────────────────────────────
+  commitShell(featureId: string, thickness: number, direction: 'inward' | 'outward' | 'symmetric'): void;
+
+  // ── SLD11 — Draft ────────────────────────────────────────────────────────
+  commitDraft(featureId: string, pullAxisDir: THREE.Vector3, draftAngle: number, fixedPlaneY: number): void;
+
+  // ── SLD14 — Offset Face ──────────────────────────────────────────────────
+  commitOffsetFace(featureId: string, distance: number): void;
+
+  // ── SLD16 — Remove Face ──────────────────────────────────────────────────
+  commitRemoveFace(featureId: string, faceNormal: THREE.Vector3, faceCentroid: THREE.Vector3): void;
+
+  // ── SLD3 — Emboss ────────────────────────────────────────────────────────
+  commitEmboss(sketchId: string, depth: number, style: 'emboss' | 'deboss'): void;
+
+  // ── SLD6 — Boundary Fill ─────────────────────────────────────────────────
+  commitBoundaryFill(toolFeatureIds: string[], operation: 'new-body' | 'join' | 'cut'): void;
+
+  // ── SLD15 — Silhouette Split ─────────────────────────────────────────────
+  commitSilhouetteSplit(featureId: string, planeNormal: THREE.Vector3, planeOffset: number): void;
 }
 
 // Plane normals consistent with the visual selector (Three.js Y-up):
@@ -854,6 +978,23 @@ const REVOLVE_DEFAULTS = {
   // D103 body kind
   revolveBodyKind: 'solid' as 'solid' | 'surface',
 };
+
+// ── MM2: snapshot helper ─────────────────────────────────────────────────
+function _snapshotState(state: CADState): string {
+  return JSON.stringify({
+    features: state.features.map((f) => ({
+      ...f,
+      // Strip non-serialisable THREE objects — same approach as serializeFeature
+      mesh: undefined,
+    })),
+    sketches: state.sketches.map((s) => ({
+      ...s,
+      planeNormal: s.planeNormal ? [s.planeNormal.x, s.planeNormal.y, s.planeNormal.z] : null,
+      planeOrigin: s.planeOrigin ? [s.planeOrigin.x, s.planeOrigin.y, s.planeOrigin.z] : null,
+    })),
+    featureGroups: state.featureGroups,
+  });
+}
 
 export const useCADStore = create<CADState>()(persist((set, get) => ({
   activeTool: 'select',
@@ -1067,6 +1208,7 @@ export const useCADStore = create<CADState>()(persist((set, get) => ({
   addSketchEntity: (entity) => {
     const { activeSketch } = get();
     if (activeSketch) {
+      get().pushUndo();
       set({
         activeSketch: {
           ...activeSketch,
@@ -1145,15 +1287,18 @@ export const useCADStore = create<CADState>()(persist((set, get) => ({
     };
   }),
 
-  deleteSketch: (id) => set((state) => {
-    const activeSketch = state.activeSketch?.id === id ? null : state.activeSketch;
-    return {
-      sketches: state.sketches.filter((s) => s.id !== id),
-      features: state.features.filter((f) => !(f.type === 'sketch' && f.sketchId === id)),
-      activeSketch,
-      statusMessage: 'Sketch deleted',
-    };
-  }),
+  deleteSketch: (id) => {
+    get().pushUndo();
+    set((state) => {
+      const activeSketch = state.activeSketch?.id === id ? null : state.activeSketch;
+      return {
+        sketches: state.sketches.filter((s) => s.id !== id),
+        features: state.features.filter((f) => !(f.type === 'sketch' && f.sketchId === id)),
+        activeSketch,
+        statusMessage: 'Sketch deleted',
+      };
+    });
+  },
 
   renameSketch: (id, name) => set((state) => ({
     sketches: state.sketches.map((s) => s.id !== id ? s : { ...s, name }),
@@ -1169,9 +1314,12 @@ export const useCADStore = create<CADState>()(persist((set, get) => ({
   })),
 
   features: [],
-  addFeature: (feature) => set((state) => ({
-    features: [...state.features, feature],
-  })),
+  addFeature: (feature) => {
+    const { historyEnabled } = get();
+    if (historyEnabled) get().pushUndo();
+    const f = historyEnabled ? feature : { ...feature, suppressTimeline: true };
+    set((state) => ({ features: [...state.features, f] }));
+  },
   addPrimitive: (kind, params) => set((state) => {
     const label =
       kind === 'box' ? 'Box' :
@@ -1212,20 +1360,24 @@ export const useCADStore = create<CADState>()(persist((set, get) => ({
       statusMessage: `${label} added`,
     };
   }),
-  removeFeature: (id) => set((state) => {
-    const target = state.features.find((f) => f.id === id);
+  removeFeature: (id) => {
+    get().pushUndo();
+    const target = get().features.find((f) => f.id === id);
     if (target?.mesh) target.mesh.geometry?.dispose();
-    return { features: state.features.filter((f) => f.id !== id) };
-  }),
+    set((state) => ({ features: state.features.filter((f) => f.id !== id) }));
+  },
   // D186 Edit Feature state
   editingFeatureId: null,
   setEditingFeatureId: (id) => set({ editingFeatureId: id }),
-  updateFeatureParams: (id, params) => set((state) => ({
-    features: state.features.map((f) =>
-      f.id === id ? { ...f, params: { ...f.params, ...params } } : f,
-    ),
-    statusMessage: 'Feature parameters updated',
-  })),
+  updateFeatureParams: (id, params) => {
+    get().pushUndo();
+    set((state) => ({
+      features: state.features.map((f) =>
+        f.id === id ? { ...f, params: { ...f.params, ...params } } : f,
+      ),
+      statusMessage: 'Feature parameters updated',
+    }));
+  },
   // D189 reorder feature
   reorderFeature: (id, newIndex) => set((state) => {
     const idx = state.features.findIndex((f) => f.id === id);
@@ -1239,6 +1391,64 @@ export const useCADStore = create<CADState>()(persist((set, get) => ({
   // D190 rollback bar
   rollbackIndex: -1,
   setRollbackIndex: (index) => set({ rollbackIndex: index }),
+
+  // MM3 — Base Feature container
+  baseFeatureActive: false,
+  openBaseFeature: (name) => {
+    const { features } = get();
+    const n = features.filter((f) => f.type === 'base-feature').length + 1;
+    const feature: Feature = {
+      id: crypto.randomUUID(),
+      name: name || `Base Feature ${n}`,
+      type: 'base-feature',
+      params: {},
+      visible: true,
+      suppressed: false,
+      timestamp: Date.now(),
+      isBaseFeatureContainer: true,
+      baseFeatureOpen: true,
+    };
+    set((state) => ({
+      features: [...state.features, feature],
+      baseFeatureActive: true,
+      statusMessage: 'Base Feature open — direct edits inside will not trigger parametric recompute',
+    }));
+  },
+  finishBaseFeature: () => set((state) => ({
+    baseFeatureActive: false,
+    // Mark the open container as closed
+    features: state.features.map((f) =>
+      f.isBaseFeatureContainer && f.baseFeatureOpen ? { ...f, baseFeatureOpen: false } : f,
+    ),
+    statusMessage: 'Base Feature closed',
+  })),
+
+  // MM4 — Timeline feature groups
+  featureGroups: [],
+  createFeatureGroup: (name, featureIds) => {
+    const groupId = crypto.randomUUID();
+    set((state) => ({
+      featureGroups: [...state.featureGroups, { id: groupId, name, collapsed: false }],
+      features: state.features.map((f) =>
+        featureIds.includes(f.id) ? { ...f, groupId } : f,
+      ),
+      statusMessage: `Group "${name}" created`,
+    }));
+  },
+  renameFeatureGroup: (groupId, name) => set((state) => ({
+    featureGroups: state.featureGroups.map((g) => g.id === groupId ? { ...g, name } : g),
+    statusMessage: `Group renamed to "${name}"`,
+  })),
+  deleteFeatureGroup: (groupId) => set((state) => ({
+    featureGroups: state.featureGroups.filter((g) => g.id !== groupId),
+    features: state.features.map((f) => f.groupId === groupId ? { ...f, groupId: undefined } : f),
+    statusMessage: 'Group deleted',
+  })),
+  toggleFeatureGroup: (groupId) => set((state) => ({
+    featureGroups: state.featureGroups.map((g) =>
+      g.id === groupId ? { ...g, collapsed: !g.collapsed } : g,
+    ),
+  })),
   // D119 Tessellate
   tessellateFeature: (featureId) => {
     const { features } = get();
@@ -1322,6 +1532,186 @@ export const useCADStore = create<CADState>()(persist((set, get) => ({
     }
     get().setStatusMessage('Normals reversed');
   },
+  // UTL1 — Show All / Hide
+  showAllFeatures: () => set((state) => ({
+    features: state.features.map((f) => ({ ...f, visible: true })),
+    statusMessage: 'All features shown',
+  })),
+  hideFeature: (id) => set((state) => ({
+    features: state.features.map((f) => f.id === id ? { ...f, visible: false } : f),
+    statusMessage: 'Feature hidden',
+  })),
+
+  // MSH8 — commitReverseNormal: clone geometry with flipped normals
+  commitReverseNormal: (featureId) => {
+    const { features } = get();
+    const feature = features.find((f) => f.id === featureId);
+    if (!feature?.mesh) {
+      get().setStatusMessage('Reverse Normal: no mesh on selected feature');
+      return;
+    }
+    const srcMesh = feature.mesh as THREE.Mesh;
+    if (!(srcMesh instanceof THREE.Mesh)) {
+      get().setStatusMessage('Reverse Normal: feature is not a mesh');
+      return;
+    }
+    const newMesh = GeometryEngine.reverseMeshNormals(srcMesh);
+    newMesh.castShadow = true;
+    newMesh.receiveShadow = true;
+    set((state) => ({
+      features: state.features.map((f) => f.id === featureId ? { ...f, mesh: newMesh } : f),
+      statusMessage: 'Mesh normals reversed',
+    }));
+  },
+
+  // MSH7 — commitMeshCombine: merge all listed feature meshes into one
+  commitMeshCombine: (featureIds) => {
+    const { features } = get();
+    const meshes: THREE.Mesh[] = [];
+    for (const fid of featureIds) {
+      const f = features.find((x) => x.id === fid);
+      if (f?.mesh instanceof THREE.Mesh) meshes.push(f.mesh as THREE.Mesh);
+    }
+    if (meshes.length < 2) {
+      get().setStatusMessage('Mesh Combine: need at least 2 mesh features');
+      return;
+    }
+    const combined = GeometryEngine.combineMeshes(meshes);
+    combined.castShadow = true;
+    combined.receiveShadow = true;
+    const n = features.filter((f) => f.name.startsWith('Mesh Combine')).length + 1;
+    const newFeature: Feature = {
+      id: crypto.randomUUID(),
+      name: `Mesh Combine ${n}`,
+      type: 'import',
+      params: { featureKind: 'mesh-combine', sourceIds: featureIds },
+      visible: true,
+      suppressed: false,
+      timestamp: Date.now(),
+      mesh: combined,
+      bodyKind: 'mesh',
+    };
+    set((state) => ({
+      features: [...state.features, newFeature],
+      statusMessage: 'Meshes combined',
+    }));
+  },
+
+  // MSH11 — commitMeshTransform: apply translate/rotate/scale to a mesh
+  commitMeshTransform: (featureId, params) => {
+    const { features } = get();
+    const feature = features.find((f) => f.id === featureId);
+    if (!feature?.mesh) {
+      get().setStatusMessage('Mesh Transform: no mesh on selected feature');
+      return;
+    }
+    const srcMesh = feature.mesh as THREE.Mesh;
+    if (!(srcMesh instanceof THREE.Mesh)) {
+      get().setStatusMessage('Mesh Transform: feature is not a mesh');
+      return;
+    }
+    const newMesh = GeometryEngine.transformMesh(srcMesh, params);
+    newMesh.castShadow = true;
+    newMesh.receiveShadow = true;
+    set((state) => ({
+      features: state.features.map((f) => f.id === featureId ? { ...f, mesh: newMesh } : f),
+      statusMessage: 'Mesh transformed',
+    }));
+  },
+
+  // SLD13 — commitScale: scale a feature mesh by sx/sy/sz
+  commitScale: (featureId, sx, sy, sz) => {
+    const { features } = get();
+    const feature = features.find((f) => f.id === featureId);
+    if (!feature?.mesh) {
+      get().setStatusMessage('Scale: no mesh on selected feature');
+      return;
+    }
+    const srcMesh = feature.mesh as THREE.Mesh;
+    if (!(srcMesh instanceof THREE.Mesh)) {
+      get().setStatusMessage('Scale: feature is not a mesh');
+      return;
+    }
+    const newMesh = GeometryEngine.scaleMesh(srcMesh, sx, sy, sz);
+    newMesh.castShadow = true;
+    newMesh.receiveShadow = true;
+    set((state) => ({
+      features: state.features.map((f) => f.id === featureId ? { ...f, mesh: newMesh } : f),
+      statusMessage: `Scaled ${sx}×${sy}×${sz}`,
+    }));
+  },
+
+  // SLD12 — commitCombine: boolean op on two feature meshes
+  commitCombine: (targetFeatureId, toolFeatureId, operation, keepTool) => {
+    const { features } = get();
+    const targetFeature = features.find((f) => f.id === targetFeatureId);
+    const toolFeature = features.find((f) => f.id === toolFeatureId);
+    if (!targetFeature?.mesh || !(targetFeature.mesh instanceof THREE.Mesh)) {
+      get().setStatusMessage('Combine: target has no mesh');
+      return;
+    }
+    if (!toolFeature?.mesh || !(toolFeature.mesh instanceof THREE.Mesh)) {
+      get().setStatusMessage('Combine: tool has no mesh');
+      return;
+    }
+    const tgtMesh = targetFeature.mesh as THREE.Mesh;
+    const toolMesh = toolFeature.mesh as THREE.Mesh;
+    let resultGeom: THREE.BufferGeometry;
+    if (operation === 'join') {
+      resultGeom = GeometryEngine.csgUnion(tgtMesh.geometry, toolMesh.geometry);
+    } else if (operation === 'cut') {
+      resultGeom = GeometryEngine.csgSubtract(tgtMesh.geometry, toolMesh.geometry);
+    } else {
+      resultGeom = GeometryEngine.csgIntersect(tgtMesh.geometry, toolMesh.geometry);
+    }
+    const newMesh = new THREE.Mesh(resultGeom, tgtMesh.material);
+    newMesh.castShadow = true;
+    newMesh.receiveShadow = true;
+    set((state) => {
+      let updated = state.features.map((f) =>
+        f.id === targetFeatureId ? { ...f, mesh: newMesh } : f
+      );
+      if (!keepTool) {
+        updated = updated.filter((f) => f.id !== toolFeatureId);
+      }
+      return { features: updated, statusMessage: `Combine (${operation}) applied` };
+    });
+  },
+
+  // SLD17 — commitMirrorFeature: mirror a feature's mesh across a plane
+  commitMirrorFeature: (featureId, plane) => {
+    const { features } = get();
+    const feature = features.find((f) => f.id === featureId);
+    if (!feature?.mesh) {
+      get().setStatusMessage('Mirror Feature: no mesh on selected feature');
+      return;
+    }
+    const srcMesh = feature.mesh as THREE.Mesh;
+    if (!(srcMesh instanceof THREE.Mesh)) {
+      get().setStatusMessage('Mirror Feature: feature is not a mesh');
+      return;
+    }
+    const mirrored = GeometryEngine.mirrorMesh(srcMesh, plane);
+    mirrored.castShadow = true;
+    mirrored.receiveShadow = true;
+    const n = features.filter((f) => f.name.startsWith('Mirror Feature')).length + 1;
+    const newFeature: Feature = {
+      id: crypto.randomUUID(),
+      name: `Mirror Feature ${n}`,
+      type: 'mirror',
+      params: { featureKind: 'mirror-feature', sourceId: featureId, plane },
+      visible: true,
+      suppressed: false,
+      timestamp: Date.now(),
+      mesh: mirrored,
+      bodyKind: feature.bodyKind,
+    };
+    set((state) => ({
+      features: [...state.features, newFeature],
+      statusMessage: `Feature mirrored on ${plane} plane`,
+    }));
+  },
+
   toggleFeatureVisibility: (id) => set((state) => ({
     features: state.features.map((f) =>
       f.id === id ? { ...f, visible: !f.visible } : f
@@ -1842,6 +2232,7 @@ export const useCADStore = create<CADState>()(persist((set, get) => ({
         c.entityIds.join(',') === constraint.entityIds.join(',')
     );
     if (exists) return;
+    get().pushUndo();
     set({
       sketches: get().sketches.map(s => s.id === activeSketch.id
         ? { ...s, constraints: [...(s.constraints ?? []), constraint] }
@@ -2108,7 +2499,7 @@ export const useCADStore = create<CADState>()(persist((set, get) => ({
       let bodyId: string | undefined;
       if (finalOperation === 'new-body') {
         const componentStore = useComponentStore.getState();
-        componentId = componentStore.activeComponentId;
+        componentId = componentStore.activeComponentId ?? componentStore.rootComponentId;
         const bodyCount = Object.keys(componentStore.bodies).length + 1;
         const bodyLabel = `${resolvedBodyKind === 'surface' ? 'Surface' : 'Body'} ${bodyCount}`;
         const createdBodyId = componentStore.addBody(componentId, bodyLabel);
@@ -2721,6 +3112,7 @@ export const useCADStore = create<CADState>()(persist((set, get) => ({
     const { activeSketch } = get();
     if (!activeSketch) return;
     if ((activeSketch.dimensions ?? []).some((d) => d.id === dim.id)) return;
+    get().pushUndo();
     set({
       sketches: get().sketches.map((s) =>
         s.id === activeSketch.id
@@ -3898,6 +4290,720 @@ export const useCADStore = create<CADState>()(persist((set, get) => ({
     get().addFeature(feature);
     set({ activeDialog: null, showSurfacePrimitivesDialog: false });
     get().setStatusMessage(`Surface ${params.type} primitive created`);
+  },
+
+  // ── MM1 — Design history mode ───────────────────────────────────────────
+  historyEnabled: true,
+  toggleHistoryMode: () => {
+    const next = !get().historyEnabled;
+    set({
+      historyEnabled: next,
+      statusMessage: next
+        ? 'Parametric mode — design history recording resumed'
+        : 'Direct Modeling mode — design history not captured',
+    });
+  },
+
+  // ── MM2 — Undo / Redo ────────────────────────────────────────────────────
+  undoStack: [],
+  redoStack: [],
+
+  pushUndo: () => {
+    const state = get();
+    const snapshot = _snapshotState(state);
+    const next = [...state.undoStack, snapshot];
+    set({ undoStack: next.length > 50 ? next.slice(next.length - 50) : next, redoStack: [] });
+  },
+
+  undo: () => {
+    const state = get();
+    if (state.undoStack.length === 0) return;
+    const currentSnapshot = _snapshotState(state);
+    const stack = [...state.undoStack];
+    const snapshot = stack.pop()!;
+    try {
+      const parsed = JSON.parse(snapshot) as {
+        features: Feature[];
+        sketches: Array<Sketch & { planeNormal: [number, number, number] | null; planeOrigin: [number, number, number] | null }>;
+        featureGroups: FeatureGroup[];
+      };
+      set({
+        undoStack: stack,
+        redoStack: [...state.redoStack, currentSnapshot],
+        features: parsed.features.map((f) => deserializeFeature(f as Feature)),
+        sketches: parsed.sketches.map((s) => deserializeSketch(s as unknown as Sketch)),
+        featureGroups: parsed.featureGroups,
+        statusMessage: 'Undo',
+      });
+    } catch { /* malformed snapshot — silently skip */ }
+  },
+
+  redo: () => {
+    const state = get();
+    if (state.redoStack.length === 0) return;
+    const currentSnapshot = _snapshotState(state);
+    const stack = [...state.redoStack];
+    const snapshot = stack.pop()!;
+    try {
+      const parsed = JSON.parse(snapshot) as {
+        features: Feature[];
+        sketches: Array<Sketch & { planeNormal: [number, number, number] | null; planeOrigin: [number, number, number] | null }>;
+        featureGroups: FeatureGroup[];
+      };
+      set({
+        redoStack: stack,
+        undoStack: [...state.undoStack, currentSnapshot],
+        features: parsed.features.map((f) => deserializeFeature(f as Feature)),
+        sketches: parsed.sketches.map((s) => deserializeSketch(s as unknown as Sketch)),
+        featureGroups: parsed.featureGroups,
+        statusMessage: 'Redo',
+      });
+    } catch { /* malformed snapshot — silently skip */ }
+  },
+
+  // ── SLD7 — Linear Pattern ─────────────────────────────────────────────────
+  commitLinearPattern: (featureId, params) => {
+    const { features } = get();
+    const srcFeature = features.find((f) => f.id === featureId);
+    const srcMesh = srcFeature?.mesh as THREE.Mesh | undefined;
+    if (!srcFeature || !srcMesh?.isMesh) {
+      get().setStatusMessage('Linear Pattern: no mesh found for selected feature');
+      return;
+    }
+    const copies = GeometryEngine.linearPattern(srcMesh, params);
+    const newFeatures: Feature[] = copies.map((copy, idx) => ({
+      id: crypto.randomUUID(),
+      name: `${srcFeature.name} (Pattern ${idx + 2})`,
+      type: 'primitive' as Feature['type'],
+      params: { featureKind: 'linear-pattern-copy', sourceFeatureId: featureId, index: idx + 2 },
+      mesh: copy,
+      visible: true,
+      suppressed: false,
+      timestamp: Date.now(),
+      bodyKind: srcFeature.bodyKind ?? 'solid',
+    }));
+    set({ features: [...features, ...newFeatures] });
+    get().setStatusMessage(`Linear Pattern: created ${copies.length} copies`);
+  },
+
+  // ── SLD8 — Circular Pattern ───────────────────────────────────────────────
+  commitCircularPattern: (featureId, params) => {
+    const { features } = get();
+    const srcFeature = features.find((f) => f.id === featureId);
+    const srcMesh = srcFeature?.mesh as THREE.Mesh | undefined;
+    if (!srcFeature || !srcMesh?.isMesh) {
+      get().setStatusMessage('Circular Pattern: no mesh found for selected feature');
+      return;
+    }
+    const copies = GeometryEngine.circularPattern(srcMesh, params);
+    const newFeatures: Feature[] = copies.map((copy, idx) => ({
+      id: crypto.randomUUID(),
+      name: `${srcFeature.name} (Pattern ${idx + 2})`,
+      type: 'primitive' as Feature['type'],
+      params: { featureKind: 'circular-pattern-copy', sourceFeatureId: featureId, index: idx + 2 },
+      mesh: copy,
+      visible: true,
+      suppressed: false,
+      timestamp: Date.now(),
+      bodyKind: srcFeature.bodyKind ?? 'solid',
+    }));
+    set({ features: [...features, ...newFeatures] });
+    get().setStatusMessage(`Circular Pattern: created ${copies.length} copies`);
+  },
+
+  // ── MSH2 — Plane Cut ─────────────────────────────────────────────────────
+  commitPlaneCut: (featureId, planeNormal, planeOffset, keepSide) => {
+    const { features } = get();
+    const srcFeature = features.find((f) => f.id === featureId);
+    const srcMesh = srcFeature?.mesh as THREE.Mesh | undefined;
+    if (!srcFeature || !srcMesh?.isMesh) {
+      get().setStatusMessage('Plane Cut: no mesh found for selected feature');
+      return;
+    }
+    const result = GeometryEngine.planeCutMesh(srcMesh, planeNormal, planeOffset, keepSide);
+    const n = features.filter((f) => f.params?.featureKind === 'plane-cut').length + 1;
+    const newFeature: Feature = {
+      id: crypto.randomUUID(),
+      name: `Plane Cut ${n}`,
+      type: 'split-body' as Feature['type'],
+      params: {
+        featureKind: 'plane-cut',
+        sourceFeatureId: featureId,
+        normalX: planeNormal.x, normalY: planeNormal.y, normalZ: planeNormal.z,
+        offset: planeOffset, keepSide,
+      },
+      mesh: result,
+      visible: true,
+      suppressed: false,
+      timestamp: Date.now(),
+      bodyKind: srcFeature.bodyKind ?? 'mesh',
+    };
+    const nextFeatures = features.map((f) =>
+      f.id === featureId ? { ...f, visible: false } : f,
+    );
+    set({ features: [...nextFeatures, newFeature] });
+    get().setStatusMessage(`Plane Cut ${n}: applied`);
+  },
+
+  // ── MSH3 — Make Closed Mesh ──────────────────────────────────────────────
+  commitMakeClosedMesh: (featureId) => {
+    const { features } = get();
+    const srcFeature = features.find((f) => f.id === featureId);
+    const srcMesh = srcFeature?.mesh as THREE.Mesh | undefined;
+    if (!srcFeature || !srcMesh?.isMesh) {
+      get().setStatusMessage('Make Closed Mesh: no mesh found for selected feature');
+      return;
+    }
+    const result = GeometryEngine.makeClosedMesh(srcMesh);
+    const n = features.filter((f) => f.params?.featureKind === 'make-closed-mesh').length + 1;
+    const newFeature: Feature = {
+      id: crypto.randomUUID(),
+      name: `Closed Mesh ${n}`,
+      type: 'import' as Feature['type'],
+      params: { featureKind: 'make-closed-mesh', sourceFeatureId: featureId },
+      mesh: result,
+      visible: true,
+      suppressed: false,
+      timestamp: Date.now(),
+      bodyKind: 'mesh',
+    };
+    const nextFeatures = features.map((f) =>
+      f.id === featureId ? { ...f, visible: false } : f,
+    );
+    set({ features: [...nextFeatures, newFeature] });
+    get().setStatusMessage(`Closed Mesh ${n}: holes filled`);
+  },
+
+  // ── MSH5 — Mesh Smooth ───────────────────────────────────────────────────
+  commitMeshSmooth: (featureId, iterations, factor) => {
+    const { features } = get();
+    const srcFeature = features.find((f) => f.id === featureId);
+    const srcMesh = srcFeature?.mesh as THREE.Mesh | undefined;
+    if (!srcFeature || !srcMesh?.isMesh) {
+      get().setStatusMessage('Mesh Smooth: no mesh found for selected feature');
+      return;
+    }
+    const result = GeometryEngine.smoothMesh(srcMesh, iterations, factor);
+    const n = features.filter((f) => f.params?.featureKind === 'mesh-smooth').length + 1;
+    const newFeature: Feature = {
+      id: crypto.randomUUID(),
+      name: `Mesh Smooth ${n}`,
+      type: 'import' as Feature['type'],
+      params: { featureKind: 'mesh-smooth', sourceFeatureId: featureId, iterations, factor },
+      mesh: result,
+      visible: true,
+      suppressed: false,
+      timestamp: Date.now(),
+      bodyKind: 'mesh',
+    };
+    const nextFeatures = features.map((f) =>
+      f.id === featureId ? { ...f, visible: false } : f,
+    );
+    set({ features: [...nextFeatures, newFeature] });
+    get().setStatusMessage(`Mesh Smooth ${n}: ${iterations} iterations`);
+  },
+
+  // ── MSH10 — Separate ─────────────────────────────────────────────────────
+  commitMeshSeparate: (featureId) => {
+    const { features } = get();
+    const srcFeature = features.find((f) => f.id === featureId);
+    const srcMesh = srcFeature?.mesh as THREE.Mesh | undefined;
+    if (!srcFeature || !srcMesh?.isMesh) {
+      get().setStatusMessage('Mesh Separate: no mesh found for selected feature');
+      return;
+    }
+    const geos = GeometryEngine.unstitchSurface(srcMesh);
+    const newFeatures: Feature[] = geos.map((geo, idx) => {
+      const mat = new THREE.MeshPhysicalMaterial({
+        color: 0x8899aa, metalness: 0.3, roughness: 0.4, side: THREE.DoubleSide,
+      });
+      const partMesh = new THREE.Mesh(geo, mat);
+      partMesh.castShadow = true;
+      partMesh.receiveShadow = true;
+      return {
+        id: crypto.randomUUID(),
+        name: `${srcFeature.name} Part ${idx + 1}`,
+        type: 'split-body' as Feature['type'],
+        params: { featureKind: 'mesh-separate', sourceFeatureId: featureId, partIndex: idx },
+        mesh: partMesh,
+        visible: true,
+        suppressed: false,
+        timestamp: Date.now(),
+        bodyKind: srcFeature.bodyKind ?? 'mesh',
+      };
+    });
+    const nextFeatures = features
+      .filter((f) => f.id !== featureId)
+      .concat(newFeatures);
+    set({ features: nextFeatures });
+    get().setStatusMessage(`Mesh Separate: split into ${newFeatures.length} parts`);
+  },
+
+  // ── MSH13 — Mesh Section Sketch ──────────────────────────────────────────
+  commitMeshSectionSketch: (featureId, plane) => {
+    const { features, sketches } = get();
+    const srcFeature = features.find((f) => f.id === featureId);
+    const srcMesh = srcFeature?.mesh as THREE.Mesh | undefined;
+    if (!srcFeature || !srcMesh?.isMesh) {
+      get().setStatusMessage('Mesh Section Sketch: no mesh found for selected feature');
+      return;
+    }
+    const segments = GeometryEngine.meshSectionSketch(srcMesh, plane);
+    const entities: SketchEntity[] = segments.map(([a, b]) => ({
+      id: crypto.randomUUID(),
+      type: 'line' as SketchEntity['type'],
+      x1: a.x, y1: a.y, z1: a.z,
+      x2: b.x, y2: b.y, z2: b.z,
+    }));
+    const n = sketches.filter((s) => s.name.startsWith('Section Sketch')).length + 1;
+    const newSketch: Sketch = {
+      id: crypto.randomUUID(),
+      name: `Section Sketch ${n}`,
+      plane: 'XY' as SketchPlane,
+      planeNormal: plane.normal.clone(),
+      planeOrigin: new THREE.Vector3().copy(plane.normal).multiplyScalar(-plane.constant),
+      entities,
+      constraints: [],
+      dimensions: [],
+    };
+    set({ sketches: [...sketches, newSketch] });
+    get().setStatusMessage(`Mesh Section Sketch ${n}: ${entities.length} segments`);
+  },
+
+  // ── UTL2 — Save / Load ───────────────────────────────────────────────────
+  saveToFile: () => {
+    const state = get();
+    const saveObj = {
+      version: 1,
+      features: state.features.map((f) => serializeFeature(f)),
+      sketches: state.sketches.map((s) => ({
+        ...s,
+        planeNormal: s.planeNormal ? [s.planeNormal.x, s.planeNormal.y, s.planeNormal.z] : null,
+        planeOrigin: s.planeOrigin ? [s.planeOrigin.x, s.planeOrigin.y, s.planeOrigin.z] : null,
+      })),
+      featureGroups: state.featureGroups,
+      historyEnabled: state.historyEnabled,
+    };
+    const json = JSON.stringify(saveObj, null, 2);
+    const blob = new Blob([json], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'design.dzn';
+    a.click();
+    URL.revokeObjectURL(url);
+    get().setStatusMessage('Design saved to file');
+  },
+
+  loadFromFile: (json: string) => {
+    try {
+      const parsed = JSON.parse(json) as {
+        version: number;
+        features: Feature[];
+        sketches: Array<Sketch & { planeNormal: [number, number, number] | null; planeOrigin: [number, number, number] | null }>;
+        featureGroups: FeatureGroup[];
+        historyEnabled?: boolean;
+      };
+      set({
+        features: (parsed.features ?? []).map((f) => deserializeFeature(f)),
+        sketches: (parsed.sketches ?? []).map((s) => deserializeSketch(s as unknown as Sketch)),
+        featureGroups: parsed.featureGroups ?? [],
+        historyEnabled: parsed.historyEnabled ?? true,
+        statusMessage: 'Design loaded from file',
+      });
+    } catch {
+      get().setStatusMessage('Load failed: invalid file format');
+    }
+  },
+
+  // ── SLD1 — Rib (dialog-based) ─────────────────────────────────────────────
+  commitRibFromDialog: (sketchId, thickness, height) => {
+    const { features, sketches } = get();
+    const sketch = sketches.find((s) => s.id === sketchId);
+    if (!sketch) { get().setStatusMessage('Rib: sketch not found'); return; }
+    const pts: THREE.Vector3[] = [];
+    for (const e of sketch.entities) {
+      if (e.type === 'line' && e.x1 !== undefined) {
+        pts.push(new THREE.Vector3(e.x1, e.y1 ?? 0, e.z1 ?? 0));
+        pts.push(new THREE.Vector3(e.x2 ?? 0, e.y2 ?? 0, e.z2 ?? 0));
+      }
+    }
+    const normal = sketch.planeNormal?.clone() ?? new THREE.Vector3(0, 1, 0);
+    const ribMesh = pts.length >= 2 ? GeometryEngine.createRib(pts, thickness, height, normal) : undefined;
+    const n = features.filter((f) => f.type === 'rib').length + 1;
+    const feature: Feature = {
+      id: crypto.randomUUID(),
+      name: `Rib ${n}`,
+      type: 'rib',
+      sketchId,
+      params: { thickness, height },
+      mesh: ribMesh,
+      visible: true,
+      suppressed: false,
+      timestamp: Date.now(),
+    };
+    set({ features: [...features, feature] });
+    get().setStatusMessage(`Rib ${n} created: ${thickness}mm thick`);
+  },
+
+  // ── SLD2 — Web ───────────────────────────────────────────────────────────
+  commitWeb: (sketchId, thickness, height) => {
+    const { features, sketches } = get();
+    const sketch = sketches.find((s) => s.id === sketchId);
+    if (!sketch) { get().setStatusMessage('Web: sketch not found'); return; }
+    const entityPoints: THREE.Vector3[][] = [];
+    for (const e of sketch.entities) {
+      if (e.type === 'line' && e.x1 !== undefined) {
+        entityPoints.push([
+          new THREE.Vector3(e.x1, e.y1 ?? 0, e.z1 ?? 0),
+          new THREE.Vector3(e.x2 ?? 0, e.y2 ?? 0, e.z2 ?? 0),
+        ]);
+      }
+    }
+    const normal = sketch.planeNormal?.clone() ?? new THREE.Vector3(0, 1, 0);
+    const webMesh = entityPoints.length > 0 ? GeometryEngine.createWeb(entityPoints, thickness, height, normal) : undefined;
+    const n = features.filter((f) => f.type === 'rib' && f.params?.webStyle === 'perpendicular').length + 1;
+    const feature: Feature = {
+      id: crypto.randomUUID(),
+      name: `Web ${n}`,
+      type: 'rib',
+      sketchId,
+      params: { thickness, height, webStyle: 'perpendicular' },
+      mesh: webMesh,
+      visible: true,
+      suppressed: false,
+      timestamp: Date.now(),
+    };
+    set({ features: [...features, feature] });
+    get().setStatusMessage(`Web ${n} created: ${thickness}mm thick`);
+  },
+
+  // ── SLD4 — Rest ──────────────────────────────────────────────────────────
+  commitRest: (params) => {
+    const { features } = get();
+    const restMesh = GeometryEngine.createRest(
+      params.centerX, params.centerY, params.centerZ,
+      params.normalX, params.normalY, params.normalZ,
+      params.width, params.depth, params.thickness,
+    );
+    const n = features.filter((f) => f.params?.restStyle === 'rest').length + 1;
+    const feature: Feature = {
+      id: crypto.randomUUID(),
+      name: `Rest ${n}`,
+      type: 'rib',
+      params: { ...params, restStyle: 'rest' },
+      mesh: restMesh,
+      visible: true,
+      suppressed: false,
+      timestamp: Date.now(),
+    };
+    set({ features: [...features, feature] });
+    get().setStatusMessage(`Rest ${n} created`);
+  },
+
+  // ── SLD5 — Thread (cosmetic helix) ───────────────────────────────────────
+  commitThread: (featureId, radius, pitch, length) => {
+    const { features } = get();
+    const helixGeom = GeometryEngine.createCosmeticThread(radius, pitch, length);
+    const lineMesh = new THREE.Line(helixGeom, new THREE.LineBasicMaterial({ color: 0x888888 }));
+    // Find existing feature and attach helix as overlay (new feature referencing it)
+    const n = features.filter((f) => f.type === 'thread').length + 1;
+    const feature: Feature = {
+      id: crypto.randomUUID(),
+      name: `Thread ${n} (cosmetic)`,
+      type: 'thread',
+      params: { featureId, radius, pitch, length, threadType: 'cosmetic' },
+      mesh: lineMesh as unknown as THREE.Mesh,
+      visible: true,
+      suppressed: false,
+      timestamp: Date.now(),
+    };
+    set({ features: [...features, feature] });
+    get().setStatusMessage(`Thread ${n}: cosmetic helix (r=${radius}, p=${pitch}, L=${length})`);
+  },
+
+  // ── SLD9 — Pattern on Path ───────────────────────────────────────────────
+  commitPatternOnPath: (featureId, sketchId, count) => {
+    const { features, sketches } = get();
+    const srcFeature = features.find((f) => f.id === featureId);
+    const sketch = sketches.find((s) => s.id === sketchId);
+    if (!srcFeature || !sketch) {
+      get().setStatusMessage('Pattern on Path: feature or sketch not found');
+      return;
+    }
+    const srcMesh = srcFeature.mesh as THREE.Mesh | undefined;
+    if (!srcMesh?.isMesh) {
+      get().setStatusMessage('Pattern on Path: feature has no mesh');
+      return;
+    }
+    const pathPoints: THREE.Vector3[] = [];
+    for (const e of sketch.entities) {
+      if (e.type === 'line' && e.x1 !== undefined) {
+        if (pathPoints.length === 0) pathPoints.push(new THREE.Vector3(e.x1, e.y1 ?? 0, e.z1 ?? 0));
+        pathPoints.push(new THREE.Vector3(e.x2 ?? 0, e.y2 ?? 0, e.z2 ?? 0));
+      }
+    }
+    const copies = GeometryEngine.patternOnPath(srcMesh, pathPoints, count);
+    const newFeatures: Feature[] = copies.map((copyMesh, idx) => ({
+      id: crypto.randomUUID(),
+      name: `${srcFeature.name} Path[${idx + 1}]`,
+      type: 'circular-pattern' as Feature['type'],
+      params: { patternOnPath: true, sourceFeatureId: featureId, sketchId, count, instanceIndex: idx },
+      mesh: copyMesh,
+      visible: true,
+      suppressed: false,
+      timestamp: Date.now(),
+    }));
+    set({ features: [...features, ...newFeatures] });
+    get().setStatusMessage(`Pattern on Path: ${copies.length} copies`);
+  },
+
+  // ── MSH1 — Remesh ────────────────────────────────────────────────────────
+  commitRemesh: (featureId, mode, iterations) => {
+    const { features } = get();
+    const srcFeature = features.find((f) => f.id === featureId);
+    const srcMesh = srcFeature?.mesh as THREE.Mesh | undefined;
+    if (!srcFeature || !srcMesh?.isMesh) {
+      get().setStatusMessage('Remesh: feature not found or has no mesh');
+      return;
+    }
+    const remeshed = GeometryEngine.remesh(srcMesh, mode, iterations);
+    remeshed.castShadow = true;
+    remeshed.receiveShadow = true;
+    const nextFeatures = features.map((f) =>
+      f.id === featureId ? { ...f, mesh: remeshed, params: { ...f.params, isRemesh: true, mode, iterations } } : f,
+    );
+    set({ features: nextFeatures });
+    get().setStatusMessage(`Remesh (${mode}, ${iterations} iter) applied`);
+  },
+
+  // ── SLD10 — Shell ────────────────────────────────────────────────────────
+  commitShell: (featureId, thickness, direction) => {
+    const { features } = get();
+    const srcFeature = features.find((f) => f.id === featureId);
+    const srcMesh = srcFeature?.mesh as THREE.Mesh | undefined;
+    if (!srcFeature || !srcMesh?.isMesh) {
+      get().setStatusMessage('Shell: no mesh found for selected feature');
+      return;
+    }
+    const result = GeometryEngine.shellMesh(srcMesh, thickness, direction);
+    result.castShadow = true;
+    result.receiveShadow = true;
+    const nextFeatures = features.map((f) =>
+      f.id === featureId
+        ? { ...f, mesh: result, params: { ...f.params, thickness, direction, featureKind: 'shell' } }
+        : f,
+    );
+    set({ features: nextFeatures });
+    get().setStatusMessage(`Shell (${direction}, ${thickness}mm) applied`);
+  },
+
+  // ── SLD11 — Draft ────────────────────────────────────────────────────────
+  commitDraft: (featureId, pullAxisDir, draftAngle, fixedPlaneY) => {
+    const { features } = get();
+    const srcFeature = features.find((f) => f.id === featureId);
+    const srcMesh = srcFeature?.mesh as THREE.Mesh | undefined;
+    if (!srcFeature || !srcMesh?.isMesh) {
+      get().setStatusMessage('Draft: no mesh found for selected feature');
+      return;
+    }
+    const result = GeometryEngine.draftMesh(srcMesh, pullAxisDir, draftAngle, fixedPlaneY);
+    result.castShadow = true;
+    result.receiveShadow = true;
+    const nextFeatures = features.map((f) =>
+      f.id === featureId
+        ? { ...f, mesh: result, params: { ...f.params, draftAngle, fixedPlaneY, featureKind: 'draft' } }
+        : f,
+    );
+    set({ features: nextFeatures });
+    get().setStatusMessage(`Draft (${draftAngle}°) applied`);
+  },
+
+  // ── SLD14 — Offset Face ──────────────────────────────────────────────────
+  commitOffsetFace: (featureId, distance) => {
+    const { features } = get();
+    const srcFeature = features.find((f) => f.id === featureId);
+    const srcMesh = srcFeature?.mesh as THREE.Mesh | undefined;
+    if (!srcFeature || !srcMesh?.isMesh) {
+      get().setStatusMessage('Offset Face: no mesh found for selected feature');
+      return;
+    }
+    const offsetGeom = GeometryEngine.offsetSurface(srcMesh, distance);
+    const mat = srcMesh.material as THREE.Material;
+    const result = new THREE.Mesh(offsetGeom, mat);
+    result.castShadow = true;
+    result.receiveShadow = true;
+    result.userData = { ...srcMesh.userData };
+    const nextFeatures = features.map((f) =>
+      f.id === featureId
+        ? { ...f, mesh: result, params: { ...f.params, offsetDistance: distance, featureKind: 'offset-face' } }
+        : f,
+    );
+    set({ features: nextFeatures });
+    get().setStatusMessage(`Offset Face (${distance > 0 ? '+' : ''}${distance}mm) applied`);
+  },
+
+  // ── SLD16 — Remove Face ──────────────────────────────────────────────────
+  commitRemoveFace: (featureId, faceNormal, faceCentroid) => {
+    const { features } = get();
+    const srcFeature = features.find((f) => f.id === featureId);
+    const srcMesh = srcFeature?.mesh as THREE.Mesh | undefined;
+    if (!srcFeature || !srcMesh?.isMesh) {
+      get().setStatusMessage('Remove Face: no mesh found for selected feature');
+      return;
+    }
+    const result = GeometryEngine.removeFaceAndHeal(srcMesh, faceNormal, faceCentroid);
+    result.castShadow = true;
+    result.receiveShadow = true;
+    const nextFeatures = features.map((f) =>
+      f.id === featureId
+        ? { ...f, mesh: result, params: { ...f.params, featureKind: 'remove-face' } }
+        : f,
+    );
+    set({ features: nextFeatures });
+    get().setStatusMessage('Remove Face: face removed and healed');
+  },
+
+  // ── SLD3 — Emboss ────────────────────────────────────────────────────────
+  commitEmboss: (sketchId, depth, style) => {
+    const { sketches, features } = get();
+    const sketch = sketches.find((s) => s.id === sketchId);
+    if (!sketch) {
+      get().setStatusMessage('Emboss: sketch not found');
+      return;
+    }
+    const extrudeDepth = style === 'deboss' ? -Math.abs(depth) : Math.abs(depth);
+    const mesh = GeometryEngine.extrudeSketch(sketch, extrudeDepth);
+    if (!mesh) {
+      get().setStatusMessage('Emboss: could not extrude sketch profile');
+      return;
+    }
+    mesh.castShadow = true;
+    mesh.receiveShadow = true;
+    const n = features.filter((f) => f.params?.featureKind === 'emboss').length + 1;
+    const feature: Feature = {
+      id: crypto.randomUUID(),
+      name: `Emboss ${n} (${style}, ${depth}mm)`,
+      type: 'rib' as Feature['type'],
+      params: { featureKind: 'emboss', sketchId, depth, style, embossStyle: 'emboss' },
+      mesh,
+      visible: true,
+      suppressed: false,
+      timestamp: Date.now(),
+    };
+    get().addFeature(feature);
+    get().setStatusMessage(`Emboss ${n}: ${style} ${depth}mm`);
+  },
+
+  // ── SLD6 — Boundary Fill ─────────────────────────────────────────────────
+  commitBoundaryFill: (toolFeatureIds, operation) => {
+    const { features } = get();
+    const toolMeshes = toolFeatureIds
+      .map((id) => features.find((f) => f.id === id)?.mesh as THREE.Mesh | undefined)
+      .filter((m): m is THREE.Mesh => !!m?.isMesh);
+    if (toolMeshes.length === 0) {
+      get().setStatusMessage('Boundary Fill: no valid tool bodies selected');
+      return;
+    }
+    // Compute combined bounding box
+    const box = new THREE.Box3();
+    for (const m of toolMeshes) {
+      box.expandByObject(m);
+    }
+    const size = new THREE.Vector3();
+    const center = new THREE.Vector3();
+    box.getSize(size);
+    box.getCenter(center);
+    const fillGeom = new THREE.BoxGeometry(size.x, size.y, size.z);
+    const fillMesh = new THREE.Mesh(
+      fillGeom,
+      new THREE.MeshPhysicalMaterial({ color: 0x3b82f6, metalness: 0.1, roughness: 0.4 }),
+    );
+    fillMesh.position.copy(center);
+    fillMesh.castShadow = true;
+    fillMesh.receiveShadow = true;
+    const n = features.filter((f) => f.params?.featureKind === 'boundary-fill').length + 1;
+    const feature: Feature = {
+      id: crypto.randomUUID(),
+      name: `Boundary Fill ${n}`,
+      type: 'extrude' as Feature['type'],
+      params: { featureKind: 'boundary-fill', toolFeatureIds: toolFeatureIds.join(','), operation, isBoundaryFill: true },
+      mesh: fillMesh,
+      visible: true,
+      suppressed: false,
+      timestamp: Date.now(),
+    };
+    get().addFeature(feature);
+    get().setStatusMessage(`Boundary Fill ${n} (${operation}): bounding box fill created`);
+  },
+
+  // ── SLD15 — Silhouette Split ─────────────────────────────────────────────
+  commitSilhouetteSplit: (featureId, planeNormal, planeOffset) => {
+    const { features } = get();
+    const srcFeature = features.find((f) => f.id === featureId);
+    const srcMesh = srcFeature?.mesh as THREE.Mesh | undefined;
+    if (!srcFeature || !srcMesh?.isMesh) {
+      get().setStatusMessage('Split Body: no mesh found for selected feature');
+      return;
+    }
+    const partA = GeometryEngine.planeCutMesh(srcMesh, planeNormal, planeOffset, 'positive');
+    const partB = GeometryEngine.planeCutMesh(srcMesh, planeNormal, planeOffset, 'negative');
+    partA.castShadow = true; partA.receiveShadow = true;
+    partB.castShadow = true; partB.receiveShadow = true;
+    const n = features.filter((f) => f.params?.featureKind === 'silhouette-split').length + 1;
+    const featureA: Feature = {
+      id: crypto.randomUUID(),
+      name: `${srcFeature.name} Split ${n}A`,
+      type: 'split-body' as Feature['type'],
+      params: { featureKind: 'silhouette-split', sourceFeatureId: featureId, half: 'positive' },
+      mesh: partA,
+      visible: true,
+      suppressed: false,
+      timestamp: Date.now(),
+      bodyKind: srcFeature.bodyKind ?? 'solid',
+    };
+    const featureB: Feature = {
+      id: crypto.randomUUID(),
+      name: `${srcFeature.name} Split ${n}B`,
+      type: 'split-body' as Feature['type'],
+      params: { featureKind: 'silhouette-split', sourceFeatureId: featureId, half: 'negative' },
+      mesh: partB,
+      visible: true,
+      suppressed: false,
+      timestamp: Date.now(),
+      bodyKind: srcFeature.bodyKind ?? 'solid',
+    };
+    // Hide original, add both halves
+    const nextFeatures = features.map((f) =>
+      f.id === featureId ? { ...f, visible: false } : f,
+    );
+    set({ features: [...nextFeatures, featureA, featureB] });
+    get().setStatusMessage(`Split Body ${n}: split into two parts`);
+  },
+
+  // ── PL1 — Boss ───────────────────────────────────────────────────────────
+  showBossDialog: false,
+  openBossDialog: () => set({ activeDialog: 'boss', showBossDialog: true }),
+  closeBossDialog: () => set({ activeDialog: null, showBossDialog: false }),
+  commitBoss: (params) => {
+    const { features } = get();
+    const bossMesh = GeometryEngine.createBoss(params.diameter, params.height, params.wallThickness, params.draftAngle);
+    bossMesh.castShadow = true;
+    bossMesh.receiveShadow = true;
+    const n = features.filter((f) => f.params?.featureKind === 'boss').length + 1;
+    const feature: Feature = {
+      id: crypto.randomUUID(),
+      name: `Boss ${n}`,
+      type: 'import',
+      params: { featureKind: 'boss', ...params },
+      mesh: bossMesh,
+      visible: true,
+      suppressed: false,
+      timestamp: Date.now(),
+    };
+    get().addFeature(feature);
+    set({ activeDialog: null, showBossDialog: false });
+    get().setStatusMessage(`Boss ${n} created (Ø${params.diameter}mm × ${params.height}mm)`);
   },
 }),
 {

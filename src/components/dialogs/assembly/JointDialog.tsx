@@ -18,12 +18,14 @@ export function JointDialog({ onClose }: { onClose: () => void }) {
   const addJoint = useComponentStore((s) => s.addJoint);
   const components = useComponentStore((s) => s.components);
   const activeComponentId = useComponentStore((s) => s.activeComponentId);
+  const rootComponentId = useComponentStore((s) => s.rootComponentId);
   const setStatusMessage = useCADStore((s) => s.setStatusMessage);
 
   const componentList = Object.values(components);
 
-  const [componentId1, setComponentId1] = useState(activeComponentId);
-  const [componentId2, setComponentId2] = useState(activeComponentId);
+  const defaultCompId = activeComponentId ?? rootComponentId;
+  const [componentId1, setComponentId1] = useState(defaultCompId);
+  const [componentId2, setComponentId2] = useState(defaultCompId);
 
   const hasRotationLimits = ['revolute', 'cylindrical'].includes(jointType);
   const hasTranslationLimits = ['slider', 'cylindrical', 'pin-slot'].includes(jointType);

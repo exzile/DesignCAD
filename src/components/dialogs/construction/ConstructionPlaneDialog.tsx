@@ -10,7 +10,7 @@ export function ConstructionPlaneDialog({ onClose, initialMethod }: { onClose: (
   const [referencePlane, setReferencePlane] = useState('XY');
   const [angle, setAngle] = useState(45);
 
-  const activeComponentId = useComponentStore((s) => s.activeComponentId);
+  const activeComponentId = useComponentStore((s) => s.activeComponentId ?? s.rootComponentId);
   const addConstruction = useComponentStore((s) => s.addConstruction);
   const setStatusMessage = useCADStore((s) => s.setStatusMessage);
 

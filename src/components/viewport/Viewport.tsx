@@ -66,6 +66,7 @@ import JointOriginPicker from './scene/JointOriginPicker';
 import JointOriginRenderer from './scene/JointOriginRenderer';
 import WindowSelectOverlay from './WindowSelectOverlay';
 import LassoSelectOverlay from './LassoSelectOverlay';
+import FinishEditInPlaceBar from './FinishEditInPlaceBar';
 
 
 
@@ -343,6 +344,9 @@ export default function Viewport() {
         {/* Shift + Middle-click pan (in addition to right-click pan) */}
         <ShiftMiddlePan />
       </Canvas>
+
+      {/* MM6/MM7 Finish Edit In Place banner */}
+      <FinishEditInPlaceBar />
 
       {/* D204 Window Select overlay */}
       <WindowSelectOverlay />

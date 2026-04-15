@@ -10,6 +10,7 @@ import SlicerWorkspace from './components/slicer/SlicerWorkspace';
 import { MirrorComponentDialog } from './components/dialogs/assembly/MirrorComponentDialog';
 import { DuplicateWithJointsDialog } from './components/dialogs/assembly/DuplicateWithJointsDialog';
 import { BOMDialog } from './components/dialogs/assembly/BOMDialog';
+import { RibDialog } from './components/dialogs/solid/RibDialog';
 import {
   ShellDialog,
   LinearPatternDialog,
@@ -100,6 +101,7 @@ import { ContactSetsDialog } from './components/dialogs/assembly/ContactSetsDial
 import { InsertComponentDialog } from './components/dialogs/assembly/InsertComponentDialog';
 import { SnapFitDialog } from './components/dialogs/solid/SnapFitDialog';
 import { LipGrooveDialog } from './components/dialogs/solid/LipGrooveDialog';
+import { BossDialog } from './components/dialogs/plastic/BossDialog';
 import { useCADStore } from './store/cadStore';
 import { useComponentStore } from './store/componentStore';
 import './App.css';
@@ -421,6 +423,7 @@ function ActiveDialog() {
     case 'construction-plane-angle': return <ConstructionPlaneDialog onClose={close} initialMethod="angle" />;
     case 'construction-plane-midplane': return <ConstructionPlaneDialog onClose={close} initialMethod="midplane" />;
     case 'thicken': return <ThickenDialog onClose={close} />;
+    case 'rib': return <RibDialog onClose={close} />;
     case 'web': return <WebDialog onClose={close} />;
     case 'emboss': return <EmbossDialog onClose={close} />;
     case 'rest': return <RestDialog onClose={close} />;
@@ -505,6 +508,7 @@ function ActiveDialog() {
     case 'insert-component': return <InsertComponentDialogConnected onClose={close} />;
     case 'snap-fit': return <SnapFitDialogConnected onClose={close} />;
     case 'lip-groove': return <LipGrooveDialogConnected onClose={close} />;
+    case 'boss': return <BossDialog onClose={close} />;
     case 'mirror-component': return <MirrorComponentDialogConnected onClose={close} />;
     case 'duplicate-with-joints': return <DuplicateWithJointsDialogConnected onClose={close} />;
     case 'bom': return <BOMDialogConnected onClose={close} />;

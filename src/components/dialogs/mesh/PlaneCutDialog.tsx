@@ -1,27 +1,42 @@
 import { useState } from 'react';
 import { X } from 'lucide-react';
+import * as THREE from 'three';
 import { useCADStore } from '../../../store/cadStore';
 
 export function PlaneCutDialog({ onClose }: { onClose: () => void }) {
-  const addFeature = useCADStore((s) => s.addFeature);
   const features = useCADStore((s) => s.features);
-  const [plane, setPlane] = useState<'XY' | 'XZ' | 'YZ'>('XY');
+  const commitPlaneCut = useCADStore((s) => s.commitPlaneCut);
+  const setStatusMessage = useCADStore((s) => s.setStatusMessage);
+
+  const meshFeatures = features.filter((f) => f.mesh != null);
+
+  const [featureId, setFeatureId] = useState(meshFeatures[0]?.id ?? '');
+  const [planePreset, setPlanePreset] = useState<'XY' | 'XZ' | 'YZ' | 'Custom'>('XY');
   const [offset, setOffset] = useState(0);
-  const [keep, setKeep] = useState<'Above' | 'Below' | 'Both'>('Above');
-  const [cap, setCap] = useState<'Open' | 'Closed'>('Closed');
+  const [keepSide, setKeepSide] = useState<'positive' | 'negative'>('positive');
+  const [customNX, setCustomNX] = useState(0);
+  const [customNY, setCustomNY] = useState(1);
+  const [customNZ, setCustomNZ] = useState(0);
+
+  const planeNormals: Record<string, [number, number, number]> = {
+    XY: [0, 1, 0],
+    XZ: [0, 0, 1],
+    YZ: [1, 0, 0],
+  };
 
   const handleOK = () => {
-    const n = features.filter((f) => f.name.startsWith('Plane Cut')).length + 1;
-    addFeature({
-      id: crypto.randomUUID(),
-      name: `Plane Cut ${n}`,
-      type: 'split-body',
-      params: { isPlaneCut: true, plane, offset, keep, cap },
-      bodyKind: 'mesh',
-      visible: true,
-      suppressed: false,
-      timestamp: Date.now(),
-    });
+    if (!featureId) {
+      setStatusMessage('Plane Cut: select a feature first');
+      return;
+    }
+    let nx: number, ny: number, nz: number;
+    if (planePreset === 'Custom') {
+      [nx, ny, nz] = [customNX, customNY, customNZ];
+    } else {
+      [nx, ny, nz] = planeNormals[planePreset];
+    }
+    const normal = new THREE.Vector3(nx, ny, nz);
+    commitPlaneCut(featureId, normal, offset, keepSide);
     onClose();
   };
 
@@ -34,37 +49,45 @@ export function PlaneCutDialog({ onClose }: { onClose: () => void }) {
         </div>
         <div className="dialog-body">
           <div className="form-group">
-            <label>Plane</label>
-            <select value={plane} onChange={(e) => setPlane(e.target.value as typeof plane)}>
-              <option value="XY">XY</option>
-              <option value="XZ">XZ</option>
-              <option value="YZ">YZ</option>
+            <label>Feature</label>
+            <select value={featureId} onChange={(e) => setFeatureId(e.target.value)}>
+              {meshFeatures.length === 0 && <option value="">No mesh features</option>}
+              {meshFeatures.map((f) => (
+                <option key={f.id} value={f.id}>{f.name}</option>
+              ))}
             </select>
           </div>
+          <div className="form-group">
+            <label>Plane</label>
+            <select value={planePreset} onChange={(e) => setPlanePreset(e.target.value as typeof planePreset)}>
+              <option value="XY">XY (horizontal)</option>
+              <option value="XZ">XZ (front vertical)</option>
+              <option value="YZ">YZ (side vertical)</option>
+              <option value="Custom">Custom Normal</option>
+            </select>
+          </div>
+          {planePreset === 'Custom' && (
+            <div className="form-group">
+              <label>Normal (X, Y, Z)</label>
+              <div className="direction-inputs">
+                <input type="number" value={customNX} onChange={(e) => setCustomNX(parseFloat(e.target.value) || 0)} step={0.1} />
+                <input type="number" value={customNY} onChange={(e) => setCustomNY(parseFloat(e.target.value) || 0)} step={0.1} />
+                <input type="number" value={customNZ} onChange={(e) => setCustomNZ(parseFloat(e.target.value) || 0)} step={0.1} />
+              </div>
+            </div>
+          )}
           <div className="form-group">
             <label>Offset (mm)</label>
-            <input
-              type="number"
-              value={offset}
-              onChange={(e) => setOffset(parseFloat(e.target.value) || 0)}
-            />
+            <input type="number" value={offset} onChange={(e) => setOffset(parseFloat(e.target.value) || 0)} />
           </div>
           <div className="form-group">
-            <label>Keep</label>
-            <select value={keep} onChange={(e) => setKeep(e.target.value as typeof keep)}>
-              <option value="Above">Above</option>
-              <option value="Below">Below</option>
-              <option value="Both">Both</option>
+            <label>Keep Side</label>
+            <select value={keepSide} onChange={(e) => setKeepSide(e.target.value as 'positive' | 'negative')}>
+              <option value="positive">Positive (above/front/right)</option>
+              <option value="negative">Negative (below/back/left)</option>
             </select>
           </div>
-          <div className="form-group">
-            <label>Cap</label>
-            <select value={cap} onChange={(e) => setCap(e.target.value as typeof cap)}>
-              <option value="Open">Open</option>
-              <option value="Closed">Closed</option>
-            </select>
-          </div>
-          <p className="dialog-hint">Trims or splits the mesh body with the selected plane.</p>
+          <p className="dialog-hint">Trims the mesh body with the selected plane.</p>
         </div>
         <div className="dialog-footer">
           <button className="btn btn-secondary" onClick={onClose}>Cancel</button>

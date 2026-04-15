@@ -1,7 +1,6 @@
 import { useState } from 'react';
 import { X } from 'lucide-react';
 import { useCADStore } from '../../../store/cadStore';
-import type { Feature, FeatureType } from '../../../types/cad';
 
 export function RestDialog({ onClose }: { onClose: () => void }) {
   const editingFeatureId = useCADStore((s) => s.editingFeatureId);
@@ -10,33 +9,34 @@ export function RestDialog({ onClose }: { onClose: () => void }) {
   const p = editing?.params ?? {};
 
   const sketches = useCADStore((s) => s.sketches);
-  const addFeature = useCADStore((s) => s.addFeature);
+  const commitRest = useCADStore((s) => s.commitRest);
   const updateFeatureParams = useCADStore((s) => s.updateFeatureParams);
   const setStatusMessage = useCADStore((s) => s.setStatusMessage);
 
   const [profileId, setProfileId] = useState(String(p.profileId ?? ''));
-  const [depth, setDepth] = useState(Number(p.depth ?? 0));
+  const [width, setWidth] = useState(Number(p.width ?? 20));
+  const [depth, setDepth] = useState(Number(p.depth ?? 20));
+  const [thickness, setThickness] = useState(Number(p.thickness ?? 1));
   const [operation, setOperation] = useState<'join' | 'cut'>((p.operation as 'join' | 'cut') ?? 'join');
 
   const handleApply = () => {
     const sketch = sketches.find((s) => s.id === profileId);
     if (editing) {
-      updateFeatureParams(editing.id, { profileId, profileName: sketch?.name ?? '', depth, operation, restStyle: 'rest' });
-      setStatusMessage(`Updated rest feature from ${sketch?.name ?? 'profile'}`);
+      updateFeatureParams(editing.id, { profileId, profileName: sketch?.name ?? '', width, depth, thickness, operation, restStyle: 'rest' });
+      setStatusMessage(`Updated rest feature`);
+      onClose();
     } else {
-      const feature: Feature = {
-        id: crypto.randomUUID(),
-        name: `Rest (${sketch?.name ?? 'profile'})`,
-        type: 'rib' as FeatureType,
-        params: { profileId, profileName: sketch?.name ?? '', depth, operation, restStyle: 'rest' },
-        visible: true,
-        suppressed: false,
-        timestamp: Date.now(),
-      };
-      addFeature(feature);
-      setStatusMessage(`Created rest feature from ${sketch?.name ?? 'profile'}`);
+      if (!profileId) { setStatusMessage('Rest: select a profile sketch'); return; }
+      const normal = sketch?.planeNormal ?? { x: 0, y: 1, z: 0 };
+      const origin = sketch?.planeOrigin ?? { x: 0, y: 0, z: 0 };
+      commitRest({
+        profileId,
+        width, depth, thickness,
+        normalX: normal.x, normalY: normal.y, normalZ: normal.z,
+        centerX: origin.x, centerY: origin.y, centerZ: origin.z,
+      });
+      onClose();
     }
-    onClose();
   };
 
   return (
@@ -54,9 +54,19 @@ export function RestDialog({ onClose }: { onClose: () => void }) {
               {sketches.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
             </select>
           </div>
+          <div className="settings-grid">
+            <div className="form-group">
+              <label>Width (mm)</label>
+              <input type="number" value={width} onChange={(e) => setWidth(Math.max(0.1, parseFloat(e.target.value) || 20))} step={1} min={0.1} />
+            </div>
+            <div className="form-group">
+              <label>Depth (mm)</label>
+              <input type="number" value={depth} onChange={(e) => setDepth(Math.max(0.1, parseFloat(e.target.value) || 20))} step={1} min={0.1} />
+            </div>
+          </div>
           <div className="form-group">
-            <label>Depth (mm, 0 = flush)</label>
-            <input type="number" value={depth} onChange={(e) => setDepth(parseFloat(e.target.value) || 0)} step={0.1} min={0} />
+            <label>Thickness (mm)</label>
+            <input type="number" value={thickness} onChange={(e) => setThickness(Math.max(0.01, parseFloat(e.target.value) || 1))} step={0.1} min={0.01} />
           </div>
           <div className="form-group">
             <label>Operation</label>
@@ -65,11 +75,11 @@ export function RestDialog({ onClose }: { onClose: () => void }) {
               <option value="cut">Cut</option>
             </select>
           </div>
-          <p className="dialog-hint">Creates a flat seating area on the solid body using the sketch profile boundary.</p>
+          <p className="dialog-hint">Creates a flat seating surface at the sketch plane origin.</p>
         </div>
         <div className="dialog-footer">
           <button className="btn btn-secondary" onClick={onClose}>Cancel</button>
-          <button className="btn btn-primary" disabled={!profileId} onClick={handleApply}>OK</button>
+          <button className="btn btn-primary" disabled={!profileId && !editing} onClick={handleApply}>OK</button>
         </div>
       </div>
     </div>

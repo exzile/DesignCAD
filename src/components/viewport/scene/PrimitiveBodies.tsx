@@ -1,14 +1,20 @@
 import { useEffect, useMemo } from 'react';
 import * as THREE from 'three';
 import { useCADStore } from '../../../store/cadStore';
-import { BODY_MATERIAL } from './bodyMaterial';
+import { useComponentStore } from '../../../store/componentStore';
+import { BODY_MATERIAL, DIM_MATERIAL } from './bodyMaterial';
 
 /** Primitive solid bodies — Box / Cylinder / Sphere / Torus */
 export default function PrimitiveBodies() {
   const features = useCADStore((s) => s.features);
   const rollbackIndex = useCADStore((s) => s.rollbackIndex);
+  const activeComponentId = useComponentStore((s) => s.activeComponentId);
+  const rootComponentId = useComponentStore((s) => s.rootComponentId);
+
+  const editingInPlace = !!activeComponentId && activeComponentId !== rootComponentId;
+
   const bodies = useMemo(() => {
-    const out: { id: string; geom: THREE.BufferGeometry }[] = [];
+    const out: { id: string; geom: THREE.BufferGeometry; componentId?: string }[] = [];
     for (let i = 0; i < features.length; i++) {
       const f = features[i];
       // D187 suppress + D190 rollback + visibility
@@ -39,7 +45,7 @@ export default function PrimitiveBodies() {
           48,
         );
       }
-      if (geom) out.push({ id: f.id, geom });
+      if (geom) out.push({ id: f.id, geom, componentId: f.componentId });
     }
     return out;
   }, [features, rollbackIndex]);
@@ -50,16 +56,19 @@ export default function PrimitiveBodies() {
 
   return (
     <>
-      {bodies.map((b) => (
-        <mesh
-          key={b.id}
-          geometry={b.geom}
-          material={BODY_MATERIAL}
-          castShadow
-          receiveShadow
-          onUpdate={(m) => { m.userData.pickable = true; m.userData.featureId = b.id; }}
-        />
-      ))}
+      {bodies.map((b) => {
+        const dim = editingInPlace && b.componentId !== activeComponentId;
+        return (
+          <mesh
+            key={b.id}
+            geometry={b.geom}
+            material={dim ? DIM_MATERIAL : BODY_MATERIAL}
+            castShadow
+            receiveShadow
+            onUpdate={(m) => { m.userData.pickable = true; m.userData.featureId = b.id; }}
+          />
+        );
+      })}
     </>
   );
 }

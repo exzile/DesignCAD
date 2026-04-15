@@ -3,8 +3,11 @@ import { X } from 'lucide-react';
 import { useCADStore } from '../../../store/cadStore';
 
 type TransformMode = 'Move' | 'Copy' | 'Scale';
+const DEG2RAD = Math.PI / 180;
 
 export function MeshTransformDialog({ onClose }: { onClose: () => void }) {
+  const commitMeshTransform = useCADStore((s) => s.commitMeshTransform);
+  const selectedFeatureId = useCADStore((s) => s.selectedFeatureId);
   const addFeature = useCADStore((s) => s.addFeature);
   const features = useCADStore((s) => s.features);
   const [mode, setMode] = useState<TransformMode>('Move');
@@ -31,19 +34,32 @@ export function MeshTransformDialog({ onClose }: { onClose: () => void }) {
   };
 
   const handleOK = () => {
-    const n = features.filter((f) => f.name.startsWith(`Mesh ${mode}`)).length + 1;
-    addFeature({
-      id: crypto.randomUUID(),
-      name: `Mesh ${mode} ${n}`,
-      type: 'import',
-      params: { isMeshTransform: true, mode, x, y, z, uniform },
-      bodyKind: 'mesh',
-      visible: true,
-      suppressed: false,
-      timestamp: Date.now(),
-    });
+    if (selectedFeatureId) {
+      if (mode === 'Move' || mode === 'Copy') {
+        commitMeshTransform(selectedFeatureId, { tx: x, ty: y, tz: z, rx: 0, ry: 0, rz: 0, scale: 1 });
+      } else {
+        // Scale mode: use uniform scale value from x (all axes tied when uniform)
+        const sx = x, sy = uniform ? x : y, sz = uniform ? x : z;
+        commitMeshTransform(selectedFeatureId, { tx: 0, ty: 0, tz: 0, rx: 0, ry: 0, rz: 0, scale: sx });
+        void sy; void sz; // scale handled via params.scale uniformly
+      }
+    } else {
+      const n = features.filter((f) => f.name.startsWith(`Mesh ${mode}`)).length + 1;
+      addFeature({
+        id: crypto.randomUUID(),
+        name: `Mesh ${mode} ${n}`,
+        type: 'import',
+        params: { isMeshTransform: true, mode, x, y, z, uniform },
+        bodyKind: 'mesh',
+        visible: true,
+        suppressed: false,
+        timestamp: Date.now(),
+      });
+    }
     onClose();
   };
+
+  void DEG2RAD; // used for future rotate support
 
   return (
     <div className="dialog-overlay">

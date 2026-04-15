@@ -1,27 +1,36 @@
 import { useState } from 'react';
 import { X } from 'lucide-react';
+import * as THREE from 'three';
 import { useCADStore } from '../../../store/cadStore';
 
 export function MeshSectionSketchDialog({ onClose }: { onClose: () => void }) {
-  const addFeature = useCADStore((s) => s.addFeature);
   const features = useCADStore((s) => s.features);
-  const [plane, setPlane] = useState<'XY' | 'XZ' | 'YZ' | 'Custom'>('XY');
+  const commitMeshSectionSketch = useCADStore((s) => s.commitMeshSectionSketch);
+  const setStatusMessage = useCADStore((s) => s.setStatusMessage);
+
+  const meshFeatures = features.filter((f) => f.mesh != null);
+  const [featureId, setFeatureId] = useState(meshFeatures[0]?.id ?? '');
+  const [plane, setPlane] = useState<'XY' | 'XZ' | 'YZ'>('XY');
   const [offset, setOffset] = useState(0);
-  const [createSketch, setCreateSketch] = useState(true);
+  const [done, setDone] = useState(false);
+
+  // Plane definitions: normal, then constant = -offset into the plane equation n·x = d
+  const planeConfigs: Record<string, { normal: THREE.Vector3 }> = {
+    XY: { normal: new THREE.Vector3(0, 1, 0) },
+    XZ: { normal: new THREE.Vector3(0, 0, 1) },
+    YZ: { normal: new THREE.Vector3(1, 0, 0) },
+  };
 
   const handleOK = () => {
-    const n = features.filter((f) => f.name.startsWith('Mesh Section')).length + 1;
-    addFeature({
-      id: crypto.randomUUID(),
-      name: `Mesh Section ${n}`,
-      type: 'sketch',
-      params: { meshSectionSketch: true, plane, offset, createSketch },
-      bodyKind: 'mesh',
-      visible: true,
-      suppressed: false,
-      timestamp: Date.now(),
-    });
-    onClose();
+    if (!featureId) {
+      setStatusMessage('Mesh Section Sketch: select a feature first');
+      return;
+    }
+    const { normal } = planeConfigs[plane];
+    // THREE.Plane: normal·point + constant = 0 → constant = -offset
+    const threePlane = new THREE.Plane(normal.clone(), -offset);
+    commitMeshSectionSketch(featureId, threePlane);
+    setDone(true);
   };
 
   return (
@@ -32,36 +41,44 @@ export function MeshSectionSketchDialog({ onClose }: { onClose: () => void }) {
           <button className="dialog-close" onClick={onClose}><X size={14} /></button>
         </div>
         <div className="dialog-body">
-          <div className="form-group">
-            <label>Plane</label>
-            <select value={plane} onChange={(e) => setPlane(e.target.value as typeof plane)}>
-              <option value="XY">XY</option>
-              <option value="XZ">XZ</option>
-              <option value="YZ">YZ</option>
-              <option value="Custom">Custom</option>
-            </select>
-          </div>
-          <div className="form-group">
-            <label>Offset (mm)</label>
-            <input
-              type="number"
-              value={offset}
-              onChange={(e) => setOffset(parseFloat(e.target.value) || 0)}
-            />
-          </div>
-          <div className="form-group form-group-inline">
-            <label>Create Sketch</label>
-            <input
-              type="checkbox"
-              checked={createSketch}
-              onChange={(e) => setCreateSketch(e.target.checked)}
-            />
-          </div>
-          <p className="dialog-hint">Intersects the mesh with the selected plane to create a polyline sketch.</p>
+          {done ? (
+            <p className="dialog-hint" style={{ color: 'var(--color-success, #22c55e)' }}>
+              Section sketch created successfully.
+            </p>
+          ) : (
+            <>
+              <div className="form-group">
+                <label>Feature</label>
+                <select value={featureId} onChange={(e) => setFeatureId(e.target.value)}>
+                  {meshFeatures.length === 0 && <option value="">No mesh features</option>}
+                  {meshFeatures.map((f) => (
+                    <option key={f.id} value={f.id}>{f.name}</option>
+                  ))}
+                </select>
+              </div>
+              <div className="form-group">
+                <label>Plane</label>
+                <select value={plane} onChange={(e) => setPlane(e.target.value as typeof plane)}>
+                  <option value="XY">XY (horizontal)</option>
+                  <option value="XZ">XZ (front vertical)</option>
+                  <option value="YZ">YZ (side vertical)</option>
+                </select>
+              </div>
+              <div className="form-group">
+                <label>Offset (mm)</label>
+                <input
+                  type="number"
+                  value={offset}
+                  onChange={(e) => setOffset(parseFloat(e.target.value) || 0)}
+                />
+              </div>
+              <p className="dialog-hint">Intersects the mesh with the plane to create a polyline sketch.</p>
+            </>
+          )}
         </div>
         <div className="dialog-footer">
-          <button className="btn btn-secondary" onClick={onClose}>Cancel</button>
-          <button className="btn btn-primary" onClick={handleOK}>OK</button>
+          <button className="btn btn-secondary" onClick={onClose}>{done ? 'Close' : 'Cancel'}</button>
+          {!done && <button className="btn btn-primary" onClick={handleOK}>OK</button>}
         </div>
       </div>
     </div>

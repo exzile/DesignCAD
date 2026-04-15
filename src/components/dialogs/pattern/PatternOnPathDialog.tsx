@@ -1,7 +1,6 @@
 import { useState } from 'react';
 import { X } from 'lucide-react';
 import { useCADStore } from '../../../store/cadStore';
-import type { Feature } from '../../../types/cad';
 
 export function PatternOnPathDialog({ onClose }: { onClose: () => void }) {
   const editingFeatureId = useCADStore((s) => s.editingFeatureId);
@@ -10,10 +9,14 @@ export function PatternOnPathDialog({ onClose }: { onClose: () => void }) {
   const p = editing?.params ?? {};
 
   const sketches = useCADStore((s) => s.sketches);
-  const addFeature = useCADStore((s) => s.addFeature);
+  const commitPatternOnPath = useCADStore((s) => s.commitPatternOnPath);
   const updateFeatureParams = useCADStore((s) => s.updateFeatureParams);
   const setStatusMessage = useCADStore((s) => s.setStatusMessage);
 
+  // Features that have a mesh (can be patterned)
+  const meshFeatures = features.filter((f) => f.mesh != null && !f.suppressed);
+
+  const [sourceFeatureId, setSourceFeatureId] = useState<string>(String(p.sourceFeatureId ?? ''));
   const [pathSketchId, setPathSketchId] = useState<string>(String(p.pathSketchId ?? ''));
   const [count, setCount] = useState(Number(p.count ?? 4));
   const [alignment, setAlignment] = useState<'tangent' | 'fixed'>((p.alignment as 'tangent' | 'fixed') ?? 'tangent');
@@ -23,6 +26,7 @@ export function PatternOnPathDialog({ onClose }: { onClose: () => void }) {
   const handleApply = () => {
     const sketch = sketches.find((s) => s.id === pathSketchId);
     const params = {
+      sourceFeatureId,
       pathSketchId,
       pathSketchName: sketch?.name ?? '',
       count,
@@ -33,20 +37,15 @@ export function PatternOnPathDialog({ onClose }: { onClose: () => void }) {
     if (editing) {
       updateFeatureParams(editing.id, params);
       setStatusMessage(`Updated pattern on path: ${count} instances`);
+      onClose();
     } else {
-      const feature: Feature = {
-        id: crypto.randomUUID(),
-        name: `Pattern on Path (${count}×)`,
-        type: 'pattern-on-path',
-        params,
-        visible: true,
-        suppressed: false,
-        timestamp: Date.now(),
-      };
-      addFeature(feature);
-      setStatusMessage(`Created pattern on path: ${count} instances`);
+      if (!sourceFeatureId || !pathSketchId) {
+        setStatusMessage('Pattern on Path: select a feature and a path sketch');
+        return;
+      }
+      commitPatternOnPath(sourceFeatureId, pathSketchId, count);
+      onClose();
     }
-    onClose();
   };
 
   return (
@@ -57,6 +56,15 @@ export function PatternOnPathDialog({ onClose }: { onClose: () => void }) {
           <button className="dialog-close" onClick={onClose}><X size={16} /></button>
         </div>
         <div className="dialog-body">
+          <div className="form-group">
+            <label>Feature to Pattern</label>
+            <select value={sourceFeatureId} onChange={(e) => setSourceFeatureId(e.target.value)}>
+              <option value="" disabled>Select a feature</option>
+              {meshFeatures.map((f) => (
+                <option key={f.id} value={f.id}>{f.name}</option>
+              ))}
+            </select>
+          </div>
           <div className="form-group">
             <label>Path Sketch</label>
             <select value={pathSketchId} onChange={(e) => setPathSketchId(e.target.value)}>
@@ -95,7 +103,7 @@ export function PatternOnPathDialog({ onClose }: { onClose: () => void }) {
         </div>
         <div className="dialog-footer">
           <button className="btn btn-secondary" onClick={onClose}>Cancel</button>
-          <button className="btn btn-primary" disabled={!pathSketchId} onClick={handleApply}>OK</button>
+          <button className="btn btn-primary" disabled={(!sourceFeatureId || !pathSketchId) && !editing} onClick={handleApply}>OK</button>
         </div>
       </div>
     </div>

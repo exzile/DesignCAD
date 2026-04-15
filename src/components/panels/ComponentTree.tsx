@@ -271,6 +271,8 @@ function ComponentNode({ componentId, depth = 0 }: { componentId: string; depth?
   const addBody = useComponentStore((s) => s.addBody);
   const setComponentGrounded = useComponentStore((s) => s.setComponentGrounded);
   const setStatusMessage = useCADStore((s) => s.setStatusMessage);
+  const historyEnabled = useCADStore((s) => s.historyEnabled);
+  const toggleHistoryMode = useCADStore((s) => s.toggleHistoryMode);
 
   const [showContextMenu, setShowContextMenu] = useState(false);
   const [renaming, setRenaming] = useState(false);
@@ -300,8 +302,14 @@ function ComponentNode({ componentId, depth = 0 }: { componentId: string; depth?
         className={`tree-item component-item ${isActive ? 'active' : ''}`}
         onClick={() => setActiveComponentId(componentId)}
         onDoubleClick={() => {
-          setRenaming(true);
-          setNewName(component.name);
+          if (isRoot) {
+            // Double-click on root: open rename
+            setRenaming(true);
+            setNewName(component.name);
+          } else {
+            // Double-click on sub-component: activate edit-in-place
+            setActiveComponentId(componentId);
+          }
         }}
       >
         <button
@@ -363,6 +371,15 @@ function ComponentNode({ componentId, depth = 0 }: { componentId: string; depth?
           }}>
             <Anchor size={12} /> {component.grounded ? 'Unground' : 'Ground'}
           </button>
+          {/* MM1: History mode toggle — only on root node */}
+          {isRoot && (
+            <button onClick={() => {
+              toggleHistoryMode();
+              setShowContextMenu(false);
+            }}>
+              {historyEnabled ? 'Do not capture design history' : 'Capture design history'}
+            </button>
+          )}
           {!isRoot && (
             <>
               <button onClick={() => { duplicateComponent(componentId); setShowContextMenu(false); }}>

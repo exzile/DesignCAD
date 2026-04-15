@@ -26,8 +26,8 @@ interface ComponentStore {
   removeMotionLink(id: string): void;
 
   // Active context
-  activeComponentId: string;
-  setActiveComponentId: (id: string) => void;
+  activeComponentId: string | null;
+  setActiveComponentId: (id: string | null) => void;
   selectedBodyId: string | null;
   setSelectedBodyId: (id: string | null) => void;
 
@@ -130,7 +130,7 @@ export const useComponentStore = create<ComponentStore>((set, get) => ({
   joints: {},
 
   activeComponentId: rootId,
-  setActiveComponentId: (id) => set({ activeComponentId: id }),
+  setActiveComponentId: (id) => set({ activeComponentId: id ?? rootId }),
 
   selectedBodyId: null,
   setSelectedBodyId: (id) => set({ selectedBodyId: id }),

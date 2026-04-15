@@ -24,9 +24,11 @@ export function MirrorDialog({ onClose }: { onClose: () => void }) {
   const addFeature = useCADStore((s) => s.addFeature);
   const updateFeatureParams = useCADStore((s) => s.updateFeatureParams);
   const setStatusMessage = useCADStore((s) => s.setStatusMessage);
+  const commitMirrorFeature = useCADStore((s) => s.commitMirrorFeature);
   const bodies = useComponentStore((s) => s.bodies);
   const components = useComponentStore((s) => s.components);
   const mirrorBody = useComponentStore((s) => s.mirrorBody);
+  const mirrorComponent = useComponentStore((s) => s.mirrorComponent);
 
   const bodyList = Object.values(bodies);
   const componentList = Object.values(components).filter((c) => c.parentId !== null);
@@ -37,6 +39,23 @@ export function MirrorDialog({ onClose }: { onClose: () => void }) {
       const newId = mirrorBody(selectedId, mirrorPlane);
       if (newId) {
         setStatusMessage(`Mirrored body on ${mirrorPlane} plane`);
+        onClose();
+        return;
+      }
+    }
+
+    // SLD17 features branch: mirror a feature's mesh geometry
+    if (mirrorType === 'features' && selectedId) {
+      commitMirrorFeature(selectedId, mirrorPlane);
+      onClose();
+      return;
+    }
+
+    // SLD17 components branch: mirror a component
+    if (mirrorType === 'components' && selectedId) {
+      const newId = mirrorComponent({ componentId: selectedId, mirrorPlane, createLinked: false });
+      if (newId) {
+        setStatusMessage(`Mirrored component on ${mirrorPlane} plane`);
         onClose();
         return;
       }

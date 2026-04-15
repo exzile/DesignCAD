@@ -1,25 +1,13 @@
 import { useState } from 'react';
 import { X } from 'lucide-react';
 import { useCADStore } from '../../../store/cadStore';
-import type { Feature } from '../../../types/cad';
 
 export function BaseFeatureDialog({ onClose }: { onClose: () => void }) {
   const [name, setName] = useState('Base Feature 1');
-  const addFeature = useCADStore((s) => s.addFeature);
-  const setStatusMessage = useCADStore((s) => s.setStatusMessage);
+  const openBaseFeature = useCADStore((s) => s.openBaseFeature);
 
   const handleApply = () => {
-    const feature: Feature = {
-      id: crypto.randomUUID(),
-      name,
-      type: 'import',
-      params: { baseFeature: true, description: '' },
-      visible: true,
-      suppressed: false,
-      timestamp: Date.now(),
-    };
-    addFeature(feature);
-    setStatusMessage(`Created Base Feature: ${name}. Geometry inside is not parametrically tracked.`);
+    openBaseFeature(name);
     onClose();
   };
 

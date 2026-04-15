@@ -2,14 +2,14 @@ import { useState } from 'react';
 import { X } from 'lucide-react';
 import { useCADStore } from '../../../store/cadStore';
 
-export function WebDialog({ onClose }: { onClose: () => void }) {
+export function RibDialog({ onClose }: { onClose: () => void }) {
   const editingFeatureId = useCADStore((s) => s.editingFeatureId);
   const features = useCADStore((s) => s.features);
   const editing = editingFeatureId ? features.find((f) => f.id === editingFeatureId) : null;
   const p = editing?.params ?? {};
 
   const sketches = useCADStore((s) => s.sketches);
-  const commitWeb = useCADStore((s) => s.commitWeb);
+  const commitRibFromDialog = useCADStore((s) => s.commitRibFromDialog);
   const updateFeatureParams = useCADStore((s) => s.updateFeatureParams);
   const setStatusMessage = useCADStore((s) => s.setStatusMessage);
 
@@ -21,12 +21,12 @@ export function WebDialog({ onClose }: { onClose: () => void }) {
 
   const handleApply = () => {
     if (editing) {
-      updateFeatureParams(editing.id, { sketchId, thickness, height, direction, operation, webStyle: 'perpendicular' });
-      setStatusMessage(`Updated web: ${thickness}mm thick`);
+      updateFeatureParams(editing.id, { sketchId, thickness, height, direction, operation });
+      setStatusMessage(`Updated rib: ${thickness}mm thick`);
       onClose();
     } else {
-      if (!sketchId) { setStatusMessage('Web: select a profile sketch'); return; }
-      commitWeb(sketchId, thickness, height);
+      if (!sketchId) { setStatusMessage('Rib: select a profile sketch'); return; }
+      commitRibFromDialog(sketchId, thickness, height);
       onClose();
     }
   };
@@ -35,7 +35,7 @@ export function WebDialog({ onClose }: { onClose: () => void }) {
     <div className="dialog-overlay">
       <div className="dialog dialog-sm">
         <div className="dialog-header">
-          <h3>{editing ? 'Edit Web' : 'Web'}</h3>
+          <h3>{editing ? 'Edit Rib' : 'Rib'}</h3>
           <button className="dialog-close" onClick={onClose}><X size={16} /></button>
         </div>
         <div className="dialog-body">
@@ -71,7 +71,7 @@ export function WebDialog({ onClose }: { onClose: () => void }) {
               <option value="new-body">New Body</option>
             </select>
           </div>
-          <p className="dialog-hint">Select a sketch with multiple lines to create a cross-hatch web pattern.</p>
+          <p className="dialog-hint">Select a sketch profile to extrude as a thin structural rib.</p>
         </div>
         <div className="dialog-footer">
           <button className="btn btn-secondary" onClick={onClose}>Cancel</button>

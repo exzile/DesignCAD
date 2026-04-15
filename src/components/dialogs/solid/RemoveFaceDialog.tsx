@@ -1,7 +1,15 @@
 import { useState } from 'react';
 import { X } from 'lucide-react';
+import * as THREE from 'three';
 import { useCADStore } from '../../../store/cadStore';
-import type { Feature } from '../../../types/cad';
+const FACE_NORMALS: Record<string, THREE.Vector3> = {
+  Top:    new THREE.Vector3(0,  1, 0),
+  Bottom: new THREE.Vector3(0, -1, 0),
+  Front:  new THREE.Vector3(0,  0, 1),
+  Back:   new THREE.Vector3(0,  0, -1),
+  Left:   new THREE.Vector3(-1, 0, 0),
+  Right:  new THREE.Vector3(1,  0, 0),
+};
 
 export function RemoveFaceDialog({ onClose }: { onClose: () => void }) {
   const editingFeatureId = useCADStore((s) => s.editingFeatureId);
@@ -11,34 +19,46 @@ export function RemoveFaceDialog({ onClose }: { onClose: () => void }) {
 
   const addFeature = useCADStore((s) => s.addFeature);
   const updateFeatureParams = useCADStore((s) => s.updateFeatureParams);
+  const commitRemoveFace = useCADStore((s) => s.commitRemoveFace);
   const setStatusMessage = useCADStore((s) => s.setStatusMessage);
 
   const bodyFeatures = features.filter((f) => !!f.mesh);
-  const removeFaceCount = features.filter((f) => f.type === 'split-body' && f.name.startsWith('Remove Face')).length;
-
   const [selectedId, setSelectedId] = useState<string>(String(p.bodyId ?? bodyFeatures[0]?.id ?? ''));
   const [faceDescription, setFaceDescription] = useState(String(p.faceDescription ?? 'Top'));
   const [keepShape, setKeepShape] = useState(p.keepShape !== false);
+
+  const getFaceCentroid = (bodyId: string, faceDesc: string): THREE.Vector3 => {
+    const mesh = features.find((f) => f.id === bodyId)?.mesh as THREE.Mesh | undefined;
+    if (mesh?.isMesh) {
+      const box = new THREE.Box3().setFromObject(mesh);
+      const center = new THREE.Vector3();
+      box.getCenter(center);
+      const size = new THREE.Vector3();
+      box.getSize(size);
+      const n = FACE_NORMALS[faceDesc] ?? new THREE.Vector3(0, 1, 0);
+      return new THREE.Vector3(
+        center.x + n.x * size.x * 0.5,
+        center.y + n.y * size.y * 0.5,
+        center.z + n.z * size.z * 0.5,
+      );
+    }
+    return new THREE.Vector3();
+  };
 
   const handleApply = () => {
     if (!selectedId) {
       setStatusMessage('Remove Face: no body selected');
       return;
     }
+    const faceNormal = FACE_NORMALS[faceDescription] ?? new THREE.Vector3(0, 1, 0);
+    const faceCentroid = getFaceCentroid(selectedId, faceDescription);
+
     if (editing) {
       updateFeatureParams(editing.id, { bodyId: selectedId, faceDescription, keepShape });
-      setStatusMessage(`Updated Remove Face: "${faceDescription}" face on ${features.find((f) => f.id === selectedId)?.name ?? selectedId}`);
+      commitRemoveFace(selectedId, faceNormal, faceCentroid);
+      setStatusMessage(`Updated Remove Face: "${faceDescription}" face`);
     } else {
-      const feature: Feature = {
-        id: crypto.randomUUID(),
-        name: `Remove Face ${removeFaceCount + 1}`,
-        type: 'split-body',
-        params: { bodyId: selectedId, faceDescription, keepShape },
-        visible: true,
-        suppressed: false,
-        timestamp: Date.now(),
-      };
-      addFeature(feature);
+      commitRemoveFace(selectedId, faceNormal, faceCentroid);
       setStatusMessage(`Remove Face applied: "${faceDescription}" face on ${features.find((f) => f.id === selectedId)?.name ?? selectedId}`);
     }
     onClose();
@@ -62,13 +82,12 @@ export function RemoveFaceDialog({ onClose }: { onClose: () => void }) {
             </select>
           </div>
           <div className="form-group">
-            <label>Face Description</label>
-            <input
-              type="text"
-              value={faceDescription}
-              onChange={(e) => setFaceDescription(e.target.value)}
-              placeholder="e.g. Top, Bottom, Front, Back, Left, Right"
-            />
+            <label>Face to Remove</label>
+            <select value={faceDescription} onChange={(e) => setFaceDescription(e.target.value)}>
+              {Object.keys(FACE_NORMALS).map((name) => (
+                <option key={name} value={name}>{name}</option>
+              ))}
+            </select>
           </div>
           <div className="form-group">
             <label className="checkbox-label">

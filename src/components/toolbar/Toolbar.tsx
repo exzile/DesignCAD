@@ -314,6 +314,7 @@ const prepareTabs: TabDef[] = [
 export default function Toolbar() {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const meshInsertInputRef = useRef<HTMLInputElement>(null);
+  const loadFileInputRef = useRef<HTMLInputElement>(null);
   const [workspace, setWorkspace] = useState<Workspace>('design');
   const [wsDropdownOpen, setWsDropdownOpen] = useState(false);
   const [designTab, setDesignTab] = useState<DesignTab>('solid');
@@ -355,6 +356,12 @@ export default function Toolbar() {
   const removeFeature = useCADStore((s) => s.removeFeature);
   const addFeature = useCADStore((s) => s.addFeature);
 const setStatusMessage = useCADStore((s) => s.setStatusMessage);
+  const undoStackLength = useCADStore((s) => s.undoStack.length);
+  const redoStackLength = useCADStore((s) => s.redoStack.length);
+  const undoAction = useCADStore((s) => s.undo);
+  const redoAction = useCADStore((s) => s.redo);
+  const saveToFile = useCADStore((s) => s.saveToFile);
+  const loadFromFile = useCADStore((s) => s.loadFromFile);
   const autoConstrainSketch = useCADStore((s) => s.autoConstrainSketch);
   const startSketchTextTool = useCADStore((s) => s.startSketchTextTool);
   const startSketchProjectSurfaceTool = useCADStore((s) => s.startSketchProjectSurfaceTool);
@@ -375,10 +382,14 @@ const setStatusMessage = useCADStore((s) => s.setStatusMessage);
   const openInsertComponentDialog = useCADStore((s) => s.openInsertComponentDialog);
   const openSnapFitDialog = useCADStore((s) => s.openSnapFitDialog);
   const openLipGrooveDialog = useCADStore((s) => s.openLipGrooveDialog);
+  const openBossDialog = useCADStore((s) => s.openBossDialog);
   const setActiveAnalysis = useCADStore((s) => s.setActiveAnalysis);
   const openMirrorComponentDialog = useCADStore((s) => s.openMirrorComponentDialog);
   const openDuplicateWithJointsDialog = useCADStore((s) => s.openDuplicateWithJointsDialog);
   const openBOMDialog = useCADStore((s) => s.openBOMDialog);
+  const showAllFeatures = useCADStore((s) => s.showAllFeatures);
+  const hideFeature = useCADStore((s) => s.hideFeature);
+  const selectedFeatureIdForHide = useCADStore((s) => s.selectedFeatureId);
   const openFillDialog = useCADStore((s) => s.openFillDialog);
   const openOffsetCurveDialog = useCADStore((s) => s.openOffsetCurveDialog);
   const openSurfaceMergeDialog = useCADStore((s) => s.openSurfaceMergeDialog);
@@ -391,7 +402,7 @@ const setStatusMessage = useCADStore((s) => s.setStatusMessage);
   // A21: Ground / Unground active component
   const setComponentGrounded = useComponentStore((s) => s.setComponentGrounded);
   const activeComponentId = useComponentStore((s) => s.activeComponentId);
-  const activeComponent = useComponentStore((s) => s.components[s.activeComponentId]);
+  const activeComponent = useComponentStore((s) => s.activeComponentId ? s.components[s.activeComponentId] : undefined);
   // A27: Exploded View
   const toggleExplode = useComponentStore((s) => s.toggleExplode);
   const explodeActive = useComponentStore((s) => s.explodeActive);
@@ -415,6 +426,26 @@ const setStatusMessage = useCADStore((s) => s.setStatusMessage);
   const comingSoon = useCallback((feature: string) => () => {
     setStatusMessage(`${feature}: coming soon`);
   }, [setStatusMessage]);
+
+  // ─── Keyboard shortcuts: Ctrl+Z / Ctrl+Y / Ctrl+Shift+Z ─────────────────
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (!e.ctrlKey && !e.metaKey) return;
+      if (e.key === 'z' || e.key === 'Z') {
+        e.preventDefault();
+        if (e.shiftKey) {
+          redoAction();
+        } else {
+          undoAction();
+        }
+      } else if (e.key === 'y' || e.key === 'Y') {
+        e.preventDefault();
+        redoAction();
+      }
+    };
+    document.addEventListener('keydown', handleKeyDown);
+    return () => document.removeEventListener('keydown', handleKeyDown);
+  }, [undoAction, redoAction]);
 
   const handleImport = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
@@ -809,13 +840,28 @@ const setStatusMessage = useCADStore((s) => s.setStatusMessage);
             <Home size={14} />
           </button>
           <div className="ribbon-quick-divider" />
-          <button className="ribbon-quick-btn" title="Save" onClick={() => setStatusMessage('Save: coming soon')}>
+          <button className="ribbon-quick-btn" title="Save (.dzn)" onClick={saveToFile}>
             <Save size={14} />
           </button>
-          <button className="ribbon-quick-btn" title="Undo" onClick={() => setStatusMessage('Undo: coming soon')}>
+          <button className="ribbon-quick-btn" title="Open (.dzn)" onClick={() => loadFileInputRef.current?.click()}>
+            <FolderOpen size={14} />
+          </button>
+          <button
+            className="ribbon-quick-btn"
+            title="Undo (Ctrl+Z)"
+            onClick={undoAction}
+            disabled={undoStackLength === 0}
+            style={undoStackLength === 0 ? { opacity: 0.5, pointerEvents: 'none' } : undefined}
+          >
             <Undo2 size={14} />
           </button>
-          <button className="ribbon-quick-btn" title="Redo" onClick={() => setStatusMessage('Redo: coming soon')}>
+          <button
+            className="ribbon-quick-btn"
+            title="Redo (Ctrl+Y)"
+            onClick={redoAction}
+            disabled={redoStackLength === 0}
+            style={redoStackLength === 0 ? { opacity: 0.5, pointerEvents: 'none' } : undefined}
+          >
             <Redo2 size={14} />
           </button>
           <div className="ribbon-quick-divider" />
@@ -826,6 +872,23 @@ const setStatusMessage = useCADStore((s) => s.setStatusMessage);
             <Download size={14} />
           </button>
           <input ref={fileInputRef} type="file" accept=".step,.stp,.f3d,.stl,.obj" style={{ display: 'none' }} onChange={handleImport} />
+          <input
+            ref={loadFileInputRef}
+            type="file"
+            accept=".dzn,.json"
+            style={{ display: 'none' }}
+            onChange={(e) => {
+              const file = e.target.files?.[0];
+              if (!file) return;
+              const reader = new FileReader();
+              reader.onload = (evt) => {
+                const text = evt.target?.result as string;
+                if (text) loadFromFile(text);
+              };
+              reader.readAsText(file);
+              if (loadFileInputRef.current) loadFileInputRef.current.value = '';
+            }}
+          />
         </div>
         <div className="ribbon-quick-center">
           <span className="ribbon-title">Untitled - Dzign3D</span>
@@ -977,6 +1040,7 @@ const setStatusMessage = useCADStore((s) => s.setStatusMessage);
                   colorClass="icon-green"
                   active={activeComponent?.grounded}
                   onClick={() => {
+                    if (!activeComponentId) return;
                     const next = !(activeComponent?.grounded ?? false);
                     setComponentGrounded(activeComponentId, next);
                     setStatusMessage(`${activeComponent?.name ?? 'Component'}: ${next ? 'Grounded' : 'Ungrounded'}`);
@@ -1181,12 +1245,12 @@ const setStatusMessage = useCADStore((s) => s.setStatusMessage);
         {!inSketch && workspace === 'design' && designTab === 'plastic' && (
           <>
             <RibbonSection title="CREATE">
-              <ToolButton icon={<Box size={ICON_LG} />} label="Boss" onClick={() => setStatusMessage('Plastic: Boss - coming soon')} large colorClass="icon-blue" />
+              <ToolButton icon={<Box size={ICON_LG} />} label="Boss" onClick={openBossDialog} large colorClass="icon-blue" />
               <ToolButton icon={<Zap size={ICON_LG} />} label="Snap Fit" onClick={openSnapFitDialog} large colorClass="icon-blue" />
               <ToolButton icon={<Layers size={ICON_LG} />} label="Lip / Groove" onClick={openLipGrooveDialog} large colorClass="icon-blue" />
             </RibbonSection>
             <RibbonSection title="MODIFY">
-              <ToolButton icon={<Blend size={ICON_LG} />} label="Draft" onClick={() => setStatusMessage('Plastic: Draft - coming soon')} large colorClass="icon-blue" />
+              <ToolButton icon={<Blend size={ICON_LG} />} label="Draft" onClick={() => setActiveDialog('draft')} large colorClass="icon-blue" />
             </RibbonSection>
             <RibbonSection title="SELECT">
               <ToolButton icon={<MousePointer2 size={ICON_LG} />} label="Select" tool="select" large colorClass="icon-blue" />
@@ -1237,8 +1301,8 @@ const setStatusMessage = useCADStore((s) => s.setStatusMessage);
             <RibbonSection title="DISPLAY">
               <ToolButton icon={<Pipette size={ICON_LG} />} label="Appearance" onClick={() => setStatusMessage('Select a body to change materials')} large colorClass="icon-gray" />
               <div className="ribbon-stack">
-                <ToolButton icon={<Eye size={ICON_SM} />} label="Show All" onClick={() => setStatusMessage('Show All: coming soon')} colorClass="icon-gray" />
-                <ToolButton icon={<EyeOff size={ICON_SM} />} label="Hide" onClick={() => setStatusMessage('Hide: coming soon')} colorClass="icon-gray" />
+                <ToolButton icon={<Eye size={ICON_SM} />} label="Show All" onClick={() => showAllFeatures()} colorClass="icon-gray" />
+                <ToolButton icon={<EyeOff size={ICON_SM} />} label="Hide" onClick={() => { if (selectedFeatureIdForHide) hideFeature(selectedFeatureIdForHide); else setStatusMessage('Hide: select a feature first'); }} colorClass="icon-gray" />
               </div>
             </RibbonSection>
             <RibbonSection title="3D PRINTER">

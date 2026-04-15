@@ -1,9 +1,10 @@
 import { useEffect, useMemo } from 'react';
 import * as THREE from 'three';
 import { useCADStore } from '../../../store/cadStore';
+import { useComponentStore } from '../../../store/componentStore';
 import { GeometryEngine } from '../../../engine/GeometryEngine';
 import type { Feature, Sketch } from '../../../types/cad';
-import { BODY_MATERIAL, SURFACE_MATERIAL } from './bodyMaterial';
+import { BODY_MATERIAL, SURFACE_MATERIAL, DIM_MATERIAL } from './bodyMaterial';
 
 /** Revolve geometry item — memoized, disposes LatheGeometry on change/unmount. */
 function RevolveItem({ feature, sketch }: { feature: Feature; sketch: Sketch }) {
@@ -56,6 +57,15 @@ export default function ExtrudedBodies() {
   const features = useCADStore((s) => s.features);
   const sketches = useCADStore((s) => s.sketches);
   const rollbackIndex = useCADStore((s) => s.rollbackIndex);
+  const activeComponentId = useComponentStore((s) => s.activeComponentId);
+  const rootComponentId = useComponentStore((s) => s.rootComponentId);
+
+  // When a non-root component is active, dim features that belong to other components.
+  const editingInPlace = !!activeComponentId && activeComponentId !== rootComponentId;
+  const getMaterial = (featureComponentId: string | undefined, isSurface = false) => {
+    if (editingInPlace && featureComponentId !== activeComponentId) return DIM_MATERIAL;
+    return isSurface ? SURFACE_MATERIAL : BODY_MATERIAL;
+  };
 
   // D187 + D190: a feature is skipped when it is suppressed, hidden, or
   // rolled back past the marker.
@@ -74,7 +84,7 @@ export default function ExtrudedBodies() {
     return GeometryEngine.buildExtrudeFeatureMesh(sketch, distance, direction);
   };
 
-  const { bodies, featureIds } = useMemo(() => {
+  const { bodies, featureIds, featureComponentIds } = useMemo(() => {
     // Features with a stored mesh (thin/taper extrude) are rendered directly — skip CSG.
     const extrudeFeatures = [...features]
       .filter((f) => f.type === 'extrude' && isActive(f) && !f.mesh)
@@ -82,16 +92,20 @@ export default function ExtrudedBodies() {
 
     const outBodies: THREE.BufferGeometry[] = [];
     const outIds: string[] = [];
+    const outComponentIds: (string | undefined)[] = [];
     let currentGeom: THREE.BufferGeometry | null = null;
     let currentFeatureId: string | null = null;
+    let currentComponentId: string | undefined;
 
     const commitCurrent = () => {
       if (currentGeom && currentFeatureId) {
         outBodies.push(currentGeom);
         outIds.push(currentFeatureId);
+        outComponentIds.push(currentComponentId);
       }
       currentGeom = null;
       currentFeatureId = null;
+      currentComponentId = undefined;
     };
 
     for (const feature of extrudeFeatures) {
@@ -109,6 +123,7 @@ export default function ExtrudedBodies() {
         commitCurrent();
         currentGeom = toolGeom;
         currentFeatureId = feature.id;
+        currentComponentId = feature.componentId;
         continue;
       }
 
@@ -118,17 +133,19 @@ export default function ExtrudedBodies() {
         toolGeom.dispose();
         currentGeom = next;
         currentFeatureId = feature.id;
+        currentComponentId = feature.componentId;
       } else if (op === 'join') {
         const next = GeometryEngine.csgUnion(currentGeom, toolGeom);
         currentGeom.dispose();
         toolGeom.dispose();
         currentGeom = next;
         currentFeatureId = feature.id;
+        currentComponentId = feature.componentId;
       }
     }
     commitCurrent();
 
-    return { bodies: outBodies, featureIds: outIds };
+    return { bodies: outBodies, featureIds: outIds, featureComponentIds: outComponentIds };
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [features, sketches, rollbackIndex]);
 
@@ -144,7 +161,7 @@ export default function ExtrudedBodies() {
         <mesh
           key={featureIds[i] ?? i}
           geometry={geom}
-          material={BODY_MATERIAL}
+          material={getMaterial(featureComponentIds[i])}
           castShadow
           receiveShadow
           onUpdate={(m) => {
@@ -160,16 +177,20 @@ export default function ExtrudedBodies() {
       })}
       {/* Render features that have a pre-built stored mesh (D30 Sweep, D66 Thin Extrude,
           D69 Taper Extrude, D73 Rib). All these set feature.mesh at commit time. */}
-      {features.filter((f) => isActive(f) && f.mesh).map((feature) => (
-        <primitive
-          key={feature.id}
-          object={feature.mesh!}
-          onUpdate={(m: THREE.Object3D) => {
-            m.userData.pickable = true;
-            m.userData.featureId = feature.id;
-          }}
-        />
-      ))}
+      {features.filter((f) => isActive(f) && f.mesh).map((feature) => {
+        const mat = getMaterial(feature.componentId, feature.bodyKind === 'surface');
+        feature.mesh!.material = mat;
+        return (
+          <primitive
+            key={feature.id}
+            object={feature.mesh!}
+            onUpdate={(m: THREE.Object3D) => {
+              m.userData.pickable = true;
+              m.userData.featureId = feature.id;
+            }}
+          />
+        );
+      })}
     </>
   );
 }

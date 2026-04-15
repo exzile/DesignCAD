@@ -11,21 +11,28 @@ export function CombineDialog({ onClose }: { onClose: () => void }) {
 
   const [operation, setOperation] = useState<BooleanOperation>((p.operation as BooleanOperation) ?? 'join');
   const [keepTools, setKeepTools] = useState(p.keepTools !== false && !!p.keepTools);
+  const [targetId, setTargetId] = useState<string>(String(p.targetId ?? ''));
+  const [toolId, setToolId] = useState<string>(String(p.toolId ?? ''));
 
   const addFeature = useCADStore((s) => s.addFeature);
   const updateFeatureParams = useCADStore((s) => s.updateFeatureParams);
   const setStatusMessage = useCADStore((s) => s.setStatusMessage);
+  const commitCombine = useCADStore((s) => s.commitCombine);
+
+  const meshFeatures = features.filter((f) => !!f.mesh);
 
   const handleApply = () => {
     if (editing) {
-      updateFeatureParams(editing.id, { operation, keepTools });
+      updateFeatureParams(editing.id, { operation, keepTools, targetId, toolId });
       setStatusMessage(`Updated ${operation} operation${keepTools ? ' (keep tools)' : ''}`);
+    } else if (targetId && toolId) {
+      commitCombine(targetId, toolId, operation as 'join' | 'cut' | 'intersect', keepTools);
     } else {
       const feature: Feature = {
         id: crypto.randomUUID(),
         name: `Combine (${operation})`,
         type: 'combine',
-        params: { operation, keepTools },
+        params: { operation, keepTools, targetId, toolId },
         visible: true,
         suppressed: false,
         timestamp: Date.now(),
@@ -45,6 +52,24 @@ export function CombineDialog({ onClose }: { onClose: () => void }) {
         </div>
         <div className="dialog-body">
           <div className="form-group">
+            <label>Target Body</label>
+            <select value={targetId} onChange={(e) => setTargetId(e.target.value)}>
+              <option value="">(select target)</option>
+              {meshFeatures.map((f) => (
+                <option key={f.id} value={f.id}>{f.name}</option>
+              ))}
+            </select>
+          </div>
+          <div className="form-group">
+            <label>Tool Body</label>
+            <select value={toolId} onChange={(e) => setToolId(e.target.value)}>
+              <option value="">(select tool)</option>
+              {meshFeatures.filter((f) => f.id !== targetId).map((f) => (
+                <option key={f.id} value={f.id}>{f.name}</option>
+              ))}
+            </select>
+          </div>
+          <div className="form-group">
             <label>Operation</label>
             <select value={operation} onChange={(e) => setOperation(e.target.value as BooleanOperation)}>
               <option value="join">Join (Union)</option>
@@ -63,7 +88,7 @@ export function CombineDialog({ onClose }: { onClose: () => void }) {
             <input type="checkbox" checked={keepTools} onChange={(e) => setKeepTools(e.target.checked)} />
             Keep Tools (preserve tool bodies)
           </label>
-          <p className="dialog-hint">Select a target body and a tool body in the viewport.</p>
+          <p className="dialog-hint">Select a target body and a tool body to combine.</p>
         </div>
         <div className="dialog-footer">
           <button className="btn btn-secondary" onClick={onClose}>Cancel</button>

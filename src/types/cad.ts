@@ -246,7 +246,8 @@ export type FeatureType =
   | 'rib'
   | 'pattern-on-path'
   | 'scale'
-  | 'form';
+  | 'form'
+  | 'base-feature';
 
 export type BooleanOperation = 'new-body' | 'join' | 'cut' | 'intersect';
 
@@ -267,6 +268,21 @@ export interface Feature {
   visible: boolean;
   suppressed: boolean;
   timestamp: number;
+  /** MM3: marks this feature as the Base Feature container boundary. */
+  isBaseFeatureContainer?: boolean;
+  /** MM3: true while the Base Feature container is still open (not yet finished). */
+  baseFeatureOpen?: boolean;
+  /** MM4: ID of the feature group this feature belongs to. */
+  groupId?: string;
+  /** MM1: when true, this feature was created in Direct Modeling mode and is excluded from the timeline. */
+  suppressTimeline?: boolean;
+}
+
+/** MM4: A named, collapsible folder that groups timeline features together. */
+export interface FeatureGroup {
+  id: string;
+  name: string;
+  collapsed: boolean;
 }
 
 // ===== Form (T-Spline / Catmull-Clark Subdivision) Types =====
