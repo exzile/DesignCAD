@@ -13,21 +13,21 @@ export default function PrinterSettings() {
   const error = usePrinterStore((s) => s.error);
 
   const [url, setUrl] = useState(config?.hostname || 'http://duet.local');
-  const [apiKey, setApiKey] = useState(config?.password || '');
+  const [password, setPassword] = useState(config?.password || '');
   const [testing, setTesting] = useState(false);
   const [testResult, setTestResult] = useState<'success' | 'fail' | null>(null);
 
   if (!showSettings) return null;
 
   const handleConnect = async () => {
-    if (!url || !apiKey) return;
+    if (!url || !password) return;
     setTesting(true);
     setTestResult(null);
 
     try {
       setConfig({
         hostname: url.replace(/\/$/, ''),
-        password: apiKey,
+        password,
         mode: 'standalone',
       });
       await connectPrinter();
@@ -73,7 +73,7 @@ export default function PrinterSettings() {
               type="text"
               value={url}
               onChange={(e) => setUrl(e.target.value)}
-              placeholder="http://octopi.local or http://192.168.1.100"
+              placeholder="http://duet.local or http://192.168.1.100"
               disabled={connected}
             />
             <span className="form-hint">
@@ -85,8 +85,8 @@ export default function PrinterSettings() {
             <label>Password</label>
             <input
               type="password"
-              value={apiKey}
-              onChange={(e) => setApiKey(e.target.value)}
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
               placeholder="Duet password"
               disabled={connected}
             />
@@ -100,7 +100,7 @@ export default function PrinterSettings() {
           )}
           {testResult === 'fail' && (
             <div className="banner error">
-              Connection failed. Check the URL and API key.
+              Connection failed. Check the URL and password.
             </div>
           )}
           {error && (
@@ -117,7 +117,7 @@ export default function PrinterSettings() {
             </ol>
             <p className="help-note">
               Both your computer and printer must be on the same network.
-              If using a hostname like "octopi.local", make sure mDNS is working
+              If using a hostname like "duet.local", make sure mDNS is working
               on your network, or use the IP address directly.
             </p>
           </div>
@@ -135,7 +135,7 @@ export default function PrinterSettings() {
             <button
               className="btn btn-primary"
               onClick={handleConnect}
-              disabled={!url || !apiKey || testing}
+              disabled={!url || !password || testing}
             >
               {testing ? (
                 <><Loader2 size={14} className="spin" /> Connecting...</>

@@ -9,11 +9,16 @@ import { BODY_MATERIAL, SURFACE_MATERIAL } from './bodyMaterial';
 function RevolveItem({ feature, sketch }: { feature: Feature; sketch: Sketch }) {
   const angle = ((feature.params.angle as number) || 360) * (Math.PI / 180);
   const axisKey = (feature.params.axis as 'X' | 'Y' | 'Z') || 'Y';
+  const useCenterline = !!feature.params.useCenterline;
   const axis = useMemo(() => {
+    if (useCenterline && feature.params.axisDirection) {
+      const [ax, ay, az] = feature.params.axisDirection as number[];
+      return new THREE.Vector3(ax, ay, az);
+    }
     if (axisKey === 'X') return new THREE.Vector3(1, 0, 0);
     if (axisKey === 'Z') return new THREE.Vector3(0, 0, 1);
     return new THREE.Vector3(0, 1, 0);
-  }, [axisKey]);
+  }, [axisKey, useCenterline, feature.params.axisDirection]);
   const isSurface = feature.bodyKind === 'surface';
   const mesh = useMemo(() => {
     const m = GeometryEngine.revolveSketch(sketch, angle, axis);

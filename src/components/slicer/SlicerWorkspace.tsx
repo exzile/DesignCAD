@@ -1123,6 +1123,113 @@ function ObjectsPanel() {
   );
 }
 
+function Num({
+  label,
+  value,
+  onChange,
+  step = 1,
+  min = 0,
+  max = 9999,
+  unit,
+}: {
+  label: string;
+  value: number;
+  onChange: (v: number) => void;
+  step?: number;
+  min?: number;
+  max?: number;
+  unit?: string;
+}) {
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 2, marginBottom: 6 }}>
+      <div style={labelStyle}>{label}{unit ? ` (${unit})` : ''}</div>
+      <input
+        type="number"
+        style={inputStyle}
+        value={value}
+        step={step}
+        min={min}
+        max={max}
+        onChange={(e) => onChange(parseFloat(e.target.value) || min)}
+      />
+    </div>
+  );
+}
+
+function Check({ label, value, onChange }: { label: string; value: boolean; onChange: (v: boolean) => void }) {
+  return (
+    <label style={{ display: 'flex', alignItems: 'center', gap: 6, color: colors.text, fontSize: 12, cursor: 'pointer', marginBottom: 6 }}>
+      <input type="checkbox" checked={value} onChange={(e) => onChange(e.target.checked)} style={{ accentColor: colors.accent }} />
+      {label}
+    </label>
+  );
+}
+
+function Sel<T extends string>({
+  label,
+  value,
+  onChange,
+  options,
+}: {
+  label: string;
+  value: T;
+  onChange: (v: T) => void;
+  options: { value: T; label: string }[];
+}) {
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 2, marginBottom: 6 }}>
+      <div style={labelStyle}>{label}</div>
+      <select style={selectStyle} value={value} onChange={(e) => onChange(e.target.value as T)}>
+        {options.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
+      </select>
+    </div>
+  );
+}
+
+function Density({ value, onChange }: { value: number; onChange: (v: number) => void }) {
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 2, marginBottom: 6 }}>
+      <div style={labelStyle}>Density ({value}%)</div>
+      <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+        <input
+          type="range"
+          min={0}
+          max={100}
+          value={value}
+          onChange={(e) => onChange(parseInt(e.target.value))}
+          style={{ flex: 1, accentColor: colors.accent }}
+        />
+        <input
+          type="number"
+          style={{ ...inputStyle, width: 48 }}
+          value={value}
+          min={0}
+          max={100}
+          onChange={(e) => onChange(parseInt(e.target.value) || 0)}
+        />
+      </div>
+    </div>
+  );
+}
+
+function SectionDivider({ label }: { label: string }) {
+  return (
+    <div style={{
+      fontSize: 10,
+      fontWeight: 700,
+      color: colors.textDim,
+      textTransform: 'uppercase',
+      letterSpacing: '0.6px',
+      borderBottom: `1px solid ${colors.panelBorder}`,
+      paddingBottom: 3,
+      marginBottom: 8,
+      marginTop: 4,
+    }}>
+      {label}
+    </div>
+  );
+}
+
 // =============================================================================
 // Right Panel: Settings
 // =============================================================================
@@ -1150,55 +1257,6 @@ function SettingsPanel({ onEditProfile }: { onEditProfile: (type: 'printer' | 'm
   const upd = useCallback((updates: Partial<PrintProfile>) => {
     if (print) updatePrintProfile(print.id, updates);
   }, [print, updatePrintProfile]);
-
-  // ── Inline field helpers ───────────────────────────────────────────────────
-  const Num = ({
-    label, value, onChange, step = 1, min = 0, max = 9999, unit,
-  }: { label: string; value: number; onChange: (v: number) => void; step?: number; min?: number; max?: number; unit?: string }) => (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 2, marginBottom: 6 }}>
-      <div style={labelStyle}>{label}{unit ? ` (${unit})` : ''}</div>
-      <input type="number" style={inputStyle} value={value} step={step} min={min} max={max}
-        onChange={(e) => onChange(parseFloat(e.target.value) || min)} />
-    </div>
-  );
-
-  const Check = ({ label, value, onChange }: { label: string; value: boolean; onChange: (v: boolean) => void }) => (
-    <label style={{ display: 'flex', alignItems: 'center', gap: 6, color: colors.text, fontSize: 12, cursor: 'pointer', marginBottom: 6 }}>
-      <input type="checkbox" checked={value} onChange={(e) => onChange(e.target.checked)} style={{ accentColor: colors.accent }} />
-      {label}
-    </label>
-  );
-
-  const Sel = <T extends string>({
-    label, value, onChange, options,
-  }: { label: string; value: T; onChange: (v: T) => void; options: { value: T; label: string }[] }) => (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 2, marginBottom: 6 }}>
-      <div style={labelStyle}>{label}</div>
-      <select style={selectStyle} value={value} onChange={(e) => onChange(e.target.value as T)}>
-        {options.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
-      </select>
-    </div>
-  );
-
-  const Density = ({ value, onChange }: { value: number; onChange: (v: number) => void }) => (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 2, marginBottom: 6 }}>
-      <div style={labelStyle}>Density ({value}%)</div>
-      <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
-        <input type="range" min={0} max={100} value={value}
-          onChange={(e) => onChange(parseInt(e.target.value))} style={{ flex: 1, accentColor: colors.accent }} />
-        <input type="number" style={{ ...inputStyle, width: 48 }} value={value} min={0} max={100}
-          onChange={(e) => onChange(parseInt(e.target.value) || 0)} />
-      </div>
-    </div>
-  );
-
-  const SectionDivider = ({ label }: { label: string }) => (
-    <div style={{
-      fontSize: 10, fontWeight: 700, color: colors.textDim, textTransform: 'uppercase',
-      letterSpacing: '0.6px', borderBottom: `1px solid ${colors.panelBorder}`,
-      paddingBottom: 3, marginBottom: 8, marginTop: 4,
-    }}>{label}</div>
-  );
 
   return (
     <div style={{ ...panelStyle, width: 300, borderLeft: `1px solid ${colors.panelBorder}`, borderRight: 'none' }}>

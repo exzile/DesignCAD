@@ -49,6 +49,7 @@ import {
   DriveJointsDialog,
   MotionLinkDialog,
   RigidGroupDialog,
+  ComponentPatternDialog,
   UntrimDialog,
   SurfaceMergeDialog,
   MeshSectionSketchDialog,
@@ -105,6 +106,7 @@ function ActiveDialog() {
     case 'base-feature': return <BaseFeatureDialog onClose={close} />;
     case 'joint': return <JointDialog onClose={close} />;
     case 'as-built-joint': return <AsBuiltJointDialog onClose={close} />;
+    case 'component-pattern': return <ComponentPatternDialog onClose={close} />;
     case 'draft': return <DraftDialog onClose={close} />;
     case 'scale': return <ScaleDialog onClose={close} />;
     case 'primitive-box': return <PrimitivesDialog kind="box" onClose={close} />;

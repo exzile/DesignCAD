@@ -66,7 +66,7 @@ SKETCH SECOND AUDIT GAPS
 [x] S2.  Center Point Arc Slot (slot-center-arc: 4-click flow)
 [ ] S3.  Intersection Curve — create curve from body/surface intersection
 [ ] S4.  Isoparametric Curve — UV-parameter curve on a NURBS surface (deferred)
-[ ] S5.  Spun Profile — revolve open profile around a centerline
+[x] S5.  Spun Profile — revolves profile around sketch centerline entity; 4th axis option in RevolvePanel
 [x] S6.  Break Link (linked flag on SketchEntity + breakProjectionLink action)
 [x] S7.  Per-sketch grid size (sketchGridSize in cadStore, SketchPalette input)
 [x] S8.  Intersection snap (line-line intersection added to findSnapCandidate)
@@ -78,7 +78,7 @@ ASSEMBLY GAPS
 ═══════════════════════════════════════════════════════════════
 [x] A1–A8. Component Browser, Joint dialog, Ground/Unground, Rigid Group,
            Motion Link, Drive Joints, As-Built Joint, Mirror Component
-[ ] A9.  Component Pattern (rectangular + circular array of component instances)
+[x] A9.  Component Pattern (linear/circular array, clones bodies with offset/rotation transforms)
 [ ] A10. Motion Study (timeline-based joint animation — DEFERRED, very hard)
 
 ═══════════════════════════════════════════════════════════════

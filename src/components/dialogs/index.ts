@@ -71,6 +71,7 @@ export { default as AsBuiltJointDialog } from './assembly/AsBuiltJointDialog';
 export { DriveJointsDialog } from './assembly/DriveJointsDialog';
 export { MotionLinkDialog } from './assembly/MotionLinkDialog';
 export { RigidGroupDialog } from './assembly/RigidGroupDialog';
+export { ComponentPatternDialog } from './assembly/ComponentPatternDialog';
 
 // additional solid dialogs
 export { OffsetFaceDialog } from './solid/OffsetFaceDialog';

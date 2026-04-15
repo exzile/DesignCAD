@@ -57,11 +57,12 @@ export default function RevolvePanel() {
           <select
             className="measure-select"
             value={axis}
-            onChange={(e) => setAxis(e.target.value as 'X' | 'Y' | 'Z')}
+            onChange={(e) => setAxis(e.target.value as 'X' | 'Y' | 'Z' | 'centerline')}
           >
             <option value="X">X axis</option>
             <option value="Y">Y axis</option>
             <option value="Z">Z axis</option>
+            <option value="centerline">Sketch Centerline</option>
           </select>
         </div>
 

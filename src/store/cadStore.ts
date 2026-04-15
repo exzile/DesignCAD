@@ -301,8 +301,8 @@ interface CADState {
   // Revolve tool
   revolveSelectedSketchId: string | null;
   setRevolveSelectedSketchId: (id: string | null) => void;
-  revolveAxis: 'X' | 'Y' | 'Z';
-  setRevolveAxis: (a: 'X' | 'Y' | 'Z') => void;
+  revolveAxis: 'X' | 'Y' | 'Z' | 'centerline';
+  setRevolveAxis: (a: 'X' | 'Y' | 'Z' | 'centerline') => void;
   revolveAngle: number;
   setRevolveAngle: (angle: number) => void;
   // Revolve direction modes (D70)
@@ -429,6 +429,13 @@ interface CADState {
 
   // A5 — ground/unground a component (stub; components array populated in A1)
   groundComponent: (id: string, grounded: boolean) => void;
+
+  // A9 — Component Pattern (linear/circular array of component instances)
+  createComponentPattern: (
+    sourceId: string,
+    type: 'linear' | 'circular',
+    params: { axis: 'X' | 'Y' | 'Z'; count: number; spacing: number; circularAxis: 'X' | 'Y' | 'Z'; circularCount: number }
+  ) => void;
 }
 
 // Plane normals consistent with the visual selector (Three.js Y-up):
@@ -499,7 +506,7 @@ const EXTRUDE_DEFAULTS = {
 
 const REVOLVE_DEFAULTS = {
   revolveSelectedSketchId: null as string | null,
-  revolveAxis: 'Y' as 'X' | 'Y' | 'Z',
+  revolveAxis: 'Y' as 'X' | 'Y' | 'Z' | 'centerline',
   revolveAngle: 360,
   // D70 direction modes
   revolveDirection: 'one-side' as 'one-side' | 'symmetric' | 'two-sides',
@@ -1659,6 +1666,25 @@ export const useCADStore = create<CADState>()(persist((set, get) => ({
       set({ statusMessage: 'Angle must be greater than 0' });
       return;
     }
+    // S5: if centerline axis, find centerline entity in sketch and extract axis
+    let resolvedAxisKey = revolveAxis as string;
+    let centerlineAxisDirection: [number, number, number] | undefined;
+    let centerlineAxisOrigin: [number, number, number] | undefined;
+    if (revolveAxis === 'centerline') {
+      const clEntity = sketch.entities.find((e) => e.type === 'centerline' && e.points.length >= 2);
+      if (!clEntity) {
+        set({ statusMessage: 'Spun Profile: no centerline found in sketch — add a centerline entity first' });
+        return;
+      }
+      const p0 = clEntity.points[0];
+      const p1 = clEntity.points[clEntity.points.length - 1];
+      const dir = new THREE.Vector3(p1.x - p0.x, p1.y - p0.y, p1.z - p0.z).normalize();
+      centerlineAxisDirection = [dir.x, dir.y, dir.z];
+      centerlineAxisOrigin = [p0.x, p0.y, p0.z];
+      // Map to nearest standard axis for LatheGeometry orientation fallback
+      const ax = Math.abs(dir.x), ay = Math.abs(dir.y), az = Math.abs(dir.z);
+      resolvedAxisKey = ax >= ay && ax >= az ? 'X' : ay >= ax && ay >= az ? 'Y' : 'Z';
+    }
     const feature: Feature = {
       id: crypto.randomUUID(),
       name: `${revolveBodyKind === 'surface' ? 'Surface ' : ''}Revolve ${features.filter((f) => f.type === 'revolve').length + 1}`,
@@ -1666,7 +1692,8 @@ export const useCADStore = create<CADState>()(persist((set, get) => ({
       sketchId: revolveSelectedSketchId,
       params: {
         angle: revolveAngle,
-        axis: revolveAxis,
+        axis: resolvedAxisKey,
+        ...(centerlineAxisDirection ? { useCenterline: true, axisDirection: centerlineAxisDirection, axisOrigin: centerlineAxisOrigin } : {}),
         direction: revolveDirection,
         angle2: revolveAngle2,
       },
@@ -1684,7 +1711,7 @@ export const useCADStore = create<CADState>()(persist((set, get) => ({
       features: [...features, feature],
       activeTool: 'select',
       ...REVOLVE_DEFAULTS,
-      statusMessage: `Revolved ${sketch.name} by ${angleDesc} around ${revolveAxis} (${units})`,
+      statusMessage: `Revolved ${sketch.name} by ${angleDesc} around ${revolveAxis === 'centerline' ? 'sketch centerline' : revolveAxis} (${units})`,
     });
   },
 
@@ -2009,6 +2036,60 @@ export const useCADStore = create<CADState>()(persist((set, get) => ({
   // A5 — stub until Component Browser (A1) populates a components array
   groundComponent: (_id, _grounded) => {
     /* no components array yet; will be populated with A1 Component Browser */
+  },
+
+  // A9 — Component Pattern
+  createComponentPattern: (sourceId, type, params) => {
+    const componentStore = useComponentStore.getState();
+    const { components, bodies } = componentStore;
+    const source = components[sourceId];
+    if (!source) return;
+
+    const axisVec = (a: 'X' | 'Y' | 'Z'): THREE.Vector3 =>
+      a === 'X' ? new THREE.Vector3(1, 0, 0) : a === 'Y' ? new THREE.Vector3(0, 1, 0) : new THREE.Vector3(0, 0, 1);
+
+    const n = type === 'linear' ? params.count : params.circularCount;
+    const parentId = source.parentId ?? componentStore.rootComponentId;
+
+    for (let i = 1; i < n; i++) {
+      let offsetMatrix: THREE.Matrix4;
+      if (type === 'linear') {
+        const dir = axisVec(params.axis).multiplyScalar(params.spacing * i);
+        offsetMatrix = new THREE.Matrix4().makeTranslation(dir.x, dir.y, dir.z);
+      } else {
+        const angle = ((Math.PI * 2) / n) * i;
+        offsetMatrix = new THREE.Matrix4().makeRotationAxis(axisVec(params.circularAxis), angle);
+      }
+
+      // Create new child component for this copy
+      const newCompId = componentStore.addComponent(parentId, `${source.name} (${i + 1})`);
+
+      // Clone each body from the source into the new component
+      for (const bodyId of source.bodyIds) {
+        const srcBody = bodies[bodyId];
+        if (!srcBody || !srcBody.mesh) continue;
+        const srcMesh = srcBody.mesh as THREE.Mesh;
+        const clonedMesh = srcMesh.clone();
+        clonedMesh.applyMatrix4(offsetMatrix);
+        clonedMesh.userData.pickable = true;
+
+        const newBodyId = componentStore.addBody(newCompId, `${srcBody.name} (${i + 1})`);
+        componentStore.setBodyMesh(newBodyId, clonedMesh as THREE.Mesh);
+      }
+    }
+
+    const feature: Feature = {
+      id: crypto.randomUUID(),
+      name: `Component Pattern (${type}, ×${n})`,
+      type: 'linear-pattern',
+      params: { sourceComponentId: sourceId, patternType: type, ...params },
+      visible: true,
+      suppressed: false,
+      timestamp: Date.now(),
+    };
+
+    get().addFeature(feature);
+    get().setStatusMessage(`Component pattern: ${n - 1} cop${n - 1 === 1 ? 'y' : 'ies'} created`);
   },
 }),
 {

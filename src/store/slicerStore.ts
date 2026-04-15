@@ -91,7 +91,7 @@ interface SlicerStore {
   deletePrintProfile: (id: string) => void;
 
   // Plate management
-  addToPlate: (featureId: string, name: string, geometry: any) => void;
+  addToPlate: (featureId: string, name: string, geometry: THREE.BufferGeometry | null | unknown) => void;
   removeFromPlate: (id: string) => void;
   selectPlateObject: (id: string | null) => void;
   updatePlateObject: (id: string, updates: Partial<PlateObject>) => void;
@@ -130,7 +130,7 @@ interface SerializedGeom {
   index?: number[];
 }
 
-function serializeGeom(geom: any): SerializedGeom | null {
+function serializeGeom(geom: THREE.BufferGeometry | null | undefined): SerializedGeom | null {
   if (!geom?.attributes?.position) return null;
   try {
     const out: SerializedGeom = {
@@ -141,6 +141,13 @@ function serializeGeom(geom: any): SerializedGeom | null {
     if (geom.index)              out.index  = Array.from(geom.index.array as Uint16Array | Uint32Array);
     return out;
   } catch { return null; }
+}
+
+function isBufferGeometry(geometry: unknown): geometry is THREE.BufferGeometry {
+  if (geometry instanceof THREE.BufferGeometry) return true;
+  return !!geometry &&
+    typeof geometry === 'object' &&
+    (geometry as { isBufferGeometry?: boolean }).isBufferGeometry === true;
 }
 
 function deserializeGeom(data: SerializedGeom): THREE.BufferGeometry {
@@ -308,7 +315,7 @@ export const useSlicerStore = create<SlicerStore>()(persist((set, get) => ({
     if (state.activePrinterProfileId === id && filtered.length > 0) {
       newState.activePrinterProfileId = filtered[0].id;
     }
-    return newState as any;
+    return newState;
   }),
 
   addMaterialProfile: (profile) => set((state) => ({
@@ -327,7 +334,7 @@ export const useSlicerStore = create<SlicerStore>()(persist((set, get) => ({
     if (state.activeMaterialProfileId === id && filtered.length > 0) {
       newState.activeMaterialProfileId = filtered[0].id;
     }
-    return newState as any;
+    return newState;
   }),
 
   addPrintProfile: (profile) => set((state) => ({
@@ -346,7 +353,7 @@ export const useSlicerStore = create<SlicerStore>()(persist((set, get) => ({
     if (state.activePrintProfileId === id && filtered.length > 0) {
       newState.activePrintProfileId = filtered[0].id;
     }
-    return newState as any;
+    return newState;
   }),
 
   // --- Plate management ---
@@ -354,15 +361,10 @@ export const useSlicerStore = create<SlicerStore>()(persist((set, get) => ({
   addToPlate: (featureId, name, geometry) => {
     // Compute bounding box from Three.js BufferGeometry
     const bbox = new THREE.Box3();
-    if (geometry instanceof THREE.BufferGeometry) {
+    if (isBufferGeometry(geometry)) {
       geometry.computeBoundingBox();
       if (geometry.boundingBox) {
         bbox.copy(geometry.boundingBox);
-      }
-    } else if (geometry && (geometry as any).isBufferGeometry) {
-      (geometry as any).computeBoundingBox();
-      if ((geometry as any).boundingBox) {
-        bbox.copy((geometry as any).boundingBox);
       }
     }
 
@@ -577,8 +579,8 @@ export const useSlicerStore = create<SlicerStore>()(persist((set, get) => ({
         .filter((obj) => obj.geometry)
         .map((obj) => {
           const pos = (obj.position as { x: number; y: number; z?: number });
-          const rot = normalizeRotationDegreesToRadians((obj as any).rotation);
-          const scl = normalizeScale((obj as any).scale);
+          const rot = normalizeRotationDegreesToRadians((obj as { rotation?: unknown }).rotation);
+          const scl = normalizeScale((obj as { scale?: unknown }).scale);
 
           const transform = new THREE.Matrix4();
           transform.compose(
@@ -689,7 +691,7 @@ export const useSlicerStore = create<SlicerStore>()(persist((set, get) => ({
 }),
 {
   name: 'dzign3d-slicer-plate',
-  storage: idbStorage as any,
+  storage: idbStorage as unknown as typeof idbStorage,
 
   // Only persist plate-related state — not ephemeral slice/preview/progress state
   partialize: (state) => ({
@@ -705,9 +707,12 @@ export const useSlicerStore = create<SlicerStore>()(persist((set, get) => ({
   // After loading from IDB, reconstruct BufferGeometry objects
   onRehydrateStorage: () => (state) => {
     if (!state?.plateObjects) return;
-    state.plateObjects = state.plateObjects.map((obj: any) => ({
+    const persistedState = state as unknown as {
+      plateObjects: Array<Omit<PlateObject, 'geometry'> & { geometry: SerializedGeom | null }>;
+    };
+    persistedState.plateObjects = persistedState.plateObjects.map((obj) => ({
       ...obj,
-      geometry: obj.geometry ? deserializeGeom(obj.geometry as SerializedGeom) : null,
+      geometry: obj.geometry ? deserializeGeom(obj.geometry) : null,
     }));
   },
 }));

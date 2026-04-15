@@ -307,7 +307,10 @@ export class FileImporter {
         } else if (compression === 8) {
           // DEFLATE
           try {
-            const ds = new (window as any).DecompressionStream('deflate-raw');
+            type DecompressionStreamCtor = new (format: 'deflate-raw' | 'deflate' | 'gzip') => DecompressionStream;
+            const DS = (window as Window & { DecompressionStream?: DecompressionStreamCtor }).DecompressionStream;
+            if (!DS) return null;
+            const ds = new DS('deflate-raw');
             const writer = ds.writable.getWriter();
             const reader = ds.readable.getReader();
 

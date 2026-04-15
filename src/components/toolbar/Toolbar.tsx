@@ -538,6 +538,7 @@ const setStatusMessage = useCADStore((s) => s.setStatusMessage);
     { icon: <Play size={MI} />, label: 'Drive Joints', onClick: () => setActiveDialog('drive-joints') },
     { icon: <GitMerge size={MI} />, label: 'Motion Link', onClick: () => setActiveDialog('motion-link') },
     { icon: <Play size={MI} />, label: 'Motion Study', onClick: comingSoon('Motion Study') },
+    { separator: true, icon: <Repeat size={MI} />, label: 'Component Pattern', onClick: () => setActiveDialog('component-pattern') },
   ];
 
   const constructMenuItems: MenuItem[] = [
