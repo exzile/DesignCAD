@@ -24,7 +24,7 @@ DESIGN WORKSPACE — OPEN ITEMS
 
 ── SKETCH CREATE ─────────────────────────────────────────────
 [ ] D12. Sketch Text — font triangulation (opentype.js), anchor + string + height
-[ ] D14. Project / Include Geometry — pick 3D edge/face → project onto sketch plane
+[x] D14. Project / Include Geometry — face-boundary projection onto sketch plane (linked entities, uses computeCoplanarFaceBoundary)
 [ ] D15. Intersect — project 3D edge intersection with sketch plane into sketch
 [ ] D45. Include 3D Geometry (alias of D14 with live-link toggle)
 [ ] D46. Project to Surface — project sketch curves onto a curved 3D surface
@@ -35,7 +35,7 @@ DESIGN WORKSPACE — OPEN ITEMS
 [ ] D29. 12 geometric constraints UI (coincident, parallel, etc.)
 [ ] D48. Arc Length dimension
 [ ] D49. Aligned (true-length) dimension
-[ ] D50. AutoConstrain — auto-apply coincident/tangent/parallel from geometry proximity
+[x] D50. AutoConstrain — detects horizontal/vertical/coincident/parallel/equal constraints and records them
 [ ] D51. Curvature constraint (G2 spline continuity)
 [ ] D52. Symmetry constraint (explicit, select axis + entities)
 [ ] D58. 3D Sketch mode toggle + planar manipulator

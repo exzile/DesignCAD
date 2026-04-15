@@ -1,7 +1,7 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import * as THREE from 'three';
-import type { Tool, ViewMode, SketchPlane, Sketch, SketchEntity, SketchPoint, Feature, Parameter, BooleanOperation, FormCage, FormSelection, FormElementType } from '../types/cad';
+import type { Tool, ViewMode, SketchPlane, Sketch, SketchEntity, SketchPoint, SketchConstraint, Feature, Parameter, BooleanOperation, FormCage, FormSelection, FormElementType } from '../types/cad';
 
 export type ExtrudeDirection = 'normal' | 'symmetric' | 'reverse';
 export type ExtrudeOperation = Extract<BooleanOperation, 'new-body' | 'join' | 'cut'>;
@@ -86,6 +86,8 @@ interface CADState {
   renameSketch: (id: string, name: string) => void;
   /** D60: Redefine the plane of an existing sketch */
   redefineSketchPlane: (id: string, plane: SketchPlane, normal: THREE.Vector3, origin: THREE.Vector3) => void;
+  /** D50: Auto-detect and apply geometric constraints (horizontal/vertical/coincident/parallel/equal) */
+  autoConstrainSketch: () => void;
 
   // Feature timeline
   features: Feature[];
@@ -1315,6 +1317,130 @@ export const useCADStore = create<CADState>()(persist((set, get) => ({
       activeSketch: { ...activeSketch, entities: [...activeSketch.entities, ...mirrored] },
       statusMessage: `Mirror: ${mirrored.length} entities added (${sketchMirrorAxis})`,
     });
+  },
+
+  // D50: AutoConstrain — detect and record geometric constraints on the active sketch
+  autoConstrainSketch: () => {
+    const { activeSketch } = get();
+    if (!activeSketch) return;
+
+    const TOL = 0.5;       // mm tolerance for proximity / length equality
+    const ANGLE_TOL = 0.01; // radians tolerance for direction comparisons
+
+    const newConstraints: SketchConstraint[] = [];
+
+    const lines = activeSketch.entities.filter(
+      (e) => (e.type === 'line' || e.type === 'construction-line' || e.type === 'centerline') && e.points.length >= 2
+    );
+
+    // Horizontal / Vertical
+    for (const e of lines) {
+      const p0 = e.points[0];
+      const p1 = e.points[e.points.length - 1];
+      const dx = p1.x - p0.x;
+      const dy = p1.y - p0.y;
+      const dz = p1.z - p0.z;
+
+      if (Math.abs(dy) < TOL && Math.abs(dz) < TOL) {
+        const alreadyHas = activeSketch.constraints.some(
+          (c) => c.type === 'horizontal' && c.entityIds.includes(e.id)
+        );
+        if (!alreadyHas) {
+          newConstraints.push({ id: crypto.randomUUID(), type: 'horizontal', entityIds: [e.id] });
+        }
+      }
+
+      if (Math.abs(dx) < TOL && Math.abs(dz) < TOL) {
+        const alreadyHas = activeSketch.constraints.some(
+          (c) => c.type === 'vertical' && c.entityIds.includes(e.id)
+        );
+        if (!alreadyHas) {
+          newConstraints.push({ id: crypto.randomUUID(), type: 'vertical', entityIds: [e.id] });
+        }
+      }
+    }
+
+    // Coincident: pairs of endpoints within TOL
+    const allPoints = activeSketch.entities.flatMap((e) =>
+      e.points.map((p, idx) => ({ entityId: e.id, pointIndex: idx, x: p.x, y: p.y, z: p.z }))
+    );
+    for (let i = 0; i < allPoints.length; i++) {
+      for (let j = i + 1; j < allPoints.length; j++) {
+        const a = allPoints[i];
+        const b = allPoints[j];
+        if (a.entityId === b.entityId) continue;
+        const dist = Math.sqrt((a.x - b.x) ** 2 + (a.y - b.y) ** 2 + (a.z - b.z) ** 2);
+        if (dist < TOL) {
+          const alreadyHas = activeSketch.constraints.some(
+            (c) =>
+              c.type === 'coincident' &&
+              c.entityIds.includes(a.entityId) &&
+              c.entityIds.includes(b.entityId)
+          );
+          if (!alreadyHas) {
+            newConstraints.push({
+              id: crypto.randomUUID(),
+              type: 'coincident',
+              entityIds: [a.entityId, b.entityId],
+              pointIndices: [a.pointIndex, b.pointIndex],
+            });
+          }
+        }
+      }
+    }
+
+    // Parallel: pairs of lines with same direction (within ANGLE_TOL)
+    for (let i = 0; i < lines.length; i++) {
+      for (let j = i + 1; j < lines.length; j++) {
+        const ea = lines[i], eb = lines[j];
+        const a0 = ea.points[0], a1 = ea.points[ea.points.length - 1];
+        const b0 = eb.points[0], b1 = eb.points[eb.points.length - 1];
+        const da = { x: a1.x - a0.x, y: a1.y - a0.y, z: a1.z - a0.z };
+        const db = { x: b1.x - b0.x, y: b1.y - b0.y, z: b1.z - b0.z };
+        const lenA = Math.sqrt(da.x ** 2 + da.y ** 2 + da.z ** 2);
+        const lenB = Math.sqrt(db.x ** 2 + db.y ** 2 + db.z ** 2);
+        if (lenA < 0.001 || lenB < 0.001) continue;
+        const dot = Math.abs((da.x * db.x + da.y * db.y + da.z * db.z) / (lenA * lenB));
+        if (dot > 1 - ANGLE_TOL) {
+          const alreadyHas = activeSketch.constraints.some(
+            (c) => c.type === 'parallel' && c.entityIds.includes(ea.id) && c.entityIds.includes(eb.id)
+          );
+          if (!alreadyHas) {
+            newConstraints.push({ id: crypto.randomUUID(), type: 'parallel', entityIds: [ea.id, eb.id] });
+          }
+        }
+      }
+    }
+
+    // Equal length: pairs of lines with same length (within TOL)
+    const lineLengths = lines.map((e) => {
+      const p0 = e.points[0], p1 = e.points[e.points.length - 1];
+      return Math.sqrt((p1.x - p0.x) ** 2 + (p1.y - p0.y) ** 2 + (p1.z - p0.z) ** 2);
+    });
+    for (let i = 0; i < lines.length; i++) {
+      for (let j = i + 1; j < lines.length; j++) {
+        if (Math.abs(lineLengths[i] - lineLengths[j]) < TOL) {
+          const alreadyHas = activeSketch.constraints.some(
+            (c) => c.type === 'equal' && c.entityIds.includes(lines[i].id) && c.entityIds.includes(lines[j].id)
+          );
+          if (!alreadyHas) {
+            newConstraints.push({ id: crypto.randomUUID(), type: 'equal', entityIds: [lines[i].id, lines[j].id] });
+          }
+        }
+      }
+    }
+
+    if (newConstraints.length === 0) {
+      get().setStatusMessage('AutoConstrain: no new constraints detected');
+      return;
+    }
+
+    set((s) => ({
+      activeSketch: s.activeSketch
+        ? { ...s.activeSketch, constraints: [...s.activeSketch.constraints, ...newConstraints] }
+        : null,
+    }));
+    get().setStatusMessage(`AutoConstrain: applied ${newConstraints.length} constraint${newConstraints.length === 1 ? '' : 's'}`);
   },
 
   // Conic curve rho (D11)

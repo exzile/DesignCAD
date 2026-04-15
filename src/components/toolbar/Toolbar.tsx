@@ -20,7 +20,7 @@ import {
   CornerDownRight, FlipHorizontal2, ChevronsRight,
   ArrowLeftRight, ArrowUpDown, Equal, Tangent,
   RefreshCw, Unlink, SplitSquareHorizontal, Link, ZoomOut,
-  GitMerge,
+  GitMerge, Zap,
 } from 'lucide-react';
 import { useCADStore } from '../../store/cadStore';
 import { useComponentStore } from '../../store/componentStore';
@@ -342,6 +342,7 @@ export default function Toolbar() {
   const removeFeature = useCADStore((s) => s.removeFeature);
   const addFeature = useCADStore((s) => s.addFeature);
 const setStatusMessage = useCADStore((s) => s.setStatusMessage);
+  const autoConstrainSketch = useCADStore((s) => s.autoConstrainSketch);
   const sketches = useCADStore((s) => s.sketches);
   const setWorkspaceMode = useCADStore((s) => s.setWorkspaceMode);
   const setActiveTool = useCADStore((s) => s.setActiveTool);
@@ -681,7 +682,7 @@ const setStatusMessage = useCADStore((s) => s.setStatusMessage);
     },
     { icon: <Waypoints size={MI} />, label: 'Conic Curve', onClick: () => { setActiveTool('conic' as Tool); setStatusMessage('Conic: click start, then end, then shoulder point — set ρ in palette'); } },
     { separator: true, icon: <CircleDot size={MI} />, label: 'Point', onClick: () => setActiveTool('point' as Tool) },
-    { separator: true, icon: <ArrowUpFromLine size={MI} />, label: 'Project / Include', onClick: comingSoon('Project') },
+    { separator: true, icon: <ArrowUpFromLine size={MI} />, label: 'Project / Include', shortcut: 'P', onClick: () => { setActiveTool('sketch-project' as Tool); setStatusMessage('Project: click a solid face to project its boundary onto the sketch plane'); } },
     { icon: <Scissors size={MI} />, label: 'Intersect', onClick: comingSoon('Intersect') },
   ];
 
@@ -719,6 +720,7 @@ const setStatusMessage = useCADStore((s) => s.setStatusMessage);
     { separator: true, icon: <Circle size={MI} />, label: 'Equal', onClick: comingSoon('Equal Constraint') },
     { icon: <FlipHorizontal size={MI} />, label: 'Symmetric', onClick: comingSoon('Symmetric Constraint') },
     { icon: <Target size={MI} />, label: 'Fix / Unfix', onClick: comingSoon('Fix/Unfix Constraint') },
+    { separator: true, icon: <Zap size={MI} />, label: 'AutoConstrain', onClick: () => autoConstrainSketch() },
   ];
 
   // ─── Render ────────────────────────────────────────────────────────────
@@ -1212,6 +1214,7 @@ const setStatusMessage = useCADStore((s) => s.setStatusMessage);
                   { label: 'Control Point Spline', icon: <Waypoints size={14} />, onClick: () => { setActiveTool('spline-control' as Tool); setStatusMessage('Control Point Spline: click to add control points, right-click to commit'); } },
                 ]}
               />
+              <ToolButton icon={<ArrowUpFromLine size={20} />}    label="Project"   active={activeTool === 'sketch-project'} onClick={() => { setActiveTool('sketch-project' as Tool); setStatusMessage('Project: click a solid face to project its boundary onto the sketch plane'); }}  colorClass="icon-blue" />
             </RibbonSection>
 
             {/* ── MODIFY ─────────────────────────────────── */}
@@ -1231,8 +1234,9 @@ const setStatusMessage = useCADStore((s) => s.setStatusMessage);
               <ToolButton icon={<AlignCenter size={20} />}       label="Coincident" onClick={comingSoon('Coincident')}  colorClass="icon-orange" />
               <ToolButton icon={<ArrowLeftRight size={20} />}    label="Horizontal" onClick={comingSoon('Horizontal')}  colorClass="icon-orange" />
               <ToolButton icon={<ArrowUpDown size={20} />}       label="Vertical"   onClick={comingSoon('Vertical')}    colorClass="icon-orange" />
-              <ToolButton icon={<Tangent size={20} />}           label="Tangent"    onClick={comingSoon('Tangent')}     colorClass="icon-orange" />
-              <ToolButton icon={<Equal size={20} />}             label="Equal"      onClick={comingSoon('Equal')}       colorClass="icon-orange" />
+              <ToolButton icon={<Tangent size={20} />}           label="Tangent"      onClick={comingSoon('Tangent')}         colorClass="icon-orange" />
+              <ToolButton icon={<Equal size={20} />}             label="Equal"        onClick={comingSoon('Equal')}           colorClass="icon-orange" />
+              <ToolButton icon={<Zap size={20} />}               label="AutoConstrain" onClick={() => autoConstrainSketch()}  colorClass="icon-orange" />
             </RibbonSection>
 
             {/* ── CONFIGURE ──────────────────────────────── */}
