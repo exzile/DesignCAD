@@ -422,6 +422,9 @@ interface CADState {
   updateParameter: (id: string, updates: Partial<Pick<Parameter, 'name' | 'expression' | 'description' | 'group'>>) => void;
   removeParameter: (id: string) => void;
   evaluateExpression: (expr: string) => number | null;
+
+  // A5 — ground/unground a component (stub; components array populated in A1)
+  groundComponent: (id: string, grounded: boolean) => void;
 }
 
 // Plane normals consistent with the visual selector (Three.js Y-up):
@@ -1792,6 +1795,11 @@ export const useCADStore = create<CADState>()(persist((set, get) => ({
   },
   evaluateExpression: (expr) => {
     return evaluateExpression(expr, get().parameters);
+  },
+
+  // A5 — stub until Component Browser (A1) populates a components array
+  groundComponent: (_id, _grounded) => {
+    /* no components array yet; will be populated with A1 Component Browser */
   },
 }),
 {

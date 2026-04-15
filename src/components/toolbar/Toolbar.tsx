@@ -19,7 +19,7 @@ import {
   PenLine, RectangleHorizontal, Waypoints,
   CornerDownRight, FlipHorizontal2, ChevronsRight,
   ArrowLeftRight, ArrowUpDown, Equal, Tangent,
-  RefreshCw,
+  RefreshCw, Unlink, SplitSquareHorizontal, Link, ZoomOut,
 } from 'lucide-react';
 import { useCADStore } from '../../store/cadStore';
 import { usePrinterStore } from '../../store/printerStore';
@@ -496,13 +496,13 @@ const setStatusMessage = useCADStore((s) => s.setStatusMessage);
     { icon: <ArrowUp size={MI} />, label: 'Draft', onClick: () => setActiveDialog('draft') },
     { icon: <Maximize2 size={MI} />, label: 'Scale', onClick: () => setActiveDialog('scale') },
     { icon: <Combine size={MI} />, label: 'Combine', onClick: () => setActiveDialog('combine') },
-    { separator: true, icon: <Square size={MI} />, label: 'Offset Face', onClick: comingSoon('Offset Face') },
+    { separator: true, icon: <Square size={MI} />, label: 'Offset Face', onClick: () => setActiveDialog('offset-face') },
     { icon: <Square size={MI} />, label: 'Replace Face', onClick: comingSoon('Replace Face') },
     { icon: <Scissors size={MI} />, label: 'Split Face', onClick: comingSoon('Split Face') },
     { icon: <Scissors size={MI} />, label: 'Split Body', onClick: () => setActiveDialog('split') },
     { icon: <Scissors size={MI} />, label: 'Silhouette Split', onClick: () => setActiveDialog('silhouette-split') },
     { separator: true, icon: <Move size={MI} />, label: 'Move/Copy', shortcut: 'M', onClick: () => setActiveTool('move' as Tool) },
-    { icon: <AlignCenter size={MI} />, label: 'Align', onClick: () => setActiveTool('align' as Tool) },
+    { icon: <AlignCenter size={MI} />, label: 'Align', onClick: () => setActiveDialog('align-dialog') },
     { icon: <Trash2 size={MI} />, label: 'Delete', shortcut: 'Del', onClick: () => {
       if (selectedFeatureId) { removeFeature(selectedFeatureId); setStatusMessage('Feature deleted'); }
       else setStatusMessage('Select a feature to delete');
@@ -519,7 +519,7 @@ const setStatusMessage = useCADStore((s) => s.setStatusMessage);
     { icon: <Copy size={MI} />, label: 'Duplicate With Joints', onClick: comingSoon('Duplicate With Joints') },
     { separator: true, icon: <Link2 size={MI} />, label: 'Constrain Components', onClick: comingSoon('Constrain Components') },
     { icon: <Link2 size={MI} />, label: 'Joint', shortcut: 'J', onClick: () => setActiveDialog('joint') },
-    { icon: <Link2 size={MI} />, label: 'As-Built Joint', shortcut: 'Shift+J', onClick: comingSoon('As-Built Joint') },
+    { icon: <Link2 size={MI} />, label: 'As-Built Joint', shortcut: 'Shift+J', onClick: () => setActiveDialog('as-built-joint') },
     { separator: true, icon: <Layers size={MI} />, label: 'Rigid Group', onClick: comingSoon('Rigid Group') },
     { icon: <Crosshair size={MI} />, label: 'Joint Origin', onClick: comingSoon('Joint Origin') },
     { icon: <Play size={MI} />, label: 'Drive Joints', onClick: comingSoon('Drive Joints') },
@@ -536,6 +536,7 @@ const setStatusMessage = useCADStore((s) => s.setStatusMessage);
     { icon: <Layers size={MI} />, label: 'Plane Tangent to Face at Point', onClick: comingSoon('Plane Tangent to Face at Point') },
     { icon: <Layers size={MI} />, label: 'Plane Along Path', onClick: comingSoon('Plane Along Path') },
     { separator: true, icon: <Axis3D size={MI} />, label: 'Axis Through Cylinder/Cone/Torus', onClick: comingSoon('Axis Through Cylinder/Cone/Torus') },
+    { icon: <Axis3D size={MI} />, label: 'Axis Perpendicular To Face', onClick: () => setActiveDialog('axis-perp-to-face') },
     { icon: <Axis3D size={MI} />, label: 'Axis Perpendicular at Point', onClick: comingSoon('Axis Perpendicular at Point') },
     { icon: <Axis3D size={MI} />, label: 'Axis Through Two Planes', onClick: comingSoon('Axis Through Two Planes') },
     { icon: <Axis3D size={MI} />, label: 'Axis Through Two Points', onClick: () => setStatusMessage('Click two points to define an axis') },
@@ -906,8 +907,12 @@ const setStatusMessage = useCADStore((s) => s.setStatusMessage);
               <ToolButton icon={<Grid3X3 size={ICON_LG} />} label="Ruled Surface" onClick={startRuledSurfaceTool} large colorClass="icon-green" />
             </RibbonSection>
             <RibbonSection title="MODIFY">
-              <ToolButton icon={<Scissors size={ICON_LG} />} label="Trim" onClick={() => setStatusMessage('Surface Trim: coming soon')} large colorClass="icon-orange" />
-              <ToolButton icon={<FlipHorizontal size={ICON_LG} />} label="Extend" onClick={() => setStatusMessage('Surface Extend: coming soon')} large colorClass="icon-orange" />
+              <ToolButton icon={<ZoomOut size={ICON_LG} />} label="Offset Surface" onClick={() => setActiveDialog('offset-surface')} large colorClass="icon-orange" />
+              <ToolButton icon={<Scissors size={ICON_LG} />} label="Trim" onClick={() => setActiveDialog('surface-trim')} large colorClass="icon-orange" />
+              <ToolButton icon={<FlipHorizontal size={ICON_LG} />} label="Extend" onClick={() => setActiveDialog('surface-extend')} large colorClass="icon-orange" />
+              <ToolButton icon={<Link size={ICON_LG} />} label="Stitch" onClick={() => setActiveDialog('stitch')} large colorClass="icon-orange" />
+              <ToolButton icon={<Unlink size={ICON_LG} />} label="Unstitch" onClick={() => setActiveDialog('unstitch')} large colorClass="icon-orange" />
+              <ToolButton icon={<SplitSquareHorizontal size={ICON_LG} />} label="Surface Split" onClick={() => setActiveDialog('surface-split')} large colorClass="icon-orange" />
               <ToolButton icon={<RefreshCw size={ICON_LG} />} label="Reverse Normal" onClick={() => setActiveDialog('reverse-normal')} large colorClass="icon-orange" />
             </RibbonSection>
             <RibbonSection title="SELECT">

@@ -72,24 +72,12 @@ export class FileImporter {
    * Import STL file (binary or ASCII)
    */
   static async importSTL(file: File): Promise<THREE.Group> {
+    const { STLLoader } = await import('three/examples/jsm/loaders/STLLoader.js');
     const group = new THREE.Group();
     group.name = file.name.replace(/\.[^.]+$/, '');
 
     const buffer = await file.arrayBuffer();
-    const bytes = new Uint8Array(buffer);
-
-    // Check if ASCII STL
-    const header = new TextDecoder().decode(bytes.slice(0, 5));
-    const isAscii = header === 'solid';
-
-    let geometry: THREE.BufferGeometry;
-
-    if (isAscii) {
-      geometry = this.parseAsciiSTL(await file.text());
-    } else {
-      geometry = this.parseBinarySTL(buffer);
-    }
-
+    const geometry = new STLLoader().parse(buffer);
     geometry.computeVertexNormals();
 
     const material = new THREE.MeshPhysicalMaterial({
@@ -111,39 +99,10 @@ export class FileImporter {
    * Import OBJ file
    */
   static async importOBJ(file: File): Promise<THREE.Group> {
+    const { OBJLoader } = await import('three/examples/jsm/loaders/OBJLoader.js');
     const text = await file.text();
-    const group = new THREE.Group();
+    const group = new OBJLoader().parse(text);
     group.name = file.name.replace(/\.[^.]+$/, '');
-
-    const vertices: number[] = [];
-    const indices: number[] = [];
-    const normals: number[] = [];
-
-    const lines = text.split('\n');
-    for (const line of lines) {
-      const parts = line.trim().split(/\s+/);
-      switch (parts[0]) {
-        case 'v':
-          vertices.push(parseFloat(parts[1]), parseFloat(parts[2]), parseFloat(parts[3]));
-          break;
-        case 'vn':
-          normals.push(parseFloat(parts[1]), parseFloat(parts[2]), parseFloat(parts[3]));
-          break;
-        case 'f': {
-          const faceVerts = parts.slice(1).map(v => parseInt(v.split('/')[0]) - 1);
-          // Triangulate face
-          for (let i = 1; i < faceVerts.length - 1; i++) {
-            indices.push(faceVerts[0], faceVerts[i], faceVerts[i + 1]);
-          }
-          break;
-        }
-      }
-    }
-
-    const geometry = new THREE.BufferGeometry();
-    geometry.setAttribute('position', new THREE.Float32BufferAttribute(vertices, 3));
-    if (indices.length > 0) geometry.setIndex(indices);
-    geometry.computeVertexNormals();
 
     const material = new THREE.MeshPhysicalMaterial({
       color: 0x8899aa,
@@ -152,10 +111,13 @@ export class FileImporter {
       side: THREE.DoubleSide,
     });
 
-    const mesh = new THREE.Mesh(geometry, material);
-    mesh.castShadow = true;
-    mesh.receiveShadow = true;
-    group.add(mesh);
+    group.traverse((child) => {
+      if (child instanceof THREE.Mesh) {
+        child.material = material;
+        child.castShadow = true;
+        child.receiveShadow = true;
+      }
+    });
 
     return group;
   }
@@ -511,46 +473,4 @@ export class FileImporter {
     return null;
   }
 
-  private static parseAsciiSTL(text: string): THREE.BufferGeometry {
-    const vertices: number[] = [];
-    const regex = /vertex\s+([-\d.eE+]+)\s+([-\d.eE+]+)\s+([-\d.eE+]+)/g;
-    let match;
-
-    while ((match = regex.exec(text)) !== null) {
-      vertices.push(parseFloat(match[1]), parseFloat(match[2]), parseFloat(match[3]));
-    }
-
-    const geometry = new THREE.BufferGeometry();
-    geometry.setAttribute('position', new THREE.Float32BufferAttribute(vertices, 3));
-    return geometry;
   }
-
-  private static parseBinarySTL(buffer: ArrayBuffer): THREE.BufferGeometry {
-    const view = new DataView(buffer);
-    const triangleCount = view.getUint32(80, true);
-    const vertices: number[] = [];
-
-    let offset = 84;
-    for (let i = 0; i < triangleCount; i++) {
-      // Skip normal (12 bytes)
-      offset += 12;
-
-      // Read 3 vertices (36 bytes)
-      for (let v = 0; v < 3; v++) {
-        vertices.push(
-          view.getFloat32(offset, true),
-          view.getFloat32(offset + 4, true),
-          view.getFloat32(offset + 8, true)
-        );
-        offset += 12;
-      }
-
-      // Skip attribute byte count
-      offset += 2;
-    }
-
-    const geometry = new THREE.BufferGeometry();
-    geometry.setAttribute('position', new THREE.Float32BufferAttribute(vertices, 3));
-    return geometry;
-  }
-}

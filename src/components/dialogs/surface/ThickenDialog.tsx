@@ -1,0 +1,66 @@
+import { useState } from 'react';
+import { X } from 'lucide-react';
+import { useCADStore } from '../../../store/cadStore';
+import type { Feature } from '../../../types/cad';
+
+export function ThickenDialog({ onClose }: { onClose: () => void }) {
+  const [thickness, setThickness] = useState(2);
+  const [direction, setDirection] = useState<'inside' | 'outside' | 'symmetric'>('inside');
+  const [operation, setOperation] = useState<'new-body' | 'join' | 'cut'>('new-body');
+
+  const addFeature = useCADStore((s) => s.addFeature);
+  const setStatusMessage = useCADStore((s) => s.setStatusMessage);
+
+  const handleApply = () => {
+    const feature: Feature = {
+      id: crypto.randomUUID(),
+      name: `Thicken (${thickness}mm, ${direction})`,
+      type: 'thicken',
+      params: { thickness, direction, operation },
+      visible: true,
+      suppressed: false,
+      timestamp: Date.now(),
+    };
+    addFeature(feature);
+    setStatusMessage(`Created thicken: ${thickness}mm ${direction}`);
+    onClose();
+  };
+
+  return (
+    <div className="dialog-overlay">
+      <div className="dialog dialog-sm">
+        <div className="dialog-header">
+          <h3>Thicken</h3>
+          <button className="dialog-close" onClick={onClose}><X size={16} /></button>
+        </div>
+        <div className="dialog-body">
+          <div className="form-group">
+            <label>Thickness (mm)</label>
+            <input type="number" value={thickness} onChange={(e) => setThickness(Math.max(0.01, parseFloat(e.target.value) || 2))} step={0.5} min={0.01} />
+          </div>
+          <div className="form-group">
+            <label>Direction</label>
+            <select value={direction} onChange={(e) => setDirection(e.target.value as 'inside' | 'outside' | 'symmetric')}>
+              <option value="inside">Inside</option>
+              <option value="outside">Outside</option>
+              <option value="symmetric">Symmetric</option>
+            </select>
+          </div>
+          <div className="form-group">
+            <label>Operation</label>
+            <select value={operation} onChange={(e) => setOperation(e.target.value as 'new-body' | 'join' | 'cut')}>
+              <option value="new-body">New Body</option>
+              <option value="join">Join</option>
+              <option value="cut">Cut</option>
+            </select>
+          </div>
+          <p className="dialog-hint">Select a face or surface body in the viewport to thicken.</p>
+        </div>
+        <div className="dialog-footer">
+          <button className="btn btn-secondary" onClick={onClose}>Cancel</button>
+          <button className="btn btn-primary" onClick={handleApply}>OK</button>
+        </div>
+      </div>
+    </div>
+  );
+}

@@ -328,4 +328,269 @@ export class SubdivisionEngine {
 
     return { vertices, edges, faces };
   }
+
+  /** Create a single quad face (plane) in the XZ plane (Y=0). */
+  static createPlaneCageData(
+    width = 20,
+    height = 20,
+    idPrefix = '',
+  ): {
+    vertices: FormCage['vertices'];
+    edges: FormCage['edges'];
+    faces: FormCage['faces'];
+  } {
+    const hw = width / 2, hh = height / 2;
+    const rawVerts: [number, number, number][] = [
+      [-hw, 0, -hh],
+      [ hw, 0, -hh],
+      [ hw, 0,  hh],
+      [-hw, 0,  hh],
+    ];
+    const vertices = rawVerts.map((position, i) => ({
+      id: `${idPrefix}v${i}`,
+      position,
+      crease: 0,
+    }));
+
+    const faceVIs: number[][] = [[0, 1, 2, 3]];
+
+    const edgeSet = new Set<string>();
+    const edges: FormCage['edges'] = [];
+    let eid = 0;
+    for (const fvi of faceVIs) {
+      for (let i = 0; i < fvi.length; i++) {
+        const a = fvi[i], b = fvi[(i + 1) % fvi.length];
+        const key = a < b ? `${a}_${b}` : `${b}_${a}`;
+        if (!edgeSet.has(key)) {
+          edgeSet.add(key);
+          edges.push({ id: `${idPrefix}e${eid++}`, vertexIds: [`${idPrefix}v${a}`, `${idPrefix}v${b}`], crease: 0 });
+        }
+      }
+    }
+
+    const faces = faceVIs.map((vi, fi) => ({
+      id: `${idPrefix}f${fi}`,
+      vertexIds: vi.map((i) => `${idPrefix}v${i}`),
+    }));
+
+    return { vertices, edges, faces };
+  }
+
+  /** Create a cylinder cage with quad sides and n-gon caps. segments=4 for quad-friendly output. */
+  static createCylinderCageData(
+    radius = 10,
+    height = 20,
+    segments = 4,
+    idPrefix = '',
+  ): {
+    vertices: FormCage['vertices'];
+    edges: FormCage['edges'];
+    faces: FormCage['faces'];
+  } {
+    const hh = height / 2;
+    const rawVerts: [number, number, number][] = [];
+
+    // Bottom ring then top ring
+    for (let i = 0; i < segments; i++) {
+      const angle = (2 * Math.PI / segments) * i;
+      rawVerts.push([radius * Math.cos(angle), -hh, radius * Math.sin(angle)]);
+    }
+    for (let i = 0; i < segments; i++) {
+      const angle = (2 * Math.PI / segments) * i;
+      rawVerts.push([radius * Math.cos(angle), hh, radius * Math.sin(angle)]);
+    }
+
+    const vertices = rawVerts.map((position, i) => ({
+      id: `${idPrefix}v${i}`,
+      position,
+      crease: 0,
+    }));
+
+    // Side quads: bottom[i], bottom[i+1], top[i+1], top[i]
+    const faceVIs: number[][] = [];
+    for (let i = 0; i < segments; i++) {
+      const b0 = i;
+      const b1 = (i + 1) % segments;
+      const t0 = i + segments;
+      const t1 = ((i + 1) % segments) + segments;
+      faceVIs.push([b0, b1, t1, t0]);
+    }
+    // Top cap: top ring in order
+    faceVIs.push(Array.from({ length: segments }, (_, i) => i + segments));
+    // Bottom cap: bottom ring in reverse order
+    faceVIs.push(Array.from({ length: segments }, (_, i) => segments - 1 - i));
+
+    const edgeSet = new Set<string>();
+    const edges: FormCage['edges'] = [];
+    let eid = 0;
+    for (const fvi of faceVIs) {
+      for (let i = 0; i < fvi.length; i++) {
+        const a = fvi[i], b = fvi[(i + 1) % fvi.length];
+        const key = a < b ? `${a}_${b}` : `${b}_${a}`;
+        if (!edgeSet.has(key)) {
+          edgeSet.add(key);
+          edges.push({ id: `${idPrefix}e${eid++}`, vertexIds: [`${idPrefix}v${a}`, `${idPrefix}v${b}`], crease: 0 });
+        }
+      }
+    }
+
+    const faces = faceVIs.map((vi, fi) => ({
+      id: `${idPrefix}f${fi}`,
+      vertexIds: vi.map((i) => `${idPrefix}v${i}`),
+    }));
+
+    return { vertices, edges, faces };
+  }
+
+  /** Create a cube-sphere cage: box vertices normalized to lie on a sphere. Catmull-Clark rounds it. */
+  static createSphereCageData(
+    radius = 10,
+    idPrefix = '',
+  ): {
+    vertices: FormCage['vertices'];
+    edges: FormCage['edges'];
+    faces: FormCage['faces'];
+  } {
+    // Start with a unit cube and normalize each vertex to the sphere radius
+    const s = 1 / Math.sqrt(3); // normalize: [±1,±1,±1] / sqrt(3)
+    const rawVerts: [number, number, number][] = [
+      [-s, -s, -s], [s, -s, -s], [s, s, -s], [-s, s, -s],
+      [-s, -s,  s], [s, -s,  s], [s, s,  s], [-s, s,  s],
+    ];
+    // Scale to radius
+    const scaledVerts: [number, number, number][] = rawVerts.map(
+      ([x, y, z]) => [x * radius, y * radius, z * radius],
+    );
+
+    const vertices = scaledVerts.map((position, i) => ({
+      id: `${idPrefix}v${i}`,
+      position,
+      crease: 0,
+    }));
+
+    // Same 6-face topology as the box
+    const faceVIs: number[][] = [
+      [0, 3, 2, 1],
+      [4, 5, 6, 7],
+      [0, 4, 7, 3],
+      [1, 2, 6, 5],
+      [0, 1, 5, 4],
+      [3, 7, 6, 2],
+    ];
+
+    const edgeSet = new Set<string>();
+    const edges: FormCage['edges'] = [];
+    let eid = 0;
+    for (const fvi of faceVIs) {
+      for (let i = 0; i < fvi.length; i++) {
+        const a = fvi[i], b = fvi[(i + 1) % fvi.length];
+        const key = a < b ? `${a}_${b}` : `${b}_${a}`;
+        if (!edgeSet.has(key)) {
+          edgeSet.add(key);
+          edges.push({ id: `${idPrefix}e${eid++}`, vertexIds: [`${idPrefix}v${a}`, `${idPrefix}v${b}`], crease: 0 });
+        }
+      }
+    }
+
+    const faces = faceVIs.map((vi, fi) => ({
+      id: `${idPrefix}f${fi}`,
+      vertexIds: vi.map((i) => `${idPrefix}v${i}`),
+    }));
+
+    return { vertices, edges, faces };
+  }
+
+  /** Create a torus cage. majorSegs and minorSegs default to 4 for quad-friendly output. */
+  static createTorusCageData(
+    majorRadius = 15,
+    minorRadius = 3,
+    majorSegs = 4,
+    minorSegs = 4,
+    idPrefix = '',
+  ): {
+    vertices: FormCage['vertices'];
+    edges: FormCage['edges'];
+    faces: FormCage['faces'];
+  } {
+    const rawVerts: [number, number, number][] = [];
+    for (let i = 0; i < majorSegs; i++) {
+      const angleMajor = (2 * Math.PI / majorSegs) * i;
+      const cx = majorRadius * Math.cos(angleMajor);
+      const cz = majorRadius * Math.sin(angleMajor);
+      for (let j = 0; j < minorSegs; j++) {
+        const angleMinor = (2 * Math.PI / minorSegs) * j;
+        rawVerts.push([
+          cx + minorRadius * Math.cos(angleMinor) * Math.cos(angleMajor),
+          minorRadius * Math.sin(angleMinor),
+          cz + minorRadius * Math.cos(angleMinor) * Math.sin(angleMajor),
+        ]);
+      }
+    }
+
+    const vertices = rawVerts.map((position, i) => ({
+      id: `${idPrefix}v${i}`,
+      position,
+      crease: 0,
+    }));
+
+    // Quad faces: (i,j) → (i,j), (i+1,j), (i+1,j+1), (i,j+1) with modular wrap
+    const faceVIs: number[][] = [];
+    for (let i = 0; i < majorSegs; i++) {
+      for (let j = 0; j < minorSegs; j++) {
+        const i1 = (i + 1) % majorSegs;
+        const j1 = (j + 1) % minorSegs;
+        faceVIs.push([
+          i  * minorSegs + j,
+          i1 * minorSegs + j,
+          i1 * minorSegs + j1,
+          i  * minorSegs + j1,
+        ]);
+      }
+    }
+
+    const edgeSet = new Set<string>();
+    const edges: FormCage['edges'] = [];
+    let eid = 0;
+    for (const fvi of faceVIs) {
+      for (let i = 0; i < fvi.length; i++) {
+        const a = fvi[i], b = fvi[(i + 1) % fvi.length];
+        const key = a < b ? `${a}_${b}` : `${b}_${a}`;
+        if (!edgeSet.has(key)) {
+          edgeSet.add(key);
+          edges.push({ id: `${idPrefix}e${eid++}`, vertexIds: [`${idPrefix}v${a}`, `${idPrefix}v${b}`], crease: 0 });
+        }
+      }
+    }
+
+    const faces = faceVIs.map((vi, fi) => ({
+      id: `${idPrefix}f${fi}`,
+      vertexIds: vi.map((i) => `${idPrefix}v${i}`),
+    }));
+
+    return { vertices, edges, faces };
+  }
+
+  /** Create a quadball cage (same cube-sphere as createSphereCageData). */
+  static createQuadballCageData(
+    radius = 10,
+    idPrefix = '',
+  ): {
+    vertices: FormCage['vertices'];
+    edges: FormCage['edges'];
+    faces: FormCage['faces'];
+  } {
+    return SubdivisionEngine.createSphereCageData(radius, idPrefix);
+  }
+
+  /** Create a single quad face (same as plane, named "Face" for manual building). */
+  static createFaceCageData(
+    size = 10,
+    idPrefix = '',
+  ): {
+    vertices: FormCage['vertices'];
+    edges: FormCage['edges'];
+    faces: FormCage['faces'];
+  } {
+    return SubdivisionEngine.createPlaneCageData(size, size, idPrefix);
+  }
 }

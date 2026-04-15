@@ -34,8 +34,18 @@ import {
   RemoveFaceDialog,
   BoundaryFillDialog,
   TessellateDialog,
-} from './components/dialogs/FeatureDialogs';
+  OffsetSurfaceDialog,
+  SurfaceTrimDialog,
+  SurfaceExtendDialog,
+  StitchDialog,
+  UnstitchDialog,
+  SurfaceSplitDialog,
+} from './components/dialogs';
 import ParametersPanel from './components/panels/ParametersPanel';
+import AsBuiltJointDialog from './components/dialogs/assembly/AsBuiltJointDialog';
+import { OffsetFaceDialog } from './components/dialogs/solid/OffsetFaceDialog';
+import { AlignDialog } from './components/dialogs/solid/AlignDialog';
+import { AxisPerpToFaceDialog } from './components/dialogs/construction/AxisPerpToFaceDialog';
 import { useCADStore } from './store/cadStore';
 import './App.css';
 
@@ -63,6 +73,7 @@ function ActiveDialog() {
     case 'rename-sketch': return <RenameSketchDialog sketchId={dialogPayload} onClose={close} />;
     case 'base-feature': return <BaseFeatureDialog onClose={close} />;
     case 'joint': return <JointDialog onClose={close} />;
+    case 'as-built-joint': return <AsBuiltJointDialog onClose={close} />;
     case 'draft': return <DraftDialog onClose={close} />;
     case 'scale': return <ScaleDialog onClose={close} />;
     case 'primitive-box': return <PrimitivesDialog kind="box" onClose={close} />;
@@ -79,6 +90,15 @@ function ActiveDialog() {
     case 'silhouette-split': return <SilhouetteSplitDialog onClose={close} />;
     case 'remove-face': return <RemoveFaceDialog onClose={close} />;
     case 'boundary-fill': return <BoundaryFillDialog onClose={close} />;
+    case 'offset-surface': return <OffsetSurfaceDialog onClose={close} />;
+    case 'surface-trim': return <SurfaceTrimDialog onClose={close} />;
+    case 'surface-extend': return <SurfaceExtendDialog onClose={close} />;
+    case 'stitch': return <StitchDialog onClose={close} />;
+    case 'unstitch': return <UnstitchDialog onClose={close} />;
+    case 'surface-split': return <SurfaceSplitDialog onClose={close} />;
+    case 'offset-face': return <OffsetFaceDialog onClose={close} />;
+    case 'align-dialog': return <AlignDialog onClose={close} />;
+    case 'axis-perp-to-face': return <AxisPerpToFaceDialog onClose={close} />;
     default: return null;
   }
 }

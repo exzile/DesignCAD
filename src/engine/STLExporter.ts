@@ -1,200 +1,27 @@
 import * as THREE from 'three';
+import { STLExporter as ThreeSTLExporter } from 'three/examples/jsm/exporters/STLExporter.js';
+import { OBJExporter } from 'three/examples/jsm/exporters/OBJExporter.js';
+
+const _stlExporter = new ThreeSTLExporter();
+const _objExporter = new OBJExporter();
 
 export class STLExporter {
-  /**
-   * Export a mesh or group as binary STL (industry standard for 3D printing)
-   */
   static exportBinary(object: THREE.Object3D): ArrayBuffer {
-    const triangles = this.collectTriangles(object);
-    const numTriangles = triangles.length;
-
-    // Binary STL format:
-    // 80 bytes header + 4 bytes triangle count + 50 bytes per triangle
-    const bufferSize = 84 + numTriangles * 50;
-    const buffer = new ArrayBuffer(bufferSize);
-    const view = new DataView(buffer);
-
-    // Header (80 bytes) - can be anything
-    const header = 'Dzign3D STL Export';
-    for (let i = 0; i < 80; i++) {
-      view.setUint8(i, i < header.length ? header.charCodeAt(i) : 0);
-    }
-
-    // Triangle count
-    view.setUint32(80, numTriangles, true);
-
-    let offset = 84;
-    for (const tri of triangles) {
-      // Normal vector (3 floats)
-      view.setFloat32(offset, tri.normal.x, true); offset += 4;
-      view.setFloat32(offset, tri.normal.y, true); offset += 4;
-      view.setFloat32(offset, tri.normal.z, true); offset += 4;
-
-      // Vertex 1
-      view.setFloat32(offset, tri.v1.x, true); offset += 4;
-      view.setFloat32(offset, tri.v1.y, true); offset += 4;
-      view.setFloat32(offset, tri.v1.z, true); offset += 4;
-
-      // Vertex 2
-      view.setFloat32(offset, tri.v2.x, true); offset += 4;
-      view.setFloat32(offset, tri.v2.y, true); offset += 4;
-      view.setFloat32(offset, tri.v2.z, true); offset += 4;
-
-      // Vertex 3
-      view.setFloat32(offset, tri.v3.x, true); offset += 4;
-      view.setFloat32(offset, tri.v3.y, true); offset += 4;
-      view.setFloat32(offset, tri.v3.z, true); offset += 4;
-
-      // Attribute byte count
-      view.setUint16(offset, 0, true); offset += 2;
-    }
-
-    return buffer;
+    return (_stlExporter.parse(object, { binary: true }) as DataView).buffer;
   }
 
-  /**
-   * Export a mesh or group as ASCII STL
-   */
-  static exportASCII(object: THREE.Object3D, name = 'Dzign3D_Model'): string {
-    const triangles = this.collectTriangles(object);
-    const lines: string[] = [`solid ${name}`];
-
-    for (const tri of triangles) {
-      lines.push(`  facet normal ${tri.normal.x} ${tri.normal.y} ${tri.normal.z}`);
-      lines.push('    outer loop');
-      lines.push(`      vertex ${tri.v1.x} ${tri.v1.y} ${tri.v1.z}`);
-      lines.push(`      vertex ${tri.v2.x} ${tri.v2.y} ${tri.v2.z}`);
-      lines.push(`      vertex ${tri.v3.x} ${tri.v3.y} ${tri.v3.z}`);
-      lines.push('    endloop');
-      lines.push('  endfacet');
-    }
-
-    lines.push(`endsolid ${name}`);
-    return lines.join('\n');
+  static exportASCII(object: THREE.Object3D): string {
+    return _stlExporter.parse(object) as string;
   }
 
-  /**
-   * Export as OBJ format
-   */
-  static exportOBJ(object: THREE.Object3D, name = 'Dzign3D_Model'): string {
-    const triangles = this.collectTriangles(object);
-    const lines: string[] = [`# ${name}`, `# Exported from Dzign3D`, ''];
-
-    // Collect unique vertices
-    const vertexMap = new Map<string, number>();
-    const vertices: THREE.Vector3[] = [];
-
-    function getVertexIndex(v: THREE.Vector3): number {
-      const key = `${v.x.toFixed(6)},${v.y.toFixed(6)},${v.z.toFixed(6)}`;
-      let idx = vertexMap.get(key);
-      if (idx === undefined) {
-        idx = vertices.length;
-        vertices.push(v);
-        vertexMap.set(key, idx);
-      }
-      return idx + 1; // OBJ is 1-indexed
-    }
-
-    for (const v of vertices) {
-      lines.push(`v ${v.x} ${v.y} ${v.z}`);
-    }
-
-    // First pass: collect all vertices
-    for (const tri of triangles) {
-      getVertexIndex(tri.v1);
-      getVertexIndex(tri.v2);
-      getVertexIndex(tri.v3);
-    }
-
-    // Write vertices
-    for (const v of vertices) {
-      lines.push(`v ${v.x} ${v.y} ${v.z}`);
-    }
-
-    lines.push('');
-
-    // Write faces
-    for (const tri of triangles) {
-      const i1 = getVertexIndex(tri.v1);
-      const i2 = getVertexIndex(tri.v2);
-      const i3 = getVertexIndex(tri.v3);
-      lines.push(`f ${i1} ${i2} ${i3}`);
-    }
-
-    return lines.join('\n');
+  static exportOBJ(object: THREE.Object3D): string {
+    return _objExporter.parse(object);
   }
 
-  private static collectTriangles(object: THREE.Object3D): Triangle[] {
-    const triangles: Triangle[] = [];
-
-    object.traverse((child) => {
-      if (child instanceof THREE.Mesh) {
-        const geometry = child.geometry;
-        const posAttr = geometry.getAttribute('position');
-        if (!posAttr) return;
-
-        // Apply world transform
-        const matrixWorld = child.matrixWorld;
-
-        const index = geometry.getIndex();
-        const vA = new THREE.Vector3();
-        const vB = new THREE.Vector3();
-        const vC = new THREE.Vector3();
-        const normal = new THREE.Vector3();
-        const cb = new THREE.Vector3();
-        const ab = new THREE.Vector3();
-
-        if (index) {
-          for (let i = 0; i < index.count; i += 3) {
-            const a = index.getX(i);
-            const b = index.getX(i + 1);
-            const c = index.getX(i + 2);
-
-            vA.fromBufferAttribute(posAttr, a).applyMatrix4(matrixWorld);
-            vB.fromBufferAttribute(posAttr, b).applyMatrix4(matrixWorld);
-            vC.fromBufferAttribute(posAttr, c).applyMatrix4(matrixWorld);
-
-            cb.subVectors(vC, vB);
-            ab.subVectors(vA, vB);
-            normal.crossVectors(cb, ab).normalize();
-
-            triangles.push({
-              normal: normal.clone(),
-              v1: vA.clone(),
-              v2: vB.clone(),
-              v3: vC.clone(),
-            });
-          }
-        } else {
-          for (let i = 0; i < posAttr.count; i += 3) {
-            vA.fromBufferAttribute(posAttr, i).applyMatrix4(matrixWorld);
-            vB.fromBufferAttribute(posAttr, i + 1).applyMatrix4(matrixWorld);
-            vC.fromBufferAttribute(posAttr, i + 2).applyMatrix4(matrixWorld);
-
-            cb.subVectors(vC, vB);
-            ab.subVectors(vA, vB);
-            normal.crossVectors(cb, ab).normalize();
-
-            triangles.push({
-              normal: normal.clone(),
-              v1: vA.clone(),
-              v2: vB.clone(),
-              v3: vC.clone(),
-            });
-          }
-        }
-      }
-    });
-
-    return triangles;
+  // placeholder so callers using exportBinary(object) still get an ArrayBuffer
+  private static _unused(_object: THREE.Object3D): ArrayBuffer {
+    return new ArrayBuffer(0);
   }
-}
-
-interface Triangle {
-  normal: THREE.Vector3;
-  v1: THREE.Vector3;
-  v2: THREE.Vector3;
-  v3: THREE.Vector3;
 }
 
 /**

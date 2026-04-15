@@ -41,13 +41,13 @@ export default function FormInteraction() {
     switch (activeTool) {
       // CREATE panel (D140-D151)
       case 'form-box':         setStatusMessage('Form Box: click to place a T-Spline box at the origin'); break;
-      case 'form-plane':       setStatusMessage('Form Plane: click to place a flat T-Spline plane — requires D139 kernel (coming soon)'); break;
-      case 'form-cylinder':    setStatusMessage('Form Cylinder: click to place a T-Spline cylinder — requires D139 kernel (coming soon)'); break;
-      case 'form-sphere':      setStatusMessage('Form Sphere: click to place a T-Spline sphere — requires D139 kernel (coming soon)'); break;
-      case 'form-torus':       setStatusMessage('Form Torus: click to place a T-Spline torus — requires D139 kernel (coming soon)'); break;
-      case 'form-quadball':    setStatusMessage('Form Quadball: click to place a T-Spline quadball — requires D139 kernel (coming soon)'); break;
-      case 'form-pipe':        setStatusMessage('Form Pipe: select a path to create a T-Spline pipe — requires D139 kernel (coming soon)'); break;
-      case 'form-face':        setStatusMessage('Form Face: click to place a single T-Spline face — requires D139 kernel (coming soon)'); break;
+      case 'form-plane':       setStatusMessage('Form Plane: click to place a flat T-Spline plane'); break;
+      case 'form-cylinder':    setStatusMessage('Form Cylinder: click to place a T-Spline cylinder'); break;
+      case 'form-sphere':      setStatusMessage('Form Sphere: click to place a T-Spline sphere'); break;
+      case 'form-torus':       setStatusMessage('Form Torus: click to place a T-Spline torus'); break;
+      case 'form-quadball':    setStatusMessage('Form Quadball: click to place a T-Spline quadball'); break;
+      case 'form-pipe':        setStatusMessage('Form Pipe: select a path to create a T-Spline pipe — coming soon'); break;
+      case 'form-face':        setStatusMessage('Form Face: click to place a single T-Spline face'); break;
       case 'form-extrude':     setStatusMessage('Form Extrude: select edges to extrude along a vector — requires D139 kernel (coming soon)'); break;
       case 'form-revolve':     setStatusMessage('Form Revolve: select edges to revolve around an axis — requires D139 kernel (coming soon)'); break;
       case 'form-sweep':       setStatusMessage('Form Sweep: select edges to sweep along a path — requires D139 kernel (coming soon)'); break;
@@ -115,6 +115,54 @@ export default function FormInteraction() {
         visible: true,
       });
       setStatusMessage('T-Spline Box created. Switch to Edit Form to modify the cage.');
+      return;
+    }
+
+    // ── D141: Place a T-Spline plane ───────────────────────────────────────
+    if (activeTool === 'form-plane') {
+      const cageData = SubdivisionEngine.createPlaneCageData(20, 20, `plane${Date.now()}-`);
+      addFormBody({ id: `fb-${Date.now()}`, name: 'T-Spline Plane', ...cageData, subdivisionLevel: 2, visible: true });
+      setStatusMessage('T-Spline Plane created. Switch to Edit Form to modify.');
+      return;
+    }
+
+    // ── D142: Place a T-Spline cylinder ────────────────────────────────────
+    if (activeTool === 'form-cylinder') {
+      const cageData = SubdivisionEngine.createCylinderCageData(10, 20, 4, `cyl${Date.now()}-`);
+      addFormBody({ id: `fb-${Date.now()}`, name: 'T-Spline Cylinder', ...cageData, subdivisionLevel: 2, visible: true });
+      setStatusMessage('T-Spline Cylinder created. Switch to Edit Form to modify.');
+      return;
+    }
+
+    // ── D143: Place a T-Spline sphere ──────────────────────────────────────
+    if (activeTool === 'form-sphere') {
+      const cageData = SubdivisionEngine.createSphereCageData(10, `sphere${Date.now()}-`);
+      addFormBody({ id: `fb-${Date.now()}`, name: 'T-Spline Sphere', ...cageData, subdivisionLevel: 3, visible: true });
+      setStatusMessage('T-Spline Sphere created. Switch to Edit Form to modify.');
+      return;
+    }
+
+    // ── D144: Place a T-Spline torus ───────────────────────────────────────
+    if (activeTool === 'form-torus') {
+      const cageData = SubdivisionEngine.createTorusCageData(15, 3, 4, 4, `torus${Date.now()}-`);
+      addFormBody({ id: `fb-${Date.now()}`, name: 'T-Spline Torus', ...cageData, subdivisionLevel: 2, visible: true });
+      setStatusMessage('T-Spline Torus created. Switch to Edit Form to modify.');
+      return;
+    }
+
+    // ── D145: Place a T-Spline quadball ────────────────────────────────────
+    if (activeTool === 'form-quadball') {
+      const cageData = SubdivisionEngine.createQuadballCageData(10, `qball${Date.now()}-`);
+      addFormBody({ id: `fb-${Date.now()}`, name: 'T-Spline Quadball', ...cageData, subdivisionLevel: 3, visible: true });
+      setStatusMessage('T-Spline Quadball created. Switch to Edit Form to modify.');
+      return;
+    }
+
+    // ── D147: Place a single T-Spline face ─────────────────────────────────
+    if (activeTool === 'form-face') {
+      const cageData = SubdivisionEngine.createFaceCageData(10, `face${Date.now()}-`);
+      addFormBody({ id: `fb-${Date.now()}`, name: 'T-Spline Face', ...cageData, subdivisionLevel: 2, visible: true });
+      setStatusMessage('T-Spline Face created. Switch to Edit Form to modify.');
       return;
     }
 

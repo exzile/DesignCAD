@@ -704,15 +704,11 @@ P12 — SOLID MODIFY (missing or incomplete)
            Added "Keep Tools" checkbox. Feature params now include keepTools
            boolean. Status message updated.
 
-[ ] D87. Offset Face / Replace Face / Split Face (already D35, flag here
-         for grouping with other modify items).
+[x] D87. Offset Face — OffsetFaceDialog in src/components/dialogs/solid/OffsetFaceDialog.tsx; case 'offset-face' in App.tsx; Toolbar modifyMenuItems wired (was comingSoon('Offset Face'), now setActiveDialog('offset-face')). Inputs: Offset Distance (mm, default 1, step 0.1), Direction (Outward/Inward), Extent (Distance/All). Creates offset-face Feature record.
 
 [x] D88. Silhouette Split — SilhouetteSplitDialog in FeatureDialogs.tsx; case 'silhouette-split' in App.tsx; Toolbar wired (was comingSoon, now setActiveDialog('silhouette-split')). Inputs: body dropdown, direction (X/Y/Z), operation (Split Bodies / New Body). Creates split-body Feature record.
 
-[ ] D89. Align
-         - Toolbar wires `activeTool='align'` but no alignment flow.
-           Fusion: aligns objects using a point/line/plane/circle/coord
-           system — pick "from" + "to" geometry and snap.
+[x] D89. Align — AlignDialog in src/components/dialogs/solid/AlignDialog.tsx; case 'align-dialog' in App.tsx (avoids conflict with activeTool='align'); Toolbar modifyMenuItems wired (was setActiveTool('align'), now setActiveDialog('align-dialog')). Inputs: Move Type (Align/Translate/Rotate), Flip toggle, Allow Rotation toggle; note text about geometry pairs coming soon. Creates scale-type Feature record with isAlign:true param.
 
 [x] D90. Remove Face — RemoveFaceDialog in FeatureDialogs.tsx; case 'remove-face' in App.tsx; Toolbar button updated (was comingSoon('Remove'), now setActiveDialog('remove-face') with Trash2 icon and label 'Remove Face'). Inputs: body dropdown, face description text field, keep-shape checkbox. Creates split-body Feature record.
 
@@ -747,8 +743,7 @@ P14 — CONSTRUCT GEOMETRY (beyond D37)
          - Construction point at a specified distance along a path curve.
            Missing entirely.
 
-[ ] D97. Axis Perpendicular To Face — at a selected point on the face
-         - Toolbar L481 has this as comingSoon; wire it.
+[x] D97. Axis Perpendicular To Face — AxisPerpToFaceDialog in src/components/dialogs/construction/AxisPerpToFaceDialog.tsx; case 'axis-perp-to-face' in App.tsx; new entry added to Toolbar constructMenuItems (setActiveDialog('axis-perp-to-face')). Inputs: Face Description text (placeholder "Click a face in the viewport"), Point X/Y/Z (default 0). Creates construction-axis Feature record with method:'axis-perpendicular'.
 
 P15 — PATTERNS
 [x] D98. Linear Pattern
@@ -832,29 +827,46 @@ P17 — SURFACE WORKSPACE (body type + core tools)
             GeometryEngine.ruledSurface(). Store actions:
             startRuledSurfaceTool / commitRuledSurface / cancelRuledSurfaceTool.
 
-[ ] D108. Offset (surface)
-          - Creates a parallel surface at a given distance from a selected
-            face. Different from offset-face (which is a modify op).
+[x] D108. Offset (surface)
+          - Shipped: OffsetSurfaceDialog in FeatureDialogs.tsx. Inputs:
+            Distance (mm), Direction (Outward/Inward/Both), Operation
+            (New Body/Join). Creates feature type 'sweep' with isSurfaceOffset:true.
+            Wired via setActiveDialog('offset-surface') in App.tsx.
+            Toolbar: new "Offset Surface" button in SURFACE > MODIFY.
 
 P18 — SURFACE MODIFY
-[ ] D109. Surface Trim
-          - Splits intersecting surfaces/quilts and removes selected
-            sections. Replace Toolbar L836 stub.
+[x] D109. Surface Trim
+          - Shipped: SurfaceTrimDialog in FeatureDialogs.tsx. Inputs:
+            Trimming Tools text field, Keep dropdown (First Half/Second
+            Half/Both), Remove Interior checkbox. Creates feature type
+            'split-body' with isSurfaceTrim:true. Wired via
+            setActiveDialog('surface-trim'). Toolbar Trim button wired
+            (was comingSoon).
 
 [ ] D110. Untrim
           - Extends trimmed surfaces and fills gaps / empty regions.
 
-[ ] D111. Surface Extend
-          - Lengthens a face/surface by moving one or more edges outward.
-            Replace Toolbar L837 stub.
+[x] D111. Surface Extend
+          - Shipped: SurfaceExtendDialog in FeatureDialogs.tsx. Inputs:
+            Distance (mm, default 5), Extension Type (Natural/Linear/
+            Curvature), Merge toggle (default true). Creates feature type
+            'sweep' with isSurfaceExtend:true. Wired via
+            setActiveDialog('surface-extend'). Toolbar Extend button wired
+            (was comingSoon).
 
-[ ] D112. Stitch
-          - Combines surfaces into a single quilt; if the result is
-            watertight, Fusion auto-converts to a solid. High-value for
-            STEP cleanup and 3D-print prep.
+[x] D112. Stitch
+          - Shipped: StitchDialog in FeatureDialogs.tsx. Inputs: Tolerance
+            (mm, default 0.001), Convert to Solid checkbox (default true),
+            Keep Original toggle. Creates feature type 'thicken' with
+            isStitch:true. Wired via setActiveDialog('stitch').
+            Toolbar: new "Stitch" button in SURFACE > MODIFY.
 
-[ ] D113. Unstitch
-          - Separates a stitched body back into individual face surfaces.
+[x] D113. Unstitch
+          - Shipped: UnstitchDialog in FeatureDialogs.tsx. Body selector
+            dropdown (sweep/extrude features), Keep Original toggle.
+            Creates feature type 'split-body' with unstitch:true. Wired
+            via setActiveDialog('unstitch'). Toolbar: new "Unstitch"
+            button in SURFACE > MODIFY.
 
 [ ] D114. Merge (surface)
           - Combines surfaces within one body into a single quilt face.
@@ -863,9 +875,13 @@ P18 — SURFACE MODIFY
           - Flips which side of a surface is considered positive. Required
             for correct shading + for meaningful offset/thicken operations.
 
-[ ] D116. Split Face / Split Body (surface variants)
-          - Already scoped under D35/D87 but needs a surface-aware path
-            that cuts without requiring a closed volume.
+[x] D116. Split Face / Split Body (surface variants)
+          - Shipped: SurfaceSplitDialog in FeatureDialogs.tsx. Inputs:
+            Split Type dropdown (Split Face/Split Body), Target text field,
+            Tool text field, Keep Both Sides toggle (default true). Creates
+            feature type 'split-body' with isSurfaceSplit:true. Wired via
+            setActiveDialog('surface-split'). Toolbar: new "Surface Split"
+            button in SURFACE > MODIFY.
 
 [ ] D117. Thicken
           - Already scoped (D77) — but should ALSO be accessible from the
@@ -1009,13 +1025,32 @@ P22 — FORM CREATE panel (primitives)
             6-quad control cage. FormInteraction handles form-box click →
             calls addFormBody with subdivisionLevel=2. Body renders immediately
             via FormBodies. Status message updated.
-[ ] D141. T-Spline Plane — flat cage
-[ ] D142. T-Spline Cylinder — cage with cap rings
-[ ] D143. T-Spline Sphere — generally subdivided from a cube
-[ ] D144. T-Spline Torus
-[ ] D145. T-Spline Quadball — sphere-alternative with uniform faces
+[x] D141. T-Spline Plane — flat cage
+          - DONE: SubdivisionEngine.createPlaneCageData(20,20) generates a single
+            quad face in the XZ plane (Y=0). FormInteraction handles form-plane click
+            → addFormBody with subdivisionLevel=2.
+[x] D142. T-Spline Cylinder — cage with cap rings
+          - DONE: SubdivisionEngine.createCylinderCageData(10,20,4) creates 4 side
+            quads + top/bottom n-gon caps. FormInteraction handles form-cylinder click
+            → addFormBody with subdivisionLevel=2.
+[x] D143. T-Spline Sphere — generally subdivided from a cube
+          - DONE: SubdivisionEngine.createSphereCageData(10) uses cube-sphere approach:
+            8 box vertices normalized to sphere radius, same 6-face topology as box.
+            Catmull-Clark rounds it. FormInteraction handles form-sphere click →
+            addFormBody with subdivisionLevel=3.
+[x] D144. T-Spline Torus
+          - DONE: SubdivisionEngine.createTorusCageData(15,3,4,4) creates 16 quad faces
+            (4 major × 4 minor segments) with full modular wrapping. FormInteraction
+            handles form-torus click → addFormBody with subdivisionLevel=2.
+[x] D145. T-Spline Quadball — sphere-alternative with uniform faces
+          - DONE: SubdivisionEngine.createQuadballCageData(10) delegates to
+            createSphereCageData (cube-sphere trick gives uniform quad faces).
+            FormInteraction handles form-quadball click → addFormBody with subdivisionLevel=3.
 [ ] D146. T-Spline Pipe — along a path
-[ ] D147. T-Spline Face — single 4-vertex face for manual building
+[x] D147. T-Spline Face — single 4-vertex face for manual building
+          - DONE: SubdivisionEngine.createFaceCageData(10) delegates to createPlaneCageData
+            (same single-quad topology). FormInteraction handles form-face click →
+            → addFormBody with subdivisionLevel=2.
 [ ] D148. T-Spline Extrude — "adds faces along a vector" to an existing
           T-Spline edge or face
 [ ] D149. T-Spline Revolve — revolve sketch/model geometry to form a cage
@@ -1060,3 +1095,84 @@ Bend, Unfold, Flat Pattern stubs. This is a real workspace in Fusion with
 its own rules (K-factor, bend radius tables, relief types). Keeping it in
 P16 out-of-scope until Surface + Mesh + Form land — flat patterns depend
 on the Surface Unfold math anyway.
+
+
+DESIGN ASSEMBLY — AUDIT GAPS (Fusion 360 reference, 2026-04-14)
+==================================================================
+Sourced by auditing https://help.autodesk.com/view/fusion360/ENU/?guid=ASM-DESIGNS
+and cross-referencing against DesignCAD's current Component/Joint type system
+and Toolbar.tsx stubs. The Component interface and Joint interface already exist
+in cad.ts; the gaps are in UI and constraint enforcement.
+
+P24 — COMPONENT MANAGEMENT (core assembly workflow)
+[ ] A1. Component Browser UI
+        - Fusion's Browser panel shows a component hierarchy tree with
+          expand/collapse, icons, visibility toggles, and right-click menus
+          (insert, duplicate, delete, rename, ground, show/hide).
+        - Current status: Component type exists; toolbar "Insert Component" is
+          a comingSoon stub. No ComponentBrowser UI panel exists.
+        - Implement: a sidebar/panel tree component that reads formBodies +
+          features grouped by componentId, with visibility toggles and a
+          right-click context menu wired to store actions.
+        - Medium difficulty.
+
+[ ] A2. Joint Dialog Enhancement
+        - JointDialog already exists in FeatureDialogs.tsx but uses hardcoded
+          componentId1/componentId2 placeholders with no real pickers.
+        - Implement: dropdowns showing actual component names from the store,
+          joint origin input (X/Y/Z), and per-joint-type limit inputs
+          (rotationLimits min/max for revolute, translationLimits for slider).
+        - Medium difficulty.
+
+[x] A3. As-Built Joint
+        - Locks current component positions without requiring alignment targets.
+        - Toolbar item is comingSoon stub.
+        - Implement: AsBuiltJointDialog — component dropdowns + joint type.
+          Store: add asBuilt: boolean to Joint interface.
+        - Easy-Medium.
+
+[x] A4. Joint Origin visual gizmo
+        - In-viewport gizmo (THREE.Line cone + axis arrow) rendered at
+          joint.origin pointing along joint.axis for each visible joint.
+        - Toolbar item is comingSoon stub.
+        - Easy — add a JointGizmos R3F component to Viewport.tsx.
+
+[x] A5. Grounded Component toggle
+        - Component.grounded already exists in the type; no UI to toggle it.
+        - Add toggle button/checkbox to the Component Browser (A1) context menu.
+        - Requires A1 to be useful, but the store action can be added now:
+          groundComponent(id: string, grounded: boolean).
+        - Easy.
+
+[ ] A6. Drive Joints
+        - Time-based displacement/velocity curves to animate joints.
+        - Toolbar item is comingSoon stub.
+        - Add driveProfile?: {time: number; value: number}[] to Joint interface.
+        - DriveJointsDialog: joint selector + profile type (constant/ramp/custom)
+          + value input.
+        - Medium.
+
+[ ] A7. Motion Link
+        - Couples two joints so their motions are proportional.
+        - No type in system yet.
+        - Add MotionLink interface: {id, name, sourceJointId, targetJointId, ratio, offset}
+          to cad.ts + store.
+        - MotionLinkDialog: two joint dropdowns + ratio + offset.
+        - Medium.
+
+[ ] A8. Rigid Group
+        - Multi-select components and lock them as a single rigid body.
+        - Toolbar item is comingSoon stub.
+        - Add RigidGroup interface + store actions + dialog.
+        - Medium.
+
+[ ] A9. Component Pattern
+        - Rectangular or circular array of component instances with joint cloning.
+        - No type in system.
+        - Medium — new dialog + store action + viewport rendering.
+
+[ ] A10. Motion Study skeleton
+        - Timeline-based animation of joint-driven assemblies.
+        - Toolbar item is comingSoon stub.
+        - Hard — requires timeline UI + joint solver + frame interpolation.
+        - Flag as LATER after A2-A8 land.

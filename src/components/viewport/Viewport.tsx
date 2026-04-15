@@ -36,6 +36,7 @@ import MeasureInteraction from './interaction/MeasureInteraction';
 import SketchPlaneSelector from './interaction/SketchPlaneSelector';
 import FormInteraction from './FormInteraction';
 import FormBodies from './scene/FormBodies';
+import JointGizmos from './scene/JointGizmos';
 
 
 
@@ -157,6 +158,7 @@ export default function Viewport() {
         <ExtrudeTool />
         <FormBodies />
         <FormInteraction />
+        <JointGizmos />
 
         {/* Camera controller — also feeds quaternion to ViewCube */}
         <CameraController onQuaternionChange={handleQuaternionChange} />
