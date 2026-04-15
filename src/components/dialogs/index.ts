@@ -32,6 +32,20 @@ export { SurfaceSplitDialog } from './surface/SurfaceSplitDialog';
 
 // mesh
 export { MeshReduceDialog, ReverseNormalDialog, TessellateDialog } from './mesh/MeshDialogs';
+export { MeshSectionSketchDialog } from './mesh/MeshSectionSketchDialog';
+export { MeshPrimitivesDialog } from './mesh/MeshPrimitivesDialog';
+export { RemeshDialog } from './mesh/RemeshDialog';
+export { PlaneCutDialog } from './mesh/PlaneCutDialog';
+export { MakeClosedMeshDialog } from './mesh/MakeClosedMeshDialog';
+export { EraseAndFillDialog } from './mesh/EraseAndFillDialog';
+export { MeshSmoothDialog } from './mesh/MeshSmoothDialog';
+export { MeshShellDialog } from './mesh/MeshShellDialog';
+export { MeshCombineDialog } from './mesh/MeshCombineDialog';
+export { MeshReverseNormalDialog } from './mesh/MeshReverseNormalDialog';
+export { MeshAlignDialog } from './mesh/MeshAlignDialog';
+export { MeshSeparateDialog } from './mesh/MeshSeparateDialog';
+export { MeshTransformDialog } from './mesh/MeshTransformDialog';
+export { ConvertMeshToBRepDialog } from './mesh/ConvertMeshToBRepDialog';
 
 // sketch
 export { RenameSketchDialog } from './sketch/RenameSketchDialog';
@@ -39,6 +53,11 @@ export { RedefineSketchPlaneDialog } from './sketch/RedefineSketchPlaneDialog';
 
 // construction
 export { ConstructionPlaneDialog } from './construction/ConstructionPlaneDialog';
+export { AxisPerpToFaceDialog } from './construction/AxisPerpToFaceDialog';
+export { PerpendicularPlaneDialog } from './construction/PerpendicularPlaneDialog';
+export { PlaneAlongPathDialog } from './construction/PlaneAlongPathDialog';
+export { PointAtEdgeAndPlaneDialog } from './construction/PointAtEdgeAndPlaneDialog';
+export { PointAlongPathDialog } from './construction/PointAlongPathDialog';
 
 // primitives
 export { PrimitivesDialog } from './primitives/PrimitivesDialog';
@@ -46,10 +65,14 @@ export { PrimitivesDialog } from './primitives/PrimitivesDialog';
 // assembly
 export { JointDialog } from './assembly/JointDialog';
 export { default as AsBuiltJointDialog } from './assembly/AsBuiltJointDialog';
+export { DriveJointsDialog } from './assembly/DriveJointsDialog';
+export { MotionLinkDialog } from './assembly/MotionLinkDialog';
+export { RigidGroupDialog } from './assembly/RigidGroupDialog';
 
 // additional solid dialogs
 export { OffsetFaceDialog } from './solid/OffsetFaceDialog';
 export { AlignDialog } from './solid/AlignDialog';
 
-// additional construction dialogs
-export { AxisPerpToFaceDialog } from './construction/AxisPerpToFaceDialog';
+// additional surface dialogs
+export { UntrimDialog } from './surface/UntrimDialog';
+export { SurfaceMergeDialog } from './surface/SurfaceMergeDialog';

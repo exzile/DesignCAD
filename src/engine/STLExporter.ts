@@ -18,11 +18,7 @@ export class STLExporter {
     return _objExporter.parse(object);
   }
 
-  // placeholder so callers using exportBinary(object) still get an ArrayBuffer
-  private static _unused(_object: THREE.Object3D): ArrayBuffer {
-    return new ArrayBuffer(0);
   }
-}
 
 /**
  * Export as 3MF (3D Manufacturing Format) — XML-based zip archive

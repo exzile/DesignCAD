@@ -40,12 +40,21 @@ import {
   StitchDialog,
   UnstitchDialog,
   SurfaceSplitDialog,
+  AxisPerpToFaceDialog,
+  PerpendicularPlaneDialog,
+  PlaneAlongPathDialog,
+  PointAtEdgeAndPlaneDialog,
+  PointAlongPathDialog,
+  AsBuiltJointDialog,
+  DriveJointsDialog,
+  MotionLinkDialog,
+  RigidGroupDialog,
+  UntrimDialog,
+  SurfaceMergeDialog,
 } from './components/dialogs';
 import ParametersPanel from './components/panels/ParametersPanel';
-import AsBuiltJointDialog from './components/dialogs/assembly/AsBuiltJointDialog';
 import { OffsetFaceDialog } from './components/dialogs/solid/OffsetFaceDialog';
 import { AlignDialog } from './components/dialogs/solid/AlignDialog';
-import { AxisPerpToFaceDialog } from './components/dialogs/construction/AxisPerpToFaceDialog';
 import { useCADStore } from './store/cadStore';
 import './App.css';
 
@@ -99,6 +108,15 @@ function ActiveDialog() {
     case 'offset-face': return <OffsetFaceDialog onClose={close} />;
     case 'align-dialog': return <AlignDialog onClose={close} />;
     case 'axis-perp-to-face': return <AxisPerpToFaceDialog onClose={close} />;
+    case 'perpendicular-plane': return <PerpendicularPlaneDialog onClose={close} />;
+    case 'plane-along-path': return <PlaneAlongPathDialog onClose={close} />;
+    case 'point-at-edge-plane': return <PointAtEdgeAndPlaneDialog onClose={close} />;
+    case 'point-along-path': return <PointAlongPathDialog onClose={close} />;
+    case 'drive-joints': return <DriveJointsDialog onClose={close} />;
+    case 'motion-link': return <MotionLinkDialog onClose={close} />;
+    case 'rigid-group': return <RigidGroupDialog onClose={close} />;
+    case 'untrim': return <UntrimDialog onClose={close} />;
+    case 'surface-merge': return <SurfaceMergeDialog onClose={close} />;
     default: return null;
   }
 }

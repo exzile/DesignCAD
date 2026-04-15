@@ -163,6 +163,8 @@ interface CADState {
   setFormSelection: (sel: FormSelection | null) => void;
   /** D167: Remove selected vertices/edges/faces from the active cage. */
   deleteFormElements: (type: FormElementType, ids: string[]) => void;
+  /** D152: Move one or more vertices in a cage by updating their positions. */
+  updateFormVertices: (bodyId: string, updates: { id: string; position: [number, number, number] }[]) => void;
 
   // Grid & snap
   gridSize: number;
@@ -956,6 +958,16 @@ export const useCADStore = create<CADState>()(persist((set, get) => ({
       updated = { ...body, faces: body.faces.filter((f) => !removed.has(f.id)) };
     }
     return { formBodies: state.formBodies.map((b) => b.id === updated.id ? updated : b), formSelection: null };
+  }),
+
+  updateFormVertices: (bodyId, updates) => set((state) => {
+    const body = state.formBodies.find((b) => b.id === bodyId);
+    if (!body) return {};
+    const posMap = new Map(updates.map((u) => [u.id, u.position]));
+    const newVerts = body.vertices.map((v) =>
+      posMap.has(v.id) ? { ...v, position: posMap.get(v.id)! } : v
+    );
+    return { formBodies: state.formBodies.map((b) => b.id === bodyId ? { ...body, vertices: newVerts } : b) };
   }),
 
   gridSize: 10,
