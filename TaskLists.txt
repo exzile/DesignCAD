@@ -53,7 +53,7 @@ DESIGN WORKSPACE — OPEN ITEMS
 [ ] D137. Texture Extrude — extrude profile driven by texture map height
 
 ── FORM (T-SPLINE) ────────────────────────────────────────────
-[ ] D146. T-Spline Pipe — sweep circle cage along path
+[x] D146. T-Spline Pipe — sweeps ring cage along active path sketch (createPipeCageData, parallel-transport frames)
 [ ] D148. T-Spline Extrude — add cage faces along a vector from existing edge/face
 [ ] D149. T-Spline Revolve — revolve sketch/model geometry to form a cage
 [ ] D150. T-Spline Sweep — sweep cage edges along a path

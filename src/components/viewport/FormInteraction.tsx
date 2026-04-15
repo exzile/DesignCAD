@@ -128,7 +128,7 @@ export default function FormInteraction() {
       case 'form-sphere':       setStatusMessage('Form Sphere: click to place a T-Spline sphere'); break;
       case 'form-torus':        setStatusMessage('Form Torus: click to place a T-Spline torus'); break;
       case 'form-quadball':     setStatusMessage('Form Quadball: click to place a T-Spline quadball'); break;
-      case 'form-pipe':         setStatusMessage('Form Pipe: select a path — coming soon'); break;
+      case 'form-pipe':         setStatusMessage('Form Pipe: click to sweep a tube along the first available path sketch'); break;
       case 'form-face':         setStatusMessage('Form Face: click to place a single T-Spline face'); break;
       case 'form-extrude':      setStatusMessage('Form Extrude: select edges to extrude — coming soon'); break;
       case 'form-revolve':      setStatusMessage('Form Revolve: select edges to revolve — coming soon'); break;
@@ -318,6 +318,39 @@ export default function FormInteraction() {
         const d = SubdivisionEngine.createQuadballCageData(10, prefix);
         addFormBody({ id: `fb-${Date.now()}`, name: 'T-Spline Quadball', ...d, subdivisionLevel: 3, visible: true });
         setStatusMessage('T-Spline Quadball created');
+        formMeshesRef.current = [];
+        break;
+      }
+      case 'form-pipe': {
+        const state = useCADStore.getState();
+        const pathSketch = state.sketches.find((s) => s.entities.length > 0);
+        if (!pathSketch) {
+          state.setStatusMessage('Form Pipe: create a path sketch first, then click');
+          break;
+        }
+        const rawPts: THREE.Vector3[] = [];
+        for (const e of pathSketch.entities) {
+          for (const p of e.points) rawPts.push(new THREE.Vector3(p.x, p.y, p.z));
+        }
+        // Deduplicate consecutive identical points
+        const pts: THREE.Vector3[] = [rawPts[0]];
+        for (let k = 1; k < rawPts.length; k++) {
+          if (rawPts[k].distanceTo(pts[pts.length - 1]) > 0.001) pts.push(rawPts[k]);
+        }
+        if (pts.length < 2) { state.setStatusMessage('Form Pipe: path sketch needs at least 2 distinct points'); break; }
+
+        const pipePrefix = `fp${Date.now()}-`;
+        const { vertices, edges, faces } = SubdivisionEngine.createPipeCageData(pts, 5, 4, pipePrefix);
+        addFormBody({
+          id: `fb-${Date.now()}`,
+          name: 'T-Spline Pipe',
+          vertices,
+          edges,
+          faces,
+          subdivisionLevel: 2,
+          visible: true,
+        });
+        state.setStatusMessage('T-Spline Pipe created — use Edit Form to adjust vertices');
         formMeshesRef.current = [];
         break;
       }

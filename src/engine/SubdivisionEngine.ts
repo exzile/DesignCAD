@@ -442,6 +442,85 @@ export class SubdivisionEngine {
     return { vertices, edges, faces };
   }
 
+  /**
+   * Build a T-Spline tube cage by sweeping a ring of vertices along a path.
+   * Uses parallel-transport frames (rotation-minimizing) to orient the rings.
+   */
+  static createPipeCageData(
+    pathPoints: THREE.Vector3[],
+    radius: number,
+    segments: number,
+    idPrefix: string,
+  ): {
+    vertices: FormCage['vertices'];
+    edges: FormCage['edges'];
+    faces: FormCage['faces'];
+  } {
+    if (pathPoints.length < 2 || segments < 3) return { vertices: [], edges: [], faces: [] };
+    const N = pathPoints.length;
+    const S = segments;
+
+    // Tangents
+    const tangents = pathPoints.map((_, i) => {
+      if (i === 0) return pathPoints[1].clone().sub(pathPoints[0]).normalize();
+      if (i === N - 1) return pathPoints[N - 1].clone().sub(pathPoints[N - 2]).normalize();
+      return pathPoints[i + 1].clone().sub(pathPoints[i - 1]).normalize();
+    });
+
+    // Rotation-minimizing transport frames
+    const normals: THREE.Vector3[] = new Array(N);
+    const binormals: THREE.Vector3[] = new Array(N);
+    const initUp = Math.abs(tangents[0].y) < 0.9 ? new THREE.Vector3(0, 1, 0) : new THREE.Vector3(1, 0, 0);
+    normals[0] = initUp.clone().sub(tangents[0].clone().multiplyScalar(initUp.dot(tangents[0]))).normalize();
+    binormals[0] = tangents[0].clone().cross(normals[0]).normalize();
+    for (let i = 1; i < N; i++) {
+      const b = tangents[i - 1].clone().cross(tangents[i]);
+      if (b.length() < 1e-6) {
+        normals[i] = normals[i - 1].clone();
+      } else {
+        b.normalize();
+        const angle = Math.acos(Math.max(-1, Math.min(1, tangents[i - 1].dot(tangents[i]))));
+        normals[i] = normals[i - 1].clone().applyMatrix4(new THREE.Matrix4().makeRotationAxis(b, angle)).normalize();
+      }
+      binormals[i] = tangents[i].clone().cross(normals[i]).normalize();
+    }
+
+    const vid = (ring: number, seg: number) => `${idPrefix}v${ring}_${seg}`;
+    const vertices: FormCage['vertices'] = [];
+    for (let i = 0; i < N; i++) {
+      for (let j = 0; j < S; j++) {
+        const angle = (j / S) * Math.PI * 2;
+        const offset = normals[i].clone().multiplyScalar(radius * Math.cos(angle))
+          .add(binormals[i].clone().multiplyScalar(radius * Math.sin(angle)));
+        const pos = pathPoints[i].clone().add(offset);
+        vertices.push({ id: vid(i, j), position: [pos.x, pos.y, pos.z], crease: 0 });
+      }
+    }
+
+    const edges: FormCage['edges'] = [];
+    const faces: FormCage['faces'] = [];
+    const eid = (a: string, b: string) => `${idPrefix}e_${a}_${b}`;
+
+    for (let i = 0; i < N; i++) {
+      for (let j = 0; j < S; j++) {
+        edges.push({ id: eid(vid(i, j), vid(i, (j + 1) % S)), vertexIds: [vid(i, j), vid(i, (j + 1) % S)], crease: 0 });
+      }
+    }
+    for (let i = 0; i < N - 1; i++) {
+      for (let j = 0; j < S; j++) {
+        edges.push({ id: eid(vid(i, j), vid(i + 1, j)), vertexIds: [vid(i, j), vid(i + 1, j)], crease: 0 });
+      }
+    }
+    for (let i = 0; i < N - 1; i++) {
+      for (let j = 0; j < S; j++) {
+        const jn = (j + 1) % S;
+        faces.push({ id: `${idPrefix}f${i}_${j}`, vertexIds: [vid(i, j), vid(i, jn), vid(i + 1, jn), vid(i + 1, j)] });
+      }
+    }
+
+    return { vertices, edges, faces };
+  }
+
   /** Create a cube-sphere cage: box vertices normalized to lie on a sphere. Catmull-Clark rounds it. */
   static createSphereCageData(
     radius = 10,
