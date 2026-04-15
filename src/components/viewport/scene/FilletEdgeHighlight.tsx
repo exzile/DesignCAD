@@ -1,0 +1,124 @@
+/**
+ * FilletEdgeHighlight — edge picking overlay for the Fillet dialog.
+ * Active when activeDialog === 'fillet'. Uses useEdgePicker to highlight
+ * edges on hover (blue) and add them to filletEdgeIds on click (orange).
+ */
+
+import { useRef, useCallback } from 'react';
+import * as THREE from 'three';
+import { useFrame } from '@react-three/fiber';
+import { useCADStore } from '../../../store/cadStore';
+import { useEdgePicker, type EdgePickResult } from '../../../hooks/useEdgePicker';
+
+// ── Module-level material singletons ────────────────────────────────────────
+const HOVER_MAT = new THREE.LineBasicMaterial({
+  color: 0x2196f3,
+  linewidth: 2,
+  depthTest: false,
+});
+
+const SELECTED_MAT = new THREE.LineBasicMaterial({
+  color: 0xff6600,
+  linewidth: 2,
+  depthTest: false,
+});
+
+// ── Helpers ──────────────────────────────────────────────────────────────────
+function buildEdgeGeometry(a: THREE.Vector3, b: THREE.Vector3): THREE.BufferGeometry {
+  const geom = new THREE.BufferGeometry();
+  geom.setFromPoints([a, b]);
+  return geom;
+}
+
+function edgeId(result: EdgePickResult): string {
+  return `${result.mesh.uuid}:${result.edgeVertexA.toArray().join(',')}:${result.edgeVertexB.toArray().join(',')}`;
+}
+
+// ── Component ────────────────────────────────────────────────────────────────
+export default function FilletEdgeHighlight() {
+  const activeDialog = useCADStore((s) => s.activeDialog);
+  const filletEdgeIds = useCADStore((s) => s.filletEdgeIds);
+  const addFilletEdge = useCADStore((s) => s.addFilletEdge);
+
+  const enabled = activeDialog === 'fillet';
+
+  // Store hover result in a ref — no re-render needed, just update line geometry
+  const hoverLineRef = useRef<THREE.Line | null>(null);
+  const hoverResultRef = useRef<EdgePickResult | null>(null);
+
+  // Selected edge lines: map from edgeId -> { line, edgeVertA, edgeVertB }
+  const selectedLinesRef = useRef<Map<string, THREE.Line>>(new Map());
+  const selectedEdgesDataRef = useRef<Map<string, { a: THREE.Vector3; b: THREE.Vector3 }>>(new Map());
+
+  const handleHover = useCallback((result: EdgePickResult | null) => {
+    hoverResultRef.current = result;
+  }, []);
+
+  const handleClick = useCallback((result: EdgePickResult) => {
+    const id = edgeId(result);
+    addFilletEdge(id);
+    // Store edge data for rendering
+    selectedEdgesDataRef.current.set(id, {
+      a: result.edgeVertexA.clone(),
+      b: result.edgeVertexB.clone(),
+    });
+  }, [addFilletEdge]);
+
+  useEdgePicker({ enabled, onHover: handleHover, onClick: handleClick });
+
+  useFrame(({ scene }) => {
+    if (!enabled) {
+      // Clean up hover line
+      if (hoverLineRef.current) {
+        scene.remove(hoverLineRef.current);
+        hoverLineRef.current.geometry.dispose();
+        hoverLineRef.current = null;
+      }
+      return;
+    }
+
+    // Update hover line
+    const hr = hoverResultRef.current;
+    if (hr) {
+      if (!hoverLineRef.current) {
+        const line = new THREE.Line(buildEdgeGeometry(hr.edgeVertexA, hr.edgeVertexB), HOVER_MAT);
+        line.renderOrder = 100;
+        scene.add(line);
+        hoverLineRef.current = line;
+      } else {
+        hoverLineRef.current.geometry.dispose();
+        hoverLineRef.current.geometry = buildEdgeGeometry(hr.edgeVertexA, hr.edgeVertexB);
+      }
+    } else if (hoverLineRef.current) {
+      scene.remove(hoverLineRef.current);
+      hoverLineRef.current.geometry.dispose();
+      hoverLineRef.current = null;
+    }
+
+    // Sync selected lines with filletEdgeIds
+    // Remove lines for edges no longer in the set
+    selectedLinesRef.current.forEach((line, id) => {
+      if (!filletEdgeIds.includes(id)) {
+        scene.remove(line);
+        line.geometry.dispose();
+        selectedLinesRef.current.delete(id);
+        selectedEdgesDataRef.current.delete(id);
+      }
+    });
+
+    // Add lines for new edge IDs
+    for (const id of filletEdgeIds) {
+      if (!selectedLinesRef.current.has(id)) {
+        const edgeData = selectedEdgesDataRef.current.get(id);
+        if (edgeData) {
+          const line = new THREE.Line(buildEdgeGeometry(edgeData.a, edgeData.b), SELECTED_MAT);
+          line.renderOrder = 100;
+          scene.add(line);
+          selectedLinesRef.current.set(id, line);
+        }
+      }
+    }
+  });
+
+  return null;
+}

@@ -951,6 +951,80 @@ export default function SketchInteraction() {
         setStatusMessage(`Diameter dimension added: ⌀${dim.value.toFixed(2)}`);
         return;
       }
+
+      if (activeDimensionType === 'arc-length') {
+        const entity = findNearestEntity(worldPt);
+        if (!entity || (entity.type !== 'arc' && entity.type !== 'circle') || !entity.radius) {
+          setStatusMessage('Arc Length: click on an arc or circle');
+          return;
+        }
+        const center = entity.points[0];
+        const cx2d = to2D(new THREE.Vector3(center.x, center.y, center.z));
+        const startAngle = entity.startAngle ?? 0;
+        const endAngle = entity.endAngle ?? (2 * Math.PI);
+        const dim = DimensionEngine.computeArcLengthDimension(cx2d.x, cx2d.y, entity.radius, startAngle, endAngle, dimensionOffset);
+
+        addSketchDimension({
+          id: crypto.randomUUID(),
+          type: 'arc-length',
+          entityIds: [entity.id],
+          value: dim.value,
+          position: dim.textPosition,
+          driven: false,
+        });
+        setStatusMessage(`Arc length dimension added: ${dim.value.toFixed(2)}`);
+        return;
+      }
+
+      if (activeDimensionType === 'aligned') {
+        const entity = findNearestEntity(worldPt);
+        if (!entity) {
+          setStatusMessage('Aligned: click closer to a line entity');
+          return;
+        }
+
+        const currentPending = useCADStore.getState().pendingDimensionEntityIds;
+
+        if (currentPending.length === 0) {
+          addPendingDimensionEntity(entity.id);
+          setStatusMessage('Aligned: click a second entity to complete');
+          return;
+        }
+
+        const firstId = currentPending[0];
+        const firstEntity = activeSketch.entities.find((en) => en.id === firstId);
+        const secondEntity = entity;
+
+        if (!firstEntity || firstEntity.points.length < 2) {
+          setStatusMessage('Aligned: first entity is invalid, please try again');
+          useCADStore.setState({ pendingDimensionEntityIds: [] });
+          return;
+        }
+
+        const p1World = new THREE.Vector3(firstEntity.points[0].x, firstEntity.points[0].y, firstEntity.points[0].z);
+        const p2World = new THREE.Vector3(
+          firstEntity.points[firstEntity.points.length - 1].x,
+          firstEntity.points[firstEntity.points.length - 1].y,
+          firstEntity.points[firstEntity.points.length - 1].z,
+        );
+        const p1 = to2D(p1World);
+        const p2 = to2D(p2World);
+
+        const dim = DimensionEngine.computeAlignedDimension(p1, p2, dimensionOffset);
+
+        addSketchDimension({
+          id: crypto.randomUUID(),
+          type: 'aligned',
+          entityIds: [firstId, secondEntity.id],
+          value: dim.value,
+          position: dim.textPosition,
+          driven: false,
+        });
+
+        useCADStore.setState({ pendingDimensionEntityIds: [] });
+        setStatusMessage(`Aligned dimension added: ${dim.value.toFixed(2)}`);
+        return;
+      }
     };
 
     const handleKeyDown = (ev: KeyboardEvent) => {

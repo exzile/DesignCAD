@@ -25,7 +25,7 @@ DESIGN WORKSPACE — OPEN ITEMS
 ── SKETCH CREATE ─────────────────────────────────────────────
 [x] D12. Sketch Text — font triangulation (opentype.js), anchor + string + height
 [x] D14. Project / Include Geometry — face-boundary projection onto sketch plane (linked entities, uses computeCoplanarFaceBoundary)
-[ ] D15. Intersect — project 3D edge intersection with sketch plane into sketch
+[x] D15. Intersect — project 3D edge intersection with sketch plane into sketch
 [x] D45. Include 3D Geometry (alias of D14 with live-link toggle)
 [x] D46. Project to Surface — project sketch curves onto a curved 3D surface
 

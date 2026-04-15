@@ -16,6 +16,8 @@ export default function SketchDimensionPanel() {
     angular: 'Click two lines sharing a vertex',
     radial: 'Click a circle or arc',
     diameter: 'Click a circle',
+    'arc-length': 'Click an arc or circle',
+    aligned: 'Click two entities (true length along direction)',
   };
 
   return (
@@ -34,12 +36,14 @@ export default function SketchDimensionPanel() {
           <select
             className="measure-select"
             value={activeDimensionType}
-            onChange={(e) => setActiveDimensionType(e.target.value as 'linear' | 'angular' | 'radial' | 'diameter')}
+            onChange={(e) => setActiveDimensionType(e.target.value as 'linear' | 'angular' | 'radial' | 'diameter' | 'arc-length' | 'aligned')}
           >
             <option value="linear">Linear</option>
             <option value="angular">Angular</option>
             <option value="radial">Radial</option>
             <option value="diameter">Diameter</option>
+            <option value="arc-length">Arc Length</option>
+            <option value="aligned">Aligned</option>
           </select>
         </div>
 

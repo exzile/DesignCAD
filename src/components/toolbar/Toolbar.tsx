@@ -506,8 +506,8 @@ const setStatusMessage = useCADStore((s) => s.setStatusMessage);
 
   const modifyMenuItems: MenuItem[] = [
     { icon: <ArrowUpFromLine size={MI} />, label: 'Press Pull', shortcut: 'Q', onClick: startExtrudeTool },
-    { icon: <Blend size={MI} />, label: 'Fillet', shortcut: 'F', onClick: () => setActiveTool('fillet' as Tool) },
-    { icon: <Blend size={MI} />, label: 'Chamfer', onClick: () => setActiveTool('chamfer' as Tool) },
+    { icon: <Blend size={MI} />, label: 'Fillet', shortcut: 'F', onClick: () => setActiveDialog('fillet') },
+    { icon: <Blend size={MI} />, label: 'Chamfer', onClick: () => setActiveDialog('chamfer') },
     { separator: true, icon: <Box size={MI} />, label: 'Shell', onClick: () => setActiveDialog('shell') },
     { icon: <ArrowUp size={MI} />, label: 'Draft', onClick: () => setActiveDialog('draft') },
     { icon: <Maximize2 size={MI} />, label: 'Scale', onClick: () => setActiveDialog('scale') },
@@ -725,6 +725,7 @@ const setStatusMessage = useCADStore((s) => s.setStatusMessage);
     { separator: true, icon: <Equal size={MI} />, label: 'Equal', onClick: () => { setActiveTool('constrain-equal' as Tool); setStatusMessage('Equal: click two entities to apply constraint'); } },
     { icon: <FlipHorizontal size={MI} />, label: 'Symmetric', onClick: () => { setActiveTool('constrain-symmetric' as Tool); setStatusMessage('Symmetric: click two entities and a symmetry line'); } },
     { icon: <Lock size={MI} />, label: 'Fix / Unfix', onClick: () => { setActiveTool('constrain-fix' as Tool); setStatusMessage('Fix: click an entity to fix its position'); } },
+    { icon: <GitMerge size={MI} />, label: 'Curvature (G2)', onClick: () => { setActiveTool('constrain-curvature' as Tool); setStatusMessage('Curvature (G2): click two splines sharing a point to apply G2 continuity'); } },
     { separator: true, icon: <Zap size={MI} />, label: 'AutoConstrain', onClick: () => autoConstrainSketch() },
   ];
 
@@ -1251,6 +1252,7 @@ const setStatusMessage = useCADStore((s) => s.setStatusMessage);
               <ToolButton icon={<Equal size={20} />}            label="Equal"        active={activeTool === 'constrain-equal'}        onClick={() => { setActiveTool('constrain-equal' as Tool);        setStatusMessage('Equal: click two entities to apply constraint'); }}          colorClass="icon-orange" />
               <ToolButton icon={<LocateFixed size={20} />}      label="Midpoint"     active={activeTool === 'constrain-midpoint'}     onClick={() => { setActiveTool('constrain-midpoint' as Tool);     setStatusMessage('Midpoint: click a point and a line to apply constraint'); }}  colorClass="icon-orange" />
               <ToolButton icon={<FlipHorizontal size={20} />}   label="Symmetric"    active={activeTool === 'constrain-symmetric'}    onClick={() => { setActiveTool('constrain-symmetric' as Tool);    setStatusMessage('Symmetric: click two entities and a symmetry line'); }}     colorClass="icon-orange" />
+              <ToolButton icon={<GitMerge size={20} />}         label="Curvature (G2)" active={activeTool === 'constrain-curvature'} onClick={() => { setActiveTool('constrain-curvature' as Tool); setStatusMessage('Curvature (G2): click two splines sharing a point to apply G2 continuity'); }} colorClass="icon-orange" />
               <ToolButton icon={<Zap size={20} />}              label="AutoConstrain" onClick={() => autoConstrainSketch()}                                                                                                             colorClass="icon-orange" />
             </RibbonSection>
 

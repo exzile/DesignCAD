@@ -78,6 +78,8 @@ import {
 import ParametersPanel from './components/panels/ParametersPanel';
 import { OffsetFaceDialog } from './components/dialogs/solid/OffsetFaceDialog';
 import { AlignDialog } from './components/dialogs/solid/AlignDialog';
+import { FilletDialog } from './components/dialogs/solid/FilletDialog';
+import { ChamferDialog } from './components/dialogs/solid/ChamferDialog';
 import { useCADStore } from './store/cadStore';
 import './App.css';
 
@@ -131,6 +133,8 @@ function ActiveDialog() {
     case 'surface-split': return <SurfaceSplitDialog onClose={close} />;
     case 'offset-face': return <OffsetFaceDialog onClose={close} />;
     case 'align-dialog': return <AlignDialog onClose={close} />;
+    case 'fillet': return <FilletDialog onClose={close} />;
+    case 'chamfer': return <ChamferDialog onClose={close} />;
     case 'axis-perp-to-face': return <AxisPerpToFaceDialog onClose={close} />;
     case 'perpendicular-plane': return <PerpendicularPlaneDialog onClose={close} />;
     case 'plane-along-path': return <PlaneAlongPathDialog onClose={close} />;

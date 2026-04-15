@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import * as THREE from 'three';
-import { Eye, X, FileDown } from 'lucide-react';
+import { Eye, X, FileDown, Zap } from 'lucide-react';
 import { useCADStore } from '../../store/cadStore';
 import { downloadDXF } from '../../utils/dxfExport';
 
@@ -55,6 +55,7 @@ export default function SketchPalette() {
   const showProjectedGeometries = useCADStore((s) => s.showProjectedGeometries);
   const setShowProjectedGeometries = useCADStore((s) => s.setShowProjectedGeometries);
   const setCameraTargetQuaternion = useCADStore((s) => s.setCameraTargetQuaternion);
+  const solveSketch = useCADStore((s) => s.solveSketch);
   const sketch3DMode = useCADStore((s) => s.sketch3DMode);
   const toggleSketch3DMode = useCADStore((s) => s.toggleSketch3DMode);
   const [dismissed, setDismissed] = useState(false);
@@ -449,6 +450,18 @@ export default function SketchPalette() {
               </label>
             </div>
           ))}
+
+          {/* D27: Solve constraints button */}
+          <div className="sketch-palette-row">
+            <span className="sketch-palette-label">Solve</span>
+            <button
+              className="spl-btn"
+              title="Run constraint solver on the active sketch"
+              onClick={() => solveSketch()}
+            >
+              <Zap size={14} />
+            </button>
+          </div>
 
           {/* Export DXF button (D61) */}
           <div className="sketch-palette-row">

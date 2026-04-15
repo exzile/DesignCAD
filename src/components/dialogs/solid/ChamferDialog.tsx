@@ -1,5 +1,7 @@
 import { useState } from 'react';
 import { X } from 'lucide-react';
+import { useCADStore } from '../../../store/cadStore';
+import type { Feature } from '../../../types/cad';
 
 export type ChamferMode = 'equal-dist' | 'two-dist' | 'dist-angle';
 
@@ -19,7 +21,7 @@ interface ChamferDialogProps {
   onConfirm: (params: ChamferParams) => void;
 }
 
-export default function ChamferDialog({ open, selectedEdgeCount, onClose, onConfirm }: ChamferDialogProps) {
+function ChamferDialogUI({ open, selectedEdgeCount, onClose, onConfirm }: ChamferDialogProps) {
   const [mode, setMode] = useState<ChamferMode>('equal-dist');
   const [distance, setDistance] = useState(2);
   const [distance2, setDistance2] = useState(2);
@@ -134,5 +136,48 @@ export default function ChamferDialog({ open, selectedEdgeCount, onClose, onConf
         </div>
       </div>
     </div>
+  );
+}
+
+// ── Store-connected wrapper (used via activeDialog='chamfer') ────────────────
+export function ChamferDialog({ onClose }: { onClose: () => void }) {
+  const addFeature = useCADStore((s) => s.addFeature);
+  const chamferEdgeIds = useCADStore((s) => s.chamferEdgeIds);
+  const editingFeatureId = useCADStore((s) => s.editingFeatureId);
+  const features = useCADStore((s) => s.features);
+  const updateFeatureParams = useCADStore((s) => s.updateFeatureParams);
+  const setStatusMessage = useCADStore((s) => s.setStatusMessage);
+
+  const editing = editingFeatureId ? features.find((f) => f.id === editingFeatureId) : null;
+  const p = editing?.params ?? {};
+
+  const handleConfirm = (params: ChamferParams) => {
+    const edgeIds = chamferEdgeIds.length > 0 ? chamferEdgeIds : (p.edgeIds as string[] | undefined ?? []);
+    if (editing) {
+      updateFeatureParams(editing.id, { ...params, edgeIds });
+      setStatusMessage(`Updated chamfer: d=${params.distance}`);
+    } else {
+      const feature: Feature = {
+        id: crypto.randomUUID(),
+        name: `Chamfer (d=${params.distance})`,
+        type: 'chamfer',
+        params: { ...params, edgeIds },
+        visible: true,
+        suppressed: false,
+        timestamp: Date.now(),
+      };
+      addFeature(feature);
+      setStatusMessage(`Chamfer applied: d=${params.distance}`);
+    }
+    onClose();
+  };
+
+  return (
+    <ChamferDialogUI
+      open={true}
+      selectedEdgeCount={chamferEdgeIds.length}
+      onClose={onClose}
+      onConfirm={handleConfirm}
+    />
   );
 }

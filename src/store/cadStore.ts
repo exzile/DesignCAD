@@ -410,6 +410,18 @@ interface CADState {
   // D115 Reverse Normals
   reverseNormals: (featureId: string) => void;
 
+  // D6 Fillet edge selection
+  filletEdgeIds: string[];
+  addFilletEdge: (id: string) => void;
+  removeFilletEdge: (id: string) => void;
+  clearFilletEdges: () => void;
+
+  // D7 Chamfer edge selection
+  chamferEdgeIds: string[];
+  addChamferEdge: (id: string) => void;
+  removeChamferEdge: (id: string) => void;
+  clearChamferEdges: () => void;
+
   // Active feature dialog
   activeDialog: string | null;
   setActiveDialog: (dialog: string | null) => void;
@@ -458,10 +470,10 @@ interface CADState {
   cancelSketchTextTool: () => void;
 
   // D28 — Dimension tool
-  activeDimensionType: 'linear' | 'angular' | 'radial' | 'diameter';
+  activeDimensionType: 'linear' | 'angular' | 'radial' | 'diameter' | 'arc-length' | 'aligned';
   dimensionOffset: number;
   pendingDimensionEntityIds: string[];
-  setActiveDimensionType: (t: 'linear' | 'angular' | 'radial' | 'diameter') => void;
+  setActiveDimensionType: (t: 'linear' | 'angular' | 'radial' | 'diameter' | 'arc-length' | 'aligned') => void;
   setDimensionOffset: (v: number) => void;
   startDimensionTool: () => void;
   cancelDimensionTool: () => void;
@@ -1551,6 +1563,7 @@ export const useCADStore = create<CADState>()(persist((set, get) => ({
       ),
       statusMessage: `${constraint.type} constraint applied`,
     });
+    get().solveSketch();
   },
 
   // Conic curve rho (D11)
@@ -2219,11 +2232,30 @@ export const useCADStore = create<CADState>()(persist((set, get) => ({
   showExportDialog: false,
   setShowExportDialog: (show) => set({ showExportDialog: show }),
 
+  // D6 Fillet edge selection
+  filletEdgeIds: [],
+  addFilletEdge: (id) => set((state) => ({
+    filletEdgeIds: state.filletEdgeIds.includes(id) ? state.filletEdgeIds : [...state.filletEdgeIds, id],
+  })),
+  removeFilletEdge: (id) => set((state) => ({ filletEdgeIds: state.filletEdgeIds.filter((e) => e !== id) })),
+  clearFilletEdges: () => set({ filletEdgeIds: [] }),
+
+  // D7 Chamfer edge selection
+  chamferEdgeIds: [],
+  addChamferEdge: (id) => set((state) => ({
+    chamferEdgeIds: state.chamferEdgeIds.includes(id) ? state.chamferEdgeIds : [...state.chamferEdgeIds, id],
+  })),
+  removeChamferEdge: (id) => set((state) => ({ chamferEdgeIds: state.chamferEdgeIds.filter((e) => e !== id) })),
+  clearChamferEdges: () => set({ chamferEdgeIds: [] }),
+
   activeDialog: null,
   setActiveDialog: (dialog) => set((state) => ({
     activeDialog: dialog,
     // D186: closing the dialog also clears editing state so the next one opens fresh
     editingFeatureId: dialog === null ? null : state.editingFeatureId,
+    // Clear edge selections when closing fillet/chamfer dialogs
+    filletEdgeIds: dialog === 'fillet' ? [] : state.filletEdgeIds,
+    chamferEdgeIds: dialog === 'chamfer' ? [] : state.chamferEdgeIds,
   })),
   dialogPayload: null,
   setDialogPayload: (payload) => set({ dialogPayload: payload }),
@@ -2401,6 +2433,7 @@ export const useCADStore = create<CADState>()(persist((set, get) => ({
           : s
       ),
     });
+    get().solveSketch();
   },
   removeDimension: (dimId) => {
     const { activeSketch } = get();

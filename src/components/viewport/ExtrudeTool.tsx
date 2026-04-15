@@ -1,5 +1,4 @@
-import { useRef, useState, useEffect, useMemo } from 'react';
-import * as THREE from 'three';
+import { useState, useEffect, useMemo } from 'react';
 import { useCADStore } from '../../store/cadStore';
 import { GeometryEngine } from '../../engine/GeometryEngine';
 import type { Sketch } from '../../types/cad';
@@ -34,16 +33,20 @@ export default function ExtrudeTool() {
   const direction = useCADStore((s) => s.extrudeDirection);
 
   const [hoveredId, setHoveredId] = useState<string | null>(null);
-  const [faceHit, setFaceHit] = useState<{
-    boundary: THREE.Vector3[];
-    normal: THREE.Vector3;
-    centroid: THREE.Vector3;
-  } | null>(null);
-  const faceHitRef = useRef(faceHit);
-  useEffect(() => { faceHitRef.current = faceHit; }, [faceHit]);
+  const [faceHit, setFaceHit] = useState<FacePickResult | null>(null);
 
-  const _mouse = useRef(new THREE.Vector2());
-  const { gl, camera, raycaster, scene } = useThree();
+  // Face picker is only active when the extrude tool is open and no sketch
+  // profile has been selected yet. Meshes with a profileKey are excluded so
+  // the hook never fires over sketch profiles (those are handled by SketchProfile).
+  useFacePicker({
+    enabled: activeTool === 'extrude' && selectedIds.length === 0,
+    filter: (mesh) => !mesh.userData?.profileKey,
+    onHover: setFaceHit,
+    onClick: (result) => {
+      startExtrudeFromFace(result.boundary, result.normal, result.centroid);
+      setFaceHit(null);
+    },
+  });
 
   const extrudable = useMemo(() => sketches.filter((s) => s.entities.length > 0), [sketches]);
 
@@ -101,86 +104,10 @@ export default function ExtrudeTool() {
     setStatusMessage(`${next.length} profile${next.length > 1 ? 's' : ''} selected — drag arrow or set distance, then OK`);
   };
 
+  // Set hover status message whenever a face is being highlighted
   useEffect(() => {
-    if (activeTool !== 'extrude') return;
-
-    const collectPickable = (): THREE.Mesh[] => {
-      const out: THREE.Mesh[] = [];
-      scene.traverse((obj) => {
-        const m = obj as THREE.Mesh;
-        if (m.isMesh && obj.userData?.pickable) out.push(m);
-      });
-      return out;
-    };
-
-    const updateMouse = (event: { clientX: number; clientY: number }) => {
-      const r = gl.domElement.getBoundingClientRect();
-      _mouse.current.set(
-        ((event.clientX - r.left) / r.width) * 2 - 1,
-        -((event.clientY - r.top) / r.height) * 2 + 1,
-      );
-    };
-
-    const handlePointerMove = (event: PointerEvent) => {
-      if (selectedIds.length > 0) {
-        if (faceHitRef.current) setFaceHit(null);
-        return;
-      }
-      updateMouse(event);
-      raycaster.setFromCamera(_mouse.current, camera);
-      const hits = raycaster.intersectObjects(collectPickable(), false);
-      if (hits.length > 0 && hits[0].faceIndex !== undefined && hits[0].face) {
-        const hit = hits[0];
-        if (hit.object.userData?.profileKey) {
-          if (faceHitRef.current) setFaceHit(null);
-          return;
-        }
-        const result = GeometryEngine.computeCoplanarFaceBoundary(hit.object as THREE.Mesh, hit.faceIndex!);
-        if (result) {
-          setFaceHit(result);
-          setStatusMessage('Click face to press-pull — extrude along its normal');
-          return;
-        }
-      }
-      if (faceHitRef.current) setFaceHit(null);
-    };
-
-    const handleClick = (event: MouseEvent) => {
-      if (event.button !== 0) return;
-      updateMouse(event);
-      raycaster.setFromCamera(_mouse.current, camera);
-      const hits = raycaster.intersectObjects(collectPickable(), false);
-      if (hits.length === 0) return;
-      const profileHit = hits.find((h) => Boolean(h.object.userData?.profileKey));
-      if (profileHit) {
-        const profileKey = profileHit.object.userData?.profileKey as string | undefined;
-        if (!profileKey) return;
-        event.stopPropagation();
-        event.preventDefault();
-        toggleSelection(profileKey);
-        return;
-      }
-
-      const hit = hits[0];
-      if (selectedIds.length === 0 && hit.faceIndex !== undefined && hit.face) {
-        const result = GeometryEngine.computeCoplanarFaceBoundary(hit.object as THREE.Mesh, hit.faceIndex!);
-        if (result) {
-          event.stopPropagation();
-          startExtrudeFromFace(result.boundary, result.normal, result.centroid);
-          setFaceHit(null);
-        }
-      }
-    };
-
-    const canvas = gl.domElement;
-    canvas.addEventListener('pointermove', handlePointerMove);
-    canvas.addEventListener('click', handleClick, true);
-    return () => {
-      canvas.removeEventListener('pointermove', handlePointerMove);
-      canvas.removeEventListener('click', handleClick, true);
-      setFaceHit(null);
-    };
-  }, [activeTool, selectedIds, gl, camera, raycaster, scene, startExtrudeFromFace, setStatusMessage]);
+    if (faceHit) setStatusMessage('Click face to press-pull — extrude along its normal');
+  }, [faceHit, setStatusMessage]);
 
   if (activeTool !== 'extrude') return null;
 

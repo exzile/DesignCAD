@@ -1,5 +1,7 @@
 import { useState } from 'react';
 import { X } from 'lucide-react';
+import { useCADStore } from '../../../store/cadStore';
+import type { Feature } from '../../../types/cad';
 
 export interface FilletParams {
   radius: number;
@@ -18,7 +20,7 @@ interface FilletDialogProps {
   onConfirm: (params: FilletParams) => void;
 }
 
-export default function FilletDialog({ open, selectedEdgeCount, onClose, onConfirm }: FilletDialogProps) {
+function FilletDialogUI({ open, selectedEdgeCount, onClose, onConfirm }: FilletDialogProps) {
   const [radius, setRadius] = useState(2);
   const [variable, setVariable] = useState(false);
   const [startRadius, setStartRadius] = useState(1);
@@ -144,5 +146,48 @@ export default function FilletDialog({ open, selectedEdgeCount, onClose, onConfi
         </div>
       </div>
     </div>
+  );
+}
+
+// ── Store-connected wrapper (used via activeDialog='fillet') ─────────────────
+export function FilletDialog({ onClose }: { onClose: () => void }) {
+  const addFeature = useCADStore((s) => s.addFeature);
+  const filletEdgeIds = useCADStore((s) => s.filletEdgeIds);
+  const editingFeatureId = useCADStore((s) => s.editingFeatureId);
+  const features = useCADStore((s) => s.features);
+  const updateFeatureParams = useCADStore((s) => s.updateFeatureParams);
+  const setStatusMessage = useCADStore((s) => s.setStatusMessage);
+
+  const editing = editingFeatureId ? features.find((f) => f.id === editingFeatureId) : null;
+  const p = editing?.params ?? {};
+
+  const handleConfirm = (params: FilletParams) => {
+    const edgeIds = filletEdgeIds.length > 0 ? filletEdgeIds : (p.edgeIds as string[] | undefined ?? []);
+    if (editing) {
+      updateFeatureParams(editing.id, { ...params, edgeIds });
+      setStatusMessage(`Updated fillet: r=${params.radius}`);
+    } else {
+      const feature: Feature = {
+        id: crypto.randomUUID(),
+        name: `Fillet (r=${params.radius})`,
+        type: 'fillet',
+        params: { ...params, edgeIds },
+        visible: true,
+        suppressed: false,
+        timestamp: Date.now(),
+      };
+      addFeature(feature);
+      setStatusMessage(`Fillet applied: r=${params.radius}`);
+    }
+    onClose();
+  };
+
+  return (
+    <FilletDialogUI
+      open={true}
+      selectedEdgeCount={filletEdgeIds.length}
+      onClose={onClose}
+      onConfirm={handleConfirm}
+    />
   );
 }

@@ -91,6 +91,7 @@ export type Tool =
   | 'constrain-equal'
   | 'constrain-midpoint'
   | 'constrain-symmetric'
+  | 'constrain-curvature'
   // ── Form (T-Spline / subdivision) workspace tools ──
   | 'form-box'
   | 'form-plane'
@@ -178,7 +179,7 @@ export interface SketchConstraint {
 
 export interface SketchDimension {
   id: string;
-  type: 'linear' | 'angular' | 'radial' | 'diameter';
+  type: 'linear' | 'angular' | 'radial' | 'diameter' | 'arc-length' | 'aligned';
   entityIds: string[];
   value: number;
   position: { x: number; y: number }; // label position

@@ -1,6 +1,8 @@
 // Barrel export — import dialogs from here instead of FeatureDialogs directly.
 
 // solid
+export { FilletDialog } from './solid/FilletDialog';
+export { ChamferDialog } from './solid/ChamferDialog';
 export { ShellDialog } from './solid/ShellDialog';
 export { CombineDialog } from './solid/CombineDialog';
 export { HoleDialog } from './solid/HoleDialog';

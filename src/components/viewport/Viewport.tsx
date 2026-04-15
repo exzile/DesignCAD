@@ -44,6 +44,8 @@ import FormInteraction from './FormInteraction';
 import FormBodies from './scene/FormBodies';
 import JointGizmos from './scene/JointGizmos';
 import SketchPlaneDragger from './SketchPlaneDragger';
+import FilletEdgeHighlight from './scene/FilletEdgeHighlight';
+import ChamferEdgeHighlight from './scene/ChamferEdgeHighlight';
 
 
 
@@ -170,6 +172,8 @@ export default function Viewport() {
         <FormInteraction />
         <JointGizmos />
         <SketchPlaneDragger />
+        <FilletEdgeHighlight />
+        <ChamferEdgeHighlight />
 
         {/* Camera controller — also feeds quaternion to ViewCube */}
         <CameraController onQuaternionChange={handleQuaternionChange} />
