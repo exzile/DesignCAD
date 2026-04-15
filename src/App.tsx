@@ -28,6 +28,12 @@ import {
   DraftDialog,
   ScaleDialog,
   PrimitivesDialog,
+  MeshReduceDialog,
+  ReverseNormalDialog,
+  SilhouetteSplitDialog,
+  RemoveFaceDialog,
+  BoundaryFillDialog,
+  TessellateDialog,
 } from './components/dialogs/FeatureDialogs';
 import ParametersPanel from './components/panels/ParametersPanel';
 import { useCADStore } from './store/cadStore';
@@ -63,9 +69,16 @@ function ActiveDialog() {
     case 'primitive-cylinder': return <PrimitivesDialog kind="cylinder" onClose={close} />;
     case 'primitive-sphere': return <PrimitivesDialog kind="sphere" onClose={close} />;
     case 'primitive-torus': return <PrimitivesDialog kind="torus" onClose={close} />;
+    case 'primitive-coil': return <PrimitivesDialog kind="coil" onClose={close} />;
+    case 'tessellate': return <TessellateDialog onClose={close} />;
     case 'pattern-on-path': return <PatternOnPathDialog onClose={close} />;
     case 'thread': return <ThreadDialog onClose={close} />;
     case 'parameters': return <ParametersPanel onClose={close} />;
+    case 'mesh-reduce': return <MeshReduceDialog onClose={close} />;
+    case 'reverse-normal': return <ReverseNormalDialog onClose={close} />;
+    case 'silhouette-split': return <SilhouetteSplitDialog onClose={close} />;
+    case 'remove-face': return <RemoveFaceDialog onClose={close} />;
+    case 'boundary-fill': return <BoundaryFillDialog onClose={close} />;
     default: return null;
   }
 }

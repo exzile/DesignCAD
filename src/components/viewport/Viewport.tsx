@@ -13,6 +13,8 @@ import ExtrudePanel from './ExtrudePanel';
 import RevolvePanel from './RevolvePanel';
 import SweepPanel from './SweepPanel';
 import LoftPanel from './LoftPanel';
+import PatchPanel from './PatchPanel';
+import RuledSurfacePanel from './RuledSurfacePanel';
 import RibPanel from './RibPanel';
 import SectionAnalysisPanel from './SectionAnalysisPanel';
 import SketchPatternPanel from './SketchPatternPanel';
@@ -199,6 +201,8 @@ export default function Viewport() {
       <RevolvePanel />
       <SweepPanel />
       <LoftPanel />
+      <PatchPanel />
+      <RuledSurfacePanel />
       <RibPanel />
       <SectionAnalysisPanel />
       <SketchPatternPanel />

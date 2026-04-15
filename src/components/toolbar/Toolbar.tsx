@@ -19,6 +19,7 @@ import {
   PenLine, RectangleHorizontal, Waypoints,
   CornerDownRight, FlipHorizontal2, ChevronsRight,
   ArrowLeftRight, ArrowUpDown, Equal, Tangent,
+  RefreshCw,
 } from 'lucide-react';
 import { useCADStore } from '../../store/cadStore';
 import { usePrinterStore } from '../../store/printerStore';
@@ -302,6 +303,7 @@ const prepareTabs: TabDef[] = [
 
 export default function Toolbar() {
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const meshInsertInputRef = useRef<HTMLInputElement>(null);
   const [workspace, setWorkspace] = useState<Workspace>('design');
   const [wsDropdownOpen, setWsDropdownOpen] = useState(false);
   const [designTab, setDesignTab] = useState<DesignTab>('solid');
@@ -327,6 +329,8 @@ export default function Toolbar() {
   const startRevolveTool = useCADStore((s) => s.startRevolveTool);
   const startSweepTool = useCADStore((s) => s.startSweepTool);
   const startLoftTool = useCADStore((s) => s.startLoftTool);
+  const startPatchTool = useCADStore((s) => s.startPatchTool);
+  const startRuledSurfaceTool = useCADStore((s) => s.startRuledSurfaceTool);
   const startRibTool = useCADStore((s) => s.startRibTool);
   const setShowExportDialog = useCADStore((s) => s.setShowExportDialog);
   const setActiveDialog = useCADStore((s) => s.setActiveDialog);
@@ -380,6 +384,33 @@ const setStatusMessage = useCADStore((s) => s.setStatusMessage);
     if (fileInputRef.current) fileInputRef.current.value = '';
   };
 
+  // D120: Insert Mesh — loads file as a mesh body (bodyKind: 'mesh')
+  const handleMeshInsert = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+    setStatusMessage(`Inserting mesh ${file.name}...`);
+    try {
+      const { FileImporter } = await import('../../engine/FileImporter');
+      const group = await FileImporter.importFile(file);
+      const feature: Feature = {
+        id: crypto.randomUUID(),
+        name: file.name,
+        type: 'import',
+        params: { fileName: file.name, bodyKind: 'mesh' },
+        mesh: group as any,
+        bodyKind: 'mesh',
+        visible: true,
+        suppressed: false,
+        timestamp: Date.now(),
+      };
+      addFeature(feature);
+      setStatusMessage(`Inserted mesh body: ${file.name}`);
+    } catch (err) {
+      setStatusMessage(`Mesh insert failed: ${(err as Error).message}`);
+    }
+    if (meshInsertInputRef.current) meshInsertInputRef.current.value = '';
+  };
+
   const handleExtrude = () => {
     if (sketches.length === 0) {
       setStatusMessage('Create a sketch first before extruding');
@@ -429,6 +460,7 @@ const setStatusMessage = useCADStore((s) => s.setStatusMessage);
     { icon: <RotateCcw size={MI} />, label: 'Revolve', onClick: handleRevolve },
     { icon: <Spline size={MI} />, label: 'Sweep', onClick: startSweepTool },
     { icon: <Layers size={MI} />, label: 'Loft', onClick: startLoftTool },
+    { icon: <Diamond size={MI} />, label: 'Patch', onClick: startPatchTool },
     { icon: <Minus size={MI} />, label: 'Rib', onClick: startRibTool },
     { icon: <Grid3X3 size={MI} />, label: 'Web', onClick: () => setActiveDialog('web') },
     { icon: <ArrowUp size={MI} />, label: 'Emboss', onClick: () => setActiveDialog('emboss') },
@@ -439,7 +471,7 @@ const setStatusMessage = useCADStore((s) => s.setStatusMessage);
     { icon: <Circle size={MI} />, label: 'Cylinder', onClick: () => setActiveDialog('primitive-cylinder') },
     { icon: <Globe size={MI} />, label: 'Sphere', onClick: () => setActiveDialog('primitive-sphere') },
     { icon: <CircleDot size={MI} />, label: 'Torus', onClick: () => setActiveDialog('primitive-torus') },
-    { icon: <Spline size={MI} />, label: 'Coil', onClick: comingSoon('Coil primitive') },
+    { icon: <Spline size={MI} />, label: 'Coil', onClick: () => setActiveDialog('primitive-coil') },
     { icon: <Minus size={MI} />, label: 'Pipe', onClick: comingSoon('Pipe primitive') },
     {
       separator: true,
@@ -453,6 +485,7 @@ const setStatusMessage = useCADStore((s) => s.setStatusMessage);
     },
     { icon: <FlipHorizontal size={MI} />, label: 'Mirror', onClick: () => setActiveDialog('mirror') },
     { icon: <Layers size={MI} />, label: 'Thicken', onClick: () => setActiveDialog('thicken') },
+    { icon: <Square size={MI} />, label: 'Boundary Fill', onClick: () => setActiveDialog('boundary-fill') },
   ];
 
   const modifyMenuItems: MenuItem[] = [
@@ -467,14 +500,14 @@ const setStatusMessage = useCADStore((s) => s.setStatusMessage);
     { icon: <Square size={MI} />, label: 'Replace Face', onClick: comingSoon('Replace Face') },
     { icon: <Scissors size={MI} />, label: 'Split Face', onClick: comingSoon('Split Face') },
     { icon: <Scissors size={MI} />, label: 'Split Body', onClick: () => setActiveDialog('split') },
-    { icon: <Scissors size={MI} />, label: 'Silhouette Split', onClick: comingSoon('Silhouette Split') },
+    { icon: <Scissors size={MI} />, label: 'Silhouette Split', onClick: () => setActiveDialog('silhouette-split') },
     { separator: true, icon: <Move size={MI} />, label: 'Move/Copy', shortcut: 'M', onClick: () => setActiveTool('move' as Tool) },
     { icon: <AlignCenter size={MI} />, label: 'Align', onClick: () => setActiveTool('align' as Tool) },
     { icon: <Trash2 size={MI} />, label: 'Delete', shortcut: 'Del', onClick: () => {
       if (selectedFeatureId) { removeFeature(selectedFeatureId); setStatusMessage('Feature deleted'); }
       else setStatusMessage('Select a feature to delete');
     } },
-    { icon: <X size={MI} />, label: 'Remove', onClick: comingSoon('Remove') },
+    { icon: <Trash2 size={MI} />, label: 'Remove Face', onClick: () => setActiveDialog('remove-face') },
     { separator: true, icon: <Diamond size={MI} />, label: 'Physical Material', onClick: comingSoon('Physical Material') },
     { icon: <Pipette size={MI} />, label: 'Appearance', shortcut: 'A', onClick: () => setStatusMessage('Select a body to change materials') },
     { icon: <Diamond size={MI} />, label: 'Change Parameters', shortcut: 'Ctrl+B', onClick: () => setActiveDialog('parameters') },
@@ -869,10 +902,13 @@ const setStatusMessage = useCADStore((s) => s.setStatusMessage);
               <ToolButton icon={<RotateCcw size={ICON_LG} />} label="Revolve" onClick={startRevolveTool} large colorClass="icon-green" />
               <ToolButton icon={<Spline size={ICON_LG} />} label="Sweep" onClick={startSweepTool} large colorClass="icon-green" />
               <ToolButton icon={<Layers size={ICON_LG} />} label="Loft" onClick={startLoftTool} large colorClass="icon-green" />
+              <ToolButton icon={<Diamond size={ICON_LG} />} label="Patch" onClick={startPatchTool} large colorClass="icon-green" />
+              <ToolButton icon={<Grid3X3 size={ICON_LG} />} label="Ruled Surface" onClick={startRuledSurfaceTool} large colorClass="icon-green" />
             </RibbonSection>
             <RibbonSection title="MODIFY">
               <ToolButton icon={<Scissors size={ICON_LG} />} label="Trim" onClick={() => setStatusMessage('Surface Trim: coming soon')} large colorClass="icon-orange" />
               <ToolButton icon={<FlipHorizontal size={ICON_LG} />} label="Extend" onClick={() => setStatusMessage('Surface Extend: coming soon')} large colorClass="icon-orange" />
+              <ToolButton icon={<RefreshCw size={ICON_LG} />} label="Reverse Normal" onClick={() => setActiveDialog('reverse-normal')} large colorClass="icon-orange" />
             </RibbonSection>
             <RibbonSection title="SELECT">
               <ToolButton icon={<MousePointer2 size={ICON_LG} />} label="Select" tool="select" large colorClass="icon-blue" />
@@ -884,10 +920,19 @@ const setStatusMessage = useCADStore((s) => s.setStatusMessage);
         {!inSketch && workspace === 'design' && designTab === 'mesh' && (
           <>
             <RibbonSection title="CREATE">
-              <ToolButton icon={<Box size={ICON_LG} />} label="Tessellate" onClick={() => setStatusMessage('Mesh: Tessellate - coming soon')} large colorClass="icon-purple" />
+              <ToolButton icon={<Box size={ICON_LG} />} label="Tessellate" onClick={() => setActiveDialog('tessellate')} large colorClass="icon-purple" />
+              {/* D120: Insert Mesh */}
+              <ToolButton icon={<FolderOpen size={ICON_LG} />} label="Insert Mesh" onClick={() => meshInsertInputRef.current?.click()} large colorClass="icon-purple" />
+              <input
+                ref={meshInsertInputRef}
+                type="file"
+                accept=".stl,.obj,.3mf,.gltf,.glb"
+                style={{ display: 'none' }}
+                onChange={handleMeshInsert}
+              />
             </RibbonSection>
             <RibbonSection title="MODIFY">
-              <ToolButton icon={<Blend size={ICON_LG} />} label="Reduce" onClick={() => setStatusMessage('Mesh: Reduce - coming soon')} large colorClass="icon-purple" />
+              <ToolButton icon={<Blend size={ICON_LG} />} label="Reduce" onClick={() => setActiveDialog('mesh-reduce')} large colorClass="icon-purple" />
               <ToolButton icon={<Combine size={ICON_LG} />} label="Repair" onClick={() => setStatusMessage('Mesh: Repair - coming soon')} large colorClass="icon-purple" />
             </RibbonSection>
             <RibbonSection title="SELECT">

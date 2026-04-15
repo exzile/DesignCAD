@@ -890,8 +890,8 @@ export function ScaleDialog({ onClose }: { onClose: () => void }) {
   );
 }
 
-// ===== Primitives Dialog (D80) =====
-type PrimitiveKind = 'box' | 'cylinder' | 'sphere' | 'torus';
+// ===== Primitives Dialog (D80 / D36) =====
+type PrimitiveKind = 'box' | 'cylinder' | 'sphere' | 'torus' | 'coil';
 
 export function PrimitivesDialog({ kind, onClose }: { kind: PrimitiveKind; onClose: () => void }) {
   // Box params
@@ -907,6 +907,11 @@ export function PrimitivesDialog({ kind, onClose }: { kind: PrimitiveKind; onClo
   // Torus params
   const [torRadius, setTorRadius] = useState(15);
   const [torTube, setTorTube] = useState(3);
+  // Coil params (D36)
+  const [coilOuterRadius, setCoilOuterRadius] = useState(15);
+  const [coilWireRadius, setCoilWireRadius] = useState(2);
+  const [coilPitch, setCoilPitch] = useState(10);
+  const [coilTurns, setCoilTurns] = useState(5);
 
   const addPrimitive = useCADStore((s) => s.addPrimitive);
   const setStatusMessage = useCADStore((s) => s.setStatusMessage);
@@ -918,7 +923,9 @@ export function PrimitivesDialog({ kind, onClose }: { kind: PrimitiveKind; onClo
         ? { radius: cylRadius, radiusTop: cylRadiusTop, height: cylHeight }
         : kind === 'sphere'
           ? { radius: sphRadius }
-          : { radius: torRadius, tubeRadius: torTube };
+          : kind === 'coil'
+            ? { outerRadius: coilOuterRadius, wireRadius: coilWireRadius, pitch: coilPitch, turns: coilTurns }
+            : { radius: torRadius, tubeRadius: torTube };
     addPrimitive(kind, params);
     setStatusMessage(`Created ${kind}`);
     onClose();
@@ -929,6 +936,7 @@ export function PrimitivesDialog({ kind, onClose }: { kind: PrimitiveKind; onClo
     cylinder: 'Cylinder',
     sphere: 'Sphere',
     torus: 'Torus',
+    coil: 'Coil',
   };
 
   return (
@@ -986,6 +994,26 @@ export function PrimitivesDialog({ kind, onClose }: { kind: PrimitiveKind; onClo
               <div className="form-group">
                 <label>Tube Radius (mm)</label>
                 <input type="number" value={torTube} onChange={(e) => setTorTube(Math.max(0.1, Math.min(torRadius - 0.01, parseFloat(e.target.value) || 3)))} step={0.5} min={0.1} />
+              </div>
+            </div>
+          )}
+          {kind === 'coil' && (
+            <div className="settings-grid">
+              <div className="form-group">
+                <label>Outer Radius (mm)</label>
+                <input type="number" value={coilOuterRadius} onChange={(e) => setCoilOuterRadius(Math.max(0.1, parseFloat(e.target.value) || 15))} step={0.5} min={0.1} />
+              </div>
+              <div className="form-group">
+                <label>Wire Radius (mm)</label>
+                <input type="number" value={coilWireRadius} onChange={(e) => setCoilWireRadius(Math.max(0.1, Math.min(coilOuterRadius - 0.01, parseFloat(e.target.value) || 2)))} step={0.1} min={0.1} />
+              </div>
+              <div className="form-group">
+                <label>Pitch (mm/turn)</label>
+                <input type="number" value={coilPitch} onChange={(e) => setCoilPitch(Math.max(0.1, parseFloat(e.target.value) || 10))} step={0.5} min={0.1} />
+              </div>
+              <div className="form-group">
+                <label>Turns</label>
+                <input type="number" value={coilTurns} onChange={(e) => setCoilTurns(Math.max(0.25, parseFloat(e.target.value) || 5))} step={0.25} min={0.25} />
               </div>
             </div>
           )}
@@ -1617,6 +1645,402 @@ export function JointDialog({ onClose }: { onClose: () => void }) {
         <div className="dialog-footer">
           <button className="btn btn-secondary" onClick={onClose}>Cancel</button>
           <button className="btn btn-primary" onClick={handleApply}>OK</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ===== Mesh Reduce Dialog (D125) =====
+export function MeshReduceDialog({ onClose }: { onClose: () => void }) {
+  const features = useCADStore((s) => s.features);
+  const reduceMesh = useCADStore((s) => s.reduceMesh);
+  const setStatusMessage = useCADStore((s) => s.setStatusMessage);
+
+  const meshFeatures = features.filter((f) => !!f.mesh);
+
+  const [selectedId, setSelectedId] = useState<string>(meshFeatures[0]?.id ?? '');
+  const [percent, setPercent] = useState(50);
+
+  const handleApply = () => {
+    if (!selectedId) {
+      setStatusMessage('Mesh Reduce: no feature selected');
+      return;
+    }
+    reduceMesh(selectedId, percent);
+    onClose();
+  };
+
+  return (
+    <div className="dialog-overlay">
+      <div className="dialog dialog-sm">
+        <div className="dialog-header">
+          <h3>Reduce Mesh</h3>
+          <button className="dialog-close" onClick={onClose}><X size={16} /></button>
+        </div>
+        <div className="dialog-body">
+          <div className="form-group">
+            <label>Target Feature</label>
+            <select value={selectedId} onChange={(e) => setSelectedId(e.target.value)}>
+              {meshFeatures.length === 0 && <option value="">— no mesh features —</option>}
+              {meshFeatures.map((f) => (
+                <option key={f.id} value={f.id}>{f.name}</option>
+              ))}
+            </select>
+          </div>
+          <div className="form-group">
+            <label>Reduction: {percent}%</label>
+            <input
+              type="range"
+              min={1}
+              max={99}
+              value={percent}
+              onChange={(e) => setPercent(parseInt(e.target.value, 10))}
+            />
+          </div>
+          <p className="dialog-hint">Removes a percentage of vertices from the mesh.</p>
+        </div>
+        <div className="dialog-footer">
+          <button className="btn btn-secondary" onClick={onClose}>Cancel</button>
+          <button className="btn btn-primary" onClick={handleApply} disabled={!selectedId}>OK</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ===== Boundary Fill Dialog (D78) =====
+export function BoundaryFillDialog({ onClose }: { onClose: () => void }) {
+  const [fillType, setFillType] = useState<'between-surfaces' | 'enclosed-volume'>('between-surfaces');
+  const [operation, setOperation] = useState<'new-body' | 'join' | 'cut'>('new-body');
+  const [target, setTarget] = useState('');
+  const addFeature = useCADStore((s) => s.addFeature);
+  const features = useCADStore((s) => s.features);
+  const setStatusMessage = useCADStore((s) => s.setStatusMessage);
+
+  const boundaryFillCount = features.filter((f) => f.params?.isBoundaryFill).length + 1;
+
+  const handleApply = () => {
+    const feature: Feature = {
+      id: crypto.randomUUID(),
+      name: `Boundary Fill ${boundaryFillCount}`,
+      type: 'extrude',
+      params: { fillType, operation, isBoundaryFill: true, target },
+      visible: true,
+      suppressed: false,
+      timestamp: Date.now(),
+    };
+    addFeature(feature);
+    setStatusMessage(`Created Boundary Fill ${boundaryFillCount} (${fillType}, ${operation})`);
+    onClose();
+  };
+
+  return (
+    <div className="dialog-overlay">
+      <div className="dialog dialog-sm">
+        <div className="dialog-header">
+          <h3>Boundary Fill</h3>
+          <button className="dialog-close" onClick={onClose}><X size={16} /></button>
+        </div>
+        <div className="dialog-body">
+          <div className="form-group">
+            <label>Fill Type</label>
+            <select value={fillType} onChange={(e) => setFillType(e.target.value as 'between-surfaces' | 'enclosed-volume')}>
+              <option value="between-surfaces">Between Surfaces</option>
+              <option value="enclosed-volume">Enclosed Volume</option>
+            </select>
+          </div>
+          <div className="form-group">
+            <label>Operation</label>
+            <select value={operation} onChange={(e) => setOperation(e.target.value as 'new-body' | 'join' | 'cut')}>
+              <option value="new-body">New Body</option>
+              <option value="join">Join</option>
+              <option value="cut">Cut</option>
+            </select>
+          </div>
+          <div className="form-group">
+            <label>Target (optional)</label>
+            <input
+              type="text"
+              value={target}
+              onChange={(e) => setTarget(e.target.value)}
+              placeholder="Select boundary surfaces in viewport"
+            />
+          </div>
+          <p className="dialog-hint">Select intersecting surfaces or bodies that define the enclosed region to fill.</p>
+        </div>
+        <div className="dialog-footer">
+          <button className="btn btn-secondary" onClick={onClose}>Cancel</button>
+          <button className="btn btn-primary" onClick={handleApply}>OK</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ===== Reverse Normal Dialog (D115) =====
+export function ReverseNormalDialog({ onClose }: { onClose: () => void }) {
+  const features = useCADStore((s) => s.features);
+  const reverseNormals = useCADStore((s) => s.reverseNormals);
+  const setStatusMessage = useCADStore((s) => s.setStatusMessage);
+
+  const meshFeatures = features.filter((f) => !!f.mesh);
+
+  const [selectedId, setSelectedId] = useState<string>(meshFeatures[0]?.id ?? '');
+
+  const handleApply = () => {
+    if (!selectedId) {
+      setStatusMessage('Reverse Normal: no feature selected');
+      return;
+    }
+    reverseNormals(selectedId);
+    onClose();
+  };
+
+  return (
+    <div className="dialog-overlay">
+      <div className="dialog dialog-sm">
+        <div className="dialog-header">
+          <h3>Reverse Normal</h3>
+          <button className="dialog-close" onClick={onClose}><X size={16} /></button>
+        </div>
+        <div className="dialog-body">
+          <div className="form-group">
+            <label>Target Feature</label>
+            <select value={selectedId} onChange={(e) => setSelectedId(e.target.value)}>
+              {meshFeatures.length === 0 && <option value="">— no mesh features —</option>}
+              {meshFeatures.map((f) => (
+                <option key={f.id} value={f.id}>{f.name}</option>
+              ))}
+            </select>
+          </div>
+          <p className="dialog-hint">Flips face winding to reverse which side is front-facing.</p>
+        </div>
+        <div className="dialog-footer">
+          <button className="btn btn-secondary" onClick={onClose}>Cancel</button>
+          <button className="btn btn-primary" onClick={handleApply} disabled={!selectedId}>OK</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ===== Silhouette Split Dialog (D88) =====
+export function SilhouetteSplitDialog({ onClose }: { onClose: () => void }) {
+  const features = useCADStore((s) => s.features);
+  const addFeature = useCADStore((s) => s.addFeature);
+  const setStatusMessage = useCADStore((s) => s.setStatusMessage);
+
+  const bodyFeatures = features.filter((f) => !!f.mesh);
+  const splitCount = features.filter((f) => f.type === 'split-body' && f.name.startsWith('Silhouette Split')).length;
+
+  const [selectedId, setSelectedId] = useState<string>(bodyFeatures[0]?.id ?? '');
+  const [direction, setDirection] = useState<'x' | 'y' | 'z'>('z');
+  const [operation, setOperation] = useState<'split-bodies' | 'new-body'>('split-bodies');
+
+  const handleApply = () => {
+    if (!selectedId) {
+      setStatusMessage('Silhouette Split: no body selected');
+      return;
+    }
+    const dirVec = direction === 'x' ? [1, 0, 0] : direction === 'y' ? [0, 1, 0] : [0, 0, 1];
+    const feature: Feature = {
+      id: crypto.randomUUID(),
+      name: `Silhouette Split ${splitCount + 1}`,
+      type: 'split-body',
+      params: { bodyId: selectedId, direction: dirVec, operation },
+      visible: true,
+      suppressed: false,
+      timestamp: Date.now(),
+    };
+    addFeature(feature);
+    setStatusMessage(`Silhouette Split created along ${direction.toUpperCase()} axis`);
+    onClose();
+  };
+
+  return (
+    <div className="dialog-overlay">
+      <div className="dialog dialog-sm">
+        <div className="dialog-header">
+          <h3>Silhouette Split</h3>
+          <button className="dialog-close" onClick={onClose}><X size={16} /></button>
+        </div>
+        <div className="dialog-body">
+          <div className="form-group">
+            <label>Body to Split</label>
+            <select value={selectedId} onChange={(e) => setSelectedId(e.target.value)}>
+              {bodyFeatures.length === 0 && <option value="">— no bodies —</option>}
+              {bodyFeatures.map((f) => (
+                <option key={f.id} value={f.id}>{f.name}</option>
+              ))}
+            </select>
+          </div>
+          <div className="form-group">
+            <label>Silhouette Direction</label>
+            <select value={direction} onChange={(e) => setDirection(e.target.value as 'x' | 'y' | 'z')}>
+              <option value="x">Along X</option>
+              <option value="y">Along Y</option>
+              <option value="z">Along Z</option>
+            </select>
+          </div>
+          <div className="form-group">
+            <label>Operation</label>
+            <select value={operation} onChange={(e) => setOperation(e.target.value as 'split-bodies' | 'new-body')}>
+              <option value="split-bodies">Split Bodies</option>
+              <option value="new-body">New Body</option>
+            </select>
+          </div>
+          <p className="dialog-hint">Splits a body at its silhouette edges as seen from the chosen direction.</p>
+        </div>
+        <div className="dialog-footer">
+          <button className="btn btn-secondary" onClick={onClose}>Cancel</button>
+          <button className="btn btn-primary" onClick={handleApply} disabled={!selectedId}>OK</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ===== Remove Face Dialog (D90) =====
+export function RemoveFaceDialog({ onClose }: { onClose: () => void }) {
+  const features = useCADStore((s) => s.features);
+  const addFeature = useCADStore((s) => s.addFeature);
+  const setStatusMessage = useCADStore((s) => s.setStatusMessage);
+
+  const bodyFeatures = features.filter((f) => !!f.mesh);
+  const removeFaceCount = features.filter((f) => f.type === 'split-body' && f.name.startsWith('Remove Face')).length;
+
+  const [selectedId, setSelectedId] = useState<string>(bodyFeatures[0]?.id ?? '');
+  const [faceDescription, setFaceDescription] = useState('Top');
+  const [keepShape, setKeepShape] = useState(true);
+
+  const handleApply = () => {
+    if (!selectedId) {
+      setStatusMessage('Remove Face: no body selected');
+      return;
+    }
+    const feature: Feature = {
+      id: crypto.randomUUID(),
+      name: `Remove Face ${removeFaceCount + 1}`,
+      type: 'split-body',
+      params: { bodyId: selectedId, faceDescription, keepShape },
+      visible: true,
+      suppressed: false,
+      timestamp: Date.now(),
+    };
+    addFeature(feature);
+    setStatusMessage(`Remove Face applied: "${faceDescription}" face on ${features.find((f) => f.id === selectedId)?.name ?? selectedId}`);
+    onClose();
+  };
+
+  return (
+    <div className="dialog-overlay">
+      <div className="dialog dialog-sm">
+        <div className="dialog-header">
+          <h3>Remove Face</h3>
+          <button className="dialog-close" onClick={onClose}><X size={16} /></button>
+        </div>
+        <div className="dialog-body">
+          <div className="form-group">
+            <label>Body</label>
+            <select value={selectedId} onChange={(e) => setSelectedId(e.target.value)}>
+              {bodyFeatures.length === 0 && <option value="">— no bodies —</option>}
+              {bodyFeatures.map((f) => (
+                <option key={f.id} value={f.id}>{f.name}</option>
+              ))}
+            </select>
+          </div>
+          <div className="form-group">
+            <label>Face Description</label>
+            <input
+              type="text"
+              value={faceDescription}
+              onChange={(e) => setFaceDescription(e.target.value)}
+              placeholder="e.g. Top, Bottom, Front, Back, Left, Right"
+            />
+          </div>
+          <div className="form-group">
+            <label className="checkbox-label">
+              <input
+                type="checkbox"
+                checked={keepShape}
+                onChange={(e) => setKeepShape(e.target.checked)}
+              />
+              Keep Shape (extend adjacent faces)
+            </label>
+          </div>
+          <p className="dialog-hint">Removes the specified face and extends adjacent faces to close the gap.</p>
+        </div>
+        <div className="dialog-footer">
+          <button className="btn btn-secondary" onClick={onClose}>Cancel</button>
+          <button className="btn btn-primary" onClick={handleApply} disabled={!selectedId}>OK</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ===== Tessellate Dialog (D119) =====
+export function TessellateDialog({ onClose }: { onClose: () => void }) {
+  const features = useCADStore((s) => s.features);
+  const tessellateFeature = useCADStore((s) => s.tessellateFeature);
+  const setStatusMessage = useCADStore((s) => s.setStatusMessage);
+
+  // Only show features that have a mesh
+  const meshFeatures = features.filter((f) => f.mesh != null);
+  const [selectedId, setSelectedId] = useState<string>(meshFeatures[0]?.id ?? '');
+
+  const selectedFeature = meshFeatures.find((f) => f.id === selectedId);
+  let vertexCount: number | null = null;
+  if (selectedFeature?.mesh) {
+    const m = selectedFeature.mesh;
+    if (m instanceof THREE.Mesh) {
+      vertexCount = m.geometry.attributes.position?.count ?? null;
+    } else {
+      let count = 0;
+      m.traverse((child: THREE.Object3D) => {
+        if (child instanceof THREE.Mesh) count += child.geometry.attributes.position?.count ?? 0;
+      });
+      vertexCount = count || null;
+    }
+  }
+
+  const handleApply = () => {
+    if (!selectedId) { setStatusMessage('No feature selected'); return; }
+    tessellateFeature(selectedId);
+    onClose();
+  };
+
+  return (
+    <div className="dialog-overlay">
+      <div className="dialog dialog-sm">
+        <div className="dialog-header">
+          <h3>Tessellate</h3>
+          <button className="dialog-close" onClick={onClose}><X size={16} /></button>
+        </div>
+        <div className="dialog-body">
+          {meshFeatures.length === 0 ? (
+            <p className="dialog-hint">No solid or surface features with geometry found. Create or import a body first.</p>
+          ) : (
+            <>
+              <div className="form-group">
+                <label>Source Feature</label>
+                <select value={selectedId} onChange={(e) => setSelectedId(e.target.value)}>
+                  {meshFeatures.map((f) => (
+                    <option key={f.id} value={f.id}>{f.name}</option>
+                  ))}
+                </select>
+              </div>
+              {vertexCount != null && (
+                <p className="dialog-hint">Vertex count: {vertexCount.toLocaleString()}</p>
+              )}
+              <p className="dialog-hint">Clones the selected feature&apos;s geometry as a new mesh body in the timeline.</p>
+            </>
+          )}
+        </div>
+        <div className="dialog-footer">
+          <button className="btn btn-secondary" onClick={onClose}>Cancel</button>
+          <button className="btn btn-primary" onClick={handleApply} disabled={meshFeatures.length === 0 || !selectedId}>OK</button>
         </div>
       </div>
     </div>

@@ -141,72 +141,76 @@ export default function ExtrudePanel() {
           </div>
         )}
 
-        <div className="sketch-palette-row">
-          <span className="sketch-palette-label">Operation</span>
-          <select
-            className="measure-select"
-            value={effectiveOperation}
-            disabled={isCutMode}
-            title={isCutMode ? 'Negative distance → auto-switched to Cut' : undefined}
-            onChange={(e) => setOperation(e.target.value as ExtrudeOperation)}
-          >
-            <option value="new-body">New Body</option>
-            <option value="join">Join</option>
-            <option value="cut">Cut</option>
-          </select>
-        </div>
-
-        {/* D69: Taper angle */}
-        <div className="sketch-palette-row">
-          <span className="sketch-palette-label">Taper</span>
-          <div className="extrude-input">
-            <input
-              type="number"
-              step="0.5"
-              min="-89"
-              max="89"
-              value={taperAngle}
-              onChange={(e) => { const v = Number(e.target.value); if (!Number.isNaN(v)) setTaperAngle(Math.max(-89, Math.min(89, v))); }}
-            />
-            <span className="extrude-unit">°</span>
-          </div>
-        </div>
-
-        {/* D66: Thin Extrude controls */}
-        <div className="sketch-palette-row">
-          <span className="sketch-palette-label">Thin Extrude</span>
-          <label className="sketch-palette-check">
-            <input type="checkbox" checked={thinEnabled} onChange={() => setThinEnabled(!thinEnabled)} />
-            <span className="sketch-palette-checkmark" />
-          </label>
-        </div>
-        {thinEnabled && (
+        {bodyKind === 'solid' && (
           <>
             <div className="sketch-palette-row">
-              <span className="sketch-palette-label">Thickness</span>
+              <span className="sketch-palette-label">Operation</span>
+              <select
+                className="measure-select"
+                value={effectiveOperation}
+                disabled={isCutMode}
+                title={isCutMode ? 'Negative distance → auto-switched to Cut' : undefined}
+                onChange={(e) => setOperation(e.target.value as ExtrudeOperation)}
+              >
+                <option value="new-body">New Body</option>
+                <option value="join">Join</option>
+                <option value="cut">Cut</option>
+              </select>
+            </div>
+
+            {/* D69: Taper angle */}
+            <div className="sketch-palette-row">
+              <span className="sketch-palette-label">Taper</span>
               <div className="extrude-input">
                 <input
                   type="number"
-                  step="0.1"
-                  min="0.01"
-                  value={thinThickness}
-                  onChange={(e) => { const v = Number(e.target.value); if (!Number.isNaN(v) && v > 0) setThinThickness(v); }}
+                  step="0.5"
+                  min="-89"
+                  max="89"
+                  value={taperAngle}
+                  onChange={(e) => { const v = Number(e.target.value); if (!Number.isNaN(v)) setTaperAngle(Math.max(-89, Math.min(89, v))); }}
                 />
-                <span className="extrude-unit">{units}</span>
+                <span className="extrude-unit">°</span>
               </div>
             </div>
+
+            {/* D66: Thin Extrude controls */}
             <div className="sketch-palette-row">
-              <span className="sketch-palette-label">Side</span>
-              <select
-                className="measure-select"
-                value={thinSide}
-                onChange={(e) => setThinSide(e.target.value as 'inside' | 'outside' | 'center')}
-              >
-                <option value="inside">Inside</option>
-                <option value="outside">Outside</option>
-                <option value="center">Center</option>
-              </select>
+              <span className="sketch-palette-label">Thin Extrude</span>
+              <label className="sketch-palette-check">
+                <input type="checkbox" checked={thinEnabled} onChange={() => setThinEnabled(!thinEnabled)} />
+                <span className="sketch-palette-checkmark" />
+              </label>
             </div>
+            {thinEnabled && (
+              <>
+                <div className="sketch-palette-row">
+                  <span className="sketch-palette-label">Thickness</span>
+                  <div className="extrude-input">
+                    <input
+                      type="number"
+                      step="0.1"
+                      min="0.01"
+                      value={thinThickness}
+                      onChange={(e) => { const v = Number(e.target.value); if (!Number.isNaN(v) && v > 0) setThinThickness(v); }}
+                    />
+                    <span className="extrude-unit">{units}</span>
+                  </div>
+                </div>
+                <div className="sketch-palette-row">
+                  <span className="sketch-palette-label">Side</span>
+                  <select
+                    className="measure-select"
+                    value={thinSide}
+                    onChange={(e) => setThinSide(e.target.value as 'inside' | 'outside' | 'center')}
+                  >
+                    <option value="inside">Inside</option>
+                    <option value="outside">Outside</option>
+                    <option value="center">Center</option>
+                  </select>
+                </div>
+              </>
+            )}
           </>
         )}
 

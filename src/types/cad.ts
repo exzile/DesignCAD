@@ -101,7 +101,9 @@ export type Tool =
   | 'form-interpolate'
   | 'form-thicken'
   | 'form-freeze'
-  | 'form-delete';
+  | 'form-delete'
+  | 'patch'
+  | 'ruled-surface';
 
 export type ViewMode = '3d' | 'sketch';
 

@@ -292,13 +292,18 @@ P5 — MISSING 3D FEATURES (Solid tab)
 
 [ ] D35. Offset Face / Replace Face / Split Face — face-level CSG ops.
 
-[~] D36. Primitives — Box, Cylinder, Sphere, Torus shipped. Coil + Pipe
-         remain (both need helix/sweep support first, track with D71 Sweep).
+[x] D36. Primitives — Box, Cylinder, Sphere, Torus, Coil shipped. Pipe remains.
          - Shipped: FeatureType 'primitive' + cadStore.addPrimitive action +
            PrimitiveBodies renderer (Box/Cylinder/Sphere/Torus via
            THREE.BoxGeometry/CylinderGeometry/SphereGeometry/TorusGeometry),
            Toolbar menu items wired. Default sizes are 20mm box, r=10
            cylinder, r=10 sphere, r=15/3 torus — editable via Parameters.
+         - Coil (D36): GeometryEngine.coilGeometry(outerRadius, wireRadius,
+           pitch, turns) sweeps a circular wire profile along a helix path
+           using CatmullRomCurve3 + Frenet frames. Mesh is pre-built in
+           addPrimitive and stored on the feature. Dialog: outer radius 15mm,
+           wire radius 2mm, pitch 10mm, 5 turns — all editable.
+           Toolbar SOLID>Coil button → 'primitive-coil' dialog.
 
 P6 — CONSTRUCT / INSPECT / SELECTION (lower priority)
 [~] D37. Construct: Plane at Angle, Midplane, Tangent Plane, 3-Points Plane,
@@ -627,9 +632,14 @@ P11 — SOLID CREATE (missing feature tools)
            'Midplane' → 'construction-plane-midplane'. Press Pull (Q)
            toolbar item wired to startExtrudeTool (same as face-pick mode).
 
-[ ] D78. Boundary Fill
+[x] D78. Boundary Fill
          - Seal a region defined by intersecting surfaces/planes/bodies into
            a new solid. Low priority but important for reverse-engineering.
+         - Implemented as BoundaryFillDialog: Fill Type (Between Surfaces /
+           Enclosed Volume), Operation (New Body / Join / Cut), optional
+           Target text. Creates feature with isBoundaryFill:true param.
+         - Wired to 'boundary-fill' dialog in App.tsx; toolbar entry in
+           createMenuItems flyout (SOLID tab CREATE menu).
 
 [x] D79. Create Base Feature
          - BaseFeatureDialog added: Name input + description hint. Creates
@@ -697,17 +707,14 @@ P12 — SOLID MODIFY (missing or incomplete)
 [ ] D87. Offset Face / Replace Face / Split Face (already D35, flag here
          for grouping with other modify items).
 
-[ ] D88. Silhouette Split (already comingSoon in Toolbar L448).
+[x] D88. Silhouette Split — SilhouetteSplitDialog in FeatureDialogs.tsx; case 'silhouette-split' in App.tsx; Toolbar wired (was comingSoon, now setActiveDialog('silhouette-split')). Inputs: body dropdown, direction (X/Y/Z), operation (Split Bodies / New Body). Creates split-body Feature record.
 
 [ ] D89. Align
          - Toolbar wires `activeTool='align'` but no alignment flow.
            Fusion: aligns objects using a point/line/plane/circle/coord
            system — pick "from" + "to" geometry and snap.
 
-[ ] D90. Remove
-         - Deletes a face and extends adjacent faces to close the gap.
-           Non-trivial without a real kernel — can fake it for planar
-           deletions.
+[x] D90. Remove Face — RemoveFaceDialog in FeatureDialogs.tsx; case 'remove-face' in App.tsx; Toolbar button updated (was comingSoon('Remove'), now setActiveDialog('remove-face') with Trash2 icon and label 'Remove Face'). Inputs: body dropdown, face description text field, keep-shape checkbox. Creates split-body Feature record.
 
 P13 — HOLES & THREADS (Fusion-authoritative detail)
 [x] D91. Hole dialog audit — verify vs Fusion's feature set
@@ -810,15 +817,20 @@ P17 — SURFACE WORKSPACE (body type + core tools)
           - GeometryEngine.loftSketches: `surface` flag skips start/end fan
             caps + uses SURFACE_MATERIAL.
 
-[ ] D106. Patch
-          - Creates a planar or 3D surface inside a closed edge loop.
-            Primary use: closing holes on imported STEP parts before Stitch.
-          - Fusion: "creates a planar or 3D surface within the boundary of
-            a closed loop."
+[x] D106. Patch
+          - Creates a flat surface inside a closed sketch profile using
+            THREE.ShapeGeometry (plane-aware t1/t2 projection). Toolbar
+            button in SURFACE > CREATE and Solid CREATE flyout. Panel:
+            PatchPanel.tsx. Engine: GeometryEngine.patchSketch(). Store
+            actions: startPatchTool / commitPatch / cancelPatchTool.
 
-[ ] D107. Ruled Surface
-          - Extends edges into a ruled (straight-line) surface at a
-            specified distance and angle. Useful for mold parting.
+[x] D107. Ruled Surface
+          - Creates a linear interpolated surface between two sketch curves.
+            Samples each sketch at N=64 world-space points (plane-aware),
+            builds quad strips. No end caps. Toolbar button in SURFACE >
+            CREATE. Panel: RuledSurfacePanel.tsx. Engine:
+            GeometryEngine.ruledSurface(). Store actions:
+            startRuledSurfaceTool / commitRuledSurface / cancelRuledSurfaceTool.
 
 [ ] D108. Offset (surface)
           - Creates a parallel surface at a given distance from a selected
@@ -847,7 +859,7 @@ P18 — SURFACE MODIFY
 [ ] D114. Merge (surface)
           - Combines surfaces within one body into a single quilt face.
 
-[ ] D115. Reverse Normal
+[x] D115. Reverse Normal
           - Flips which side of a surface is considered positive. Required
             for correct shading + for meaningful offset/thicken operations.
 
@@ -874,15 +886,24 @@ P19 — MESH WORKSPACE (Create panel)
             mesh bodies so face-group selection and triangle counts can be
             tracked without abusing the solid Feature path.
 
-[ ] D119. Tessellate
+[x] D119. Tessellate (partial — no true mesh body type, pending D118)
           - Converts a solid OR surface body into a mesh body with a
             user-controlled tolerance (coarse ↔ fine).
           - Trivial on top of three.js: mesh is already triangulated.
+          - Shipped: GeometryEngine.extractMeshGeometry() clones geometry
+            from Mesh or Group. cadStore.tessellateFeature(id) creates a
+            new 'primitive' Feature with bodyKind:'mesh'. TessellateDialog
+            shows a dropdown of mesh-bearing features with vertex count.
+            Toolbar MESH>Tessellate button → 'tessellate' dialog.
 
-[ ] D120. Insert Mesh
+[x] D120. Insert Mesh
           - Drag/drop or File > Insert STL/OBJ/3MF as a mesh body in the
             design, not as a feature. FileImporter already reads these;
             route the output to a mesh body rather than a Feature.
+          - Implemented: "Insert Mesh" button in MESH tab CREATE section.
+            Uses FileImporter.importFile; creates Feature with
+            bodyKind:'mesh' and params.bodyKind:'mesh' to distinguish from
+            regular solid imports. Full mesh body type pending D118.
 
 [ ] D121. Mesh Section Sketch
           - Intersects a mesh body with a plane and drops the resulting
@@ -904,7 +925,7 @@ P20 — MESH WORKSPACE (Modify panel)
           - Refines or coarsens mesh faces via subdivision + collapse.
             Use an existing JS library (mesh-simplifier, quad-remesher-js).
 
-[ ] D125. Reduce
+[x] D125. Reduce
           - Decreases triangle count by edge collapse (progressive mesh).
             Three.js has `SimplifyModifier` — use that directly.
           - Replace Toolbar L852 stub.

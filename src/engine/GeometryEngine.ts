@@ -1154,6 +1154,140 @@ export class GeometryEngine {
     return mesh;
   }
 
+  /**
+   * D106 — Patch: creates a flat filled surface inside a closed sketch profile.
+   * No extrusion — just a flat polygon triangulated from the sketch outline.
+   * Handles both standard named planes and custom face-based planes.
+   */
+  static patchSketch(sketch: Sketch): THREE.Mesh | null {
+    if (sketch.entities.length === 0) return null;
+
+    if (sketch.plane === 'custom') {
+      const { t1, t2 } = this.getSketchAxes(sketch);
+      const origin = sketch.planeOrigin;
+
+      const proj = (p: SketchPoint): { u: number; v: number } => {
+        const d = new THREE.Vector3(p.x - origin.x, p.y - origin.y, p.z - origin.z);
+        return { u: d.dot(t1), v: d.dot(t2) };
+      };
+      const shape = this.entitiesToShape(sketch.entities, proj);
+      if (!shape) return null;
+
+      // ShapeGeometry triangulates in 2D (u,v) space — then back-project each vertex to world
+      const shapeGeom = new THREE.ShapeGeometry(shape);
+      const posAttr = shapeGeom.attributes.position as THREE.BufferAttribute;
+      const worldPositions = new Float32Array(posAttr.count * 3);
+      for (let i = 0; i < posAttr.count; i++) {
+        const u = posAttr.getX(i);
+        const v = posAttr.getY(i);
+        worldPositions[i * 3]     = origin.x + t1.x * u + t2.x * v;
+        worldPositions[i * 3 + 1] = origin.y + t1.y * u + t2.y * v;
+        worldPositions[i * 3 + 2] = origin.z + t1.z * u + t2.z * v;
+      }
+      const geom = new THREE.BufferGeometry();
+      geom.setAttribute('position', new THREE.BufferAttribute(worldPositions, 3));
+      if (shapeGeom.index) geom.setIndex(shapeGeom.index.clone());
+      geom.computeVertexNormals();
+      shapeGeom.dispose();
+
+      return new THREE.Mesh(geom, SURFACE_MATERIAL);
+    }
+
+    // Standard named plane: project via t1/t2 dot-product (plane-aware), not raw p.x/p.y
+    const { t1, t2 } = this.getSketchAxes(sketch);
+    const proj = (p: SketchPoint) => ({
+      u: t1.x * p.x + t1.y * p.y + t1.z * p.z,
+      v: t2.x * p.x + t2.y * p.y + t2.z * p.z,
+    });
+    const shape = this.entitiesToShape(sketch.entities, proj);
+    if (!shape) return null;
+
+    const geom = new THREE.ShapeGeometry(shape);
+    const mesh = new THREE.Mesh(geom, SURFACE_MATERIAL);
+    const rot = this.getPlaneRotation(sketch.plane);
+    mesh.rotation.set(rot[0], rot[1], rot[2]);
+    return mesh;
+  }
+
+  /**
+   * D107 — Ruled Surface: creates a straight-line-interpolated surface between
+   * two sketch profiles. Samples each at N world-space points, then builds quad
+   * strips between corresponding points (linear ruled surface, no end caps).
+   */
+  static ruledSurface(sketchA: Sketch, sketchB: Sketch): THREE.Mesh | null {
+    if (sketchA.entities.length === 0 || sketchB.entities.length === 0) return null;
+
+    const N = 64;
+
+    const sampleSketch = (sketch: Sketch): THREE.Vector3[] | null => {
+      if (sketch.plane === 'custom') {
+        const { t1, t2 } = this.getSketchAxes(sketch);
+        const origin = sketch.planeOrigin;
+        const proj = (p: SketchPoint) => {
+          const d = new THREE.Vector3(p.x - origin.x, p.y - origin.y, p.z - origin.z);
+          return { u: d.dot(t1), v: d.dot(t2) };
+        };
+        const shape = this.entitiesToShape(sketch.entities, proj);
+        if (!shape) return null;
+        return shape.getPoints(N).map(({ x: u, y: v }) =>
+          new THREE.Vector3(
+            origin.x + t1.x * u + t2.x * v,
+            origin.y + t1.y * u + t2.y * v,
+            origin.z + t1.z * u + t2.z * v,
+          )
+        );
+      }
+      // Standard plane: project via plane axes, then back-project to world space
+      const { t1, t2 } = this.getSketchAxes(sketch);
+      const proj = (p: SketchPoint) => ({
+        u: t1.x * p.x + t1.y * p.y + t1.z * p.z,
+        v: t2.x * p.x + t2.y * p.y + t2.z * p.z,
+      });
+      const shape = this.entitiesToShape(sketch.entities, proj);
+      if (!shape) return null;
+      return shape.getPoints(N).map(({ x: u, y: v }) =>
+        new THREE.Vector3(t1.x * u + t2.x * v, t1.y * u + t2.y * v, t1.z * u + t2.z * v)
+      );
+    };
+
+    const ringA = sampleSketch(sketchA);
+    const ringB = sampleSketch(sketchB);
+    if (!ringA || !ringB || ringA.length < 2 || ringB.length < 2) return null;
+
+    // Trim both rings to the same length
+    const len = Math.min(ringA.length, ringB.length);
+    const positions: number[] = [];
+    const indices: number[] = [];
+
+    for (let i = 0; i < len; i++) {
+      const a = ringA[i];
+      const b = ringB[i];
+      positions.push(a.x, a.y, a.z);
+      positions.push(b.x, b.y, b.z);
+    }
+
+    // Build quad strips: each pair of consecutive cross-segments forms a quad
+    for (let i = 0; i < len - 1; i++) {
+      // vertex layout: row i → [2i, 2i+1], row i+1 → [2i+2, 2i+3]
+      const a = 2 * i;
+      const b = 2 * i + 1;
+      const c = 2 * i + 2;
+      const d = 2 * i + 3;
+      indices.push(a, c, b);
+      indices.push(b, c, d);
+    }
+
+    const geom = new THREE.BufferGeometry();
+    geom.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
+    geom.setIndex(indices);
+    geom.computeVertexNormals();
+
+    const mesh = new THREE.Mesh(geom, SURFACE_MATERIAL);
+    mesh.castShadow = true;
+    mesh.receiveShadow = true;
+    return mesh;
+  }
+
   /** Public entry point — sweepSketch calls this after extracting shape + curve */
   static sweepSketchInternal(profileSketch: Sketch, pathSketch: Sketch, surface = false): THREE.Mesh | null {
     if (profileSketch.entities.length === 0 || pathSketch.entities.length === 0) return null;
@@ -1193,5 +1327,165 @@ export class GeometryEngine {
     if (pts2D.length < 2) return null;
 
     return this._sweepWithCurve(pts2D, curve, N_FRAMES, surface);
+  }
+
+  // ── D119 Tessellate — extract mesh geometry from a feature ────────────────
+  /**
+   * Clone the BufferGeometry from a Mesh or Group (first Mesh child).
+   * Returns null if no mesh geometry is found.
+   */
+  static extractMeshGeometry(mesh: THREE.Mesh | THREE.Group): THREE.BufferGeometry | null {
+    if (mesh instanceof THREE.Mesh) return mesh.geometry.clone();
+    let found: THREE.BufferGeometry | null = null;
+    mesh.traverse((child) => {
+      if (!found && child instanceof THREE.Mesh) found = child.geometry.clone();
+    });
+    return found;
+  }
+
+  // ── D36 Coil — helix sweep primitive ──────────────────────────────────────
+  /**
+   * Build a coil (spring/helix) geometry by sweeping a circular wire profile
+   * along a helix path using Frenet frames.
+   *
+   * @param outerRadius  - radius from helix axis to wire centre
+   * @param wireRadius   - radius of the circular wire cross-section
+   * @param pitch        - height gained per full turn
+   * @param turns        - number of full turns
+   */
+  static coilGeometry(
+    outerRadius: number,
+    wireRadius: number,
+    pitch: number,
+    turns: number,
+  ): THREE.BufferGeometry {
+    const N_FRAMES = Math.max(32, Math.round(turns * 32));
+    const N_PROFILE = 12;
+
+    // Build helix path points
+    const helixPts: THREE.Vector3[] = [];
+    for (let i = 0; i <= N_FRAMES; i++) {
+      const t = (i / N_FRAMES) * turns * Math.PI * 2;
+      helixPts.push(new THREE.Vector3(
+        outerRadius * Math.cos(t),
+        (t / (Math.PI * 2)) * pitch,
+        outerRadius * Math.sin(t),
+      ));
+    }
+
+    const curve = new THREE.CatmullRomCurve3(helixPts, false, 'centripetal');
+    const frames = curve.computeFrenetFrames(N_FRAMES, false);
+    const curvePts = curve.getPoints(N_FRAMES);
+
+    // Build circle profile in local 2-D (u,v) space
+    const profilePts: [number, number][] = [];
+    for (let j = 0; j < N_PROFILE; j++) {
+      const a = (j / N_PROFILE) * Math.PI * 2;
+      profilePts.push([wireRadius * Math.cos(a), wireRadius * Math.sin(a)]);
+    }
+    // Close profile ring by repeating first point
+    profilePts.push(profilePts[0]);
+    const nRing = profilePts.length; // N_PROFILE + 1
+
+    const positions: number[] = [];
+    const indices: number[] = [];
+
+    for (let i = 0; i <= N_FRAMES; i++) {
+      const fi = Math.min(i, N_FRAMES - 1);
+      const origin = curvePts[i] ?? curvePts[curvePts.length - 1];
+      const N2 = frames.normals[fi];
+      const B = frames.binormals[fi];
+      for (const [u, v] of profilePts) {
+        positions.push(
+          origin.x + N2.x * u + B.x * v,
+          origin.y + N2.y * u + B.y * v,
+          origin.z + N2.z * u + B.z * v,
+        );
+      }
+    }
+
+    // Quad-strip between consecutive ring slices
+    for (let i = 0; i < N_FRAMES; i++) {
+      for (let j = 0; j < nRing - 1; j++) {
+        const a = i * nRing + j;
+        const b = a + 1;
+        const c = a + nRing;
+        const d = c + 1;
+        indices.push(a, c, b);
+        indices.push(b, c, d);
+      }
+    }
+
+    // End-caps (fan from first / last ring centre)
+    const startCentre = positions.length / 3;
+    const sc = curvePts[0];
+    positions.push(sc.x, sc.y, sc.z);
+    for (let j = 0; j < nRing - 1; j++) {
+      indices.push(startCentre, j + 1, j);
+    }
+
+    const endCentre = positions.length / 3;
+    const ec = curvePts[N_FRAMES];
+    positions.push(ec.x, ec.y, ec.z);
+    const base = N_FRAMES * nRing;
+    for (let j = 0; j < nRing - 1; j++) {
+      indices.push(endCentre, base + j, base + j + 1);
+    }
+
+    const geom = new THREE.BufferGeometry();
+    geom.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
+    geom.setIndex(indices);
+    geom.computeVertexNormals();
+    return geom;
+  }
+
+  // ── D125 Mesh Reduce ───────────────────────────────────────────────────────
+  static async simplifyGeometry(
+    geom: THREE.BufferGeometry,
+    reductionPercent: number,
+  ): Promise<THREE.BufferGeometry> {
+    const { SimplifyModifier } = await import(
+      'three/examples/jsm/modifiers/SimplifyModifier.js'
+    );
+    const { mergeVertices } = await import(
+      'three/examples/jsm/utils/BufferGeometryUtils.js'
+    );
+
+    // SimplifyModifier requires an indexed geometry
+    let indexed = geom.index ? geom : mergeVertices(geom);
+
+    const posAttr = indexed.getAttribute('position');
+    const count = Math.floor(posAttr.count * reductionPercent / 100);
+    if (count <= 0) return geom.clone();
+
+    const modifier = new SimplifyModifier();
+    const simplified = modifier.modify(indexed, count);
+    return simplified;
+  }
+
+  // ── D115 Reverse Normal ────────────────────────────────────────────────────
+  static reverseNormals(geom: THREE.BufferGeometry): void {
+    if (geom.index) {
+      const idx = geom.index.array;
+      for (let i = 0; i < idx.length; i += 3) {
+        const tmp = idx[i + 1];
+        (idx as Uint16Array | Uint32Array)[i + 1] = idx[i + 2];
+        (idx as Uint16Array | Uint32Array)[i + 2] = tmp;
+      }
+      geom.index.needsUpdate = true;
+    } else {
+      const pos = geom.getAttribute('position');
+      const arr = pos.array as Float32Array;
+      for (let i = 0; i < arr.length; i += 9) {
+        // swap vertex 1 (i+3..i+5) and vertex 2 (i+6..i+8)
+        for (let k = 0; k < 3; k++) {
+          const tmp = arr[i + 3 + k];
+          arr[i + 3 + k] = arr[i + 6 + k];
+          arr[i + 6 + k] = tmp;
+        }
+      }
+      pos.needsUpdate = true;
+    }
+    geom.computeVertexNormals();
   }
 }

@@ -139,7 +139,9 @@ interface CADState {
   // Feature timeline
   features: Feature[];
   addFeature: (feature: Feature) => void;
-  addPrimitive: (kind: 'box' | 'cylinder' | 'sphere' | 'torus', params: Record<string, number>) => void;
+  addPrimitive: (kind: 'box' | 'cylinder' | 'sphere' | 'torus' | 'coil', params: Record<string, number>) => void;
+  /** D119: Clone a feature's geometry as a new mesh-body primitive. */
+  tessellateFeature: (featureId: string) => void;
   removeFeature: (id: string) => void;
   toggleFeatureVisibility: (id: string) => void;
   toggleFeatureSuppressed: (id: string) => void;
@@ -350,6 +352,22 @@ interface CADState {
   cancelLoftTool: () => void;
   commitLoft: () => void;
 
+  // Patch tool (D106)
+  patchSelectedSketchId: string | null;
+  setPatchSelectedSketchId: (id: string | null) => void;
+  startPatchTool: () => void;
+  cancelPatchTool: () => void;
+  commitPatch: () => void;
+
+  // Ruled Surface tool (D107)
+  ruledSketchAId: string | null;
+  setRuledSketchAId: (id: string | null) => void;
+  ruledSketchBId: string | null;
+  setRuledSketchBId: (id: string | null) => void;
+  startRuledSurfaceTool: () => void;
+  cancelRuledSurfaceTool: () => void;
+  commitRuledSurface: () => void;
+
   // Rib tool (D73)
   ribSelectedSketchId: string | null;
   setRibSelectedSketchId: (id: string | null) => void;
@@ -366,6 +384,11 @@ interface CADState {
   // Export dialog
   showExportDialog: boolean;
   setShowExportDialog: (show: boolean) => void;
+
+  // D125 Mesh Reduce
+  reduceMesh: (featureId: string, reductionPercent: number) => void;
+  // D115 Reverse Normals
+  reverseNormals: (featureId: string) => void;
 
   // Active feature dialog
   activeDialog: string | null;
@@ -750,8 +773,27 @@ export const useCADStore = create<CADState>()(persist((set, get) => ({
     const label =
       kind === 'box' ? 'Box' :
       kind === 'cylinder' ? 'Cylinder' :
-      kind === 'sphere' ? 'Sphere' : 'Torus';
+      kind === 'sphere' ? 'Sphere' :
+      kind === 'coil' ? 'Coil' : 'Torus';
     const count = state.features.filter((f) => f.type === 'primitive').length + 1;
+
+    // For coil we pre-build the mesh so PrimitiveBodies doesn't need to handle it
+    let mesh: Feature['mesh'] | undefined;
+    if (kind === 'coil') {
+      const geom = GeometryEngine.coilGeometry(
+        (params.outerRadius as number) || 15,
+        (params.wireRadius as number) || 2,
+        (params.pitch as number) || 10,
+        (params.turns as number) || 5,
+      );
+      // Use a fresh MeshPhysicalMaterial matching the EXTRUDE_MATERIAL style
+      const mat = new THREE.MeshPhysicalMaterial({ color: 0x8899aa, metalness: 0.3, roughness: 0.4, side: THREE.DoubleSide });
+      const m = new THREE.Mesh(geom, mat);
+      m.castShadow = true;
+      m.receiveShadow = true;
+      mesh = m;
+    }
+
     const feature: Feature = {
       id: crypto.randomUUID(),
       name: `${label} ${count}`,
@@ -760,6 +802,7 @@ export const useCADStore = create<CADState>()(persist((set, get) => ({
       visible: true,
       suppressed: false,
       timestamp: Date.now(),
+      ...(mesh ? { mesh } : {}),
     };
     return {
       features: [...state.features, feature],
@@ -771,6 +814,87 @@ export const useCADStore = create<CADState>()(persist((set, get) => ({
     if (target?.mesh) target.mesh.geometry?.dispose();
     return { features: state.features.filter((f) => f.id !== id) };
   }),
+  // D119 Tessellate
+  tessellateFeature: (featureId) => {
+    const { features } = get();
+    const feature = features.find((f) => f.id === featureId);
+    if (!feature?.mesh) {
+      get().setStatusMessage('No mesh found on selected feature');
+      return;
+    }
+    const geom = GeometryEngine.extractMeshGeometry(feature.mesh as THREE.Mesh | THREE.Group);
+    if (!geom) {
+      get().setStatusMessage('No mesh found on selected feature');
+      return;
+    }
+    const mat = new THREE.MeshPhysicalMaterial({ color: 0x8899aa, metalness: 0.3, roughness: 0.4, side: THREE.DoubleSide });
+    const newMesh = new THREE.Mesh(geom, mat);
+    newMesh.castShadow = true;
+    newMesh.receiveShadow = true;
+    const n = features.filter((f) => f.params.kind === 'tessellate').length + 1;
+    const newFeature: Feature = {
+      id: crypto.randomUUID(),
+      name: `Tessellate ${n}`,
+      type: 'primitive',
+      params: { kind: 'tessellate' },
+      visible: true,
+      suppressed: false,
+      timestamp: Date.now(),
+      mesh: newMesh,
+      bodyKind: 'mesh',
+    };
+    set((state) => ({
+      features: [...state.features, newFeature],
+      statusMessage: 'Feature tessellated as mesh body',
+    }));
+  },
+  // D125 Mesh Reduce
+  reduceMesh: (featureId, reductionPercent) => {
+    const { features, setStatusMessage } = get();
+    const feature = features.find((f) => f.id === featureId);
+    if (!feature?.mesh) {
+      get().setStatusMessage('Mesh Reduce: selected feature has no mesh');
+      return;
+    }
+    const applyToMesh = async (m: THREE.Mesh) => {
+      const oldGeom = m.geometry;
+      const newGeom = await GeometryEngine.simplifyGeometry(oldGeom, reductionPercent);
+      m.geometry = newGeom;
+      oldGeom.dispose();
+    };
+    if (feature.mesh instanceof THREE.Mesh) {
+      applyToMesh(feature.mesh).then(() => {
+        get().setStatusMessage(`Mesh reduced by ${reductionPercent}%`);
+      });
+    } else if (feature.mesh instanceof THREE.Group) {
+      const meshes: THREE.Mesh[] = [];
+      feature.mesh.traverse((child) => {
+        if (child instanceof THREE.Mesh) meshes.push(child);
+      });
+      Promise.all(meshes.map(applyToMesh)).then(() => {
+        get().setStatusMessage(`Mesh reduced by ${reductionPercent}%`);
+      });
+    } else {
+      setStatusMessage('Mesh Reduce: feature is not simplifiable');
+    }
+  },
+  // D115 Reverse Normals
+  reverseNormals: (featureId) => {
+    const { features } = get();
+    const feature = features.find((f) => f.id === featureId);
+    if (!feature?.mesh) {
+      get().setStatusMessage('Reverse Normal: selected feature has no mesh');
+      return;
+    }
+    if (feature.mesh instanceof THREE.Mesh) {
+      GeometryEngine.reverseNormals(feature.mesh.geometry);
+    } else if (feature.mesh instanceof THREE.Group) {
+      feature.mesh.traverse((child) => {
+        if (child instanceof THREE.Mesh) GeometryEngine.reverseNormals(child.geometry);
+      });
+    }
+    get().setStatusMessage('Normals reversed');
+  },
   toggleFeatureVisibility: (id) => set((state) => ({
     features: state.features.map((f) =>
       f.id === id ? { ...f, visible: !f.visible } : f
@@ -1469,6 +1593,98 @@ export const useCADStore = create<CADState>()(persist((set, get) => ({
       activeTool: 'select',
       loftProfileSketchIds: [],
       statusMessage: `${loftBodyKind === 'surface' ? 'Surface ' : ''}Loft created across ${profileSketches.length} profiles (${units})`,
+    });
+  },
+
+  // ─── Patch tool (D106) ────────────────────────────────────────────────
+  patchSelectedSketchId: null,
+  setPatchSelectedSketchId: (id) => set({ patchSelectedSketchId: id }),
+  startPatchTool: () => {
+    const sketches = get().sketches.filter((s) => s.entities.length > 0);
+    if (sketches.length === 0) {
+      set({ statusMessage: 'Create a sketch first before using Patch' });
+      return;
+    }
+    set({ activeTool: 'patch' as Tool, patchSelectedSketchId: null, statusMessage: 'Patch — select a closed profile sketch in the panel' });
+  },
+  cancelPatchTool: () => set({ activeTool: 'select', patchSelectedSketchId: null, statusMessage: 'Patch cancelled' }),
+  commitPatch: () => {
+    const { patchSelectedSketchId, sketches, features, units } = get();
+    if (!patchSelectedSketchId) {
+      set({ statusMessage: 'No profile selected for Patch' });
+      return;
+    }
+    const sketch = sketches.find((s) => s.id === patchSelectedSketchId);
+    if (!sketch) {
+      set({ statusMessage: 'Selected sketch not found' });
+      return;
+    }
+    const mesh = GeometryEngine.patchSketch(sketch);
+    const feature: Feature = {
+      id: crypto.randomUUID(),
+      name: `Patch ${features.filter((f) => f.type === 'extrude' && f.bodyKind === 'surface' && f.params.patchSketchId !== undefined).length + 1}`,
+      type: 'extrude',
+      sketchId: patchSelectedSketchId,
+      params: { patchSketchId: patchSelectedSketchId },
+      visible: true,
+      suppressed: false,
+      timestamp: Date.now(),
+      mesh: mesh ?? undefined,
+      bodyKind: 'surface',
+    };
+    set({
+      features: [...features, feature],
+      activeTool: 'select',
+      patchSelectedSketchId: null,
+      statusMessage: `Patch surface created (${units})`,
+    });
+  },
+
+  // ─── Ruled Surface tool (D107) ────────────────────────────────────────
+  ruledSketchAId: null,
+  setRuledSketchAId: (id) => set({ ruledSketchAId: id }),
+  ruledSketchBId: null,
+  setRuledSketchBId: (id) => set({ ruledSketchBId: id }),
+  startRuledSurfaceTool: () => {
+    const sketches = get().sketches.filter((s) => s.entities.length > 0);
+    if (sketches.length < 2) {
+      set({ statusMessage: 'Ruled Surface requires at least 2 sketches' });
+      return;
+    }
+    set({ activeTool: 'ruled-surface' as Tool, ruledSketchAId: null, ruledSketchBId: null, statusMessage: 'Ruled Surface — select Curve A and Curve B sketches in the panel' });
+  },
+  cancelRuledSurfaceTool: () => set({ activeTool: 'select', ruledSketchAId: null, ruledSketchBId: null, statusMessage: 'Ruled Surface cancelled' }),
+  commitRuledSurface: () => {
+    const { ruledSketchAId, ruledSketchBId, sketches, features, units } = get();
+    if (!ruledSketchAId || !ruledSketchBId) {
+      set({ statusMessage: 'Select two curve sketches for Ruled Surface' });
+      return;
+    }
+    const sketchA = sketches.find((s) => s.id === ruledSketchAId);
+    const sketchB = sketches.find((s) => s.id === ruledSketchBId);
+    if (!sketchA || !sketchB) {
+      set({ statusMessage: 'One or more selected sketches not found' });
+      return;
+    }
+    const mesh = GeometryEngine.ruledSurface(sketchA, sketchB);
+    const feature: Feature = {
+      id: crypto.randomUUID(),
+      name: `Ruled Surface ${features.filter((f) => f.type === 'loft' && f.bodyKind === 'surface').length + 1}`,
+      type: 'loft',
+      sketchId: ruledSketchAId,
+      params: { ruledSketchAId, ruledSketchBId },
+      visible: true,
+      suppressed: false,
+      timestamp: Date.now(),
+      mesh: mesh ?? undefined,
+      bodyKind: 'surface',
+    };
+    set({
+      features: [...features, feature],
+      activeTool: 'select',
+      ruledSketchAId: null,
+      ruledSketchBId: null,
+      statusMessage: `Ruled Surface created (${units})`,
     });
   },
 
