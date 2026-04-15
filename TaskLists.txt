@@ -1369,13 +1369,13 @@ and the full Fusion 360 sketch sub-pages. Items below are gaps NOT already
 covered by D1–D65. Ordered by user impact.
 
 P25 — SKETCH CREATE (arc slot variants, control-point spline)
-[ ] S1. Three Point Arc Slot
+[x] S1. Three Point Arc Slot
         - Slot whose center follows a 3-point arc (start + end + curvature
           point), then width. Completes the 5-slot family deferred in D8.
         - Build 3-point arc path, offset ± width/2, cap with semicircles.
         - Medium difficulty; share arc-slot builder with S2.
 
-[ ] S2. Center Point Arc Slot
+[x] S2. Center Point Arc Slot
         - Arc center → arc start/end → width. Fifth Fusion slot variant.
         - Shares arc-slot builder with S1. Medium difficulty.
 
@@ -1409,7 +1409,7 @@ P25 — SKETCH CREATE (arc slot variants, control-point spline)
         - D65 explicitly deferred this ("needs spatial index").
         - Medium — brute-force or R-tree candidate list for near-cursor line pairs.
 
-[ ] S9. Control Point Spline (Bezier handle editing)
+[x] S9. Control Point Spline (Bezier handle editing)
         - Separate from Fit Point Spline: places control-frame points forming
           the convex hull; handles appear and can be dragged independently.
         - Needs new Tool type 'spline-control', handle interaction in
