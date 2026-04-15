@@ -274,10 +274,85 @@ function computeResiduals(
       }
       case 'fix':
       case 'tangent':
-      case 'symmetric':
-      case 'curvature':
-        // fix: handled via fixed flags; tangent/symmetric/curvature: deferred
+        // fix: handled via fixed flags; tangent: deferred
         break;
+      case 'symmetric': {
+        // entityIds: [axisId, entityAId, entityBId]
+        // Mirror each point of entity A across the axis entity's line;
+        // residual = mirror(pA) - pB (must be zero when symmetric).
+        if (c.entityIds.length < 3) break;
+        const axisEntity = entityMap.get(c.entityIds[0]);
+        const entityA    = entityMap.get(c.entityIds[1]);
+        const entityB    = entityMap.get(c.entityIds[2]);
+        if (!axisEntity || !entityA || !entityB) break;
+        if (axisEntity.points.length < 2) break;
+
+        const axisP0 = getPoint(axisEntity.id, 0, pointMap);
+        const axisP1 = getPoint(axisEntity.id, axisEntity.points.length - 1, pointMap);
+        const adx = axisP1.x - axisP0.x;
+        const ady = axisP1.y - axisP0.y;
+        const len2 = adx * adx + ady * ady;
+        if (len2 < 1e-12) break; // degenerate axis
+
+        const nPairs = Math.min(entityA.points.length, entityB.points.length);
+        for (let pi = 0; pi < nPairs; pi++) {
+          const pA = getPoint(entityA.id, pi, pointMap);
+          const pB = getPoint(entityB.id, pi, pointMap);
+
+          // Foot of perpendicular from pA onto axis line
+          const t = ((pA.x - axisP0.x) * adx + (pA.y - axisP0.y) * ady) / len2;
+          const footX = axisP0.x + t * adx;
+          const footY = axisP0.y + t * ady;
+
+          // Mirror of pA across the axis
+          const mirrorX = 2 * footX - pA.x;
+          const mirrorY = 2 * footY - pA.y;
+
+          residuals.push(mirrorX - pB.x);
+          residuals.push(mirrorY - pB.y);
+        }
+        break;
+      }
+      case 'curvature': {
+        // G2 curvature continuity between two spline entities at their junction.
+        // entityIds: [entityAId, entityBId]  (A's end meets B's start)
+        if (c.entityIds.length < 2) break;
+        const entityA = entityMap.get(c.entityIds[0]);
+        const entityB = entityMap.get(c.entityIds[1]);
+        if (!entityA || !entityB) break;
+
+        // For non-spline entities curvature is zero — no constraint needed.
+        if (entityA.type !== 'spline' || entityB.type !== 'spline') {
+          residuals.push(0);
+          break;
+        }
+
+        // Require at least 3 control points on each spline to have a second
+        // derivative.
+        if (entityA.points.length >= 3 && entityB.points.length >= 3) {
+          const nA = entityA.points.length;
+
+          // Second-difference (discrete second derivative) at A's end
+          const pA2 = getPoint(entityA.id, nA - 1, pointMap); // last
+          const pA1 = getPoint(entityA.id, nA - 2, pointMap); // second-to-last
+          const pA0 = getPoint(entityA.id, nA - 3, pointMap); // third-to-last
+          const d2Ax = pA2.x - 2 * pA1.x + pA0.x;
+          const d2Ay = pA2.y - 2 * pA1.y + pA0.y;
+
+          // Second-difference at B's start
+          const pB0 = getPoint(entityB.id, 0, pointMap);
+          const pB1 = getPoint(entityB.id, 1, pointMap);
+          const pB2 = getPoint(entityB.id, 2, pointMap);
+          const d2Bx = pB0.x - 2 * pB1.x + pB2.x;
+          const d2By = pB0.y - 2 * pB1.y + pB2.y;
+
+          residuals.push(d2Ax - d2Bx);
+          residuals.push(d2Ay - d2By);
+        } else {
+          residuals.push(0);
+        }
+        break;
+      }
       default:
         break;
     }

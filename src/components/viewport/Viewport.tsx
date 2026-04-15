@@ -43,6 +43,7 @@ import SketchPlaneSelector from './interaction/SketchPlaneSelector';
 import FormInteraction from './FormInteraction';
 import FormBodies from './scene/FormBodies';
 import JointGizmos from './scene/JointGizmos';
+import SketchPlaneDragger from './SketchPlaneDragger';
 
 
 
@@ -168,6 +169,7 @@ export default function Viewport() {
         <FormBodies />
         <FormInteraction />
         <JointGizmos />
+        <SketchPlaneDragger />
 
         {/* Camera controller — also feeds quaternion to ViewCube */}
         <CameraController onQuaternionChange={handleQuaternionChange} />

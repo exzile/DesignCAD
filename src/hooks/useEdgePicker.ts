@@ -1,0 +1,260 @@
+/**
+ * useEdgePicker — reusable edge-picking hook for R3F components.
+ *
+ * Raycasts against pickable meshes to get a face hit, then finds the
+ * nearest triangle edge to the hit point (by closest-point-on-segment
+ * distance in world space).
+ *
+ * Same patterns as useFacePicker: module-level scratch, optionsRef for
+ * stale-closure safety, hoverRef for no-op guards.
+ */
+
+import { useEffect, useRef } from 'react';
+import { useThree } from '@react-three/fiber';
+import * as THREE from 'three';
+
+// ---------------------------------------------------------------------------
+// Module-level scratch — no per-event allocation
+// ---------------------------------------------------------------------------
+const _mouse = new THREE.Vector2();
+const _vA = new THREE.Vector3();
+const _vB = new THREE.Vector3();
+const _vC = new THREE.Vector3();
+const _closest = new THREE.Vector3();
+const _ab = new THREE.Vector3();
+const _ap = new THREE.Vector3();
+
+// ---------------------------------------------------------------------------
+// Internal geometry helpers
+// ---------------------------------------------------------------------------
+
+/**
+ * Returns the closest point on segment [a, b] to point p.
+ * Result written into `out` (module-level scratch — caller must copy if needed).
+ */
+function closestPointOnSegment(
+  p: THREE.Vector3,
+  a: THREE.Vector3,
+  b: THREE.Vector3,
+  out: THREE.Vector3,
+): THREE.Vector3 {
+  _ab.subVectors(b, a);
+  _ap.subVectors(p, a);
+  const lenSq = _ab.dot(_ab);
+  if (lenSq === 0) {
+    out.copy(a);
+    return out;
+  }
+  const t = Math.max(0, Math.min(1, _ap.dot(_ab) / lenSq));
+  out.copy(a).addScaledVector(_ab, t);
+  return out;
+}
+
+// ---------------------------------------------------------------------------
+// Public types
+// ---------------------------------------------------------------------------
+
+export interface EdgePickResult {
+  mesh: THREE.Mesh;
+  faceIndex: number;
+  /** World-space position of the first edge vertex. */
+  edgeVertexA: THREE.Vector3;
+  /** World-space position of the second edge vertex. */
+  edgeVertexB: THREE.Vector3;
+  /** Geometry (position attribute) index of edgeVertexA. */
+  edgeVertexIndexA: number;
+  /** Geometry (position attribute) index of edgeVertexB. */
+  edgeVertexIndexB: number;
+  /** World-space midpoint of the edge. */
+  midpoint: THREE.Vector3;
+  /** Normalized world-space direction from A to B. */
+  direction: THREE.Vector3;
+}
+
+export interface UseEdgePickerOptions {
+  /** When false the hook detaches all listeners and clears hover state. */
+  enabled: boolean;
+  /** Called each pointer-move. null means "no edge under cursor". */
+  onHover?: (result: EdgePickResult | null) => void;
+  /** Called on left-click when an edge is hit. */
+  onClick?: (result: EdgePickResult) => void;
+  /**
+   * Optional mesh filter. Return true to include the mesh in raycasting.
+   * If omitted, all meshes with userData.pickable === true are included.
+   */
+  filter?: (mesh: THREE.Mesh) => boolean;
+}
+
+// ---------------------------------------------------------------------------
+// Internal: pick nearest edge from a raycast hit
+// ---------------------------------------------------------------------------
+
+function pickNearestEdge(
+  mesh: THREE.Mesh,
+  faceIndex: number,
+  hitPoint: THREE.Vector3,
+): EdgePickResult | null {
+  const geom = mesh.geometry;
+  const posAttr = geom.attributes.position as THREE.BufferAttribute | undefined;
+  if (!posAttr) return null;
+
+  mesh.updateWorldMatrix(true, false);
+  const m = mesh.matrixWorld;
+
+  const idxAttr = geom.index;
+  const getIndices = (fi: number): [number, number, number] => {
+    if (idxAttr) {
+      return [
+        idxAttr.getX(fi * 3),
+        idxAttr.getX(fi * 3 + 1),
+        idxAttr.getX(fi * 3 + 2),
+      ];
+    }
+    return [fi * 3, fi * 3 + 1, fi * 3 + 2];
+  };
+
+  const [i0, i1, i2] = getIndices(faceIndex);
+
+  // World-space vertices of the hit triangle
+  _vA.fromBufferAttribute(posAttr, i0).applyMatrix4(m);
+  _vB.fromBufferAttribute(posAttr, i1).applyMatrix4(m);
+  _vC.fromBufferAttribute(posAttr, i2).applyMatrix4(m);
+
+  // 3 edges: [A-B], [B-C], [C-A]
+  const edges: [THREE.Vector3, THREE.Vector3, number, number][] = [
+    [_vA, _vB, i0, i1],
+    [_vB, _vC, i1, i2],
+    [_vC, _vA, i2, i0],
+  ];
+
+  let bestDistSq = Infinity;
+  let bestEdge: [THREE.Vector3, THREE.Vector3, number, number] | null = null;
+
+  for (const [a, b, ia, ib] of edges) {
+    closestPointOnSegment(hitPoint, a, b, _closest);
+    const dSq = hitPoint.distanceToSquared(_closest);
+    if (dSq < bestDistSq) {
+      bestDistSq = dSq;
+      bestEdge = [a, b, ia, ib];
+    }
+  }
+
+  if (!bestEdge) return null;
+
+  const [ea, eb, eia, eib] = bestEdge;
+
+  // Compute stable midpoint and direction (new allocations are fine here —
+  // this only happens when we actually have a result to return).
+  const midpoint = new THREE.Vector3().addVectors(ea, eb).multiplyScalar(0.5);
+  const direction = new THREE.Vector3().subVectors(eb, ea).normalize();
+
+  return {
+    mesh,
+    faceIndex,
+    edgeVertexA: ea.clone(),
+    edgeVertexB: eb.clone(),
+    edgeVertexIndexA: eia,
+    edgeVertexIndexB: eib,
+    midpoint,
+    direction,
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Hook
+// ---------------------------------------------------------------------------
+
+export function useEdgePicker(options: UseEdgePickerOptions): void {
+  const { gl, camera, raycaster, scene } = useThree();
+
+  const optionsRef = useRef(options);
+  optionsRef.current = options;
+
+  const hoverRef = useRef<EdgePickResult | null>(null);
+
+  useEffect(() => {
+    if (!optionsRef.current.enabled) {
+      if (hoverRef.current !== null) {
+        hoverRef.current = null;
+        optionsRef.current.onHover?.(null);
+      }
+      return;
+    }
+
+    const collectPickable = (): THREE.Mesh[] => {
+      const out: THREE.Mesh[] = [];
+      scene.traverse((obj) => {
+        const m = obj as THREE.Mesh;
+        if (!m.isMesh || !obj.userData?.pickable) return;
+        if (optionsRef.current.filter && !optionsRef.current.filter(m)) return;
+        out.push(m);
+      });
+      return out;
+    };
+
+    const updateMouse = (event: { clientX: number; clientY: number }) => {
+      const r = gl.domElement.getBoundingClientRect();
+      _mouse.set(
+        ((event.clientX - r.left) / r.width) * 2 - 1,
+        -((event.clientY - r.top) / r.height) * 2 + 1,
+      );
+    };
+
+    const handlePointerMove = (event: PointerEvent) => {
+      updateMouse(event);
+      raycaster.setFromCamera(_mouse, camera);
+      const hits = raycaster.intersectObjects(collectPickable(), false);
+
+      if (hits.length > 0 && hits[0].faceIndex !== undefined && hits[0].point) {
+        const hit = hits[0];
+        const result = pickNearestEdge(
+          hit.object as THREE.Mesh,
+          hit.faceIndex!,
+          hit.point,
+        );
+        if (result) {
+          hoverRef.current = result;
+          optionsRef.current.onHover?.(result);
+          return;
+        }
+      }
+
+      if (hoverRef.current !== null) {
+        hoverRef.current = null;
+        optionsRef.current.onHover?.(null);
+      }
+    };
+
+    const handleClick = (event: MouseEvent) => {
+      if (event.button !== 0) return;
+      updateMouse(event);
+      raycaster.setFromCamera(_mouse, camera);
+      const hits = raycaster.intersectObjects(collectPickable(), false);
+      if (hits.length === 0) return;
+      const hit = hits[0];
+      if (hit.faceIndex === undefined || !hit.point) return;
+      const result = pickNearestEdge(
+        hit.object as THREE.Mesh,
+        hit.faceIndex!,
+        hit.point,
+      );
+      if (result) {
+        optionsRef.current.onClick?.(result);
+      }
+    };
+
+    const canvas = gl.domElement;
+    canvas.addEventListener('pointermove', handlePointerMove);
+    canvas.addEventListener('click', handleClick, true);
+
+    return () => {
+      canvas.removeEventListener('pointermove', handlePointerMove);
+      canvas.removeEventListener('click', handleClick, true);
+      if (hoverRef.current !== null) {
+        hoverRef.current = null;
+        optionsRef.current.onHover?.(null);
+      }
+    };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [gl, camera, raycaster, scene, options.enabled]);
+}

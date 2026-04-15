@@ -1,5 +1,4 @@
 import { useRef, useState, useEffect, useMemo } from 'react';
-import { useThree } from '@react-three/fiber';
 import * as THREE from 'three';
 import { useCADStore } from '../../store/cadStore';
 import { GeometryEngine } from '../../engine/GeometryEngine';
@@ -8,6 +7,8 @@ import SketchProfile from './extrude/SketchProfile';
 import ExtrudePreview from './extrude/ExtrudePreview';
 import ExtrudeGizmo from './extrude/ExtrudeGizmo';
 import FaceHighlight from './extrude/FaceHighlight';
+import { useFacePicker } from '../../hooks/useFacePicker';
+import type { FacePickResult } from '../../hooks/useFacePicker';
 
 function parseSelectionId(id: string): { sketchId: string; profileIndex: number | null } {
   const parts = id.split('::');

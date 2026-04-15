@@ -31,14 +31,14 @@ DESIGN WORKSPACE — OPEN ITEMS
 
 ── SKETCH CONSTRAIN / DIMENSION ──────────────────────────────
 [ ] D27. Real constraint solver (geometric + dimensional, 2D DOF system)
-[ ] D28. Dimension tool full flow (place + drag label + lock value)
+[x] D28. Dimension tool full flow (place + drag label + lock value)
 [x] D29. 12 geometric constraints UI (coincident, parallel, etc.) — toolbar UI scaffolding done; SketchInteraction wiring deferred
 [ ] D48. Arc Length dimension
 [ ] D49. Aligned (true-length) dimension
 [x] D50. AutoConstrain — detects horizontal/vertical/coincident/parallel/equal constraints and records them
 [ ] D51. Curvature constraint (G2 spline continuity)
-[ ] D52. Symmetry constraint (explicit, select axis + entities)
-[ ] D58. 3D Sketch mode toggle + planar manipulator
+[x] D52. Symmetry constraint (explicit, select axis + entities)
+[x] D58. 3D Sketch mode toggle + planar manipulator
 
 ── CONSTRUCTION GEOMETRY ──────────────────────────────────────
 [~] D175. Plane Through Two Edges — blocked on edge picker

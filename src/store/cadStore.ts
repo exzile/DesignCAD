@@ -91,6 +91,13 @@ interface CADState {
   autoConstrainSketch: () => void;
   /** D27: Run the Newton-Raphson constraint solver on the active sketch. */
   solveSketch: () => void;
+  // D52: Constraint application state — accumulates clicked entity IDs before applying
+  constraintSelection: string[];
+  setConstraintSelection: (ids: string[]) => void;
+  addToConstraintSelection: (id: string) => void;
+  clearConstraintSelection: () => void;
+  /** D52: Add a single constraint to the active sketch (deduplicates by type+entityIds). */
+  addSketchConstraint: (constraint: SketchConstraint) => void;
 
   // Feature timeline
   features: Feature[];
@@ -208,6 +215,10 @@ interface CADState {
   // Slice toggle (D54)
   sliceEnabled: boolean;
   setSliceEnabled: (enabled: boolean) => void;
+  // D58: 3D Sketch mode — shows planar manipulator gizmo
+  sketch3DMode: boolean;
+  setSketch3DMode: (v: boolean) => void;
+  toggleSketch3DMode: () => void;
   // Section Analysis (D38)
   sectionEnabled: boolean;
   sectionAxis: 'x' | 'y' | 'z';
@@ -1518,6 +1529,30 @@ export const useCADStore = create<CADState>()(persist((set, get) => ({
     }));
   },
 
+  // D52: Constraint application state
+  constraintSelection: [],
+  setConstraintSelection: (ids) => set({ constraintSelection: ids }),
+  addToConstraintSelection: (id) => set((s) => ({ constraintSelection: [...s.constraintSelection, id] })),
+  clearConstraintSelection: () => set({ constraintSelection: [] }),
+
+  // D52: Add a single constraint to the active sketch
+  addSketchConstraint: (constraint) => {
+    const { activeSketch } = get();
+    if (!activeSketch) return;
+    const exists = (activeSketch.constraints ?? []).some(
+      c => c.type === constraint.type &&
+        c.entityIds.join(',') === constraint.entityIds.join(',')
+    );
+    if (exists) return;
+    set({
+      sketches: get().sketches.map(s => s.id === activeSketch.id
+        ? { ...s, constraints: [...(s.constraints ?? []), constraint] }
+        : s
+      ),
+      statusMessage: `${constraint.type} constraint applied`,
+    });
+  },
+
   // Conic curve rho (D11)
   conicRho: 0.5,
   setConicRho: (r) => set({ conicRho: Math.max(0.01, Math.min(0.99, r)) }),
@@ -1545,6 +1580,11 @@ export const useCADStore = create<CADState>()(persist((set, get) => ({
   // Slice (D54)
   sliceEnabled: false,
   setSliceEnabled: (enabled) => set({ sliceEnabled: enabled }),
+
+  // D58: 3D Sketch mode
+  sketch3DMode: false,
+  setSketch3DMode: (v) => set({ sketch3DMode: v }),
+  toggleSketch3DMode: () => set((s) => ({ sketch3DMode: !s.sketch3DMode })),
 
   // Section Analysis (D38)
   sectionEnabled: false,

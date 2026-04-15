@@ -13,7 +13,6 @@ interface SketchOption {
 // Local-only palette options (no store backing needed)
 const SKETCH_OPTIONS: SketchOption[] = [
   { label: 'Construction Geometries', key: 'constructionGeom', defaultValue: true },
-  { label: '3D Sketch', key: 'sketch3d', defaultValue: false },
 ];
 
 export default function SketchPalette() {
@@ -56,6 +55,8 @@ export default function SketchPalette() {
   const showProjectedGeometries = useCADStore((s) => s.showProjectedGeometries);
   const setShowProjectedGeometries = useCADStore((s) => s.setShowProjectedGeometries);
   const setCameraTargetQuaternion = useCADStore((s) => s.setCameraTargetQuaternion);
+  const sketch3DMode = useCADStore((s) => s.sketch3DMode);
+  const toggleSketch3DMode = useCADStore((s) => s.toggleSketch3DMode);
   const [dismissed, setDismissed] = useState(false);
   const isPolygonTool =
     activeTool === 'polygon' ||
@@ -417,6 +418,19 @@ export default function SketchPalette() {
             <span className="sketch-palette-label">Projected Geom.</span>
             <label className="sketch-palette-check">
               <input type="checkbox" checked={showProjectedGeometries} onChange={() => setShowProjectedGeometries(!showProjectedGeometries)} />
+              <span className="sketch-palette-checkmark" />
+            </label>
+          </div>
+
+          {/* D58: 3D Sketch mode — store-backed */}
+          <div className="sketch-palette-row">
+            <span className="sketch-palette-label">3D Sketch</span>
+            <label className="sketch-palette-check">
+              <input
+                type="checkbox"
+                checked={sketch3DMode}
+                onChange={toggleSketch3DMode}
+              />
               <span className="sketch-palette-checkmark" />
             </label>
           </div>

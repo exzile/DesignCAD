@@ -5,7 +5,7 @@ import * as THREE from 'three';
 import { useCADStore } from '../../../store/cadStore';
 import { useThemeStore } from '../../../store/themeStore';
 import { GeometryEngine } from '../../../engine/GeometryEngine';
-import type { SketchPoint, SketchEntity } from '../../../types/cad';
+import type { SketchPoint, SketchEntity, ConstraintType, SketchConstraint } from '../../../types/cad';
 import { commitSketchTool } from './sketchInteraction/commitTool';
 import { renderSketchPreview } from './sketchInteraction/previewTool';
 import { loadDefaultFont, fontPathToSegments } from '../../../utils/sketchTextUtil';
@@ -46,6 +46,12 @@ export default function SketchInteraction() {
   const addPendingDimensionEntity = useCADStore((s) => s.addPendingDimensionEntity);
   const addSketchDimension = useCADStore((s) => s.addSketchDimension);
   const cancelDimensionTool = useCADStore((s) => s.cancelDimensionTool);
+  // D52: Constraint tool state
+  const constraintSelection = useCADStore((s) => s.constraintSelection);
+  const addToConstraintSelection = useCADStore((s) => s.addToConstraintSelection);
+  const clearConstraintSelection = useCADStore((s) => s.clearConstraintSelection);
+  const addSketchConstraint = useCADStore((s) => s.addSketchConstraint);
+  const setActiveTool = useCADStore((s) => s.setActiveTool);
 
   const [drawingPoints, setDrawingPoints] = useState<SketchPoint[]>([]);
   const [mousePos, setMousePos] = useState<THREE.Vector3 | null>(null);
@@ -793,6 +799,276 @@ export default function SketchInteraction() {
       canvas.removeEventListener('click', handleClick);
     };
   }, [activeTool, activeSketch, gl, camera, raycaster, scene, addSketchEntity, setStatusMessage, cancelSketchProjectSurfaceTool]);
+
+  // D28: Dimension tool — click-to-place interaction
+  useEffect(() => {
+    if (!activeSketch || activeTool !== 'dimension') return;
+    if (!gl) return;
+
+    // Get 2D sketch-space coords from a 3D world point using sketch axes
+    const { t1, t2 } = GeometryEngine.getSketchAxes(activeSketch);
+    const origin = activeSketch.planeOrigin;
+    const to2D = (wp: THREE.Vector3): { x: number; y: number } => {
+      const d = wp.clone().sub(origin);
+      return { x: d.dot(t1), y: d.dot(t2) };
+    };
+
+    // Find the closest sketch entity to a given 3D world point (within 2 model units)
+    const ENTITY_PICK_RADIUS = 2;
+    const findNearestEntity = (worldPt: THREE.Vector3): typeof activeSketch.entities[0] | null => {
+      let best: typeof activeSketch.entities[0] | null = null;
+      let bestDist = ENTITY_PICK_RADIUS;
+      for (const e of activeSketch.entities) {
+        if (e.type === 'line' || e.type === 'construction-line' || e.type === 'centerline') {
+          if (e.points.length < 2) continue;
+          const a = new THREE.Vector3(e.points[0].x, e.points[0].y, e.points[0].z);
+          const b = new THREE.Vector3(e.points[e.points.length - 1].x, e.points[e.points.length - 1].y, e.points[e.points.length - 1].z);
+          // Distance from worldPt to the line segment a→b
+          const ab = b.clone().sub(a);
+          const abLen = ab.length();
+          if (abLen < 1e-8) continue;
+          const t = Math.max(0, Math.min(1, worldPt.clone().sub(a).dot(ab) / (abLen * abLen)));
+          const closest = a.clone().add(ab.clone().multiplyScalar(t));
+          const d = worldPt.distanceTo(closest);
+          if (d < bestDist) { bestDist = d; best = e; }
+        } else if (e.type === 'circle' || e.type === 'arc') {
+          if (e.points.length < 1 || !e.radius) continue;
+          const center = new THREE.Vector3(e.points[0].x, e.points[0].y, e.points[0].z);
+          // Distance from worldPt to the circle/arc perimeter
+          const distToCenter = worldPt.distanceTo(center);
+          const d = Math.abs(distToCenter - e.radius);
+          if (d < bestDist) { bestDist = d; best = e; }
+        }
+      }
+      return best;
+    };
+
+    const handleClick = (e: MouseEvent) => {
+      if (e.button !== 0) return;
+      const worldPt = getWorldPoint(e);
+      if (!worldPt) return;
+
+      if (activeDimensionType === 'angular') {
+        setStatusMessage('Angular dimensions coming soon');
+        return;
+      }
+
+      if (activeDimensionType === 'linear') {
+        const entity = findNearestEntity(worldPt);
+        if (!entity) {
+          setStatusMessage('Dimension: click closer to a line entity');
+          return;
+        }
+
+        const currentPending = useCADStore.getState().pendingDimensionEntityIds;
+
+        if (currentPending.length === 0) {
+          // First click — register first entity
+          addPendingDimensionEntity(entity.id);
+          setStatusMessage('Dimension: click a second line or point to complete');
+          return;
+        }
+
+        // Second click — complete dimension
+        const firstId = currentPending[0];
+        const firstEntity = activeSketch.entities.find((en) => en.id === firstId);
+        const secondEntity = entity;
+
+        if (!firstEntity || firstEntity.points.length < 2) {
+          setStatusMessage('Dimension: first entity is invalid, please try again');
+          useCADStore.setState({ pendingDimensionEntityIds: [] });
+          return;
+        }
+
+        // Use endpoints of the first entity as the measurement points
+        const p1World = new THREE.Vector3(firstEntity.points[0].x, firstEntity.points[0].y, firstEntity.points[0].z);
+        const p2World = new THREE.Vector3(
+          firstEntity.points[firstEntity.points.length - 1].x,
+          firstEntity.points[firstEntity.points.length - 1].y,
+          firstEntity.points[firstEntity.points.length - 1].z,
+        );
+        const p1 = to2D(p1World);
+        const p2 = to2D(p2World);
+
+        const dim = DimensionEngine.computeLinearDimension(p1, p2, dimensionOffset);
+
+        addSketchDimension({
+          id: crypto.randomUUID(),
+          type: 'linear',
+          entityIds: [firstId, secondEntity.id],
+          value: dim.value,
+          position: dim.textPosition,
+          driven: false,
+        });
+
+        useCADStore.setState({ pendingDimensionEntityIds: [] });
+        setStatusMessage(`Linear dimension added: ${dim.value.toFixed(2)}`);
+        return;
+      }
+
+      if (activeDimensionType === 'radial') {
+        const entity = findNearestEntity(worldPt);
+        if (!entity || (entity.type !== 'circle' && entity.type !== 'arc') || !entity.radius) {
+          setStatusMessage('Dimension: click on a circle or arc');
+          return;
+        }
+        const center = entity.points[0];
+        const startAngle = entity.startAngle ?? 0;
+        const endAngle = entity.endAngle ?? (2 * Math.PI);
+        const cx2d = to2D(new THREE.Vector3(center.x, center.y, center.z));
+        const dim = DimensionEngine.computeArcLengthDimension(cx2d.x, cx2d.y, entity.radius, startAngle, endAngle, dimensionOffset);
+
+        addSketchDimension({
+          id: crypto.randomUUID(),
+          type: 'radial',
+          entityIds: [entity.id],
+          value: entity.radius,
+          position: dim.textPosition,
+          driven: false,
+        });
+        setStatusMessage(`Radial dimension added: r=${entity.radius.toFixed(2)}`);
+        return;
+      }
+
+      if (activeDimensionType === 'diameter') {
+        const entity = findNearestEntity(worldPt);
+        if (!entity || entity.type !== 'circle' || !entity.radius) {
+          setStatusMessage('Dimension: click on a circle');
+          return;
+        }
+        const center = entity.points[0];
+        const cx2d = to2D(new THREE.Vector3(center.x, center.y, center.z));
+        const dim = DimensionEngine.computeDiameterDimension(cx2d.x, cx2d.y, entity.radius, 0);
+
+        addSketchDimension({
+          id: crypto.randomUUID(),
+          type: 'diameter',
+          entityIds: [entity.id],
+          value: dim.value,
+          position: dim.textPosition,
+          driven: false,
+        });
+        setStatusMessage(`Diameter dimension added: ⌀${dim.value.toFixed(2)}`);
+        return;
+      }
+    };
+
+    const handleKeyDown = (ev: KeyboardEvent) => {
+      if (ev.key === 'Escape') cancelDimensionTool();
+    };
+
+    const canvas = gl.domElement;
+    canvas.addEventListener('click', handleClick);
+    window.addEventListener('keydown', handleKeyDown);
+    return () => {
+      canvas.removeEventListener('click', handleClick);
+      window.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [activeTool, activeSketch, activeDimensionType, dimensionOffset, pendingDimensionEntityIds, addPendingDimensionEntity, addSketchDimension, cancelDimensionTool, getWorldPoint, setStatusMessage, gl]);
+
+  // D52: Constraint tools — click N entities → apply constraint
+  useEffect(() => {
+    if (!activeSketch || !activeTool.startsWith('constrain-')) return;
+    if (!gl) return;
+
+    const constraintType = activeTool.replace('constrain-', '') as ConstraintType;
+
+    // How many entity clicks are needed before applying the constraint
+    const getRequiredCount = (type: ConstraintType): number => {
+      switch (type) {
+        case 'horizontal':
+        case 'vertical':
+        case 'fix':
+          return 1;
+        case 'symmetric':
+          return 3; // axis entity + 2 mirrored entities
+        default:
+          return 2; // coincident, parallel, perpendicular, equal, collinear, tangent, concentric, midpoint, curvature
+      }
+    };
+    const required = getRequiredCount(constraintType);
+
+    // Find closest sketch entity to a world point (same logic as D28)
+    const ENTITY_PICK_RADIUS = 2;
+    const findNearestEntity = (worldPt: THREE.Vector3): SketchEntity | null => {
+      let best: SketchEntity | null = null;
+      let bestDist = ENTITY_PICK_RADIUS;
+      for (const e of activeSketch.entities) {
+        if (e.type === 'line' || e.type === 'construction-line' || e.type === 'centerline') {
+          if (e.points.length < 2) continue;
+          const a = new THREE.Vector3(e.points[0].x, e.points[0].y, e.points[0].z);
+          const b = new THREE.Vector3(e.points[e.points.length - 1].x, e.points[e.points.length - 1].y, e.points[e.points.length - 1].z);
+          const ab = b.clone().sub(a);
+          const abLen = ab.length();
+          if (abLen < 1e-8) continue;
+          const t = Math.max(0, Math.min(1, worldPt.clone().sub(a).dot(ab) / (abLen * abLen)));
+          const closest = a.clone().add(ab.clone().multiplyScalar(t));
+          const d = worldPt.distanceTo(closest);
+          if (d < bestDist) { bestDist = d; best = e; }
+        } else if (e.type === 'circle' || e.type === 'arc') {
+          if (e.points.length < 1 || !e.radius) continue;
+          const center = new THREE.Vector3(e.points[0].x, e.points[0].y, e.points[0].z);
+          const d = Math.abs(worldPt.distanceTo(center) - e.radius);
+          if (d < bestDist) { bestDist = d; best = e; }
+        }
+      }
+      return best;
+    };
+
+    const handleClick = (ev: MouseEvent) => {
+      if (ev.button !== 0) return;
+      const worldPt = getWorldPoint(ev);
+      if (!worldPt) return;
+
+      const entity = findNearestEntity(worldPt);
+      if (!entity) {
+        setStatusMessage(`${constraintType}: click closer to a sketch entity`);
+        return;
+      }
+
+      // Avoid re-selecting the same entity twice (unless it's a self-referential constraint)
+      const currentSelection = useCADStore.getState().constraintSelection;
+      if (currentSelection.includes(entity.id)) {
+        setStatusMessage(`${constraintType}: entity already selected, click a different one`);
+        return;
+      }
+
+      const newSelection = [...currentSelection, entity.id];
+
+      if (newSelection.length < required) {
+        // Need more clicks
+        addToConstraintSelection(entity.id);
+        const remaining = required - newSelection.length;
+        setStatusMessage(`${constraintType}: ${remaining} more entity click${remaining > 1 ? 's' : ''} needed`);
+        return;
+      }
+
+      // We have enough — apply the constraint
+      const constraint: SketchConstraint = {
+        id: crypto.randomUUID(),
+        type: constraintType,
+        entityIds: newSelection,
+      };
+      addSketchConstraint(constraint);
+      clearConstraintSelection();
+      // Keep tool active for placing more constraints of the same type
+    };
+
+    const handleKeyDown = (kev: KeyboardEvent) => {
+      if (kev.key === 'Escape') {
+        clearConstraintSelection();
+        setActiveTool('select');
+      }
+    };
+
+    const canvas = gl.domElement;
+    canvas.addEventListener('click', handleClick);
+    window.addEventListener('keydown', handleKeyDown);
+    return () => {
+      canvas.removeEventListener('click', handleClick);
+      window.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [activeTool, activeSketch, constraintSelection, addToConstraintSelection, clearConstraintSelection, addSketchConstraint, setActiveTool, getWorldPoint, setStatusMessage, gl]);
 
   // Preview of current drawing operation
   useFrame(() => {
