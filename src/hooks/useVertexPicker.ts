@@ -258,6 +258,6 @@ export function useVertexPicker(options: UseVertexPickerOptions): void {
         optionsRef.current.onHover?.(null);
       }
     };
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+   
   }, [gl, camera, raycaster, scene, options.enabled]);
 }

@@ -255,6 +255,6 @@ export function useEdgePicker(options: UseEdgePickerOptions): void {
         optionsRef.current.onHover?.(null);
       }
     };
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+   
   }, [gl, camera, raycaster, scene, options.enabled]);
 }

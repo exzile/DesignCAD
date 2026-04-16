@@ -614,7 +614,7 @@ export default function AnalysisOverlay() {
     const seen = new Set<THREE.Mesh>();
     for (const m of [...fromFeatures, ...fromBodies]) seen.add(m);
     return Array.from(seen);
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+   
   }, [cadFeatures, bodies]);
 
   const paramsKey = `${activeAnalysis}|${JSON.stringify(analysisParams)}`;

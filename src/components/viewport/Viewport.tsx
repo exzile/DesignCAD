@@ -122,7 +122,7 @@ export default function Viewport() {
       );
     }, 100);
     return () => clearInterval(id);
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  }, []);  
 
   const handleViewCubeOrient = useCallback((targetQ: THREE.Quaternion) => {
     setCameraTargetQuaternion(targetQ);

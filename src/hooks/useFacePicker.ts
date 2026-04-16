@@ -160,6 +160,6 @@ export function useFacePicker(options: UseFacePickerOptions): void {
     };
   // Re-run only when the canvas/camera/raycaster/scene change, or enabled toggles.
   // Callbacks are read from optionsRef so they do NOT need to be in deps.
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+   
   }, [gl, camera, raycaster, scene, options.enabled]);
 }

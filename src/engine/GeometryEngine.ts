@@ -1627,7 +1627,7 @@ export class GeometryEngine {
     );
 
     // SimplifyModifier requires an indexed geometry
-    let indexed = geom.index ? geom : mergeVertices(geom);
+    const indexed = geom.index ? geom : mergeVertices(geom);
 
     const posAttr = indexed.getAttribute('position');
     const count = Math.floor(posAttr.count * reductionPercent / 100);

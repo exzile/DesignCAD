@@ -1139,7 +1139,7 @@ export class Slicer {
   ): { from: THREE.Vector2; to: THREE.Vector2 }[] {
     const results: { from: THREE.Vector2; to: THREE.Vector2 }[] = [];
     let current = contour;
-    let offsetDist = -lineWidth;
+    const offsetDist = -lineWidth;
 
     while (current.length >= 3) {
       const next = this.offsetContour(current, offsetDist);
