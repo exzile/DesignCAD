@@ -3304,7 +3304,7 @@ export const useCADStore = create<CADState>()(persist((set, get) => ({
       id: crypto.randomUUID(),
       name: `Direct Edit ${n}`,
       type: 'direct-edit',
-      params: { faceId: directEditFaceId, ...params },
+      params: { faceId: directEditFaceId ?? '', ...params },
       visible: true,
       suppressed: false,
       timestamp: Date.now(),
@@ -3328,7 +3328,7 @@ export const useCADStore = create<CADState>()(persist((set, get) => ({
       id: crypto.randomUUID(),
       name: `Texture Extrude ${n}`,
       type: 'texture-extrude',
-      params: { faceId: textureExtrudeFaceId, ...params },
+      params: { faceId: textureExtrudeFaceId ?? '', ...params },
       visible: true,
       suppressed: false,
       timestamp: Date.now(),
@@ -3357,7 +3357,7 @@ export const useCADStore = create<CADState>()(persist((set, get) => ({
       id: crypto.randomUUID(),
       name: `Decal ${n}`,
       type: 'decal',
-      params: { faceId: decalFaceId, ...params },
+      params: { ...params, faceId: params.faceId ?? decalFaceId ?? '' },
       visible: true,
       suppressed: false,
       timestamp: Date.now(),
@@ -3400,7 +3400,7 @@ export const useCADStore = create<CADState>()(persist((set, get) => ({
       id: crypto.randomUUID(),
       name: `Split Face ${n}`,
       type: 'split-face',
-      params: { faceId: splitFaceId, ...params },
+      params: { ...params, faceId: params.faceId ?? splitFaceId ?? '' },
       visible: true,
       suppressed: false,
       timestamp: Date.now(),
@@ -3685,7 +3685,7 @@ export const useCADStore = create<CADState>()(persist((set, get) => ({
       id: crypto.randomUUID(),
       name: `Snap Fit ${snapN}`,
       type: 'import',
-      params: { featureKind: 'snap-fit', ...params },
+      params: { featureKind: 'snap-fit', ...params, faceId: params.faceId ?? '' },
       visible: true,
       suppressed: false,
       timestamp: Date.now(),
@@ -3707,7 +3707,7 @@ export const useCADStore = create<CADState>()(persist((set, get) => ({
       id: crypto.randomUUID(),
       name: `Lip/Groove ${n}`,
       type: 'import',
-      params: { featureKind: 'lip-groove', ...params },
+      params: { featureKind: 'lip-groove', ...params, edgeId: params.edgeId ?? '' },
       visible: true,
       suppressed: false,
       timestamp: Date.now(),
@@ -3869,7 +3869,7 @@ export const useCADStore = create<CADState>()(persist((set, get) => ({
       id: crypto.randomUUID(),
       name: `Surface Merge ${n}`,
       type: 'thicken',
-      params: { featureKind: 'surface-merge', face1Id: params.face1Id, face2Id: params.face2Id },
+      params: { featureKind: 'surface-merge', face1Id: params.face1Id ?? '', face2Id: params.face2Id ?? '' },
       mesh,
       visible: true,
       suppressed: false,
@@ -4598,8 +4598,10 @@ export const useCADStore = create<CADState>()(persist((set, get) => ({
     const entities: SketchEntity[] = segments.map(([a, b]) => ({
       id: crypto.randomUUID(),
       type: 'line' as SketchEntity['type'],
-      x1: a.x, y1: a.y, z1: a.z,
-      x2: b.x, y2: b.y, z2: b.z,
+      points: [
+        { id: crypto.randomUUID(), x: a.x, y: a.y, z: a.z },
+        { id: crypto.randomUUID(), x: b.x, y: b.y, z: b.z },
+      ],
     }));
     const n = sketches.filter((s) => s.name.startsWith('Section Sketch')).length + 1;
     const newSketch: Sketch = {
@@ -4611,6 +4613,7 @@ export const useCADStore = create<CADState>()(persist((set, get) => ({
       entities,
       constraints: [],
       dimensions: [],
+      fullyConstrained: false,
     };
     set({ sketches: [...sketches, newSketch] });
     get().setStatusMessage(`Mesh Section Sketch ${n}: ${entities.length} segments`);
@@ -4669,9 +4672,11 @@ export const useCADStore = create<CADState>()(persist((set, get) => ({
     if (!sketch) { get().setStatusMessage('Rib: sketch not found'); return; }
     const pts: THREE.Vector3[] = [];
     for (const e of sketch.entities) {
-      if (e.type === 'line' && e.x1 !== undefined) {
-        pts.push(new THREE.Vector3(e.x1, e.y1 ?? 0, e.z1 ?? 0));
-        pts.push(new THREE.Vector3(e.x2 ?? 0, e.y2 ?? 0, e.z2 ?? 0));
+      if (e.type === 'line' && e.points.length >= 2) {
+        const p0 = e.points[0];
+        const p1 = e.points[e.points.length - 1];
+        pts.push(new THREE.Vector3(p0.x, p0.y, p0.z));
+        pts.push(new THREE.Vector3(p1.x, p1.y, p1.z));
       }
     }
     const normal = sketch.planeNormal?.clone() ?? new THREE.Vector3(0, 1, 0);
@@ -4699,10 +4704,12 @@ export const useCADStore = create<CADState>()(persist((set, get) => ({
     if (!sketch) { get().setStatusMessage('Web: sketch not found'); return; }
     const entityPoints: THREE.Vector3[][] = [];
     for (const e of sketch.entities) {
-      if (e.type === 'line' && e.x1 !== undefined) {
+      if (e.type === 'line' && e.points.length >= 2) {
+        const p0 = e.points[0];
+        const p1 = e.points[e.points.length - 1];
         entityPoints.push([
-          new THREE.Vector3(e.x1, e.y1 ?? 0, e.z1 ?? 0),
-          new THREE.Vector3(e.x2 ?? 0, e.y2 ?? 0, e.z2 ?? 0),
+          new THREE.Vector3(p0.x, p0.y, p0.z),
+          new THREE.Vector3(p1.x, p1.y, p1.z),
         ]);
       }
     }
@@ -4784,9 +4791,11 @@ export const useCADStore = create<CADState>()(persist((set, get) => ({
     }
     const pathPoints: THREE.Vector3[] = [];
     for (const e of sketch.entities) {
-      if (e.type === 'line' && e.x1 !== undefined) {
-        if (pathPoints.length === 0) pathPoints.push(new THREE.Vector3(e.x1, e.y1 ?? 0, e.z1 ?? 0));
-        pathPoints.push(new THREE.Vector3(e.x2 ?? 0, e.y2 ?? 0, e.z2 ?? 0));
+      if (e.type === 'line' && e.points.length >= 2) {
+        const p0 = e.points[0];
+        const p1 = e.points[e.points.length - 1];
+        if (pathPoints.length === 0) pathPoints.push(new THREE.Vector3(p0.x, p0.y, p0.z));
+        pathPoints.push(new THREE.Vector3(p1.x, p1.y, p1.z));
       }
     }
     const copies = GeometryEngine.patternOnPath(srcMesh, pathPoints, count);

@@ -249,7 +249,13 @@ export type FeatureType =
   | 'form'
   | 'base-feature'
   | 'sheet-flange'
-  | 'sheet-bend';
+  | 'sheet-bend'
+  | 'replace-face'
+  | 'direct-edit'
+  | 'texture-extrude'
+  | 'decal'
+  | 'split-face'
+  | 'bounding-solid';
 
 export type BooleanOperation = 'new-body' | 'join' | 'cut' | 'intersect';
 
