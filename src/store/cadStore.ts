@@ -1408,9 +1408,25 @@ export const useCADStore = create<CADState>()(persist((set, get) => ({
   }),
   removeFeature: (id) => {
     get().pushUndo();
+    // Capture the mesh reference before removal so we can dispose AFTER
+    // the feature is out of state (prevents renderer accessing disposed GPU resources).
     const target = get().features.find((f) => f.id === id);
-    if (target?.mesh) target.mesh.geometry?.dispose();
     set((state) => ({ features: state.features.filter((f) => f.id !== id) }));
+    // Now safe to dispose — feature is no longer in state
+    if (target?.mesh) {
+      const m = target.mesh as THREE.Object3D;
+      if (m instanceof THREE.Mesh) {
+        m.geometry?.dispose();
+        if (m.material && !Array.isArray(m.material)) (m.material as THREE.Material).dispose();
+      } else if (m instanceof THREE.Group) {
+        m.traverse((child) => {
+          if (child instanceof THREE.Mesh) {
+            child.geometry?.dispose();
+            if (child.material && !Array.isArray(child.material)) (child.material as THREE.Material).dispose();
+          }
+        });
+      }
+    }
   },
   // D186 Edit Feature state
   editingFeatureId: null,
@@ -1531,21 +1547,35 @@ export const useCADStore = create<CADState>()(persist((set, get) => ({
   },
   // D125 Mesh Reduce
   reduceMesh: (featureId, reductionPercent) => {
-    const { features, setStatusMessage } = get();
+    const { features } = get();
     const feature = features.find((f) => f.id === featureId);
     if (!feature?.mesh) {
       get().setStatusMessage('Mesh Reduce: selected feature has no mesh');
       return;
     }
-    const applyToMesh = async (m: THREE.Mesh) => {
-      const oldGeom = m.geometry;
-      const newGeom = await GeometryEngine.simplifyGeometry(oldGeom, reductionPercent);
-      m.geometry = newGeom;
-      oldGeom.dispose();
+    // Build a new simplified mesh rather than mutating the existing one in-place.
+    // Mutating geometry on a Zustand-owned object bypasses set() and leaves
+    // React unaware of the change. Instead we clone, simplify, then replace
+    // the feature in state via set().
+    const applyToMesh = async (m: THREE.Mesh): Promise<THREE.Mesh> => {
+      const newGeom = await GeometryEngine.simplifyGeometry(m.geometry, reductionPercent);
+      const clone = new THREE.Mesh(newGeom, m.material);
+      clone.castShadow = m.castShadow;
+      clone.receiveShadow = m.receiveShadow;
+      Object.assign(clone.userData, m.userData);
+      return clone;
     };
     const featureMesh = feature.mesh as THREE.Object3D;
     if (featureMesh instanceof THREE.Mesh) {
-      applyToMesh(featureMesh).then(() => {
+      applyToMesh(featureMesh).then((newMesh) => {
+        const oldMesh = feature.mesh;
+        set((state) => ({
+          features: state.features.map((f) =>
+            f.id === featureId ? { ...f, mesh: newMesh } : f,
+          ),
+        }));
+        // Dispose old geometry AFTER removing from state
+        if (oldMesh instanceof THREE.Mesh) oldMesh.geometry.dispose();
         get().setStatusMessage(`Mesh reduced by ${reductionPercent}%`);
       });
     } else if (featureMesh instanceof THREE.Group) {
@@ -1553,11 +1583,25 @@ export const useCADStore = create<CADState>()(persist((set, get) => ({
       featureMesh.traverse((child) => {
         if (child instanceof THREE.Mesh) meshes.push(child);
       });
-      Promise.all(meshes.map(applyToMesh)).then(() => {
+      Promise.all(meshes.map(applyToMesh)).then((newMeshes) => {
+        const oldGroup = feature.mesh;
+        const newGroup = new THREE.Group();
+        newMeshes.forEach((m) => newGroup.add(m));
+        set((state) => ({
+          features: state.features.map((f) =>
+            f.id === featureId ? { ...f, mesh: newGroup as unknown as THREE.Mesh } : f,
+          ),
+        }));
+        // Dispose old geometries AFTER removal
+        if (oldGroup instanceof THREE.Group) {
+          oldGroup.traverse((child) => {
+            if (child instanceof THREE.Mesh) child.geometry.dispose();
+          });
+        }
         get().setStatusMessage(`Mesh reduced by ${reductionPercent}%`);
       });
     } else {
-      setStatusMessage('Mesh Reduce: feature is not simplifiable');
+      get().setStatusMessage('Mesh Reduce: feature is not simplifiable');
     }
   },
   // D115 Reverse Normals
@@ -2279,11 +2323,14 @@ export const useCADStore = create<CADState>()(persist((set, get) => ({
     );
     if (exists) return;
     get().pushUndo();
+    // Write to activeSketch (the sketch being edited), not to the
+    // completed sketches array. While editing, the sketch lives in
+    // activeSketch, not in sketches[].
     set({
-      sketches: get().sketches.map(s => s.id === activeSketch.id
-        ? { ...s, constraints: [...(s.constraints ?? []), constraint] }
-        : s
-      ),
+      activeSketch: {
+        ...activeSketch,
+        constraints: [...(activeSketch.constraints ?? []), constraint],
+      },
       statusMessage: `${constraint.type} constraint applied`,
     });
     get().solveSketch();

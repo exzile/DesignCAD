@@ -1071,12 +1071,14 @@ export class GeometryEngine {
     distance: number,
     direction: 'normal' | 'reverse' | 'symmetric',
   ): THREE.Mesh | null {
-    const depth = direction === 'symmetric' ? distance : distance;
-    const mesh = this.extrudeSketch(sketch, depth);
+    // Symmetric: extrude the full distance but shift half back so the body
+    // is centred on the sketch plane. Reverse: shift the full distance back.
+    const mesh = this.extrudeSketch(sketch, distance);
     if (!mesh) return null;
-    if (direction !== 'normal') {
-      const offset = direction === 'symmetric' ? distance / 2 : distance;
-      mesh.position.sub(this.getSketchExtrudeNormal(sketch).multiplyScalar(offset));
+    if (direction === 'symmetric') {
+      mesh.position.sub(this.getSketchExtrudeNormal(sketch).multiplyScalar(distance / 2));
+    } else if (direction === 'reverse') {
+      mesh.position.sub(this.getSketchExtrudeNormal(sketch).multiplyScalar(distance));
     }
     return mesh;
   }

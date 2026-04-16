@@ -6,8 +6,13 @@ import { BODY_MATERIAL, DIM_MATERIAL } from './bodyMaterial';
 
 /** Primitive solid bodies — Box / Cylinder / Sphere / Torus */
 export default function PrimitiveBodies() {
-  const features = useCADStore((s) => s.features);
+  // Derive a stable selector for only primitive features, so the useMemo
+  // doesn't rebuild geometries when non-primitive features change.
+  const primitiveFeatures = useCADStore((s) =>
+    s.features.filter((f) => f.type === 'primitive'),
+  );
   const rollbackIndex = useCADStore((s) => s.rollbackIndex);
+  const features = useCADStore((s) => s.features); // for rollback index lookup
   const activeComponentId = useComponentStore((s) => s.activeComponentId);
   const rootComponentId = useComponentStore((s) => s.rootComponentId);
 
@@ -15,11 +20,13 @@ export default function PrimitiveBodies() {
 
   const bodies = useMemo(() => {
     const out: { id: string; geom: THREE.BufferGeometry; componentId?: string }[] = [];
-    for (let i = 0; i < features.length; i++) {
-      const f = features[i];
+    for (const f of primitiveFeatures) {
       // D187 suppress + D190 rollback + visibility
-      if (f.type !== 'primitive' || !f.visible || f.suppressed) continue;
-      if (rollbackIndex >= 0 && i > rollbackIndex) continue;
+      if (!f.visible || f.suppressed) continue;
+      if (rollbackIndex >= 0) {
+        const idx = features.indexOf(f);
+        if (idx > rollbackIndex) continue;
+      }
       const kind = f.params.kind as 'box' | 'cylinder' | 'sphere' | 'torus';
       let geom: THREE.BufferGeometry | null = null;
       if (kind === 'box') {
@@ -48,7 +55,7 @@ export default function PrimitiveBodies() {
       if (geom) out.push({ id: f.id, geom, componentId: f.componentId });
     }
     return out;
-  }, [features, rollbackIndex]);
+  }, [primitiveFeatures, features, rollbackIndex]);
 
   useEffect(() => {
     return () => { for (const b of bodies) b.geom.dispose(); };

@@ -25,6 +25,9 @@ export default function MeasureInteraction() {
   // Two reusable sphere meshes (at most 2 dots are shown at a time)
   const dot1Ref = useRef<THREE.Mesh>(new THREE.Mesh());
   const dot2Ref = useRef<THREE.Mesh>(new THREE.Mesh());
+  // Reusable line object — avoids allocating new BufferGeometry per frame
+  const lineRef = useRef<THREE.Line>(new THREE.Line());
+  const lineGeoRef = useRef<THREE.BufferGeometry>(new THREE.BufferGeometry());
   // Scratch Vector3s for useFrame — avoids per-frame allocation
   const _p1Scratch = useRef(new THREE.Vector3());
   const _endScratch = useRef(new THREE.Vector3());
@@ -40,12 +43,17 @@ export default function MeasureInteraction() {
     dot2Ref.current.material = dotMatRef.current;
     dot2Ref.current.renderOrder = 999;
     dot2Ref.current.userData.measurePreview = true;
+    // Reusable line object for the measurement line between dots
+    lineRef.current.geometry = lineGeoRef.current;
+    lineRef.current.material = matRef.current;
+    lineRef.current.userData.measurePreview = true;
 
     const m1 = matRef.current;
     const m2 = dashedRef.current;
     const g = dotGeoRef.current;
     const dm = dotMatRef.current;
-    return () => { m1.dispose(); m2.dispose(); g.dispose(); dm.dispose(); };
+    const lg = lineGeoRef.current;
+    return () => { m1.dispose(); m2.dispose(); g.dispose(); dm.dispose(); lg.dispose(); };
   }, []);
 
   // Raycast against scene geometry + ground plane fallback
@@ -82,12 +90,15 @@ export default function MeasureInteraction() {
       const point = getWorldPoint(event);
       if (point) {
         setMousePos(point);
-        if (measurePoints.length === 0) {
+        // Read latest from store to avoid stale closure
+        const pts = useCADStore.getState().measurePoints;
+        const u = useCADStore.getState().units;
+        if (pts.length === 0) {
           setStatusMessage(`Measure: click first point — ${point.x.toFixed(2)}, ${point.y.toFixed(2)}, ${point.z.toFixed(2)}`);
-        } else if (measurePoints.length === 1) {
-          const p1 = measurePoints[0];
+        } else if (pts.length === 1) {
+          const p1 = pts[0];
           const dist = point.distanceTo(new THREE.Vector3(p1.x, p1.y, p1.z));
-          setStatusMessage(`Distance: ${dist.toFixed(3)} ${units} — click to confirm`);
+          setStatusMessage(`Distance: ${dist.toFixed(3)} ${u} — click to confirm`);
         }
       }
     };
@@ -97,15 +108,17 @@ export default function MeasureInteraction() {
       const point = getWorldPoint(event);
       if (!point) return;
 
-      if (measurePoints.length === 0) {
+      const pts = useCADStore.getState().measurePoints;
+      const u = useCADStore.getState().units;
+      if (pts.length === 0) {
         setMeasurePoints([{ x: point.x, y: point.y, z: point.z }]);
         setStatusMessage('First point set — click second point');
-      } else if (measurePoints.length === 1) {
-        const p1 = measurePoints[0];
+      } else if (pts.length === 1) {
+        const p1 = pts[0];
         const p2 = { x: point.x, y: point.y, z: point.z };
         setMeasurePoints([p1, p2]);
         const dist = point.distanceTo(new THREE.Vector3(p1.x, p1.y, p1.z));
-        setStatusMessage(`Distance: ${dist.toFixed(3)} ${units}`);
+        setStatusMessage(`Distance: ${dist.toFixed(3)} ${u}`);
       } else {
         // Already have 2 points — start a new measurement
         setMeasurePoints([{ x: point.x, y: point.y, z: point.z }]);
@@ -130,39 +143,48 @@ export default function MeasureInteraction() {
       canvas.removeEventListener('click', handleClick);
       window.removeEventListener('keydown', handleKeyDown);
     };
-  }, [activeTool, measurePoints, getWorldPoint, setMeasurePoints, setStatusMessage, units, gl]);
+    // measurePoints and units read via getState() inside handlers to avoid
+    // tearing down listeners on every point placement or unit change.
+  }, [activeTool, getWorldPoint, setMeasurePoints, setStatusMessage, gl]);
 
-  // Draw measurement line / preview in the scene
+  // Draw measurement line / preview in the scene.
+  // All objects (dots, line) are stable refs — no per-frame allocation.
   useFrame(() => {
     if (!previewRef.current) return;
-    // Mark the whole preview subtree non-pickable for the measure raycast
     previewRef.current.userData.measurePreview = true;
-    // Remove reusable dot meshes first so clearGroupChildren won't dispose their shared geometry
-    previewRef.current.remove(dot1Ref.current);
-    previewRef.current.remove(dot2Ref.current);
-    clearGroupChildren(previewRef.current, { disposeMeshMaterial: false });
+
+    const group = previewRef.current;
+    // Remove reusable objects before clearGroupChildren so their shared
+    // geometry/material doesn't get disposed.
+    group.remove(dot1Ref.current);
+    group.remove(dot2Ref.current);
+    group.remove(lineRef.current);
+    clearGroupChildren(group, { disposeMeshMaterial: false });
 
     if (activeTool !== 'measure') return;
 
-    const mat = matRef.current;
-    const group = previewRef.current;
-
-    if (measurePoints.length >= 1) {
-      const p1v = _p1Scratch.current.set(measurePoints[0].x, measurePoints[0].y, measurePoints[0].z);
+    // Read latest measurePoints from store to avoid stale closure issues
+    const pts = useCADStore.getState().measurePoints;
+    if (pts.length >= 1) {
+      const p1v = _p1Scratch.current.set(pts[0].x, pts[0].y, pts[0].z);
       dot1Ref.current.position.copy(p1v);
       group.add(dot1Ref.current);
 
-      const endPoint = measurePoints.length >= 2
-        ? _endScratch.current.set(measurePoints[1].x, measurePoints[1].y, measurePoints[1].z)
+      const endPoint = pts.length >= 2
+        ? _endScratch.current.set(pts[1].x, pts[1].y, pts[1].z)
         : mousePos;
 
       if (endPoint) {
-        // Line between 2 points — geometry recreated per frame (2 verts, minimal GC)
-        const lineGeo = new THREE.BufferGeometry().setFromPoints([p1v, endPoint]);
-        const line = new THREE.Line(lineGeo, mat);
-        line.userData.measurePreview = true;
-        group.add(line);
-        if (measurePoints.length >= 2) {
+        // Update the reusable line geometry's positions in-place
+        const positions = new Float32Array([
+          p1v.x, p1v.y, p1v.z,
+          endPoint.x, endPoint.y, endPoint.z,
+        ]);
+        lineGeoRef.current.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+        lineGeoRef.current.attributes.position.needsUpdate = true;
+        group.add(lineRef.current);
+
+        if (pts.length >= 2) {
           dot2Ref.current.position.copy(endPoint);
           group.add(dot2Ref.current);
         }

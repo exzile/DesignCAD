@@ -671,47 +671,45 @@ export const useComponentStore = create<ComponentStore>((set, get) => ({
   },
 
   tickAnimation: (deltaSeconds) => {
-    const { animationPlaying, animationDuration, animationLoop, animationTracks } = get();
+    const { animationPlaying, animationDuration, animationLoop, animationTracks, joints } = get();
     if (!animationPlaying) return;
 
     let newTime = get().animationTime + deltaSeconds;
+    let playing = true;
 
     if (newTime >= animationDuration) {
       if (animationLoop) {
         newTime = newTime % animationDuration;
       } else {
         newTime = animationDuration;
-        set({ animationTime: newTime, animationPlaying: false });
-        // Apply final values
-        for (const track of animationTracks) {
-          get().setJointValue(track.jointId, track.endValue, undefined);
-        }
-        return;
+        playing = false;
       }
     }
 
-    set({ animationTime: newTime });
-
-    // Apply interpolated values for each track
+    // Batch all joint value updates into a single set() call to avoid
+    // N+1 separate state updates and re-renders per animation frame.
     const t = animationDuration > 0 ? newTime / animationDuration : 0;
+    const updatedJoints = { ...joints };
     for (const track of animationTracks) {
       let easedT: number;
       switch (track.easing) {
-        case 'ease-in':
-          easedT = t * t;
-          break;
-        case 'ease-out':
-          easedT = t * (2 - t);
-          break;
-        case 'ease-in-out':
-          easedT = t < 0.5 ? 2 * t * t : -1 + (4 - 2 * t) * t;
-          break;
-        default: // linear
-          easedT = t;
+        case 'ease-in':  easedT = t * t; break;
+        case 'ease-out': easedT = t * (2 - t); break;
+        case 'ease-in-out': easedT = t < 0.5 ? 2 * t * t : -1 + (4 - 2 * t) * t; break;
+        default: easedT = t;
       }
       const value = track.startValue + (track.endValue - track.startValue) * easedT;
-      get().setJointValue(track.jointId, value, undefined);
+      const joint = updatedJoints[track.jointId];
+      if (joint) {
+        updatedJoints[track.jointId] = { ...joint, rotationValue: value };
+      }
     }
+
+    set({
+      animationTime: newTime,
+      animationPlaying: playing,
+      joints: updatedJoints,
+    });
   },
 
   // ===== Exploded View (A27) =====
