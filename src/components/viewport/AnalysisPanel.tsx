@@ -72,17 +72,17 @@ export default function AnalysisPanel() {
             </div>
             <div className="sketch-palette-row">
               <span className="sketch-palette-label">Frequency</span>
-              <div style={{ display: 'flex', gap: 6, alignItems: 'center', flex: 1 }}>
+              <div className="analysis-slider-row">
                 <input
                   type="range"
                   min={1}
                   max={20}
                   step={1}
                   value={analysisParams.frequency}
-                  style={{ flex: 1 }}
+                  className="analysis-slider-row__input"
                   onChange={(e) => setAnalysisParams({ frequency: Number(e.target.value) })}
                 />
-                <span style={{ minWidth: 24, textAlign: 'right', fontSize: 11 }}>{analysisParams.frequency}</span>
+                <span className="analysis-slider-row__value">{analysisParams.frequency}</span>
               </div>
             </div>
           </>
@@ -126,7 +126,7 @@ export default function AnalysisPanel() {
         {/* ── Curvature Map ──────────────────────────────────────── */}
         {activeAnalysis === 'curvature-map' && (
           <div className="sketch-palette-row">
-            <span className="sketch-palette-label" style={{ fontSize: 11, color: 'var(--text-secondary)' }}>
+            <span className="sketch-palette-label analysis-hint-label">
               Blue = flat &nbsp;→&nbsp; Red = high curvature
             </span>
           </div>
@@ -137,32 +137,32 @@ export default function AnalysisPanel() {
           <>
             <div className="sketch-palette-row">
               <span className="sketch-palette-label">U Count</span>
-              <div style={{ display: 'flex', gap: 6, alignItems: 'center', flex: 1 }}>
+              <div className="analysis-slider-row">
                 <input
                   type="range"
                   min={1}
                   max={20}
                   step={1}
                   value={analysisParams.uCount}
-                  style={{ flex: 1 }}
+                  className="analysis-slider-row__input"
                   onChange={(e) => setAnalysisParams({ uCount: Number(e.target.value) })}
                 />
-                <span style={{ minWidth: 24, textAlign: 'right', fontSize: 11 }}>{analysisParams.uCount}</span>
+                <span className="analysis-slider-row__value">{analysisParams.uCount}</span>
               </div>
             </div>
             <div className="sketch-palette-row">
               <span className="sketch-palette-label">V Count</span>
-              <div style={{ display: 'flex', gap: 6, alignItems: 'center', flex: 1 }}>
+              <div className="analysis-slider-row">
                 <input
                   type="range"
                   min={1}
                   max={20}
                   step={1}
                   value={analysisParams.vCount}
-                  style={{ flex: 1 }}
+                  className="analysis-slider-row__input"
                   onChange={(e) => setAnalysisParams({ vCount: Number(e.target.value) })}
                 />
-                <span style={{ minWidth: 24, textAlign: 'right', fontSize: 11 }}>{analysisParams.vCount}</span>
+                <span className="analysis-slider-row__value">{analysisParams.vCount}</span>
               </div>
             </div>
           </>
@@ -227,17 +227,17 @@ export default function AnalysisPanel() {
         {activeAnalysis === 'curvature-comb' && (
           <div className="sketch-palette-row">
             <span className="sketch-palette-label">Scale</span>
-            <div style={{ display: 'flex', gap: 6, alignItems: 'center', flex: 1 }}>
+            <div className="analysis-slider-row">
               <input
                 type="range"
                 min={0.1}
                 max={10}
                 step={0.1}
                 value={analysisParams.combScale}
-                style={{ flex: 1 }}
+                className="analysis-slider-row__input"
                 onChange={(e) => setAnalysisParams({ combScale: Number(e.target.value) })}
               />
-              <span style={{ minWidth: 32, textAlign: 'right', fontSize: 11 }}>{analysisParams.combScale.toFixed(1)}</span>
+              <span className="analysis-slider-row__value--wide">{analysisParams.combScale.toFixed(1)}</span>
             </div>
           </div>
         )}

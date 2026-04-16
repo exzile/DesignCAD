@@ -1,0 +1,63 @@
+/* ===== Bill of Materials Dialog ===== */
+
+.bom-dialog {
+  min-width: 600px;
+  max-width: 800px;
+}
+
+.bom-body {
+  padding: 0;
+  max-height: 400px;
+  overflow-y: auto;
+}
+
+.bom-empty {
+  padding: 16px;
+  margin: 0;
+  color: var(--text-secondary, #aaa);
+}
+
+.bom-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+
+.bom-thead-row {
+  background: var(--bg-secondary, #2a2a2a);
+  position: sticky;
+  top: 0;
+}
+
+.bom-th {
+  padding: 8px 12px;
+  text-align: left;
+  border-bottom: 1px solid var(--border, #444);
+  white-space: nowrap;
+}
+
+.bom-tr--odd {
+  background: var(--bg-tertiary, #1e1e1e);
+}
+
+.bom-td {
+  padding: 6px 12px;
+}
+
+.bom-td--center {
+  text-align: center;
+}
+
+.bom-td--right {
+  text-align: right;
+}
+
+.bom-td--muted {
+  color: var(--text-secondary, #aaa);
+}
+
+.bom-export-btn {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}

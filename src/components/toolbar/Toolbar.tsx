@@ -120,7 +120,7 @@ function ToolButton({ icon, label, tool, active, onClick, disabled, large, color
   }, [dropdownOpen]);
 
   return (
-    <div style={{ position: 'relative' }}>
+    <div className="ribbon-button-wrapper">
       <button
         ref={btnRef}
         className={`ribbon-button ${isActive ? 'active' : ''} ${disabled ? 'disabled' : ''} ${large ? 'large' : ''}`}
@@ -187,7 +187,7 @@ function FlyoutMenuItem({ item, onClose }: { item: MenuItem; onClose: () => void
         onClick={handleClick}
       >
         <span className="flyout-menu-item-icon">
-          {item.icon || <span style={{ width: 16, height: 16, display: 'inline-block' }} />}
+          {item.icon || <span className="flyout-icon-placeholder" />}
         </span>
         <span className="flyout-menu-item-label">{item.label}</span>
         {item.shortcut && <span className="flyout-menu-item-shortcut">{item.shortcut}</span>}
@@ -268,7 +268,7 @@ function RibbonSection({ title, children, menuItems, accentColor }: {
         onClick={() => hasFlyout && setMenuOpen(!menuOpen)}
       >
         {title}
-        {hasFlyout && <ChevronDown size={8} style={{ marginLeft: 3, opacity: 0.6 }} />}
+        {hasFlyout && <ChevronDown size={8} className="ribbon-section-chevron" />}
       </div>
       {hasFlyout && menuOpen && createPortal(
         <div
@@ -875,12 +875,12 @@ const setStatusMessage = useCADStore((s) => s.setStatusMessage);
           <button className="ribbon-quick-btn" title="Export" onClick={() => setShowExportDialog(true)}>
             <Download size={14} />
           </button>
-          <input ref={fileInputRef} type="file" accept=".step,.stp,.f3d,.stl,.obj" style={{ display: 'none' }} onChange={handleImport} />
+          <input ref={fileInputRef} type="file" accept=".step,.stp,.f3d,.stl,.obj" hidden onChange={handleImport} />
           <input
             ref={loadFileInputRef}
             type="file"
             accept=".dzn,.json"
-            style={{ display: 'none' }}
+            hidden
             onChange={(e) => {
               const file = e.target.files?.[0];
               if (!file) return;
@@ -933,7 +933,7 @@ const setStatusMessage = useCADStore((s) => s.setStatusMessage);
             onClick={() => setWsDropdownOpen(!wsDropdownOpen)}
           >
             {workspace === 'design' ? 'DESIGN' : workspace === 'prepare' ? 'PREPARE' : '3D PRINTER'}
-            <ChevronDown size={11} style={{ marginLeft: 4 }} />
+            <ChevronDown size={11} className="ribbon-workspace-chevron" />
           </button>
           {wsDropdownOpen && (
             <div className="ribbon-workspace-dropdown">
@@ -986,7 +986,7 @@ const setStatusMessage = useCADStore((s) => s.setStatusMessage);
         {/* Plane selection indicator */}
         {sketchPlaneSelecting && !inSketch && (
           <div className="ribbon-sketch-indicator">
-            <span style={{ color: 'var(--accent)' }}>Select a plane or planar face</span>
+            <span className="text-accent">Select a plane or planar face</span>
             <button className="ribbon-cancel-btn" onClick={() => setSketchPlaneSelecting(false)} title="Cancel">
               <X size={12} /> Cancel
             </button>
@@ -1140,7 +1140,7 @@ const setStatusMessage = useCADStore((s) => s.setStatusMessage);
                 ref={meshInsertInputRef}
                 type="file"
                 accept=".stl,.obj,.3mf,.gltf,.glb"
-                style={{ display: 'none' }}
+                hidden
                 onChange={handleMeshInsert}
               />
               {/* D121: Mesh Section Sketch */}
@@ -1477,7 +1477,7 @@ const setStatusMessage = useCADStore((s) => s.setStatusMessage);
               <button className="sketch-finish-btn" onClick={finishSketch} title="Finish Sketch">
                 <Check size={15} />
                 <span>FINISH SKETCH</span>
-                <ChevronDown size={11} style={{ marginLeft: 2, opacity: 0.7 }} />
+                <ChevronDown size={11} className="sketch-finish-chevron" />
               </button>
               <button className="sketch-cancel-btn" onClick={cancelSketch} title="Cancel Sketch">
                 <X size={13} />

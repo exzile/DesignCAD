@@ -100,7 +100,7 @@ export default function MeasurePanel() {
             </div>
           </>
         ) : (
-          <div className="measure-result-row" style={{ opacity: 0.5 }}>
+          <div className="measure-result-row measure-result-row--empty">
             <span className="measure-result-label">
               {p1 ? 'Click second point' : 'Click first point to measure'}
             </span>
@@ -127,7 +127,7 @@ export default function MeasurePanel() {
             </div>
           </>
         ) : (
-          <div className="measure-result-row" style={{ opacity: 0.5 }}>
+          <div className="measure-result-row measure-result-row--empty">
             <span className="measure-result-label">No point selected</span>
           </div>
         )}
@@ -152,7 +152,7 @@ export default function MeasurePanel() {
             </div>
           </>
         ) : (
-          <div className="measure-result-row" style={{ opacity: 0.5 }}>
+          <div className="measure-result-row measure-result-row--empty">
             <span className="measure-result-label">No point selected</span>
           </div>
         )}

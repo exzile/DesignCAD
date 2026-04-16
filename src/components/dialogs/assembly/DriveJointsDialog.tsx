@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { X, Play, Pause, Square, RotateCcw } from 'lucide-react';
 import { useComponentStore } from '../../../store/componentStore';
 import type { JointTrack, Joint } from '../../../types/cad';
+import './DriveJointsDialog.css';
 
 export function DriveJointsDialog({ onClose }: { onClose: () => void }) {
   const joints = useComponentStore((s) => s.joints);
@@ -71,7 +72,7 @@ export function DriveJointsDialog({ onClose }: { onClose: () => void }) {
 
   return (
     <div className="dialog-overlay">
-      <div className="dialog-panel" style={{ minWidth: 460 }}>
+      <div className="dialog-panel">
         <div className="dialog-header">
           <span className="dialog-title">Drive Joints</span>
           <button className="dialog-close" onClick={onClose}><X size={14} /></button>
@@ -79,10 +80,9 @@ export function DriveJointsDialog({ onClose }: { onClose: () => void }) {
 
         <div className="dialog-body">
           {/* Transport bar */}
-          <div className="dialog-field" style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+          <div className="dialog-field drive-joints-transport">
             <button
-              className="btn btn-secondary"
-              style={{ padding: '3px 8px' }}
+              className="btn btn-secondary drive-joints-btn"
               onClick={handlePlay}
               disabled={animationPlaying}
               title="Play"
@@ -90,8 +90,7 @@ export function DriveJointsDialog({ onClose }: { onClose: () => void }) {
               <Play size={14} />
             </button>
             <button
-              className="btn btn-secondary"
-              style={{ padding: '3px 8px' }}
+              className="btn btn-secondary drive-joints-btn"
               onClick={handlePause}
               disabled={!animationPlaying}
               title="Pause"
@@ -99,26 +98,24 @@ export function DriveJointsDialog({ onClose }: { onClose: () => void }) {
               <Pause size={14} />
             </button>
             <button
-              className="btn btn-secondary"
-              style={{ padding: '3px 8px' }}
+              className="btn btn-secondary drive-joints-btn"
               onClick={handleStop}
               title="Stop"
             >
               <Square size={14} />
             </button>
             <button
-              className="btn btn-secondary"
-              style={{ padding: '3px 8px', display: 'flex', alignItems: 'center', gap: 4 }}
+              className="btn btn-secondary drive-joints-loop-btn"
               onClick={() => setAnimationLoop(!animationLoop)}
               title="Toggle loop"
             >
               <RotateCcw size={14} />
-              <span style={{ fontSize: 11 }}>Loop</span>
+              <span className="drive-joints-loop-label">Loop</span>
               {animationLoop && (
-                <span style={{ fontSize: 11, color: '#4caf50' }}> ON</span>
+                <span className="drive-joints-loop-on"> ON</span>
               )}
             </button>
-            <span style={{ marginLeft: 'auto', fontSize: 12, color: 'var(--color-text-secondary, #aaa)' }}>
+            <span className="drive-joints-time">
               {timeStr} / {durStr} s
             </span>
           </div>
@@ -131,15 +128,15 @@ export function DriveJointsDialog({ onClose }: { onClose: () => void }) {
               max={animationDuration}
               step={0.01}
               value={animationTime}
-              style={{ width: '100%' }}
+              className="drive-joints-scrubber"
               onChange={(e) => handleScrub(parseFloat(e.target.value))}
             />
           </div>
 
           {/* Joint tracks */}
           {animationTracks.length > 0 && (
-            <div style={{ marginBottom: 8 }}>
-              <div className="dialog-label" style={{ marginBottom: 4 }}>Tracks</div>
+            <div className="drive-joints-tracks">
+              <div className="dialog-label drive-joints-tracks__heading">Tracks</div>
               {animationTracks.map((track) => {
                 const joint = joints[track.jointId];
                 if (!joint) return null;
@@ -147,42 +144,33 @@ export function DriveJointsDialog({ onClose }: { onClose: () => void }) {
                 return (
                   <div
                     key={track.jointId}
-                    style={{
-                      display: 'grid',
-                      gridTemplateColumns: '1fr 70px 70px 110px 28px',
-                      gap: 4,
-                      alignItems: 'center',
-                      marginBottom: 4,
-                    }}
+                    className="drive-joints-track-row"
                   >
-                    <span style={{ fontSize: 12, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                    <span className="drive-joints-track-name">
                       {joint.name}
                     </span>
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
-                      <span style={{ fontSize: 10, color: 'var(--color-text-secondary, #888)' }}>Start ({unit})</span>
+                    <div className="drive-joints-track-col">
+                      <span className="drive-joints-track-col__label">Start ({unit})</span>
                       <input
-                        className="dialog-input"
+                        className="dialog-input drive-joints-track-input"
                         type="number"
-                        style={{ padding: '2px 4px', fontSize: 12 }}
                         value={track.startValue}
                         onChange={(e) => handleTrackChange(track, 'startValue', e.target.value)}
                       />
                     </div>
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
-                      <span style={{ fontSize: 10, color: 'var(--color-text-secondary, #888)' }}>End ({unit})</span>
+                    <div className="drive-joints-track-col">
+                      <span className="drive-joints-track-col__label">End ({unit})</span>
                       <input
-                        className="dialog-input"
+                        className="dialog-input drive-joints-track-input"
                         type="number"
-                        style={{ padding: '2px 4px', fontSize: 12 }}
                         value={track.endValue}
                         onChange={(e) => handleTrackChange(track, 'endValue', e.target.value)}
                       />
                     </div>
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
-                      <span style={{ fontSize: 10, color: 'var(--color-text-secondary, #888)' }}>Easing</span>
+                    <div className="drive-joints-track-col">
+                      <span className="drive-joints-track-col__label">Easing</span>
                       <select
-                        className="dialog-input"
-                        style={{ padding: '2px 4px', fontSize: 12 }}
+                        className="dialog-input drive-joints-track-input"
                         value={track.easing}
                         onChange={(e) => handleTrackChange(track, 'easing', e.target.value)}
                       >
@@ -193,8 +181,7 @@ export function DriveJointsDialog({ onClose }: { onClose: () => void }) {
                       </select>
                     </div>
                     <button
-                      className="btn btn-secondary"
-                      style={{ padding: '2px 4px' }}
+                      className="btn btn-secondary drive-joints-btn"
                       title="Remove track"
                       onClick={() => removeJointTrack(track.jointId)}
                     >
@@ -208,11 +195,10 @@ export function DriveJointsDialog({ onClose }: { onClose: () => void }) {
 
           {/* Add track */}
           {untrackedJoints.length > 0 && (
-            <div className="dialog-field" style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-              <label className="dialog-label" style={{ whiteSpace: 'nowrap' }}>Add Track</label>
+            <div className="dialog-field drive-joints-add-row">
+              <label className="dialog-label drive-joints-add-label">Add Track</label>
               <select
-                className="dialog-input"
-                style={{ flex: 1 }}
+                className="dialog-input drive-joints-add-select"
                 value={addJointId}
                 onChange={(e) => setAddJointId(e.target.value)}
               >
@@ -227,21 +213,20 @@ export function DriveJointsDialog({ onClose }: { onClose: () => void }) {
           )}
 
           {allJoints.length === 0 && (
-            <div style={{ fontSize: 12, color: 'var(--color-text-secondary, #888)', padding: '8px 0' }}>
+            <div className="drive-joints-empty">
               No joints in the assembly. Add joints first.
             </div>
           )}
 
           {/* Duration */}
-          <div className="dialog-field" style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-            <label className="dialog-label" style={{ whiteSpace: 'nowrap' }}>Duration (s)</label>
+          <div className="dialog-field drive-joints-duration-row">
+            <label className="dialog-label drive-joints-duration-label">Duration (s)</label>
             <input
-              className="dialog-input"
+              className="dialog-input drive-joints-duration-input"
               type="number"
               min={0.1}
               step={0.5}
               value={animationDuration}
-              style={{ width: 80 }}
               onChange={(e) => setAnimationDuration(Math.max(0.1, parseFloat(e.target.value) || 5))}
             />
           </div>

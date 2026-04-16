@@ -23,42 +23,35 @@ export function InterferenceDialog({ open, onClose, onRun }: Props) {
 
   return (
     <div className="dialog-overlay">
-      <div className="dialog-panel" style={{ minWidth: 380 }}>
+      <div className="dialog-panel">
         <div className="dialog-header">
           <span className="dialog-title">Interference</span>
           <button className="dialog-close" onClick={onClose}><X size={14} /></button>
         </div>
         <div className="dialog-body">
-          <p style={{ fontSize: 12, color: 'var(--text-muted, #888)', marginBottom: 8 }}>
+          <p className="interference-description">
             Detects overlapping volumes between solid bodies using AABB pre-filter and mesh intersection.
           </p>
           {hasRun && results.length === 0 && (
-            <div style={{ fontSize: 12, color: 'var(--text-muted, #888)', padding: '8px 0' }}>
+            <div className="interference-empty">
               No solid body pairs found to test.
             </div>
           )}
           {hasRun && results.length > 0 && (
-            <div style={{ maxHeight: 220, overflowY: 'auto', border: '1px solid var(--border, #333)', borderRadius: 4 }}>
+            <div className="interference-results">
               {results.map((r, i) => (
                 <div
                   key={i}
-                  style={{
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: 8,
-                    padding: '6px 10px',
-                    borderBottom: i < results.length - 1 ? '1px solid var(--border, #333)' : undefined,
-                    fontSize: 12,
-                  }}
+                  className="interference-result-row"
                 >
                   {r.hasInterference
                     ? <XCircle size={14} color="#ef4444" />
                     : <CheckCircle size={14} color="#22c55e" />}
-                  <span style={{ flex: 1 }}>
+                  <span className="interference-result-bodies">
                     <strong>{r.bodyAName}</strong> ↔ <strong>{r.bodyBName}</strong>
                   </span>
                   {r.hasInterference && (
-                    <span style={{ color: '#ef4444', fontSize: 11 }}>
+                    <span className="interference-result-count">
                       {r.intersectionCurveCount} curve{r.intersectionCurveCount !== 1 ? 's' : ''}
                     </span>
                   )}
@@ -66,8 +59,8 @@ export function InterferenceDialog({ open, onClose, onRun }: Props) {
               ))}
             </div>
           )}
-          <div className="dialog-field" style={{ marginTop: 12 }}>
-            <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, cursor: 'not-allowed', opacity: 0.5 }}>
+          <div className="dialog-field interference-options-field">
+            <label className="interference-disabled-label">
               <input
                 type="checkbox"
                 checked={createBodies}

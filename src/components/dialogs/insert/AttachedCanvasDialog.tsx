@@ -93,21 +93,21 @@ export function AttachedCanvasDialog({ open, canvases, selectedId, onOk, onClose
                     <img
                       src={selected.dataUrl}
                       alt="canvas preview"
-                      style={{ maxWidth: '100%', maxHeight: 80, objectFit: 'contain', border: '1px solid var(--border)', borderRadius: 4 }}
+                      className="dialog-media-preview"
                     />
                   </div>
 
                   <div className="form-group">
                     <label>Opacity</label>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                    <div className="dialog-slider-row">
                       <input
                         type="range"
                         min={0} max={1} step={0.01}
                         value={opacity}
                         onChange={(e) => setOpacity(parseFloat(e.target.value))}
-                        style={{ flex: 1 }}
+                        className="dialog-slider-row__input"
                       />
-                      <span style={{ width: 36, fontSize: 12 }}>{opacity.toFixed(2)}</span>
+                      <span className="dialog-slider-row__value">{opacity.toFixed(2)}</span>
                     </div>
                   </div>
 
@@ -122,8 +122,8 @@ export function AttachedCanvasDialog({ open, canvases, selectedId, onOk, onClose
                     />
                   </div>
 
-                  <div className="form-group" style={{ display: 'flex', gap: 8 }}>
-                    <div style={{ flex: 1 }}>
+                  <div className="form-group dialog-field-row">
+                    <div className="dialog-field-col">
                       <label>Offset X</label>
                       <input
                         type="number"
@@ -132,7 +132,7 @@ export function AttachedCanvasDialog({ open, canvases, selectedId, onOk, onClose
                         onChange={(e) => setOffsetX(parseFloat(e.target.value) || 0)}
                       />
                     </div>
-                    <div style={{ flex: 1 }}>
+                    <div className="dialog-field-col">
                       <label>Offset Y</label>
                       <input
                         type="number"

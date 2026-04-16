@@ -181,7 +181,7 @@ export default function SketchPalette() {
           </div>
 
           {/* ─── Grid & Snap section (D207) ─── */}
-          <div className="sketch-palette-section-header" style={{ marginTop: 4 }}>
+          <div className="sketch-palette-section-header sketch-palette-section-header--spaced">
             <span>▼ Grid &amp; Snap</span>
           </div>
 
@@ -216,7 +216,7 @@ export default function SketchPalette() {
                   setSketchGridSize(Number.isFinite(v) && v > 0 ? v : null);
                 }}
                 title="Per-sketch grid spacing (overrides global)"
-                style={{ width: 60 }}
+                className="sketch-palette-input--narrow"
               />
             </div>
           )}
@@ -288,7 +288,7 @@ export default function SketchPalette() {
                   if (!Number.isNaN(v)) setPolygonSides(v);
                 }}
                 className="measure-select"
-                style={{ width: 64 }}
+                className="sketch-palette-input--narrow"
               />
             </div>
           )}
@@ -307,7 +307,7 @@ export default function SketchPalette() {
                   if (!Number.isNaN(v) && v > 0) setFilletRadius(v);
                 }}
                 className="measure-select"
-                style={{ width: 64 }}
+                className="sketch-palette-input--narrow"
               />
             </div>
           )}
@@ -324,7 +324,7 @@ export default function SketchPalette() {
                 value={conicRho}
                 onChange={(e) => { const v = Number(e.target.value); if (!Number.isNaN(v)) setConicRho(v); }}
                 className="measure-select"
-                style={{ width: 64 }}
+                className="sketch-palette-input--narrow"
               />
             </div>
           )}
@@ -337,7 +337,7 @@ export default function SketchPalette() {
                 className="measure-select"
                 value={blendCurveMode}
                 onChange={(e) => setBlendCurveMode(e.target.value as 'g1' | 'g2')}
-                style={{ width: 64 }}
+                className="sketch-palette-input--narrow"
               >
                 <option value="g1">G1</option>
                 <option value="g2">G2</option>
@@ -356,7 +356,7 @@ export default function SketchPalette() {
                 value={slotWidth}
                 onChange={(e) => { const v = Number(e.target.value); if (!Number.isNaN(v) && v > 0) setSlotWidth(v); }}
                 className="measure-select"
-                style={{ width: 64 }}
+                className="sketch-palette-input--narrow"
               />
             </div>
           )}
@@ -372,7 +372,7 @@ export default function SketchPalette() {
                 value={tangentCircleRadius}
                 onChange={(e) => { const v = Number(e.target.value); if (!Number.isNaN(v) && v > 0) setTangentCircleRadius(v); }}
                 className="measure-select"
-                style={{ width: 64 }}
+                className="sketch-palette-input--narrow"
               />
             </div>
           )}
@@ -388,7 +388,7 @@ export default function SketchPalette() {
                 value={chamferDist1}
                 onChange={(e) => { const v = Number(e.target.value); if (!Number.isNaN(v) && v > 0) setChamferDist1(v); }}
                 className="measure-select"
-                style={{ width: 64 }}
+                className="sketch-palette-input--narrow"
               />
             </div>
           )}
@@ -402,7 +402,7 @@ export default function SketchPalette() {
                 value={chamferDist2}
                 onChange={(e) => { const v = Number(e.target.value); if (!Number.isNaN(v) && v > 0) setChamferDist2(v); }}
                 className="measure-select"
-                style={{ width: 64 }}
+                className="sketch-palette-input--narrow"
               />
             </div>
           )}
@@ -417,7 +417,7 @@ export default function SketchPalette() {
                 value={chamferAngle}
                 onChange={(e) => { const v = Number(e.target.value); if (!Number.isNaN(v)) setChamferAngle(v); }}
                 className="measure-select"
-                style={{ width: 64 }}
+                className="sketch-palette-input--narrow"
               />
             </div>
           )}
@@ -467,7 +467,7 @@ export default function SketchPalette() {
 
           {/* S7: Active draw plane indicator — shown when 3D mode is on */}
           {sketch3DMode && (
-            <div className="sketch-palette-row" style={{ flexWrap: 'wrap', gap: 4 }}>
+            <div className="sketch-palette-row sketch-palette-row--wrap">
               <span className="sketch-palette-label">Plane</span>
               <span
                 style={{
@@ -480,9 +480,8 @@ export default function SketchPalette() {
               </span>
               {sketch3DActivePlane && (
                 <button
-                  className="spl-btn"
+                  className="spl-btn spl-btn--offset"
                   title="Reset to sketch primary plane"
-                  style={{ marginLeft: 4 }}
                   onClick={() => setSketch3DActivePlane(null)}
                 >
                   ✕

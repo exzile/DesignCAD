@@ -38,25 +38,23 @@ export default function ExplodedViewPanel() {
             max={2}
             step={0.01}
             value={explodeFactor}
-            style={{ width: '100%' }}
+            className="analysis-slider-row__input"
             onChange={(e) => setExplodeFactor(parseFloat(e.target.value))}
           />
-          <span style={{ fontSize: 12, color: 'var(--color-text-secondary, #aaa)', textAlign: 'right', display: 'block' }}>
+          <span className="exploded-value-text">
             {explodeFactor.toFixed(2)}
           </span>
         </div>
 
-        <div style={{ display: 'flex', gap: 6 }}>
+        <div className="exploded-btn-row">
           <button
             className="btn btn-secondary"
-            style={{ flex: 1, fontSize: 12 }}
             onClick={() => setExplodeFactor(0)}
           >
             Collapse
           </button>
           <button
             className="btn btn-primary"
-            style={{ flex: 1, fontSize: 12 }}
             onClick={() => setExplodeFactor(1)}
           >
             Explode

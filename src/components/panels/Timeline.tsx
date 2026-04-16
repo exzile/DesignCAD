@@ -340,48 +340,18 @@ export default function Timeline() {
     <div className="timeline-panel">
       {/* MM1 — Direct Modeling mode notice */}
       {!historyEnabled && (
-        <div
-          style={{
-            display: 'flex',
-            alignItems: 'center',
-            gap: 8,
-            background: '#4a3800',
-            color: '#ffb300',
-            padding: '5px 10px',
-            fontSize: 12,
-            fontWeight: 600,
-            borderBottom: '1px solid #7a5e00',
-          }}
-        >
+        <div className="timeline-banner timeline-banner--direct-modeling">
           Design history not captured (Direct Modeling mode)
         </div>
       )}
       {/* MM3 — Base Feature active banner */}
       {baseFeatureActive && (
-        <div
-          style={{
-            display: 'flex',
-            alignItems: 'center',
-            gap: 8,
-            background: '#7c5c00',
-            color: '#ffd966',
-            padding: '5px 10px',
-            fontSize: 12,
-            fontWeight: 600,
-            borderBottom: '1px solid #a07800',
-          }}
-        >
-          <span style={{ flex: 1 }}>Base Feature open — parametric recompute suppressed</span>
+        <div className="timeline-banner timeline-banner--base-feature">
+          <span className="timeline-banner__label">Base Feature open — parametric recompute suppressed</span>
           <button
             onClick={finishBaseFeature}
             title="Finish Base Feature"
-            style={{
-              display: 'flex', alignItems: 'center', gap: 4,
-              background: '#ffd966', color: '#3a2c00',
-              border: 'none', borderRadius: 3,
-              padding: '2px 8px', cursor: 'pointer',
-              fontSize: 11, fontWeight: 700,
-            }}
+            className="timeline-banner__finish-btn"
           >
             <CheckSquare size={12} />
             Finish
@@ -390,13 +360,12 @@ export default function Timeline() {
       )}
       <div className="timeline-header">
         <h3>Timeline</h3>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+        <div className="timeline-header__controls">
           {rollbackIndex >= 0 && (
             <button
-              className="timeline-action-btn active"
+              className="timeline-action-btn active timeline-action-btn--small"
               onClick={() => setRollbackIndex(-1)}
               title="Clear rollback marker"
-              style={{ fontSize: 11, padding: '2px 6px' }}
             >
               Rollback @ {rollbackIndex + 1}
             </button>
@@ -415,12 +384,6 @@ export default function Timeline() {
             {renderFeatureList()}
             <div
               className={`timeline-drop-target ${dragOverEnd ? 'active' : ''}`}
-              style={{
-                height: 6,
-                borderRadius: 3,
-                background: dragOverEnd ? 'var(--accent)' : 'transparent',
-                transition: 'background 120ms',
-              }}
               onDragOver={(e) => {
                 if (e.dataTransfer.types.includes('text/feature-id')) {
                   e.preventDefault();

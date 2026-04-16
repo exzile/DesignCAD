@@ -57,7 +57,6 @@ export function DecalDialog({ open, onOk, onClose, faceId }: Props) {
               value={imageUrl}
               onChange={(e) => setImageUrl(e.target.value)}
               placeholder="https://..."
-              style={{ width: '100%' }}
             />
           </div>
 
@@ -66,7 +65,7 @@ export function DecalDialog({ open, onOk, onClose, faceId }: Props) {
               <img
                 src={imageUrl}
                 alt="preview"
-                style={{ maxWidth: '100%', maxHeight: 80, objectFit: 'contain', border: '1px solid var(--border)', borderRadius: 4 }}
+                className="dialog-media-preview"
                 onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }}
               />
             </div>
@@ -74,27 +73,27 @@ export function DecalDialog({ open, onOk, onClose, faceId }: Props) {
 
           <div className="form-group">
             <label>Face</label>
-            <span style={{ fontSize: 12, opacity: 0.7 }}>
+              <span className="dialog-hint-text">
               {faceId ? 'Face selected' : 'Click a face in the viewport to place'}
             </span>
           </div>
 
           <div className="form-group">
             <label>Opacity</label>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <div className="dialog-slider-row">
               <input
                 type="range"
                 min={0} max={1} step={0.01}
                 value={opacity}
                 onChange={(e) => setOpacity(parseFloat(e.target.value))}
-                style={{ flex: 1 }}
+                className="dialog-slider-row__input"
               />
-              <span style={{ width: 36, fontSize: 12 }}>{opacity.toFixed(2)}</span>
+              <span className="dialog-slider-row__value">{opacity.toFixed(2)}</span>
             </div>
           </div>
 
-          <div className="form-group" style={{ display: 'flex', gap: 8 }}>
-            <div style={{ flex: 1 }}>
+          <div className="form-group dialog-field-row">
+            <div className="dialog-field-col">
               <label>Scale U</label>
               <input
                 type="number"
@@ -104,7 +103,7 @@ export function DecalDialog({ open, onOk, onClose, faceId }: Props) {
                 onChange={(e) => setScaleU(parseFloat(e.target.value) || 1)}
               />
             </div>
-            <div style={{ flex: 1 }}>
+            <div className="dialog-field-col">
               <label>Scale V</label>
               <input
                 type="number"

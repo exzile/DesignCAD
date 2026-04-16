@@ -4661,6 +4661,15 @@
   margin-top: 4px;
 }
 
+.sketch-palette-row--wrap {
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.spl-btn--offset {
+  margin-left: 4px;
+}
+
 /* ===== Loft Panel — flex rows ===== */
 
 .loft-profile-row {
@@ -4714,6 +4723,15 @@
   padding: 0 4px 4px;
 }
 
+.sketch-palette-row--centered {
+  justify-content: center;
+  margin-top: 4px;
+}
+
+.btn--full-width {
+  width: 100%;
+}
+
 /* ===== Measure Panel ===== */
 
 .measure-result-row--empty {
@@ -4724,4 +4742,177 @@
 
 .origin-axis-icon {
   color: var(--text-dim, var(--text-muted));
+}
+
+/* ===== Toolbar helpers ===== */
+
+.ribbon-button-wrapper {
+  position: relative;
+}
+
+.flyout-icon-placeholder {
+  width: 16px;
+  height: 16px;
+  display: inline-block;
+}
+
+.ribbon-section-chevron {
+  margin-left: 3px;
+  opacity: 0.6;
+}
+
+.ribbon-workspace-chevron {
+  margin-left: 4px;
+}
+
+.text-accent {
+  color: var(--accent);
+}
+
+.sketch-finish-chevron {
+  margin-left: 2px;
+  opacity: 0.7;
+}
+
+/* ===== Contact Sets Dialog ===== */
+
+.contact-sets-bulk-row {
+  display: flex;
+  gap: 6px;
+  margin-bottom: 8px;
+}
+
+.contact-sets-bulk-btn {
+  flex: 1;
+  font-size: 12px;
+}
+
+.contact-sets-empty {
+  color: var(--text-muted);
+  font-size: 12px;
+  margin: 0 0 8px;
+}
+
+.contact-sets-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.contact-sets-item__checkbox {
+  flex-shrink: 0;
+}
+
+.contact-sets-item__name {
+  flex: 1;
+  font-size: 13px;
+}
+
+.contact-sets-divider {
+  border-top: 1px solid var(--border);
+  margin-top: 8px;
+  padding-top: 8px;
+}
+
+.contact-sets-add-btn {
+  width: 100%;
+  margin-top: 4px;
+}
+
+.contact-sets-add-icon {
+  margin-right: 4px;
+}
+
+/* ===== Interference Dialog ===== */
+
+.interference-description {
+  font-size: 12px;
+  color: var(--text-muted, #888);
+  margin-bottom: 8px;
+}
+
+.interference-empty {
+  font-size: 12px;
+  color: var(--text-muted, #888);
+  padding: 8px 0;
+}
+
+.interference-results {
+  max-height: 220px;
+  overflow-y: auto;
+  border: 1px solid var(--border, #333);
+  border-radius: 4px;
+}
+
+.interference-result-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 10px;
+  font-size: 12px;
+}
+
+.interference-result-row:not(:last-child) {
+  border-bottom: 1px solid var(--border, #333);
+}
+
+.interference-result-bodies {
+  flex: 1;
+}
+
+.interference-result-count {
+  color: #ef4444;
+  font-size: 11px;
+}
+
+.interference-options-field {
+  margin-top: 12px;
+}
+
+.interference-disabled-label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+
+/* ===== Shared dialog media / form helpers ===== */
+
+.dialog-media-preview {
+  max-width: 100%;
+  max-height: 80px;
+  object-fit: contain;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+}
+
+.dialog-hint-text {
+  font-size: 12px;
+  opacity: 0.7;
+}
+
+.dialog-slider-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.dialog-slider-row__input {
+  flex: 1;
+}
+
+.dialog-slider-row__value {
+  width: 36px;
+  font-size: 12px;
+}
+
+.dialog-field-row {
+  display: flex;
+  gap: 8px;
+}
+
+.dialog-field-col {
+  flex: 1;
 }

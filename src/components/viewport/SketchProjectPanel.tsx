@@ -20,19 +20,19 @@ export default function SketchProjectPanel() {
       </div>
       <div className="sketch-palette-body">
         <div className="sketch-palette-row">
-          <label style={{ display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer' }}>
+          <label className="sketch-project-link-label">
             <input type="checkbox" checked={projectLiveLink}
               onChange={e => setProjectLiveLink(e.target.checked)} />
             <span className="sketch-palette-label">Live Link (Include)</span>
           </label>
         </div>
-        <div style={{ fontSize: 11, color: '#94a3b8', padding: '0 4px 4px' }}>
+        <div className="sketch-project-hint">
           {projectLiveLink
             ? 'Projected edges stay linked to the 3D body'
             : 'Geometry is copied once with no link'}
         </div>
-        <div className="sketch-palette-row" style={{ justifyContent: 'center', marginTop: 4 }}>
-          <button className="btn btn-secondary" style={{ width: '100%' }} onClick={cancelSketchProjectTool}>
+        <div className="sketch-palette-row sketch-palette-row--centered">
+          <button className="btn btn-secondary btn--full-width" onClick={cancelSketchProjectTool}>
             <X size={14} /> Close
           </button>
         </div>

@@ -473,7 +473,7 @@ function OriginTree() {
         <span className="browser-chevron">
           {expanded ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
         </span>
-        <span className="browser-item-icon" style={{ color: 'var(--text-dim)' }}>
+        <span className="browser-item-icon origin-axis-icon">
           <Axis3D size={13} />
         </span>
         <span className="browser-item-label">Origin</span>
@@ -620,7 +620,7 @@ function SketchesFolder() {
         <span className="browser-chevron">
           {expanded ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
         </span>
-        <span className="browser-item-icon" style={{ color: 'var(--text-dim)' }}>
+        <span className="browser-item-icon origin-axis-icon">
           <FolderOpen size={13} />
         </span>
         <span className="browser-item-label">Sketches</span>

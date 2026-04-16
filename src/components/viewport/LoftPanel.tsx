@@ -52,8 +52,8 @@ export default function LoftPanel() {
         {profileIds.map((id, i) => (
           <div className="sketch-palette-row" key={i}>
             <span className="sketch-palette-label">Profile {i + 1}</span>
-            <div style={{ display: 'flex', gap: 4, flex: 1 }}>
-              <select className="measure-select" style={{ flex: 1 }} value={id}
+            <div className="loft-profile-row">
+              <select className="measure-select loft-profile-row__select" value={id}
                 onChange={(e) => setSlot(i, e.target.value)}>
                 <option value="" disabled>Select sketch</option>
                 {available.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
@@ -106,7 +106,7 @@ export default function LoftPanel() {
         </div>
 
         <div className="sketch-palette-row">
-          <label style={{ display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer' }}>
+          <label className="loft-checkbox-label">
             <input type="checkbox" checked={closed} onChange={(e) => setClosed(e.target.checked)} />
             <span className="sketch-palette-label">Closed Loft</span>
           </label>

@@ -1,4 +1,5 @@
 import { X, Download } from 'lucide-react';
+import './BOMDialog.css';
 
 export interface BOMEntry {
   partNumber: number;
@@ -21,22 +22,22 @@ export function BOMDialog({ open, entries, onExportCSV, onClose }: Props) {
 
   return (
     <div className="dialog-overlay">
-      <div className="dialog" style={{ minWidth: 600, maxWidth: 800 }}>
+      <div className="dialog bom-dialog">
         <div className="dialog-header">
           <h3>Bill of Materials</h3>
           <button className="dialog-close" onClick={onClose}><X size={16} /></button>
         </div>
-        <div className="dialog-body" style={{ padding: 0, maxHeight: 400, overflowY: 'auto' }}>
+        <div className="dialog-body bom-body">
           {entries.length === 0 ? (
-            <p style={{ padding: 16, margin: 0, color: 'var(--text-secondary, #aaa)' }}>
+            <p className="bom-empty">
               No components in assembly.
             </p>
           ) : (
-            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
+            <table className="bom-table">
               <thead>
-                <tr style={{ background: 'var(--bg-secondary, #2a2a2a)', position: 'sticky', top: 0 }}>
+                <tr className="bom-thead-row">
                   {['#', 'Name', 'Qty', 'Material', 'Est. Mass', 'Description'].map((h) => (
-                    <th key={h} style={{ padding: '8px 12px', textAlign: 'left', borderBottom: '1px solid var(--border, #444)', whiteSpace: 'nowrap' }}>
+                    <th key={h} className="bom-th">
                       {h}
                     </th>
                   ))}
@@ -44,13 +45,13 @@ export function BOMDialog({ open, entries, onExportCSV, onClose }: Props) {
               </thead>
               <tbody>
                 {entries.map((row, i) => (
-                  <tr key={row.partNumber} style={{ background: i % 2 === 0 ? 'transparent' : 'var(--bg-tertiary, #1e1e1e)' }}>
-                    <td style={{ padding: '6px 12px' }}>{row.partNumber}</td>
-                    <td style={{ padding: '6px 12px' }}>{row.name}</td>
-                    <td style={{ padding: '6px 12px', textAlign: 'center' }}>{row.quantity}</td>
-                    <td style={{ padding: '6px 12px' }}>{row.material}</td>
-                    <td style={{ padding: '6px 12px', textAlign: 'right' }}>{row.estimatedMass}</td>
-                    <td style={{ padding: '6px 12px', color: 'var(--text-secondary, #aaa)' }}>{row.description}</td>
+                  <tr key={row.partNumber} className={i % 2 !== 0 ? 'bom-tr--odd' : ''}>
+                    <td className="bom-td">{row.partNumber}</td>
+                    <td className="bom-td">{row.name}</td>
+                    <td className="bom-td bom-td--center">{row.quantity}</td>
+                    <td className="bom-td">{row.material}</td>
+                    <td className="bom-td bom-td--right">{row.estimatedMass}</td>
+                    <td className="bom-td bom-td--muted">{row.description}</td>
                   </tr>
                 ))}
               </tbody>
@@ -58,7 +59,7 @@ export function BOMDialog({ open, entries, onExportCSV, onClose }: Props) {
           )}
         </div>
         <div className="dialog-footer">
-          <button className="btn btn-secondary" onClick={onExportCSV} style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+          <button className="btn btn-secondary bom-export-btn" onClick={onExportCSV}>
             <Download size={14} />
             Export CSV
           </button>
