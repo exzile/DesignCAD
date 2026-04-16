@@ -5358,6 +5358,7 @@ export const useCADStore = create<CADState>()(persist((set, get) => ({
     features: state.features.map((f) => serializeFeature(f) as Feature),
     parameters: state.parameters,
     frozenFormVertices: state.frozenFormVertices,
+    featureGroups: state.featureGroups,
   }),
 
 }));

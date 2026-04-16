@@ -2,6 +2,7 @@ import { useState, useRef, useEffect } from 'react';
 import { X, Plus, Trash2, AlertCircle, Check } from 'lucide-react';
 import { useCADStore } from '../../store/cadStore';
 import { evaluateExpression } from '../../utils/expressionEval';
+import './ParametersPanel.css';
 
 interface Props {
   onClose: () => void;
