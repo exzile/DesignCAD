@@ -317,7 +317,6 @@ export default function DuetFileManager() {
   const [loading, setLoading] = useState(false);
   const [sortField, setSortField] = useState<SortField>('name');
   const [sortDir, setSortDir] = useState<SortDir>('asc');
-  const [hoveredRow, setHoveredRow] = useState<string | null>(null);
   const [selectedName, setSelectedName] = useState<string | null>(null);
   const [dragOver, setDragOver] = useState(false);
 
@@ -721,7 +720,6 @@ export default function DuetFileManager() {
                 {sortedFiles.map((item) => {
                   const isDir = item.type === 'd';
                   const isSelected = selectedName === item.name;
-                  const isHovered = hoveredRow === item.name;
                   const isGCode = !isDir && isGCodeFile(item.name);
 
                   return (
@@ -790,7 +788,7 @@ export default function DuetFileManager() {
                               title="Download"
                               onClick={() => handleDownload(item)}
                             >
-                              <Download size={14} style={{ color: '#42a5f5' }} />
+                              <Download size={14} className="duet-file-mgr__icon--download" />
                             </button>
                           )}
                           <button
@@ -805,7 +803,7 @@ export default function DuetFileManager() {
                             title="Delete"
                             onClick={() => handleDelete(item)}
                           >
-                            <Trash2 size={14} style={{ color: '#ef5350' }} />
+                            <Trash2 size={14} className="duet-file-mgr__icon--delete" />
                           </button>
                         </div>
                       </td>

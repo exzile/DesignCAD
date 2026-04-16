@@ -1,4 +1,5 @@
 import { useState, useRef, useEffect, useCallback, useMemo } from 'react';
+import './DuetConsole.css';
 import {
   Send,
   Trash2,
@@ -103,7 +104,7 @@ function highlightText(text: string, search: string): React.ReactNode {
   return (
     <>
       {text.slice(0, idx)}
-      <span style={{ background: '#854d0e', color: '#fef08a', borderRadius: 2, padding: '0 1px' }}>
+      <span className="duet-console__search-highlight">
         {text.slice(idx, idx + search.length)}
       </span>
       {text.slice(idx + search.length)}
