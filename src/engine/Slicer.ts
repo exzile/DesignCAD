@@ -639,6 +639,7 @@ export class Slicer {
     z: number,
     offsetX: number,
     offsetY: number,
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
     _offsetZ: number,
   ): Segment[] {
     const segments: Segment[] = [];
@@ -888,6 +889,7 @@ export class Slicer {
   private findSeamPosition(
     contour: THREE.Vector2[],
     alignment: string,
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
     _layerIndex: number,
   ): number {
     if (contour.length === 0) return 0;
@@ -1091,6 +1093,7 @@ export class Slicer {
     contour: THREE.Vector2[],
     density: number,
     lineWidth: number,
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
     _layerIndex: number,
   ): { from: THREE.Vector2; to: THREE.Vector2 }[] {
     // Hexagonal pattern: rows of zigzag offset every other row
@@ -1345,8 +1348,11 @@ export class Slicer {
   private generateAdhesion(
     contours: Contour[],
     pp: PrintProfile,
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
     _layerH: number,
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
     _offsetX: number,
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
     _offsetY: number,
   ): SliceMove[] {
     const moves: SliceMove[] = [];

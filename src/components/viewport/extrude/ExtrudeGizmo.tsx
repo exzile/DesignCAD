@@ -79,7 +79,9 @@ export default function ExtrudeGizmo({ sketch }: { sketch: Sketch }) {
     if (sAtPointer === null) return;
     draggingRef.current = true;
     dragOffsetRef.current = useCADStore.getState().extrudeDistance - sAtPointer;
+    // eslint-disable-next-line react-hooks/immutability
     if (controls) controls.enabled = false;
+    // eslint-disable-next-line react-hooks/immutability
     gl.domElement.style.cursor = 'ns-resize';
   }, [gl, rayToAxisDistance, controls]);
 
@@ -119,7 +121,9 @@ export default function ExtrudeGizmo({ sketch }: { sketch: Sketch }) {
         position={arrowTip}
         quaternion={coneQuat}
         onPointerDown={onPointerDown}
+        // eslint-disable-next-line react-hooks/immutability
         onPointerOver={() => { gl.domElement.style.cursor = 'ns-resize'; }}
+        // eslint-disable-next-line react-hooks/immutability
         onPointerOut={() => { if (!draggingRef.current) gl.domElement.style.cursor = ''; }}
       >
         <coneGeometry args={[1.2, 4, 16]} />

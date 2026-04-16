@@ -1051,6 +1051,7 @@ export class GeometryEngine {
     });
   }
 
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   static createFilletGeometry(mesh: THREE.Mesh, _radius: number): THREE.Mesh {
     // Fillet approximation using edge beveling — full implementation requires OpenCascade
     const geometry = mesh.geometry.clone();
@@ -1132,6 +1133,7 @@ export class GeometryEngine {
     return result.geometry;
   }
 
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   static revolveSketch(sketch: Sketch, angle: number, _axis: THREE.Vector3): THREE.Mesh | null {
     if (sketch.entities.length === 0) return null;
 

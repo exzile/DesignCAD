@@ -152,6 +152,7 @@ export function useVertexPicker(options: UseVertexPickerOptions): void {
   const { gl, camera, raycaster, scene } = useThree();
 
   const optionsRef = useRef(options);
+  // eslint-disable-next-line react-hooks/refs
   optionsRef.current = options;
 
   const hoverRef = useRef<VertexPickResult | null>(null);

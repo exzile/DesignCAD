@@ -19,7 +19,7 @@ export function RedefineSketchPlaneDialog({ onClose }: { onClose: () => void }) 
     if (plane === 'XY') { normal.set(0, 0, 1); }
     else if (plane === 'XZ') { normal.set(0, 1, 0); }
     else if (plane === 'YZ') { normal.set(1, 0, 0); }
-    redefineSketchPlane(sketchId, plane as any, normal, origin);
+    redefineSketchPlane(sketchId, plane, normal, origin);
     onClose();
   };
 

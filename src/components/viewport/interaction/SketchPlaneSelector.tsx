@@ -37,6 +37,7 @@ export default function SketchPlaneSelector() {
   // Change cursor when hovering a plane or a face
   useEffect(() => {
     if (!selecting) return;
+    // eslint-disable-next-line react-hooks/immutability
     gl.domElement.style.cursor = (hovered || faceHit) ? 'pointer' : 'crosshair';
     return () => { gl.domElement.style.cursor = 'auto'; };
   }, [selecting, hovered, faceHit, gl]);

@@ -178,6 +178,7 @@ export default function DuetConsole() {
   // Show/hide suggestions when input changes
   useEffect(() => {
     if (suggestions.length > 0 && input.trim().length > 0) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setShowSuggestions(true);
       setSelectedSuggestion(0);
     } else {

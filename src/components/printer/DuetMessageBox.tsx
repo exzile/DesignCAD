@@ -279,6 +279,7 @@ export default function DuetMessageBox() {
     }
 
     autoCloseStartRef.current = Date.now();
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setAutoCloseProgress(100);
 
     autoCloseTimerRef.current = setInterval(() => {

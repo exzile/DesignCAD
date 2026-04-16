@@ -375,7 +375,7 @@ function buildAccessibility(meshes: THREE.Mesh[], params: AnalysisParams): { obj
 
     for (let i = 0; i < count; i++) {
       const dot = normAttr.getX(i) * dir.x + normAttr.getY(i) * dir.y + normAttr.getZ(i) * dir.z;
-      let r = 0, g = 0, b = 0;
+      let r = 0, g = 0; const b = 0;
       if (dot > threshold) {
         // accessible — green
         g = 1;

@@ -295,6 +295,7 @@ export interface PlateObject {
   id: string;
   name: string;
   featureId?: string; // reference to CAD feature (optional — may be a file import)
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   geometry?: any; // THREE.BufferGeometry — avoid importing Three.js in types
   // Transform on build plate (3D)
   position: { x: number; y: number; z: number };
@@ -312,6 +313,7 @@ export interface PlateObject {
   boundingBox: { min: { x: number; y: number; z: number }; max: { x: number; y: number; z: number } };
   selected?: boolean;
   // Per-object settings override (null keys inherit global print profile)
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   perObjectSettings?: Record<string, any>;
 }
 

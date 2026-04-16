@@ -58,6 +58,7 @@ export function useFacePicker(options: UseFacePickerOptions): void {
   // Stable ref so event handlers always read the latest options without
   // being recreated (avoids stale-closure bugs).
   const optionsRef = useRef(options);
+  // eslint-disable-next-line react-hooks/refs
   optionsRef.current = options;
 
   // Track current hover result so we can guard no-op clears.

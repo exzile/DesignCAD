@@ -36,6 +36,7 @@ export default function ExpressionInput({
   // Sync from external value changes (e.g. gizmo drag) — but only when not editing
   useEffect(() => {
     if (document.activeElement !== inputRef.current) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setText(String(value));
       setIsExpr(false);
       setIsInvalid(false);

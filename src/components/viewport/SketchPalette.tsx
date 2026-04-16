@@ -86,6 +86,7 @@ export default function SketchPalette() {
 
   // Reset dismissed state each time a new sketch session starts
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     if (activeSketch) setDismissed(false);
   }, [activeSketch?.id]); // eslint-disable-line react-hooks/exhaustive-deps
 

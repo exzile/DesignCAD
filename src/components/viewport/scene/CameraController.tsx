@@ -3,6 +3,11 @@ import { useThree, useFrame } from '@react-three/fiber';
 import * as THREE from 'three';
 import { useCADStore } from '../../../store/cadStore';
 
+interface OrbitControlsLike {
+  target?: THREE.Vector3;
+  update?: () => void;
+}
+
 export default function CameraController({ onQuaternionChange }: { onQuaternionChange: (q: THREE.Quaternion) => void }) {
   const { camera, controls } = useThree();
   const cameraHomeCounter = useCADStore((s) => s.cameraHomeCounter);
@@ -30,10 +35,10 @@ export default function CameraController({ onQuaternionChange }: { onQuaternionC
     const target = new THREE.Vector3(0, 0, 0);
     camera.position.set(50, 50, 50);
     camera.lookAt(target);
-    const orbitControls = controls as any;
+    const orbitControls = controls as OrbitControlsLike;
     if (orbitControls?.target) {
       orbitControls.target.copy(target);
-      orbitControls.update();
+      orbitControls.update?.();
     }
   }, [cameraHomeCounter, camera, controls]);
 
@@ -45,7 +50,7 @@ export default function CameraController({ onQuaternionChange }: { onQuaternionC
 
     // Capture orbit pivot endpoints. If a cameraTargetOrbit was supplied (e.g.
     // sketch entry), lerp the pivot toward it; otherwise hold the current pivot.
-    const orbitControls = controls as any;
+    const orbitControls = controls as OrbitControlsLike;
     const currentOrbit = (orbitControls?.target as THREE.Vector3 | undefined) ?? new THREE.Vector3();
     startOrbitRef.current.copy(currentOrbit);
     endOrbitRef.current.copy(cameraTargetOrbit ?? currentOrbit);
@@ -82,7 +87,7 @@ export default function CameraController({ onQuaternionChange }: { onQuaternionC
     camera.position.copy(_orbit.current).add(_dir.current.multiplyScalar(distance));
     camera.quaternion.copy(_q.current);
 
-    const orbitControls = controls as any;
+    const orbitControls = controls as OrbitControlsLike;
     if (orbitControls?.target) {
       orbitControls.target.copy(_orbit.current);
     }

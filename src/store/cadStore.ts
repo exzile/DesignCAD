@@ -1,5 +1,6 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
+import type { PersistStorage } from 'zustand/middleware';
 import * as THREE from 'three';
 import type { Tool, ViewMode, SketchPlane, Sketch, SketchEntity, SketchPoint, SketchConstraint, SketchDimension, Feature, FeatureGroup, Parameter, BooleanOperation, FormCage, FormSelection, FormElementType, ConstructionPlane, ConstructionAxis, ConstructionPoint, JointOriginRecord, InterferenceResult, ContactSetEntry } from '../types/cad';
 import type { InsertComponentParams } from '../components/dialogs/assembly/InsertComponentDialog';
@@ -5316,7 +5317,7 @@ export const useCADStore = create<CADState>()(persist((set, get) => ({
 }),
 {
   name: 'dzign3d-cad',
-  storage: idbStorage as any,
+  storage: idbStorage as unknown as PersistStorage<unknown>,
   version: 3,
   migrate: (persistedState: unknown) => {
     const state = (persistedState ?? {}) as Partial<CADState>;

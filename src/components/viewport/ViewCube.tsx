@@ -22,6 +22,7 @@ export default function ViewCube({ mainCameraQuaternion, onOrient, onHome, onZoo
 
   useEffect(() => {
     const l = closestFaceLabel(mainCameraQuaternion);
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setLabel(l);
   }, [mainCameraQuaternion]);
 

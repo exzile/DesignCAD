@@ -4,15 +4,19 @@ import { formatDurationClock, formatFileSize, formatFilamentLength } from '../..
 // Helper functions
 // ---------------------------------------------------------------------------
 
+// eslint-disable-next-line react-refresh/only-export-components
 export const formatTime = (seconds: number | undefined | null) =>
   formatDurationClock(seconds, '--:--:--');
 
+// eslint-disable-next-line react-refresh/only-export-components
 export const formatBytes = (bytes: number | undefined | null) =>
   formatFileSize(bytes, '0 B');
 
+// eslint-disable-next-line react-refresh/only-export-components
 export const formatFilament = (mm: number | undefined | null) =>
   formatFilamentLength(mm, '0 mm');
 
+// eslint-disable-next-line react-refresh/only-export-components
 export function estimatedCompletion(remainingSeconds: number | undefined | null): string {
   if (!remainingSeconds || remainingSeconds <= 0) return '--:--';
   const completionDate = new Date(Date.now() + remainingSeconds * 1000);

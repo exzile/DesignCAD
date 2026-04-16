@@ -10,6 +10,7 @@ export default function SceneTheme() {
   useEffect(() => {
     const color = new THREE.Color(canvasBg);
     gl.setClearColor(color);
+    // eslint-disable-next-line react-hooks/immutability
     scene.background = color;
   }, [canvasBg, gl, scene]);
 

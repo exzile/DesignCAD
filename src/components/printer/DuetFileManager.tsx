@@ -200,6 +200,7 @@ function FileInfoPanel({
 
   // Fetch the largest thumbnail when file info changes
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setThumbnailSrc(null);
     if (!service || !fileInfo.thumbnails || fileInfo.thumbnails.length === 0) return;
 

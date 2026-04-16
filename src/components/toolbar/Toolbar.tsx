@@ -28,6 +28,7 @@ import {
 import { useCADStore } from '../../store/cadStore';
 import { useComponentStore } from '../../store/componentStore';
 import type { Tool, Feature } from '../../types/cad';
+import type * as THREE from 'three';
 import './Toolbar.css';
 
 // Subcomponents
@@ -152,7 +153,7 @@ export default function Toolbar() {
         name: file.name,
         type: 'import',
         params: { fileName: file.name },
-        mesh: group as any,
+        mesh: group as unknown as THREE.Mesh,
         visible: true,
         suppressed: false,
         timestamp: Date.now(),
@@ -177,7 +178,7 @@ export default function Toolbar() {
         name: file.name,
         type: 'import',
         params: { fileName: file.name, bodyKind: 'mesh' },
-        mesh: group as any,
+        mesh: group as unknown as THREE.Mesh,
         bodyKind: 'mesh',
         visible: true,
         suppressed: false,

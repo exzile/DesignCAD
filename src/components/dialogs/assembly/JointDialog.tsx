@@ -33,7 +33,7 @@ export function JointDialog({ onClose }: { onClose: () => void }) {
   const handleApply = () => {
     addJoint({
       name,
-      type: jointType as any,
+      type: jointType as import('../../../types/cad').JointType,
       componentId1,
       componentId2,
       origin: new THREE.Vector3(originX, originY, originZ),
