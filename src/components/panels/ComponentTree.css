@@ -1,0 +1,6 @@
+/* ===== ComponentTree — extracted static styles ===== */
+
+/* Active sketch icon in SketchesFolder — was style={{ color: 'var(--warning)' }} inline */
+.ct-sketch-active-icon {
+  color: var(--warning);
+}
