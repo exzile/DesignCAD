@@ -34,6 +34,7 @@ function RevolveItem({ feature, sketch }: { feature: Feature; sketch: Sketch }) 
   }, [sketch, angle, axis, axisKey, isSurface]);
   useEffect(() => {
     if (mesh) {
+      // eslint-disable-next-line react-hooks/immutability
       mesh.userData.pickable = true;
       mesh.userData.featureId = feature.id;
     }

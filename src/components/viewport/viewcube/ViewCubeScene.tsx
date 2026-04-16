@@ -8,7 +8,8 @@ import {
 } from './defs';
 
 /** The main textured cube body */
-function CubeBody({ hoveredZone: _hoveredZone }: { hoveredZone: string | null }) {
+function CubeBody({ hoveredZone }: { hoveredZone: string | null }) {
+  void hoveredZone; // reserved for future hover highlight effect
   const meshRef = useRef<THREE.Mesh>(null);
 
   return (
@@ -21,9 +22,10 @@ function CubeBody({ hoveredZone: _hoveredZone }: { hoveredZone: string | null })
 
 /** Wireframe edges of the cube */
 function CubeEdges() {
+  const boxGeo = useMemo(() => new THREE.BoxGeometry(CUBE_SIZE, CUBE_SIZE, CUBE_SIZE), []);
   return (
     <lineSegments>
-      <edgesGeometry args={[new THREE.BoxGeometry(CUBE_SIZE, CUBE_SIZE, CUBE_SIZE)]} />
+      <edgesGeometry args={[boxGeo]} />
       <lineBasicMaterial color="#999" />
     </lineSegments>
   );

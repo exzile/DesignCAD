@@ -21,6 +21,25 @@ function SketchGeometry({ sketch }: { sketch: Sketch }) {
   return <primitive object={group} />;
 }
 
+/** Memoize the filtered sketch so point-visibility toggles don't produce
+ *  a new object identity on every render, defeating SketchGeometry's useMemo. */
+function ActiveSketchGeometry({ sketch, showSketchPoints }: { sketch: Sketch; showSketchPoints: boolean }) {
+  const filteredSketch = useMemo(() => {
+    if (showSketchPoints) return sketch;
+    const filtered = sketch.entities.filter((e) => e.type !== 'point');
+    return filtered.length === sketch.entities.length
+      ? sketch
+      : { ...sketch, entities: filtered };
+  }, [sketch, showSketchPoints]);
+
+  return (
+    <SketchGeometry
+      key={`active-${sketch.id}-e${sketch.entities.length}-pts${showSketchPoints ? 1 : 0}`}
+      sketch={filteredSketch}
+    />
+  );
+}
+
 export default function SketchRenderer() {
   const activeSketch = useCADStore((s) => s.activeSketch);
   const features = useCADStore((s) => s.features);
@@ -56,21 +75,9 @@ export default function SketchRenderer() {
         if (!sketch) return null;
         return <SketchGeometry key={feature.id} sketch={sketch} />;
       })}
-      {activeSketch && activeSketch.entities.length > 0 && (() => {
-        const filteredEntities = activeSketch.entities.filter(e => {
-          if (e.type === 'point' && !showSketchPoints) return false;
-          return true;
-        });
-        const filteredSketch = filteredEntities.length === activeSketch.entities.length
-          ? activeSketch
-          : { ...activeSketch, entities: filteredEntities };
-        return (
-          <SketchGeometry
-            key={`active-${activeSketch.id}-e${activeSketch.entities.length}-pts${showSketchPoints ? 1 : 0}`}
-            sketch={filteredSketch}
-          />
-        );
-      })()}
+      {activeSketch && activeSketch.entities.length > 0 && (
+        <ActiveSketchGeometry sketch={activeSketch} showSketchPoints={showSketchPoints} />
+      )}
       {profileMesh && <primitive key={`profile-${activeSketch?.id}-${activeSketch?.entities.length}`} object={profileMesh} />}
     </>
   );

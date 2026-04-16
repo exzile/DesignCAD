@@ -4,3 +4,340 @@
 .ct-sketch-active-icon {
   color: var(--warning);
 }
+/* ===== Component Tree (Browser) ===== */
+.component-tree-panel {
+  width: 260px;
+  background: var(--bg-panel);
+  border-right: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.tree-panel-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--border-light);
+}
+
+.tree-panel-header h3 {
+  margin: 0;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-primary);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.tree-scroll {
+  flex: 1;
+  overflow-y: auto;
+  padding: 4px;
+}
+
+.tree-node {
+  padding-left: calc(var(--depth, 0) * 12px);
+}
+
+.tree-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 8px;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: all 0.12s ease;
+  border: 1px solid transparent;
+  font-size: 12px;
+  color: var(--text-secondary);
+  min-height: 28px;
+}
+
+.tree-item:hover {
+  background: var(--bg-hover);
+}
+
+.tree-item.active,
+.component-item.active {
+  background: var(--bg-active);
+  border-color: var(--accent);
+}
+
+.tree-item.selected {
+  background: var(--bg-active);
+  border-color: var(--accent);
+}
+
+.tree-expand {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  border: none;
+  background: none;
+  color: var(--text-muted);
+  cursor: pointer;
+  padding: 0;
+  flex-shrink: 0;
+}
+
+.tree-expand:hover {
+  color: var(--text-secondary);
+}
+
+.tree-expand-spacer {
+  width: 12px;
+}
+
+.component-color-bar {
+  width: 3px;
+  height: 14px;
+  border-radius: 2px;
+  flex-shrink: 0;
+}
+
+.tree-name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.tree-rename-input {
+  flex: 1;
+  background: var(--bg-secondary);
+  border: 1px solid var(--accent);
+  border-radius: 3px;
+  color: var(--text-primary);
+  font-size: 12px;
+  padding: 2px 6px;
+  outline: none;
+}
+
+.tree-icon {
+  flex-shrink: 0;
+  color: var(--text-muted);
+}
+
+.body-icon { color: var(--accent); }
+
+.grounded-icon {
+  color: var(--text-muted);
+  flex-shrink: 0;
+}
+
+.tree-item-actions {
+  display: flex;
+  gap: 2px;
+  opacity: 0;
+  transition: opacity 0.12s;
+}
+
+.tree-item:hover .tree-item-actions {
+  opacity: 1;
+}
+
+.tree-action {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  border: none;
+  border-radius: 3px;
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+}
+
+.tree-action:hover {
+  background: var(--bg-hover);
+  color: var(--text-secondary);
+}
+
+.tree-children {
+  padding-left: 12px;
+}
+
+.body-color-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  border: 1px solid var(--border);
+  cursor: pointer;
+}
+
+.body-color-dot:hover {
+  border-color: var(--text-muted);
+}
+
+.construction-name {
+  color: var(--text-muted);
+  font-style: italic;
+}
+
+.origin-item {
+  opacity: 0.5;
+  font-size: 11px;
+}
+
+.origin-icon {
+  color: var(--text-muted);
+}
+
+.origin-name {
+  color: var(--text-muted);
+  font-size: 11px;
+}
+
+.joint-type-badge {
+  font-size: 9px;
+  padding: 1px 5px;
+  border-radius: 3px;
+  background: rgba(255, 152, 0, 0.08);
+  color: var(--warning);
+  text-transform: uppercase;
+}
+
+.tree-origin-group {
+  border-bottom: 1px solid var(--border-light);
+  margin-bottom: 2px;
+  padding-bottom: 2px;
+}
+
+/* Context menu */
+.tree-context-menu {
+  position: relative;
+  background: var(--bg-primary);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 4px;
+  margin: 2px 0 2px 20px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+  z-index: 10;
+}
+
+.tree-context-menu button {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 6px 10px;
+  border: none;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--text-secondary);
+  font-size: 12px;
+  cursor: pointer;
+  text-align: left;
+}
+
+.tree-context-menu button:hover {
+  background: var(--bg-hover);
+}
+
+.tree-context-menu button.danger:hover {
+  background: rgba(244, 67, 54, 0.08);
+  color: var(--error);
+}
+
+/* Material picker */
+.material-picker {
+  margin: 4px 0 4px 20px;
+  background: var(--bg-primary);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 8px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+}
+
+.material-picker-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 8px;
+  font-size: 11px;
+  color: var(--text-muted);
+  text-transform: uppercase;
+}
+
+.material-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 4px;
+}
+
+.material-swatch {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 3px;
+  padding: 6px 4px;
+  border: 1px solid transparent;
+  border-radius: 4px;
+  background: transparent;
+  cursor: pointer;
+  transition: all 0.12s;
+}
+
+.material-swatch:hover {
+  background: var(--bg-hover);
+  border-color: var(--border-light);
+}
+
+.swatch-color {
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  border: 1px solid var(--border);
+}
+
+.swatch-label {
+  font-size: 9px;
+  color: var(--text-muted);
+  text-align: center;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 60px;
+}
+
+/* ===== Browser Panel — Fusion 360-style rows ===== */
+.origin-tree-node,
+.sketches-tree-node {
+  margin: 1px 0;
+}
+
+/* Every browser row: eye btn | chevron | icon | label */
+.browser-row {
+  display: flex;
+  align-items: center;
+  height: 26px;
+  padding-right: 6px;
+  cursor: pointer;
+  border-radius: 3px;
+  user-select: none;
+  transition: background 0.1s;
+}
+
+.browser-row:hover {
+  background: var(--bg-hover);
+}
+
+.browser-row-child {
+  padding-left: 14px; /* indent children */
+}
+
+/* Active sketch row highlight */
+.browser-row-active-sketch {
+  background: rgba(41, 121, 255, 0.12);
+}
+.browser-row-active-sketch:hover {
+  background: rgba(41, 121, 255, 0.2);
+}
+.browser-sketch-active-label {

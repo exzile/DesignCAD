@@ -1,5 +1,6 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
+import type { PersistStorage } from 'zustand/middleware';
 import * as THREE from 'three';
 import type { Tool, ViewMode, SketchPlane, Sketch, SketchEntity, SketchPoint, SketchConstraint, SketchDimension, Feature, FeatureGroup, Parameter, BooleanOperation, FormCage, FormSelection, FormElementType, ConstructionPlane, ConstructionAxis, ConstructionPoint, JointOriginRecord, InterferenceResult, ContactSetEntry } from '../types/cad';
 import type { InsertComponentParams } from '../components/dialogs/assembly/InsertComponentDialog';
@@ -1408,9 +1409,25 @@ export const useCADStore = create<CADState>()(persist((set, get) => ({
   }),
   removeFeature: (id) => {
     get().pushUndo();
+    // Capture the mesh reference before removal so we can dispose AFTER
+    // the feature is out of state (prevents renderer accessing disposed GPU resources).
     const target = get().features.find((f) => f.id === id);
-    if (target?.mesh) target.mesh.geometry?.dispose();
     set((state) => ({ features: state.features.filter((f) => f.id !== id) }));
+    // Now safe to dispose — feature is no longer in state
+    if (target?.mesh) {
+      const m = target.mesh as THREE.Object3D;
+      if (m instanceof THREE.Mesh) {
+        m.geometry?.dispose();
+        if (m.material && !Array.isArray(m.material)) (m.material as THREE.Material).dispose();
+      } else if (m instanceof THREE.Group) {
+        m.traverse((child) => {
+          if (child instanceof THREE.Mesh) {
+            child.geometry?.dispose();
+            if (child.material && !Array.isArray(child.material)) (child.material as THREE.Material).dispose();
+          }
+        });
+      }
+    }
   },
   // D186 Edit Feature state
   editingFeatureId: null,
@@ -1531,21 +1548,35 @@ export const useCADStore = create<CADState>()(persist((set, get) => ({
   },
   // D125 Mesh Reduce
   reduceMesh: (featureId, reductionPercent) => {
-    const { features, setStatusMessage } = get();
+    const { features } = get();
     const feature = features.find((f) => f.id === featureId);
     if (!feature?.mesh) {
       get().setStatusMessage('Mesh Reduce: selected feature has no mesh');
       return;
     }
-    const applyToMesh = async (m: THREE.Mesh) => {
-      const oldGeom = m.geometry;
-      const newGeom = await GeometryEngine.simplifyGeometry(oldGeom, reductionPercent);
-      m.geometry = newGeom;
-      oldGeom.dispose();
+    // Build a new simplified mesh rather than mutating the existing one in-place.
+    // Mutating geometry on a Zustand-owned object bypasses set() and leaves
+    // React unaware of the change. Instead we clone, simplify, then replace
+    // the feature in state via set().
+    const applyToMesh = async (m: THREE.Mesh): Promise<THREE.Mesh> => {
+      const newGeom = await GeometryEngine.simplifyGeometry(m.geometry, reductionPercent);
+      const clone = new THREE.Mesh(newGeom, m.material);
+      clone.castShadow = m.castShadow;
+      clone.receiveShadow = m.receiveShadow;
+      Object.assign(clone.userData, m.userData);
+      return clone;
     };
     const featureMesh = feature.mesh as THREE.Object3D;
     if (featureMesh instanceof THREE.Mesh) {
-      applyToMesh(featureMesh).then(() => {
+      applyToMesh(featureMesh).then((newMesh) => {
+        const oldMesh = feature.mesh;
+        set((state) => ({
+          features: state.features.map((f) =>
+            f.id === featureId ? { ...f, mesh: newMesh } : f,
+          ),
+        }));
+        // Dispose old geometry AFTER removing from state
+        if (oldMesh instanceof THREE.Mesh) oldMesh.geometry.dispose();
         get().setStatusMessage(`Mesh reduced by ${reductionPercent}%`);
       });
     } else if (featureMesh instanceof THREE.Group) {
@@ -1553,11 +1584,25 @@ export const useCADStore = create<CADState>()(persist((set, get) => ({
       featureMesh.traverse((child) => {
         if (child instanceof THREE.Mesh) meshes.push(child);
       });
-      Promise.all(meshes.map(applyToMesh)).then(() => {
+      Promise.all(meshes.map(applyToMesh)).then((newMeshes) => {
+        const oldGroup = feature.mesh;
+        const newGroup = new THREE.Group();
+        newMeshes.forEach((m) => newGroup.add(m));
+        set((state) => ({
+          features: state.features.map((f) =>
+            f.id === featureId ? { ...f, mesh: newGroup as unknown as THREE.Mesh } : f,
+          ),
+        }));
+        // Dispose old geometries AFTER removal
+        if (oldGroup instanceof THREE.Group) {
+          oldGroup.traverse((child) => {
+            if (child instanceof THREE.Mesh) child.geometry.dispose();
+          });
+        }
         get().setStatusMessage(`Mesh reduced by ${reductionPercent}%`);
       });
     } else {
-      setStatusMessage('Mesh Reduce: feature is not simplifiable');
+      get().setStatusMessage('Mesh Reduce: feature is not simplifiable');
     }
   },
   // D115 Reverse Normals
@@ -1630,7 +1675,7 @@ export const useCADStore = create<CADState>()(persist((set, get) => ({
       id: crypto.randomUUID(),
       name: `Mesh Combine ${n}`,
       type: 'import',
-      params: { featureKind: 'mesh-combine', sourceIds: featureIds },
+      params: { featureKind: 'mesh-combine', sourceIds: featureIds.join(',') },
       visible: true,
       suppressed: false,
       timestamp: Date.now(),
@@ -2279,11 +2324,14 @@ export const useCADStore = create<CADState>()(persist((set, get) => ({
     );
     if (exists) return;
     get().pushUndo();
+    // Write to activeSketch (the sketch being edited), not to the
+    // completed sketches array. While editing, the sketch lives in
+    // activeSketch, not in sketches[].
     set({
-      sketches: get().sketches.map(s => s.id === activeSketch.id
-        ? { ...s, constraints: [...(s.constraints ?? []), constraint] }
-        : s
-      ),
+      activeSketch: {
+        ...activeSketch,
+        constraints: [...(activeSketch.constraints ?? []), constraint],
+      },
       statusMessage: `${constraint.type} constraint applied`,
     });
     get().solveSketch();
@@ -3039,8 +3087,9 @@ export const useCADStore = create<CADState>()(persist((set, get) => ({
   },
 
   // A5 — stub until Component Browser (A1) populates a components array
-  groundComponent: (_id, _grounded) => {
-    /* no components array yet; will be populated with A1 Component Browser */
+  groundComponent: (id, grounded) => {
+    void id; void grounded;
+    /* Stub — delegates to componentStore.setComponentGrounded in production */
   },
 
   // A9 — Component Pattern
@@ -3304,7 +3353,7 @@ export const useCADStore = create<CADState>()(persist((set, get) => ({
       id: crypto.randomUUID(),
       name: `Direct Edit ${n}`,
       type: 'direct-edit',
-      params: { faceId: directEditFaceId, ...params },
+      params: { faceId: directEditFaceId ?? '', ...params },
       visible: true,
       suppressed: false,
       timestamp: Date.now(),
@@ -3328,7 +3377,7 @@ export const useCADStore = create<CADState>()(persist((set, get) => ({
       id: crypto.randomUUID(),
       name: `Texture Extrude ${n}`,
       type: 'texture-extrude',
-      params: { faceId: textureExtrudeFaceId, ...params },
+      params: { faceId: textureExtrudeFaceId ?? '', ...params },
       visible: true,
       suppressed: false,
       timestamp: Date.now(),
@@ -3357,7 +3406,7 @@ export const useCADStore = create<CADState>()(persist((set, get) => ({
       id: crypto.randomUUID(),
       name: `Decal ${n}`,
       type: 'decal',
-      params: { faceId: decalFaceId, ...params },
+      params: { ...params, faceId: params.faceId ?? decalFaceId ?? '' },
       visible: true,
       suppressed: false,
       timestamp: Date.now(),
@@ -3400,7 +3449,7 @@ export const useCADStore = create<CADState>()(persist((set, get) => ({
       id: crypto.randomUUID(),
       name: `Split Face ${n}`,
       type: 'split-face',
-      params: { faceId: splitFaceId, ...params },
+      params: { ...params, faceId: params.faceId ?? splitFaceId ?? '' },
       visible: true,
       suppressed: false,
       timestamp: Date.now(),
@@ -3679,13 +3728,12 @@ export const useCADStore = create<CADState>()(persist((set, get) => ({
   closeSnapFitDialog: () => set({ activeDialog: null, showSnapFitDialog: false, snapFitFaceId: null }),
   commitSnapFit: (params) => {
     const { features } = get();
-    const n = features.filter((f) => f.type === 'import' /* proxy */ || f.params?.featureKind === 'snap-fit').length + 1;
     const snapN = features.filter((f) => f.params?.featureKind === 'snap-fit').length + 1;
     const feature: Feature = {
       id: crypto.randomUUID(),
       name: `Snap Fit ${snapN}`,
       type: 'import',
-      params: { featureKind: 'snap-fit', ...params },
+      params: { featureKind: 'snap-fit', ...params, faceId: params.faceId ?? '' },
       visible: true,
       suppressed: false,
       timestamp: Date.now(),
@@ -3707,7 +3755,7 @@ export const useCADStore = create<CADState>()(persist((set, get) => ({
       id: crypto.randomUUID(),
       name: `Lip/Groove ${n}`,
       type: 'import',
-      params: { featureKind: 'lip-groove', ...params },
+      params: { featureKind: 'lip-groove', ...params, edgeId: params.edgeId ?? '' },
       visible: true,
       suppressed: false,
       timestamp: Date.now(),
@@ -3772,7 +3820,7 @@ export const useCADStore = create<CADState>()(persist((set, get) => ({
       id: crypto.randomUUID(),
       name: `Fill ${n}`,
       type: 'thicken',
-      params: { featureKind: 'fill', ...params },
+      params: { featureKind: 'fill', boundaryEdgeCount: params.boundaryEdgeCount, continuityPerEdge: params.continuityPerEdge.join(','), operation: params.operation },
       mesh,
       visible: true,
       suppressed: false,
@@ -3869,7 +3917,7 @@ export const useCADStore = create<CADState>()(persist((set, get) => ({
       id: crypto.randomUUID(),
       name: `Surface Merge ${n}`,
       type: 'thicken',
-      params: { featureKind: 'surface-merge', face1Id: params.face1Id, face2Id: params.face2Id },
+      params: { featureKind: 'surface-merge', face1Id: params.face1Id ?? '', face2Id: params.face2Id ?? '' },
       mesh,
       visible: true,
       suppressed: false,
@@ -4598,8 +4646,10 @@ export const useCADStore = create<CADState>()(persist((set, get) => ({
     const entities: SketchEntity[] = segments.map(([a, b]) => ({
       id: crypto.randomUUID(),
       type: 'line' as SketchEntity['type'],
-      x1: a.x, y1: a.y, z1: a.z,
-      x2: b.x, y2: b.y, z2: b.z,
+      points: [
+        { id: crypto.randomUUID(), x: a.x, y: a.y, z: a.z },
+        { id: crypto.randomUUID(), x: b.x, y: b.y, z: b.z },
+      ],
     }));
     const n = sketches.filter((s) => s.name.startsWith('Section Sketch')).length + 1;
     const newSketch: Sketch = {
@@ -4611,6 +4661,7 @@ export const useCADStore = create<CADState>()(persist((set, get) => ({
       entities,
       constraints: [],
       dimensions: [],
+      fullyConstrained: false,
     };
     set({ sketches: [...sketches, newSketch] });
     get().setStatusMessage(`Mesh Section Sketch ${n}: ${entities.length} segments`);
@@ -4669,9 +4720,11 @@ export const useCADStore = create<CADState>()(persist((set, get) => ({
     if (!sketch) { get().setStatusMessage('Rib: sketch not found'); return; }
     const pts: THREE.Vector3[] = [];
     for (const e of sketch.entities) {
-      if (e.type === 'line' && e.x1 !== undefined) {
-        pts.push(new THREE.Vector3(e.x1, e.y1 ?? 0, e.z1 ?? 0));
-        pts.push(new THREE.Vector3(e.x2 ?? 0, e.y2 ?? 0, e.z2 ?? 0));
+      if (e.type === 'line' && e.points.length >= 2) {
+        const p0 = e.points[0];
+        const p1 = e.points[e.points.length - 1];
+        pts.push(new THREE.Vector3(p0.x, p0.y, p0.z));
+        pts.push(new THREE.Vector3(p1.x, p1.y, p1.z));
       }
     }
     const normal = sketch.planeNormal?.clone() ?? new THREE.Vector3(0, 1, 0);
@@ -4699,10 +4752,12 @@ export const useCADStore = create<CADState>()(persist((set, get) => ({
     if (!sketch) { get().setStatusMessage('Web: sketch not found'); return; }
     const entityPoints: THREE.Vector3[][] = [];
     for (const e of sketch.entities) {
-      if (e.type === 'line' && e.x1 !== undefined) {
+      if (e.type === 'line' && e.points.length >= 2) {
+        const p0 = e.points[0];
+        const p1 = e.points[e.points.length - 1];
         entityPoints.push([
-          new THREE.Vector3(e.x1, e.y1 ?? 0, e.z1 ?? 0),
-          new THREE.Vector3(e.x2 ?? 0, e.y2 ?? 0, e.z2 ?? 0),
+          new THREE.Vector3(p0.x, p0.y, p0.z),
+          new THREE.Vector3(p1.x, p1.y, p1.z),
         ]);
       }
     }
@@ -4784,9 +4839,11 @@ export const useCADStore = create<CADState>()(persist((set, get) => ({
     }
     const pathPoints: THREE.Vector3[] = [];
     for (const e of sketch.entities) {
-      if (e.type === 'line' && e.x1 !== undefined) {
-        if (pathPoints.length === 0) pathPoints.push(new THREE.Vector3(e.x1, e.y1 ?? 0, e.z1 ?? 0));
-        pathPoints.push(new THREE.Vector3(e.x2 ?? 0, e.y2 ?? 0, e.z2 ?? 0));
+      if (e.type === 'line' && e.points.length >= 2) {
+        const p0 = e.points[0];
+        const p1 = e.points[e.points.length - 1];
+        if (pathPoints.length === 0) pathPoints.push(new THREE.Vector3(p0.x, p0.y, p0.z));
+        pathPoints.push(new THREE.Vector3(p1.x, p1.y, p1.z));
       }
     }
     const copies = GeometryEngine.patternOnPath(srcMesh, pathPoints, count);
@@ -5260,9 +5317,9 @@ export const useCADStore = create<CADState>()(persist((set, get) => ({
 }),
 {
   name: 'dzign3d-cad',
-  storage: idbStorage as any,
+  storage: idbStorage as unknown as PersistStorage<unknown>,
   version: 3,
-  migrate: (persistedState: unknown, _version: number) => {
+  migrate: (persistedState: unknown) => {
     const state = (persistedState ?? {}) as Partial<CADState>;
     return {
       ...state,
@@ -5301,6 +5358,7 @@ export const useCADStore = create<CADState>()(persist((set, get) => ({
     features: state.features.map((f) => serializeFeature(f) as Feature),
     parameters: state.parameters,
     frozenFormVertices: state.frozenFormVertices,
+    featureGroups: state.featureGroups,
   }),
 
 }));

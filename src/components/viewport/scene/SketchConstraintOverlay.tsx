@@ -2,7 +2,7 @@ import { useMemo } from 'react';
 import * as THREE from 'three';
 import { useCADStore } from '../../../store/cadStore';
 import { GeometryEngine } from '../../../engine/GeometryEngine';
-import type { SketchEntity, SketchConstraint, SketchPoint, Sketch } from '../../../types/cad';
+import type { SketchEntity, SketchPoint, Sketch } from '../../../types/cad';
 
 // ── Constraint indicator colors ────────────────────────────────────────────
 const COLOR_HORIZONTAL   = new THREE.Color('#10b981'); // green

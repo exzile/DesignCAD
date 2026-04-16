@@ -1051,6 +1051,7 @@ export class GeometryEngine {
     });
   }
 
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   static createFilletGeometry(mesh: THREE.Mesh, _radius: number): THREE.Mesh {
     // Fillet approximation using edge beveling — full implementation requires OpenCascade
     const geometry = mesh.geometry.clone();
@@ -1071,12 +1072,14 @@ export class GeometryEngine {
     distance: number,
     direction: 'normal' | 'reverse' | 'symmetric',
   ): THREE.Mesh | null {
-    const depth = direction === 'symmetric' ? distance : distance;
-    const mesh = this.extrudeSketch(sketch, depth);
+    // Symmetric: extrude the full distance but shift half back so the body
+    // is centred on the sketch plane. Reverse: shift the full distance back.
+    const mesh = this.extrudeSketch(sketch, distance);
     if (!mesh) return null;
-    if (direction !== 'normal') {
-      const offset = direction === 'symmetric' ? distance / 2 : distance;
-      mesh.position.sub(this.getSketchExtrudeNormal(sketch).multiplyScalar(offset));
+    if (direction === 'symmetric') {
+      mesh.position.sub(this.getSketchExtrudeNormal(sketch).multiplyScalar(distance / 2));
+    } else if (direction === 'reverse') {
+      mesh.position.sub(this.getSketchExtrudeNormal(sketch).multiplyScalar(distance));
     }
     return mesh;
   }
@@ -1130,6 +1133,7 @@ export class GeometryEngine {
     return result.geometry;
   }
 
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   static revolveSketch(sketch: Sketch, angle: number, _axis: THREE.Vector3): THREE.Mesh | null {
     if (sketch.entities.length === 0) return null;
 
@@ -1625,7 +1629,7 @@ export class GeometryEngine {
     );
 
     // SimplifyModifier requires an indexed geometry
-    let indexed = geom.index ? geom : mergeVertices(geom);
+    const indexed = geom.index ? geom : mergeVertices(geom);
 
     const posAttr = indexed.getAttribute('position');
     const count = Math.floor(posAttr.count * reductionPercent / 100);
@@ -2112,13 +2116,13 @@ export class GeometryEngine {
       let curSegIdx = startSeg;
       let curEndIdx: 0 | 1 = 1;
       for (;;) {
-        const epIdx = curSegIdx * 2 + curEndIdx;
-        const partnerId = partner[epIdx];
+        const epIdx: number = curSegIdx * 2 + curEndIdx;
+        const partnerId: number = partner[epIdx];
         if (partnerId === -1) break;
-        const nextSeg = endpoints[partnerId].segIdx;
+        const nextSeg: number = endpoints[partnerId].segIdx;
         if (usedSegs.has(nextSeg)) break;
         usedSegs.add(nextSeg);
-        const nextEnd = endpoints[partnerId].endIdx;
+        const nextEnd: 0 | 1 = endpoints[partnerId].endIdx;
         // The "other" end of nextSeg is the new tip
         const otherEnd: 0 | 1 = nextEnd === 0 ? 1 : 0;
         chain.push(segments[nextSeg][otherEnd].clone());
@@ -2131,13 +2135,13 @@ export class GeometryEngine {
       curEndIdx = 0;
       const prepend: THREE.Vector3[] = [];
       for (;;) {
-        const epIdx = curSegIdx * 2 + curEndIdx;
-        const partnerId = partner[epIdx];
+        const epIdx: number = curSegIdx * 2 + curEndIdx;
+        const partnerId: number = partner[epIdx];
         if (partnerId === -1) break;
-        const nextSeg = endpoints[partnerId].segIdx;
+        const nextSeg: number = endpoints[partnerId].segIdx;
         if (usedSegs.has(nextSeg)) break;
         usedSegs.add(nextSeg);
-        const nextEnd = endpoints[partnerId].endIdx;
+        const nextEnd: 0 | 1 = endpoints[partnerId].endIdx;
         const otherEnd: 0 | 1 = nextEnd === 0 ? 1 : 0;
         prepend.unshift(segments[nextSeg][otherEnd].clone());
         curSegIdx = nextSeg;
@@ -2459,114 +2463,6 @@ export class GeometryEngine {
     }
 
     return result;
-  }
-
-  /**
-   * Gets the closest point on a mesh surface to a given world-space query point.
-   * Uses brute-force triangle iteration for small meshes (< 5000 triangles);
-   * falls back to 6-direction raycast for larger ones.
-   */
-  private static closestPointOnMesh(
-    query: THREE.Vector3,
-    mesh: THREE.Mesh,
-  ): THREE.Vector3 | null {
-    mesh.updateWorldMatrix(true, false);
-    const geom = mesh.geometry;
-    const posAttr = geom.attributes.position as THREE.BufferAttribute | undefined;
-    if (!posAttr) return null;
-
-    const idxAttr = geom.index;
-    const triCount = idxAttr ? idxAttr.count / 3 : posAttr.count / 3;
-    const m = mesh.matrixWorld;
-
-    if (triCount < 5000) {
-      // Brute-force triangle iteration
-      let bestDist = Infinity;
-      let bestPoint: THREE.Vector3 | null = null;
-
-      const va = new THREE.Vector3();
-      const vb = new THREE.Vector3();
-      const vc = new THREE.Vector3();
-
-      for (let t = 0; t < triCount; t++) {
-        let ia: number, ib: number, ic: number;
-        if (idxAttr) {
-          ia = idxAttr.getX(t * 3);
-          ib = idxAttr.getX(t * 3 + 1);
-          ic = idxAttr.getX(t * 3 + 2);
-        } else {
-          ia = t * 3; ib = t * 3 + 1; ic = t * 3 + 2;
-        }
-        va.fromBufferAttribute(posAttr, ia).applyMatrix4(m);
-        vb.fromBufferAttribute(posAttr, ib).applyMatrix4(m);
-        vc.fromBufferAttribute(posAttr, ic).applyMatrix4(m);
-
-        const cp = GeometryEngine.closestPointOnTriangle(query, va, vb, vc);
-        const d = cp.distanceToSquared(query);
-        if (d < bestDist) {
-          bestDist = d;
-          bestPoint = cp.clone();
-        }
-      }
-      return bestPoint;
-    }
-
-    // Fallback for large meshes: 6-direction raycast
-    const [hit] = GeometryEngine.projectPointsOntoMesh([query], mesh);
-    return hit ?? null;
-  }
-
-  /**
-   * Closest point on a triangle to a point (all world-space).
-   * Returns the barycentric-clamped nearest point.
-   *
-   * Reference: Real-Time Collision Detection, Ericson, §5.1.5
-   */
-  private static closestPointOnTriangle(
-    p: THREE.Vector3,
-    a: THREE.Vector3,
-    b: THREE.Vector3,
-    c: THREE.Vector3,
-  ): THREE.Vector3 {
-    const ab = b.clone().sub(a);
-    const ac = c.clone().sub(a);
-    const ap = p.clone().sub(a);
-    const d1 = ab.dot(ap);
-    const d2 = ac.dot(ap);
-    if (d1 <= 0 && d2 <= 0) return a.clone();
-
-    const bp = p.clone().sub(b);
-    const d3 = ab.dot(bp);
-    const d4 = ac.dot(bp);
-    if (d3 >= 0 && d4 <= d3) return b.clone();
-
-    const vc = d1 * d4 - d3 * d2;
-    if (vc <= 0 && d1 >= 0 && d3 <= 0) {
-      const v = d1 / (d1 - d3);
-      return a.clone().addScaledVector(ab, v);
-    }
-
-    const cp = p.clone().sub(c);
-    const d5 = ab.dot(cp);
-    const d6 = ac.dot(cp);
-    if (d6 >= 0 && d5 <= d6) return c.clone();
-
-    const vb = d5 * d2 - d1 * d6;
-    if (vb <= 0 && d2 >= 0 && d6 <= 0) {
-      const w = d2 / (d2 - d6);
-      return a.clone().addScaledVector(ac, w);
-    }
-
-    const va = d3 * d6 - d5 * d4;
-    if (va <= 0 && (d4 - d3) >= 0 && (d5 - d6) >= 0) {
-      const w = (d4 - d3) / ((d4 - d3) + (d5 - d6));
-      return b.clone().addScaledVector(c.clone().sub(b), w);
-    }
-
-    const denom = 1 / (va + vb + vc);
-    const vv = vb * denom;
-    const ww = vc * denom;
-    return a.clone().addScaledVector(ab, vv).addScaledVector(ac, ww);
   }
 
   /**
@@ -3000,7 +2896,6 @@ export class GeometryEngine {
 
     const extendDir = (va: THREE.Vector3, vb: THREE.Vector3, na: THREE.Vector3, nb: THREE.Vector3): { da: THREE.Vector3; db: THREE.Vector3 } => {
       const edgeDir = vb.clone().sub(va).normalize();
-      const avgNorm = na.clone().add(nb).normalize();
 
       if (mode === 'perpendicular') {
         // Perpendicular to edge in the surface plane: cross(edge, surfaceNormal)

@@ -14,12 +14,12 @@ export function RedefineSketchPlaneDialog({ onClose }: { onClose: () => void }) 
   const [offsetZ, setOffsetZ] = useState(0);
 
   const handleApply = () => {
-    let normal = new THREE.Vector3(0, 0, 1);
+    const normal = new THREE.Vector3(0, 0, 1);
     const origin = new THREE.Vector3(offsetX, offsetY, offsetZ);
     if (plane === 'XY') { normal.set(0, 0, 1); }
     else if (plane === 'XZ') { normal.set(0, 1, 0); }
     else if (plane === 'YZ') { normal.set(1, 0, 0); }
-    redefineSketchPlane(sketchId, plane as any, normal, origin);
+    redefineSketchPlane(sketchId, plane, normal, origin);
     onClose();
   };
 

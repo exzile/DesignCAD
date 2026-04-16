@@ -1,3 +1,4 @@
+import "./SketchPalette.css";
 import { useState, useEffect } from 'react';
 import * as THREE from 'three';
 import { Eye, X, FileDown, Zap } from 'lucide-react';
@@ -85,6 +86,7 @@ export default function SketchPalette() {
 
   // Reset dismissed state each time a new sketch session starts
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     if (activeSketch) setDismissed(false);
   }, [activeSketch?.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -207,7 +209,7 @@ export default function SketchPalette() {
               <span className="sketch-palette-label">Grid Size</span>
               <input
                 type="number"
-                className="sketch-palette-input"
+                className="sketch-palette-input--narrow"
                 min={0.1}
                 step={1}
                 value={sketchGridSize ?? gridSize}
@@ -216,7 +218,6 @@ export default function SketchPalette() {
                   setSketchGridSize(Number.isFinite(v) && v > 0 ? v : null);
                 }}
                 title="Per-sketch grid spacing (overrides global)"
-                className="sketch-palette-input--narrow"
               />
             </div>
           )}
@@ -287,7 +288,6 @@ export default function SketchPalette() {
                   const v = Number(e.target.value);
                   if (!Number.isNaN(v)) setPolygonSides(v);
                 }}
-                className="measure-select"
                 className="sketch-palette-input--narrow"
               />
             </div>
@@ -306,7 +306,6 @@ export default function SketchPalette() {
                   const v = Number(e.target.value);
                   if (!Number.isNaN(v) && v > 0) setFilletRadius(v);
                 }}
-                className="measure-select"
                 className="sketch-palette-input--narrow"
               />
             </div>
@@ -323,7 +322,6 @@ export default function SketchPalette() {
                 step={0.05}
                 value={conicRho}
                 onChange={(e) => { const v = Number(e.target.value); if (!Number.isNaN(v)) setConicRho(v); }}
-                className="measure-select"
                 className="sketch-palette-input--narrow"
               />
             </div>
@@ -334,10 +332,9 @@ export default function SketchPalette() {
             <div className="sketch-palette-row">
               <span className="sketch-palette-label">Continuity</span>
               <select
-                className="measure-select"
+                className="sketch-palette-input--narrow"
                 value={blendCurveMode}
                 onChange={(e) => setBlendCurveMode(e.target.value as 'g1' | 'g2')}
-                className="sketch-palette-input--narrow"
               >
                 <option value="g1">G1</option>
                 <option value="g2">G2</option>
@@ -355,7 +352,6 @@ export default function SketchPalette() {
                 step={0.5}
                 value={slotWidth}
                 onChange={(e) => { const v = Number(e.target.value); if (!Number.isNaN(v) && v > 0) setSlotWidth(v); }}
-                className="measure-select"
                 className="sketch-palette-input--narrow"
               />
             </div>
@@ -371,7 +367,6 @@ export default function SketchPalette() {
                 step={0.5}
                 value={tangentCircleRadius}
                 onChange={(e) => { const v = Number(e.target.value); if (!Number.isNaN(v) && v > 0) setTangentCircleRadius(v); }}
-                className="measure-select"
                 className="sketch-palette-input--narrow"
               />
             </div>
@@ -387,7 +382,6 @@ export default function SketchPalette() {
                 step={0.5}
                 value={chamferDist1}
                 onChange={(e) => { const v = Number(e.target.value); if (!Number.isNaN(v) && v > 0) setChamferDist1(v); }}
-                className="measure-select"
                 className="sketch-palette-input--narrow"
               />
             </div>
@@ -401,7 +395,6 @@ export default function SketchPalette() {
                 step={0.5}
                 value={chamferDist2}
                 onChange={(e) => { const v = Number(e.target.value); if (!Number.isNaN(v) && v > 0) setChamferDist2(v); }}
-                className="measure-select"
                 className="sketch-palette-input--narrow"
               />
             </div>
@@ -416,7 +409,6 @@ export default function SketchPalette() {
                 step={1}
                 value={chamferAngle}
                 onChange={(e) => { const v = Number(e.target.value); if (!Number.isNaN(v)) setChamferAngle(v); }}
-                className="measure-select"
                 className="sketch-palette-input--narrow"
               />
             </div>

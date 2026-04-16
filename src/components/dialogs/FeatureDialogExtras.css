@@ -1,0 +1,157 @@
+/* ===== Feature Dialog extras ===== */
+.dialog-sm {
+  min-width: 340px;
+  max-width: 400px;
+}
+
+.dialog-hint {
+  font-size: 11px;
+  color: var(--text-muted);
+  font-style: italic;
+  margin: 0;
+}
+
+.direction-inputs {
+  display: flex;
+  gap: 6px;
+}
+
+.direction-inputs input {
+  width: 60px;
+  padding: 6px 8px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: var(--bg-secondary);
+  color: var(--text-primary);
+  font-size: 12px;
+  outline: none;
+}
+
+.direction-inputs input:focus {
+  border-color: var(--accent);
+}
+
+.boolean-preview {
+  display: flex;
+  justify-content: center;
+  padding: 16px;
+}
+
+.boolean-diagram {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.bool-icon {
+  font-size: 20px;
+  font-weight: 700;
+  padding: 12px 24px;
+  border-radius: 8px;
+  background: var(--accent-light);
+  border: 1px solid var(--border-light);
+}
+
+.bool-icon.join { color: var(--success); }
+.bool-icon.cut { color: var(--error); }
+.bool-icon.intersect { color: var(--warning); }
+
+
+/* === Missing classes restored from App.css extraction ===
+   These were removed from App.css but not placed in any extracted file. */
+
+.distance-slider {
+  width: 100%;
+  -webkit-appearance: none;
+  appearance: none;
+  height: 4px;
+  border-radius: 2px;
+  background: var(--border);
+  outline: none;
+  margin-top: 4px;
+}
+
+.distance-slider::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: var(--accent);
+  cursor: pointer;
+  border: 2px solid var(--bg-primary);
+}
+
+.btn {
+  padding: 8px 20px;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.settings-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
+
+.advanced-toggle {
+  width: 100%;
+  text-align: center;
+  font-size: 12px;
+}
+
+.print-estimate {
+  background: var(--accent-light);
+  border: 1px solid var(--border-light);
+  border-radius: 8px;
+  padding: 12px 16px;
+}
+
+.print-estimate h4 {
+  margin: 0 0 8px;
+  font-size: 12px;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.dialog-media-preview {
+  max-width: 100%;
+  max-height: 80px;
+  object-fit: contain;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+}
+
+.dialog-hint-text {
+  font-size: 12px;
+  opacity: 0.7;
+}
+
+.dialog-slider-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.dialog-slider-row__input {
+  flex: 1;
+}
+
+.dialog-slider-row__value {
+  width: 36px;
+  font-size: 12px;
+}
+
+.dialog-field-row {
+  display: flex;
+  gap: 8px;
+}
+
+.dialog-field-col {
+  flex: 1;
+}

@@ -9,6 +9,7 @@ export function RenameSketchDialog({ sketchId, onClose }: { sketchId: string | n
   const [name, setName] = useState(sketch?.name ?? '');
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setName(sketch?.name ?? '');
   }, [sketch]);
 

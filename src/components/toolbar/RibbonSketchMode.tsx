@@ -11,7 +11,7 @@ import {
 import { useCADStore } from '../../store/cadStore';
 import { RibbonSection } from './FlyoutMenu';
 import { ToolButton } from './ToolButton';
-import type { MenuItem, Tool } from './toolbar.types';
+import type { MenuItem } from './toolbar.types';
 import type { Tool as CADTool } from '../../types/cad';
 
 const ICON_SM = 18;

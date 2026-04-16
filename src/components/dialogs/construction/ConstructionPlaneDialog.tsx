@@ -15,8 +15,8 @@ export function ConstructionPlaneDialog({ onClose, initialMethod }: { onClose: (
   const setStatusMessage = useCADStore((s) => s.setStatusMessage);
 
   const handleApply = () => {
-    let normal = new THREE.Vector3(0, 0, 1);
-    let origin = new THREE.Vector3(0, 0, 0);
+    const normal = new THREE.Vector3(0, 0, 1);
+    const origin = new THREE.Vector3(0, 0, 0);
     let name = 'Plane';
 
     if (method === 'offset') {

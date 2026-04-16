@@ -79,7 +79,7 @@ function worldToScreen(
 function pickNearestVertex(
   mesh: THREE.Mesh,
   faceIndex: number,
-  hitPoint: THREE.Vector3,
+  _hitPoint: THREE.Vector3,
   mouseScreenX: number,
   mouseScreenY: number,
   maxDistancePx: number,
@@ -152,6 +152,7 @@ export function useVertexPicker(options: UseVertexPickerOptions): void {
   const { gl, camera, raycaster, scene } = useThree();
 
   const optionsRef = useRef(options);
+  // eslint-disable-next-line react-hooks/refs
   optionsRef.current = options;
 
   const hoverRef = useRef<VertexPickResult | null>(null);
@@ -258,6 +259,6 @@ export function useVertexPicker(options: UseVertexPickerOptions): void {
         optionsRef.current.onHover?.(null);
       }
     };
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+   
   }, [gl, camera, raycaster, scene, options.enabled]);
 }

@@ -1,4 +1,5 @@
 // Barrel export — import dialogs from here instead of FeatureDialogs directly.
+import './FeatureDialogExtras.css';
 
 // solid
 export { FilletDialog } from './solid/FilletDialog';

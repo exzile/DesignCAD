@@ -132,12 +132,6 @@ export class DimensionEngine {
       const dimP1: Vec2 = { x: xLeft,  y: yDim };
       const dimP2: Vec2 = { x: xRight, y: yDim };
 
-      // Extension lines: from original points up/down to the dimension line
-      const ext1Start: Vec2 = { x: xLeft,  y: p1.y < p2.y ? p1.y : p2.y };
-      const ext1End:   Vec2 = { x: xLeft,  y: yDim };
-      const ext2Start: Vec2 = { x: xRight, y: p1.y < p2.y ? p1.y : p2.y };
-      const ext2End:   Vec2 = { x: xRight, y: yDim };
-
       // Correct ext1/2 start to the actual point y values
       const p1IsLeft = p1.x <= p2.x;
       const leftY  = p1IsLeft ? p1.y : p2.y;

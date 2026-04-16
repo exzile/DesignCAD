@@ -30,6 +30,7 @@ export default function ConstructionGeometryInteraction() {
 
   // Reset intermediate state whenever the active tool changes
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setStep1Edge(null);
     setStep1Vertex(null);
     setStep1Normal(null);

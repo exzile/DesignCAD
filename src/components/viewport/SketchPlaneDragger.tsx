@@ -202,7 +202,9 @@ export default function SketchPlaneDragger() {
         position={hX}
         renderOrder={520}
         onPointerDown={onPointerDown('x')}
+        // eslint-disable-next-line react-hooks/immutability
         onPointerOver={() => { gl.domElement.style.cursor = 'grab'; }}
+        // eslint-disable-next-line react-hooks/immutability
         onPointerOut={() => { if (!dragRef.current.dragging) gl.domElement.style.cursor = ''; }}
       >
         <boxGeometry args={[HANDLE_SIZE, HANDLE_SIZE, HANDLE_SIZE]} />
@@ -214,7 +216,9 @@ export default function SketchPlaneDragger() {
         position={hY}
         renderOrder={520}
         onPointerDown={onPointerDown('y')}
+        // eslint-disable-next-line react-hooks/immutability
         onPointerOver={() => { gl.domElement.style.cursor = 'grab'; }}
+        // eslint-disable-next-line react-hooks/immutability
         onPointerOut={() => { if (!dragRef.current.dragging) gl.domElement.style.cursor = ''; }}
       >
         <boxGeometry args={[HANDLE_SIZE, HANDLE_SIZE, HANDLE_SIZE]} />
@@ -226,7 +230,9 @@ export default function SketchPlaneDragger() {
         position={hZ}
         renderOrder={520}
         onPointerDown={onPointerDown('z')}
+        // eslint-disable-next-line react-hooks/immutability
         onPointerOver={() => { gl.domElement.style.cursor = 'grab'; }}
+        // eslint-disable-next-line react-hooks/immutability
         onPointerOut={() => { if (!dragRef.current.dragging) gl.domElement.style.cursor = ''; }}
       >
         <boxGeometry args={[HANDLE_SIZE, HANDLE_SIZE, HANDLE_SIZE]} />

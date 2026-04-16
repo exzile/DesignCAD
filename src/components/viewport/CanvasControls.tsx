@@ -1,3 +1,4 @@
+import "./canvasControls/CanvasControls.css";
 import { useState, useRef, useCallback } from 'react';
 import {
   Settings,

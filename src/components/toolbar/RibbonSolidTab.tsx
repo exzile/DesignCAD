@@ -10,6 +10,7 @@ import { useComponentStore } from '../../store/componentStore';
 import { RibbonSection } from './FlyoutMenu';
 import { ToolButton } from './ToolButton';
 import type { MenuItem } from './toolbar.types';
+import type { RefObject } from 'react';
 
 interface RibbonSolidTabProps {
   createMenuItems: MenuItem[];
@@ -21,7 +22,7 @@ interface RibbonSolidTabProps {
   beginSketchFlow: () => void;
   handleExtrude: () => void;
   handleRevolve: () => void;
-  fileInputRef: React.RefObject<HTMLInputElement>;
+  fileInputRef: RefObject<HTMLInputElement | null>;
 }
 
 const ICON_LG = 28;
@@ -41,7 +42,6 @@ export function RibbonSolidTab({
 }: RibbonSolidTabProps) {
   const activeTool = useCADStore((s) => s.activeTool);
   const setActiveDialog = useCADStore((s) => s.setActiveDialog);
-  const setActiveTool = useCADStore((s) => s.setActiveTool);
   const sketchPlaneSelecting = useCADStore((s) => s.sketchPlaneSelecting);
   const startSketch = useCADStore((s) => s.startSketch);
   const selectionFilter = useCADStore((s) => s.selectionFilter);

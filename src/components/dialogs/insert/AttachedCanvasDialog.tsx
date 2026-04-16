@@ -44,6 +44,7 @@ export function AttachedCanvasDialog({ open, canvases, selectedId, onOk, onClose
   // Sync local state when selected canvas changes
   useEffect(() => {
     if (selected) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setOpacity(selected.opacity);
       setScale(selected.scale);
       setOffsetX(selected.offsetX);

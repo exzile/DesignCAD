@@ -1,4 +1,5 @@
 import { useCADStore } from '../../store/cadStore';
+import './StatusBar.css';
 
 export default function StatusBar() {
   const statusMessage = useCADStore((s) => s.statusMessage);

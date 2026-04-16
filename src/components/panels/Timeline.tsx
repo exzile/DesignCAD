@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import './Timeline.css';
 import {
   Eye, EyeOff, Trash2, PenTool, ArrowUpFromLine,
   RotateCcw, Blend, FileBox, ChevronDown, PauseCircle, PlayCircle,

@@ -1,0 +1,187 @@
+/* ===== Sketch Palette (Fusion 360 style floating panel) ===== */
+.sketch-palette {
+  position: absolute;
+  right: 12px;
+  top: 50%;
+  transform: translateY(-50%);
+  z-index: 150;
+  width: 240px;
+  background: var(--bg-primary);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.12);
+  font-size: 12px;
+  overflow: hidden;
+}
+
+.sketch-palette-header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 10px;
+  background: var(--bg-toolbar);
+  border-bottom: 1px solid var(--border-light);
+  cursor: default;
+}
+
+.sketch-palette-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--accent);
+  flex-shrink: 0;
+}
+
+.sketch-palette-title {
+  font-weight: 700;
+  font-size: 11px;
+  letter-spacing: 0.5px;
+  color: var(--text-primary);
+  flex: 1;
+}
+
+.sketch-palette-collapse,
+.sketch-palette-close {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  border: none;
+  border-radius: 3px;
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+  font-size: 9px;
+}
+
+.sketch-palette-collapse:hover,
+.sketch-palette-close:hover {
+  background: var(--bg-hover);
+  color: var(--text-primary);
+}
+
+.sketch-palette-body {
+  padding: 4px 0;
+}
+
+.sketch-palette-section-header {
+  padding: 6px 10px;
+  font-weight: 700;
+  font-size: 11px;
+  color: var(--text-primary);
+  cursor: pointer;
+}
+
+.sketch-palette-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 4px 10px 4px 16px;
+  min-height: 28px;
+}
+
+.sketch-palette-label {
+  color: var(--text-primary);
+  font-weight: 600;
+  font-size: 12px;
+}
+
+.sketch-palette-linetype {
+  display: flex;
+  gap: 4px;
+}
+
+.spl-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  border: 1px solid var(--border-light);
+  border-radius: 4px;
+  background: var(--bg-input);
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: all 0.12s ease;
+}
+
+.spl-btn:hover {
+  background: var(--bg-hover);
+  border-color: var(--border);
+  color: var(--text-primary);
+}
+
+.spl-btn.active {
+  background: var(--accent-light);
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+/* Custom checkbox */
+.sketch-palette-check {
+  position: relative;
+  display: flex;
+  align-items: center;
+  cursor: pointer;
+}
+
+.sketch-palette-check input {
+  position: absolute;
+  opacity: 0;
+  width: 0;
+  height: 0;
+}
+
+.sketch-palette-checkmark {
+  width: 16px;
+  height: 16px;
+  border: 1.5px solid var(--border);
+  border-radius: 3px;
+  background: var(--bg-input);
+  transition: all 0.12s ease;
+  position: relative;
+}
+
+.sketch-palette-check input:checked + .sketch-palette-checkmark {
+  background: var(--accent);
+  border-color: var(--accent);
+}
+
+.sketch-palette-check input:checked + .sketch-palette-checkmark::after {
+  content: '';
+  position: absolute;
+  left: 4px;
+  top: 1px;
+  width: 5px;
+  height: 9px;
+  border: solid #fff;
+  border-width: 0 2px 2px 0;
+  transform: rotate(45deg);
+}
+
+.sketch-palette-footer {
+  padding: 8px 10px;
+  border-top: 1px solid var(--border-light);
+  margin-top: 4px;
+}
+
+.sketch-palette-finish {
+  width: 100%;
+  padding: 6px 12px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: var(--bg-input);
+  color: var(--text-primary);
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.12s ease;
+}
+
+.sketch-palette-finish:hover {
+  background: var(--accent);
+  color: #fff;
+  border-color: var(--accent);
+}
+

@@ -1,3 +1,4 @@
+import "./ViewportOverlay.css";
 import { useRef, useCallback, useState, useEffect } from 'react';
 import { Canvas } from '@react-three/fiber';
 import { OrbitControls, Environment, ContactShadows } from '@react-three/drei';
@@ -92,7 +93,6 @@ export default function Viewport() {
   const features = useCADStore((s) => s.features);
   // D207
   const sketchGridEnabled = useCADStore((s) => s.sketchGridEnabled);
-  const sketchSnapEnabled = useCADStore((s) => s.sketchSnapEnabled);
 
   // Drag-state refs (avoid stale closures in pointer handlers)
   const dragStartRef = useRef<{ x: number; y: number } | null>(null);
@@ -122,7 +122,7 @@ export default function Viewport() {
       );
     }, 100);
     return () => clearInterval(id);
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  }, []);  
 
   const handleViewCubeOrient = useCallback((targetQ: THREE.Quaternion) => {
     setCameraTargetQuaternion(targetQ);
@@ -178,7 +178,6 @@ export default function Viewport() {
     if (isDraggingRef.current) {
       if (isLassoRef.current) {
         // Lasso: point-in-polygon test on feature centroids
-        const pts = [...lassoAccumRef.current, p];
         const matched = features.filter((f) => {
           if (!f.mesh || !f.visible) return false;
           const mesh = f.mesh;

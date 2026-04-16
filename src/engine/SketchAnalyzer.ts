@@ -155,7 +155,7 @@ function sampleEntityPoints(e: SketchEntity, arcSamples = 8): Pt2[] {
       const cx = e.points[0].x;
       const cy = e.points[0].y;
       const r = e.radius;
-      let sa = (e.startAngle * Math.PI) / 180;
+      const sa = (e.startAngle * Math.PI) / 180;
       let ea = (e.endAngle * Math.PI) / 180;
       // Ensure we sweep in the correct direction (CCW)
       if (ea < sa) ea += 2 * Math.PI;
@@ -340,7 +340,6 @@ export class SketchAnalyzer {
       bucketMap.get(key)!.push({ entityId, endIdx });
     };
 
-    const entityById = new Map(candidates.map(e => [e.id, e]));
     const endpointOf = new Map<string, [Pt2, Pt2] | null>();
 
     for (const e of openEntities) {

@@ -2,35 +2,33 @@ import { useRef, useState, useEffect, useCallback } from 'react';
 import {
   MousePointer2, Minus, Circle, Square, Spline,
   ArrowUpFromLine, RotateCcw, Blend, Ruler, Hexagon,
-  Move, Layers, Magnet, Download,
-  Undo2, Redo2, PenTool, Diamond, Printer,
+  Move, Layers, Download,
+  PenTool, Diamond,
   Box, Combine, Scissors, FlipHorizontal,
   CircleDot, Repeat, Copy, Link2, Axis3D,
   Pipette, AlignCenter,
-  Eye, Settings, FileUp,
-  ArrowUp, ChevronRight,
-  Sun, Bell, HelpCircle,
-  Save, Trash2, Wrench, Crosshair,
+  Eye,
+  ArrowUp,
+  Trash2, Wrench, Crosshair,
   Target, Package, Globe,
-  PenLine, RectangleHorizontal, Waypoints,
-  CornerDownRight, FlipHorizontal2, ChevronsRight,
+  RectangleHorizontal, Waypoints,
+  CornerDownRight,
   ArrowLeftRight, ArrowUpDown, Equal, Tangent,
-  RefreshCw, Unlink, SplitSquareHorizontal, Link, ZoomOut,
   GitMerge, Zap, Type, Shield,
   Lock, LocateFixed,
   ArrowRight, Dot,
   Pencil, Image,
   GitFork,
   TrendingDown, Activity, Grid, BarChart2, AlertCircle,
-  Edit2, MapPin,
+  MapPin,
   Anchor,
-  MoveRight, Grid3x3, Expand,
+  Expand,
   AlertTriangle,
 } from 'lucide-react';
 import { useCADStore } from '../../store/cadStore';
 import { useComponentStore } from '../../store/componentStore';
-import { useSlicerStore } from '../../store/slicerStore';
 import type { Tool, Feature } from '../../types/cad';
+import type * as THREE from 'three';
 import './Toolbar.css';
 
 // Subcomponents
@@ -61,7 +59,6 @@ export default function Toolbar() {
 
   // CAD store
   const activeSketch = useCADStore((s) => s.activeSketch);
-  const startSketch = useCADStore((s) => s.startSketch);
   const sketchPlaneSelecting = useCADStore((s) => s.sketchPlaneSelecting);
   const setSketchPlaneSelecting = useCADStore((s) => s.setSketchPlaneSelecting);
   const beginSketchFlow = () => setSketchPlaneSelecting(true);
@@ -70,14 +67,10 @@ export default function Toolbar() {
   const startSweepTool = useCADStore((s) => s.startSweepTool);
   const startLoftTool = useCADStore((s) => s.startLoftTool);
   const startPatchTool = useCADStore((s) => s.startPatchTool);
-  const startRuledSurfaceTool = useCADStore((s) => s.startRuledSurfaceTool);
   const startRibTool = useCADStore((s) => s.startRibTool);
-  const setShowExportDialog = useCADStore((s) => s.setShowExportDialog);
   const setActiveDialog = useCADStore((s) => s.setActiveDialog);
   const setSectionEnabled = useCADStore((s) => s.setSectionEnabled);
-  const selectionFilter = useCADStore((s) => s.selectionFilter);
   const setSelectionFilter = useCADStore((s) => s.setSelectionFilter);
-  const sketchSnapEnabled = useCADStore((s) => s.sketchSnapEnabled);
   const selectedFeatureId = useCADStore((s) => s.selectedFeatureId);
   const removeFeature = useCADStore((s) => s.removeFeature);
   const addFeature = useCADStore((s) => s.addFeature);
@@ -99,13 +92,9 @@ export default function Toolbar() {
   const openInterferenceDialog = useCADStore((s) => s.openInterferenceDialog);
   const openContactSetsDialog = useCADStore((s) => s.openContactSetsDialog);
   const openInsertComponentDialog = useCADStore((s) => s.openInsertComponentDialog);
-  const openSnapFitDialog = useCADStore((s) => s.openSnapFitDialog);
-  const openLipGrooveDialog = useCADStore((s) => s.openLipGrooveDialog);
-  const openBossDialog = useCADStore((s) => s.openBossDialog);
   const setActiveAnalysis = useCADStore((s) => s.setActiveAnalysis);
   const openMirrorComponentDialog = useCADStore((s) => s.openMirrorComponentDialog);
   const openDuplicateWithJointsDialog = useCADStore((s) => s.openDuplicateWithJointsDialog);
-  const openBOMDialog = useCADStore((s) => s.openBOMDialog);
 
   // Component store
   const addComponent = useComponentStore((s) => s.addComponent);
@@ -164,7 +153,7 @@ export default function Toolbar() {
         name: file.name,
         type: 'import',
         params: { fileName: file.name },
-        mesh: group as any,
+        mesh: group as unknown as THREE.Mesh,
         visible: true,
         suppressed: false,
         timestamp: Date.now(),
@@ -189,7 +178,7 @@ export default function Toolbar() {
         name: file.name,
         type: 'import',
         params: { fileName: file.name, bodyKind: 'mesh' },
-        mesh: group as any,
+        mesh: group as unknown as THREE.Mesh,
         bodyKind: 'mesh',
         visible: true,
         suppressed: false,

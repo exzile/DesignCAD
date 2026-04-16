@@ -110,6 +110,7 @@ export default function SketchInteraction() {
 
   // Clear in-progress drawing when the user switches tools
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setDrawingPoints([]);
     setMousePos(null);
     setSnapTarget(null);

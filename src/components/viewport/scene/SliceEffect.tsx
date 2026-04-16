@@ -37,6 +37,7 @@ export default function SliceEffect() {
     }
 
     if (planes.length > 0) {
+      // eslint-disable-next-line react-hooks/immutability
       gl.localClippingEnabled = true;
       BODY_MATERIAL.clippingPlanes = planes;
       BODY_MATERIAL.needsUpdate = true;
