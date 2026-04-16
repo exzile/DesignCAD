@@ -1,0 +1,80 @@
+/* ===== Export Dialog ===== */
+.export-dialog {
+  min-width: 480px;
+  max-width: 560px;
+}
+
+.export-body {
+  max-height: 60vh;
+  overflow-y: auto;
+}
+
+.settings-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
+
+.advanced-toggle {
+  width: 100%;
+  text-align: center;
+  font-size: 12px;
+}
+
+.print-estimate {
+  background: var(--accent-light);
+  border: 1px solid var(--border-light);
+  border-radius: 8px;
+  padding: 12px 16px;
+}
+
+.print-estimate h4 {
+  margin: 0 0 8px;
+  font-size: 12px;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.estimate-grid {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 4px 12px;
+  font-size: 12px;
+}
+
+.estimate-grid span:nth-child(odd) {
+  color: var(--text-muted);
+}
+
+.estimate-grid span:nth-child(even) {
+  color: var(--text-primary);
+}
+
+.printer-upload-options {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 12px;
+  background: var(--bg-secondary);
+  border-radius: 6px;
+  border: 1px solid var(--border);
+}
+
+.checkbox-label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  color: var(--text-secondary);
+  cursor: pointer;
+}
+
+.checkbox-label.indent {
+  margin-left: 24px;
+}
+
+.checkbox-label input[type="checkbox"] {
+  accent-color: var(--accent);
+}
+

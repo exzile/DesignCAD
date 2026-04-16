@@ -1,3 +1,4 @@
+import "./viewcube/ViewCube.css";
 import { useState, useEffect, useCallback } from 'react';
 import { Canvas } from '@react-three/fiber';
 import * as THREE from 'three';

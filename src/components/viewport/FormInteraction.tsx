@@ -765,7 +765,6 @@ export default function FormInteraction() {
         setFormBodyCrease(bodyId, 0);
         // Also clear edge crease by rebuilding the body with crease=0 on all edges
         {
-          const state = useCADStore.getState();
           // After setFormBodyCrease the body is updated; re-read from fresh state
           const updatedState = useCADStore.getState();
           const body = updatedState.formBodies.find((b) => b.id === bodyId);

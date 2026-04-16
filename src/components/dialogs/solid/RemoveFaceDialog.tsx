@@ -17,7 +17,6 @@ export function RemoveFaceDialog({ onClose }: { onClose: () => void }) {
   const editing = editingFeatureId ? features.find((f) => f.id === editingFeatureId) : null;
   const p = editing?.params ?? {};
 
-  const addFeature = useCADStore((s) => s.addFeature);
   const updateFeatureParams = useCADStore((s) => s.updateFeatureParams);
   const commitRemoveFace = useCADStore((s) => s.commitRemoveFace);
   const setStatusMessage = useCADStore((s) => s.setStatusMessage);

@@ -1,0 +1,58 @@
+/* ===== Feature Dialog extras ===== */
+.dialog-sm {
+  min-width: 340px;
+  max-width: 400px;
+}
+
+.dialog-hint {
+  font-size: 11px;
+  color: var(--text-muted);
+  font-style: italic;
+  margin: 0;
+}
+
+.direction-inputs {
+  display: flex;
+  gap: 6px;
+}
+
+.direction-inputs input {
+  width: 60px;
+  padding: 6px 8px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: var(--bg-secondary);
+  color: var(--text-primary);
+  font-size: 12px;
+  outline: none;
+}
+
+.direction-inputs input:focus {
+  border-color: var(--accent);
+}
+
+.boolean-preview {
+  display: flex;
+  justify-content: center;
+  padding: 16px;
+}
+
+.boolean-diagram {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.bool-icon {
+  font-size: 20px;
+  font-weight: 700;
+  padding: 12px 24px;
+  border-radius: 8px;
+  background: var(--accent-light);
+  border: 1px solid var(--border-light);
+}
+
+.bool-icon.join { color: var(--success); }
+.bool-icon.cut { color: var(--error); }
+.bool-icon.intersect { color: var(--warning); }
+

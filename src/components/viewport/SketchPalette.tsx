@@ -1,3 +1,4 @@
+import "./SketchPalette.css";
 import { useState, useEffect } from 'react';
 import * as THREE from 'three';
 import { Eye, X, FileDown, Zap } from 'lucide-react';

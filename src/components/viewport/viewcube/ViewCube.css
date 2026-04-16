@@ -1,0 +1,90 @@
+/* ===== ViewCube Overlay ===== */
+.viewcube-wrapper {
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  z-index: 100;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  pointer-events: auto;
+  user-select: none;
+}
+
+.viewcube-container {
+  position: relative;
+}
+
+.viewcube-label {
+  font-size: 10px;
+  font-weight: 600;
+  color: var(--text-muted);
+  letter-spacing: 0.5px;
+  text-transform: uppercase;
+  flex: 1;
+  text-align: center;
+}
+
+/* Navigation rows around the cube */
+.vc-nav-row {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
+
+.vc-nav-top {
+  width: 100%;
+  justify-content: space-between;
+  padding: 0 8px;
+  margin-bottom: -2px;
+}
+
+.vc-nav-middle {
+  display: flex;
+  align-items: center;
+  gap: 0;
+}
+
+.vc-nav-bottom {
+  width: 100%;
+  justify-content: flex-start;
+  padding: 0 8px;
+  margin-top: -2px;
+  gap: 6px;
+}
+
+.vc-nav-col {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.vc-nav-spacer {
+  flex: 1;
+}
+
+.vc-nav-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  border: none;
+  border-radius: 3px;
+  background: rgba(128, 128, 128, 0.12);
+  color: var(--text-muted);
+  cursor: pointer;
+  transition: all 0.15s ease;
+  padding: 0;
+}
+
+.vc-nav-btn:hover {
+  background: rgba(128, 128, 128, 0.3);
+  color: var(--text-primary);
+}
+
+.vc-nav-btn:active {
+  background: var(--accent-light);
+  color: var(--accent);
+}
+

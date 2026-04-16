@@ -79,7 +79,7 @@ function worldToScreen(
 function pickNearestVertex(
   mesh: THREE.Mesh,
   faceIndex: number,
-  hitPoint: THREE.Vector3,
+  _hitPoint: THREE.Vector3,
   mouseScreenX: number,
   mouseScreenY: number,
   maxDistancePx: number,

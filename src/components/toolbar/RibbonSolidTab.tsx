@@ -42,7 +42,6 @@ export function RibbonSolidTab({
 }: RibbonSolidTabProps) {
   const activeTool = useCADStore((s) => s.activeTool);
   const setActiveDialog = useCADStore((s) => s.setActiveDialog);
-  const setActiveTool = useCADStore((s) => s.setActiveTool);
   const sketchPlaneSelecting = useCADStore((s) => s.sketchPlaneSelecting);
   const startSketch = useCADStore((s) => s.startSketch);
   const selectionFilter = useCADStore((s) => s.selectionFilter);

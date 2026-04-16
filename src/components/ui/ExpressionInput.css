@@ -1,0 +1,17 @@
+/* ===== Expression input feedback (ExtrudeDialog etc.) ===== */
+.expr-error {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 11px;
+  color: var(--error);
+  margin-top: 4px;
+}
+
+.expr-resolved {
+  font-size: 11px;
+  color: var(--success);
+  font-family: 'Consolas', monospace;
+  margin-top: 4px;
+}
+

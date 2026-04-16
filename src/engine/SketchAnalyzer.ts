@@ -340,7 +340,6 @@ export class SketchAnalyzer {
       bucketMap.get(key)!.push({ entityId, endIdx });
     };
 
-    const entityById = new Map(candidates.map(e => [e.id, e]));
     const endpointOf = new Map<string, [Pt2, Pt2] | null>();
 
     for (const e of openEntities) {

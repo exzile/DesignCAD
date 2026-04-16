@@ -2112,13 +2112,13 @@ export class GeometryEngine {
       let curSegIdx = startSeg;
       let curEndIdx: 0 | 1 = 1;
       for (;;) {
-        const epIdx = curSegIdx * 2 + curEndIdx;
-        const partnerId = partner[epIdx];
+        const epIdx: number = curSegIdx * 2 + curEndIdx;
+        const partnerId: number = partner[epIdx];
         if (partnerId === -1) break;
-        const nextSeg = endpoints[partnerId].segIdx;
+        const nextSeg: number = endpoints[partnerId].segIdx;
         if (usedSegs.has(nextSeg)) break;
         usedSegs.add(nextSeg);
-        const nextEnd = endpoints[partnerId].endIdx;
+        const nextEnd: 0 | 1 = endpoints[partnerId].endIdx;
         // The "other" end of nextSeg is the new tip
         const otherEnd: 0 | 1 = nextEnd === 0 ? 1 : 0;
         chain.push(segments[nextSeg][otherEnd].clone());
@@ -2131,13 +2131,13 @@ export class GeometryEngine {
       curEndIdx = 0;
       const prepend: THREE.Vector3[] = [];
       for (;;) {
-        const epIdx = curSegIdx * 2 + curEndIdx;
-        const partnerId = partner[epIdx];
+        const epIdx: number = curSegIdx * 2 + curEndIdx;
+        const partnerId: number = partner[epIdx];
         if (partnerId === -1) break;
-        const nextSeg = endpoints[partnerId].segIdx;
+        const nextSeg: number = endpoints[partnerId].segIdx;
         if (usedSegs.has(nextSeg)) break;
         usedSegs.add(nextSeg);
-        const nextEnd = endpoints[partnerId].endIdx;
+        const nextEnd: 0 | 1 = endpoints[partnerId].endIdx;
         const otherEnd: 0 | 1 = nextEnd === 0 ? 1 : 0;
         prepend.unshift(segments[nextSeg][otherEnd].clone());
         curSegIdx = nextSeg;
@@ -2466,7 +2466,7 @@ export class GeometryEngine {
    * Uses brute-force triangle iteration for small meshes (< 5000 triangles);
    * falls back to 6-direction raycast for larger ones.
    */
-  private static closestPointOnMesh(
+  private static _closestPointOnMesh(
     query: THREE.Vector3,
     mesh: THREE.Mesh,
   ): THREE.Vector3 | null {
@@ -3000,7 +3000,6 @@ export class GeometryEngine {
 
     const extendDir = (va: THREE.Vector3, vb: THREE.Vector3, na: THREE.Vector3, nb: THREE.Vector3): { da: THREE.Vector3; db: THREE.Vector3 } => {
       const edgeDir = vb.clone().sub(va).normalize();
-      const avgNorm = na.clone().add(nb).normalize();
 
       if (mode === 'perpendicular') {
         // Perpendicular to edge in the surface plane: cross(edge, surfaceNormal)

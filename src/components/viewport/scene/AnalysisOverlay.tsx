@@ -501,7 +501,6 @@ function buildCurvatureComb(meshes: THREE.Mesh[], params: AnalysisParams): { obj
     if (!srcGeo.attributes.position || !srcGeo.attributes.normal) continue;
 
     const posAttr = srcGeo.attributes.position;
-    const normAttr = srcGeo.attributes.normal;
     const index = srcGeo.index;
 
     if (!index) continue;

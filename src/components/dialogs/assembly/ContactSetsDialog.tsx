@@ -30,8 +30,6 @@ export function ContactSetsDialog({ open, components, contactSets, onAdd, onTogg
     setSel2('');
   };
 
-  const compName = (id: string) => components.find((c) => c.id === id)?.name ?? id;
-
   return (
     <div className="dialog-overlay">
       <div className="dialog-panel">

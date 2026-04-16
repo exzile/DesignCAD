@@ -1,3 +1,4 @@
+import "./ExpressionInput.css";
 /**
  * ExpressionInput (D63) — a numeric input that also accepts Fusion-style
  * expressions like "width/2 + 3". Falls back to the raw number on invalid
