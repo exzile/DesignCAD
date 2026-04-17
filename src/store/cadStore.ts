@@ -2453,10 +2453,17 @@ export const useCADStore = create<CADState>()(persist((set, get) => ({
   // D102 body kind
   setExtrudeBodyKind: (k) => set({ extrudeBodyKind: k }),
   startExtrudeTool: () => {
+    // Clean up orphaned Press Pull profiles from previous sessions
+    const { sketches, features } = get();
+    const usedSketchIds = new Set(features.map((f) => f.sketchId).filter(Boolean));
+    const cleanedSketches = sketches.filter(
+      (s) => !s.name.startsWith('Press Pull Profile') || usedSketchIds.has(s.id),
+    );
     set({
       activeTool: 'extrude',
       ...EXTRUDE_DEFAULTS,
-      extrudeSelectedSketchId: null, // Wait for the user to pick — no auto-select
+      sketches: cleanedSketches,
+      extrudeSelectedSketchId: null,
       statusMessage: 'Click a profile or face to extrude',
     });
   },
@@ -2494,11 +2501,14 @@ export const useCADStore = create<CADState>()(persist((set, get) => ({
       dimensions: [],
       fullyConstrained: false,
     };
+    // Press-pull defaults to Join (adding material to the existing body).
+    // The user can switch to Cut or New Body in the panel dropdown.
     set({
       sketches: [...sketches, sketch],
       extrudeSelectedSketchId: sketch.id,
       extrudeSelectedSketchIds: [sketch.id],
       extrudeDirection: 'normal',
+      extrudeOperation: 'join',
       statusMessage: 'Press-pull profile selected — drag arrow or set distance, then OK',
     });
   },
@@ -2538,13 +2548,13 @@ export const useCADStore = create<CADState>()(persist((set, get) => ({
         const sourceSketch = sketches.find((s) => s.id === sketchId);
         if (!sourceSketch) return null;
         if (rawIndex === undefined) {
-          return { sourceSketch, sketchForOp: sourceSketch, selectionId: id };
+          return { sourceSketch, sketchForOp: sourceSketch, selectionId: id, profileIndex: undefined as number | undefined };
         }
         const parsed = Number(rawIndex);
         if (!Number.isFinite(parsed)) return null;
         const profileSketch = GeometryEngine.createProfileSketch(sourceSketch, parsed);
         if (!profileSketch) return null;
-        return { sourceSketch, sketchForOp: profileSketch, selectionId: id };
+        return { sourceSketch, sketchForOp: profileSketch, selectionId: id, profileIndex: parsed };
       })
       .filter(Boolean) as { sourceSketch: Sketch; sketchForOp: Sketch; selectionId: string }[];
 
@@ -2556,23 +2566,23 @@ export const useCADStore = create<CADState>()(persist((set, get) => ({
       set({ statusMessage: 'Distance must be non-zero' });
       return;
     }
-    // Signed distance: negative means press-pull INTO the body → cut.
-    const isCutDrag = extrudeDistance < 0;
-    // 'all' extent uses a large through-all distance
+    // Use absolute distance — negative just means the user dragged in reverse
     const absDistance = extrudeExtentType === 'all' ? 10000 : Math.abs(extrudeDistance);
-    const finalDirection = isCutDrag ? 'reverse' : extrudeDirection;
-    const finalOperation = isCutDrag ? 'cut' : extrudeOperation;
+    // Direction follows the sign of the distance
+    const finalDirection = extrudeDistance < 0 ? 'reverse' : extrudeDirection;
+    // Operation is set explicitly by the user in the panel (new-body, join, cut)
+    const finalOperation = extrudeOperation;
 
     const nextFeatures = [...features];
     let createdCount = 0;
     let firstCreatedSketchName: string | null = null;
 
     for (const selected of selectedProfiles) {
-      const { sourceSketch, sketchForOp } = selected;
+      const { sourceSketch, sketchForOp, profileIndex } = selected;
       const isClosedProfile = GeometryEngine.isSketchClosedProfile(sketchForOp);
       const resolvedBodyKind: 'solid' | 'surface' = (!isClosedProfile || extrudeBodyKind === 'surface') ? 'surface' : 'solid';
 
-      // Generate mesh: surface → thin → taper → standard
+      // Generate mesh: surface → thin → taper → standard solid
       let featureMesh: THREE.Mesh | undefined;
       if (resolvedBodyKind === 'surface') {
         featureMesh = GeometryEngine.extrudeSketchSurface(sketchForOp, absDistance) ?? undefined;
@@ -2580,6 +2590,8 @@ export const useCADStore = create<CADState>()(persist((set, get) => ({
         featureMesh = GeometryEngine.extrudeThinSketch(sketchForOp, absDistance, extrudeThinThickness, extrudeThinSide) ?? undefined;
       } else if (Math.abs(extrudeTaperAngle) > 0.01) {
         featureMesh = GeometryEngine.extrudeSketchWithTaper(sketchForOp, absDistance, extrudeTaperAngle) ?? undefined;
+      } else {
+        featureMesh = GeometryEngine.extrudeSketch(sketchForOp, absDistance) ?? undefined;
       }
 
       // Apply start offset: shift the mesh along the extrude normal
@@ -2587,6 +2599,10 @@ export const useCADStore = create<CADState>()(persist((set, get) => ({
         const n = GeometryEngine.getSketchExtrudeNormal(sketchForOp);
         featureMesh.position.addScaledVector(n, extrudeStartOffset);
       }
+
+      // Standard solid extrudes are rebuilt by ExtrudedBodies CSG pipeline;
+      // only thin/taper/surface need a stored mesh.
+      const needsStoredMesh = resolvedBodyKind === 'surface' || extrudeThinEnabled || Math.abs(extrudeTaperAngle) > 0.01;
 
       const featureId = crypto.randomUUID();
       let componentId: string | undefined;
@@ -2600,7 +2616,9 @@ export const useCADStore = create<CADState>()(persist((set, get) => ({
         if (createdBodyId) {
           bodyId = createdBodyId;
           componentStore.addFeatureToBody(createdBodyId, featureId);
-          if (featureMesh) componentStore.setBodyMesh(createdBodyId, featureMesh);
+          // Only store mesh on body for thin/taper/surface — standard solid
+          // extrudes are rendered by the CSG pipeline in ExtrudedBodies.
+          if (needsStoredMesh && featureMesh) componentStore.setBodyMesh(createdBodyId, featureMesh);
         }
       }
 
@@ -2623,13 +2641,24 @@ export const useCADStore = create<CADState>()(persist((set, get) => ({
           startOffset: extrudeStartOffset,
           extentType: extrudeExtentType,
           taperAngle: extrudeTaperAngle,
+          profileIndex,
         },
         visible: true,
         suppressed: false,
         timestamp: Date.now(),
-        mesh: featureMesh,
+        // Standard solid extrudes (no thin, no taper) must NOT store a mesh —
+        // ExtrudedBodies.tsx CSG pipeline rebuilds them from sketch + params
+        // via buildExtrudeFeatureMesh and applies csgSubtract/csgUnion.
+        // Only thin/taper/surface extrudes store a mesh (can't be rebuilt
+        // from just sketch + distance + direction).
+        mesh: needsStoredMesh ? featureMesh : undefined,
         bodyKind: resolvedBodyKind,
       };
+
+      // Dispose the mesh if we're not storing it to avoid GPU leak
+      if (!needsStoredMesh && featureMesh) {
+        featureMesh.geometry.dispose();
+      }
 
       nextFeatures.push(feature);
       createdCount += 1;
@@ -5337,6 +5366,27 @@ export const useCADStore = create<CADState>()(persist((set, get) => ({
       sketches: (state.sketches ?? currentState.sketches).map((s) => deserializeSketch(s as Sketch)),
       features: (state.features ?? currentState.features).map((f) => deserializeFeature(f as Feature)),
     };
+  },
+
+  // Rebuild componentStore bodies from rehydrated features so the Browser
+  // tree shows Bodies after a page refresh. componentStore is not persisted.
+  onRehydrateStorage: () => (state) => {
+    if (!state) return;
+    const componentStore = useComponentStore.getState();
+    const existingBodyIds = new Set(Object.keys(componentStore.bodies));
+    for (const feature of state.features) {
+      if (feature.type !== 'extrude') continue;
+      const op = (feature.params?.operation as string) ?? 'new-body';
+      if (op !== 'new-body') continue;
+      // Skip if a body already exists for this feature
+      if (feature.bodyId && existingBodyIds.has(feature.bodyId)) continue;
+      const parentId = componentStore.activeComponentId ?? componentStore.rootComponentId;
+      const bodyLabel = (feature.bodyKind === 'surface' ? 'Surface' : 'Body') + ' ' + (Object.keys(componentStore.bodies).length + 1);
+      const bodyId = componentStore.addBody(parentId, bodyLabel);
+      if (bodyId) {
+        componentStore.addFeatureToBody(bodyId, feature.id);
+      }
+    }
   },
 
   // Persist user preferences + model timeline/sketch data.

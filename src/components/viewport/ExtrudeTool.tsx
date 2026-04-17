@@ -1,4 +1,6 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useRef } from 'react';
+import { useThree } from '@react-three/fiber';
+import * as THREE from 'three';
 import { useCADStore } from '../../store/cadStore';
 import { GeometryEngine } from '../../engine/GeometryEngine';
 import type { Sketch } from '../../types/cad';
@@ -8,6 +10,17 @@ import ExtrudeGizmo from './extrude/ExtrudeGizmo';
 import FaceHighlight from './extrude/FaceHighlight';
 import { useFacePicker } from '../../hooks/useFacePicker';
 import type { FacePickResult } from '../../hooks/useFacePicker';
+
+// Module-level scratch — never allocate in event handlers
+const _mouse = new THREE.Vector2();
+
+/**
+ * Module-level flag set by ExtrudeGizmo on pointerdown and cleared after the
+ * subsequent click event. Prevents the profile-picker click handler from
+ * toggling (deselecting) the profile when the user releases a gizmo drag.
+ */
+export let _gizmoDragActive = false;
+export function setGizmoDragActive(v: boolean) { _gizmoDragActive = v; }
 
 function parseSelectionId(id: string): { sketchId: string; profileIndex: number | null } {
   const parts = id.split('::');
@@ -35,9 +48,8 @@ export default function ExtrudeTool() {
   const [hoveredId, setHoveredId] = useState<string | null>(null);
   const [faceHit, setFaceHit] = useState<FacePickResult | null>(null);
 
-  // Face picker is only active when the extrude tool is open and no sketch
-  // profile has been selected yet. Meshes with a profileKey are excluded so
-  // the hook never fires over sketch profiles (those are handled by SketchProfile).
+  // Face picker for press-pull (solid body faces). Only active when no
+  // sketch profile has been selected yet. Profile meshes are excluded.
   useFacePicker({
     enabled: activeTool === 'extrude' && selectedIds.length === 0,
     filter: (mesh) => !mesh.userData?.profileKey,
@@ -48,7 +60,15 @@ export default function ExtrudeTool() {
     },
   });
 
-  const extrudable = useMemo(() => sketches.filter((s) => s.entities.length > 0), [sketches]);
+  const features = useCADStore((s) => s.features);
+
+  // Only show profiles for sketches NOT already consumed by an extrude feature
+  const extrudable = useMemo(() => {
+    const usedSketchIds = new Set(
+      features.filter((f) => f.type === 'extrude').map((f) => f.sketchId),
+    );
+    return sketches.filter((s) => s.entities.length > 0 && !usedSketchIds.has(s.id));
+  }, [sketches, features]);
 
   const profileEntries = useMemo(() => {
     return extrudable.flatMap((sketch) => {
@@ -104,14 +124,114 @@ export default function ExtrudeTool() {
     setStatusMessage(`${next.length} profile${next.length > 1 ? 's' : ''} selected — drag arrow or set distance, then OK`);
   };
 
+  // ─── Native DOM profile picking ───────────────────────────────────────
+  // R3F's <primitive> onClick is unreliable for dynamically-created meshes.
+  // Use native DOM listeners + Three.js raycaster (same pattern as useFacePicker)
+  // to detect hover and click on profile meshes.
+  const { gl, camera, raycaster, scene } = useThree();
+  // Profile picking stays active even after first selection so the user can
+  // click additional coplanar profiles. toggleSelection handles same-plane checks.
+  const profilePickEnabled = activeTool === 'extrude';
+
+  // Refs to avoid stale closures in DOM event handlers
+  const toggleSelectionRef = useRef(toggleSelection);
+  toggleSelectionRef.current = toggleSelection;
+  const setHoveredIdRef = useRef(setHoveredId);
+  setHoveredIdRef.current = setHoveredId;
+  const setStatusMessageRef = useRef(setStatusMessage);
+  setStatusMessageRef.current = setStatusMessage;
+  const hoveredIdRef = useRef(hoveredId);
+  hoveredIdRef.current = hoveredId;
+
+  useEffect(() => {
+    if (!profilePickEnabled) {
+      // Clear hover when disabled
+      if (hoveredIdRef.current !== null) {
+        setHoveredIdRef.current(null);
+      }
+      return;
+    }
+
+    const collectProfileMeshes = (): THREE.Mesh[] => {
+      const out: THREE.Mesh[] = [];
+      scene.traverse((obj) => {
+        const m = obj as THREE.Mesh;
+        if (m.isMesh && m.userData?.profileKey) out.push(m);
+      });
+      return out;
+    };
+
+    const updateMouse = (event: { clientX: number; clientY: number }) => {
+      const r = gl.domElement.getBoundingClientRect();
+      _mouse.set(
+        ((event.clientX - r.left) / r.width) * 2 - 1,
+        -((event.clientY - r.top) / r.height) * 2 + 1,
+      );
+    };
+
+    const handlePointerMove = (event: PointerEvent) => {
+      updateMouse(event);
+      raycaster.setFromCamera(_mouse, camera);
+      const hits = raycaster.intersectObjects(collectProfileMeshes(), false);
+      if (hits.length > 0) {
+        const mesh = hits[0].object as THREE.Mesh;
+        const key = mesh.userData.profileKey as string;
+        if (hoveredIdRef.current !== key) {
+          hoveredIdRef.current = key;
+          setHoveredIdRef.current(key);
+          setStatusMessageRef.current(`Click to select profile — hold to add multiple`);
+        }
+      } else if (hoveredIdRef.current !== null) {
+        hoveredIdRef.current = null;
+        setHoveredIdRef.current(null);
+      }
+    };
+
+    const handleClick = (event: MouseEvent) => {
+      if (event.button !== 0) return;
+      // Skip if the user just finished dragging the extrude gizmo —
+      // the click event fires after pointerup and would deselect the profile.
+      if (_gizmoDragActive) { _gizmoDragActive = false; return; }
+      updateMouse(event);
+      raycaster.setFromCamera(_mouse, camera);
+      const hits = raycaster.intersectObjects(collectProfileMeshes(), false);
+      if (hits.length > 0) {
+        const mesh = hits[0].object as THREE.Mesh;
+        const key = mesh.userData.profileKey as string;
+        toggleSelectionRef.current(key);
+      }
+    };
+
+    const canvas = gl.domElement;
+    canvas.addEventListener('pointermove', handlePointerMove);
+    canvas.addEventListener('click', handleClick, true);
+    return () => {
+      canvas.removeEventListener('pointermove', handlePointerMove);
+      canvas.removeEventListener('click', handleClick, true);
+      if (hoveredIdRef.current !== null) {
+        hoveredIdRef.current = null;
+        setHoveredIdRef.current(null);
+      }
+    };
+  }, [profilePickEnabled, gl, camera, raycaster, scene]);
+
   // Set hover status message whenever a face is being highlighted
   useEffect(() => {
     if (faceHit) setStatusMessage('Click face to press-pull — extrude along its normal');
   }, [faceHit, setStatusMessage]);
 
-  if (activeTool !== 'extrude') return null;
+  const selectedSketches = useMemo(() =>
+    selectedIds.map((id) => ({ id, sketch: getSketchForSelection(id) })).filter(
+      (e): e is { id: string; sketch: Sketch } => e.sketch !== null,
+    ),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [selectedIds, sketches],
+  );
 
-  const selectedPreviewSketch = selectedIds.length > 0 ? getSketchForSelection(selectedIds[0]) : null;
+  // Use the first selected sketch for the gizmo arrow position
+  const gizmoSketch = selectedSketches.length > 0 ? selectedSketches[0].sketch : null;
+
+  if (activeTool !== 'extrude') return null;
 
   return (
     <group>
@@ -124,21 +244,13 @@ export default function ExtrudeTool() {
             selectedIds.includes(selectionId) ? 'selected' :
             selectionId === hoveredId ? 'hover' : 'idle'
           }
-          onSelect={() => toggleSelection(selectionId)}
-          onHover={() => {
-            setHoveredId(selectionId);
-            if (selectedIds.length === 0) setStatusMessage(`Click to add ${sketch.name} profile ${profileIndex + 1}`);
-          }}
-          onUnhover={() => setHoveredId((prev) => (prev === selectionId ? null : prev))}
         />
       ))}
       {selectedIds.length === 0 && faceHit && <FaceHighlight boundary={faceHit.boundary} />}
-      {selectedPreviewSketch && (
-        <>
-          <ExtrudePreview sketch={selectedPreviewSketch} distance={distance} direction={direction} />
-          <ExtrudeGizmo sketch={selectedPreviewSketch} />
-        </>
-      )}
+      {selectedSketches.map(({ id, sketch }) => (
+        <ExtrudePreview key={id} sketch={sketch} distance={distance} direction={direction} />
+      ))}
+      {gizmoSketch && <ExtrudeGizmo sketch={gizmoSketch} />}
     </group>
   );
 }

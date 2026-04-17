@@ -2,8 +2,7 @@ import {
   PenTool, ArrowUpFromLine, RotateCcw, CircleDot, Box,
   Blend, Scissors, Combine, Copy, Link2, Layers,
   Anchor, Expand, Axis3D, Ruler, FolderOpen,
-  Image, Edit2, MousePointer2, Square, Minus, Dot,
-  PenLine,
+  Image, Edit2, MousePointer2,
 } from 'lucide-react';
 import { useCADStore } from '../../store/cadStore';
 import { useComponentStore } from '../../store/componentStore';
@@ -44,8 +43,6 @@ export function RibbonSolidTab({
   const setActiveDialog = useCADStore((s) => s.setActiveDialog);
   const sketchPlaneSelecting = useCADStore((s) => s.sketchPlaneSelecting);
   const startSketch = useCADStore((s) => s.startSketch);
-  const selectionFilter = useCADStore((s) => s.selectionFilter);
-  const setSelectionFilter = useCADStore((s) => s.setSelectionFilter);
   const setStatusMessage = useCADStore((s) => s.setStatusMessage);
   const openDecalDialog = useCADStore((s) => s.openDecalDialog);
   const openAttachedCanvasDialog = useCADStore((s) => s.openAttachedCanvasDialog);
@@ -144,14 +141,6 @@ export function RibbonSolidTab({
 
       <RibbonSection title="SELECT" menuItems={selectMenuItems} accentColor="#0078d7">
         <ToolButton icon={<MousePointer2 size={ICON_LG} />} label="Select" tool="select" large colorClass="icon-blue" />
-        <div className="ribbon-stack">
-          <ToolButton icon={<Box size={ICON_SM} />}      label="Bodies"       active={selectionFilter.bodies}       onClick={() => setSelectionFilter({ bodies: !selectionFilter.bodies })}       colorClass="icon-blue" />
-          <ToolButton icon={<Square size={ICON_SM} />}   label="Faces"        active={selectionFilter.faces}        onClick={() => setSelectionFilter({ faces: !selectionFilter.faces })}        colorClass="icon-blue" />
-          <ToolButton icon={<Minus size={ICON_SM} />}    label="Edges"        active={selectionFilter.edges}        onClick={() => setSelectionFilter({ edges: !selectionFilter.edges })}        colorClass="icon-blue" />
-          <ToolButton icon={<Dot size={ICON_SM} />}      label="Vertices"     active={selectionFilter.vertices}     onClick={() => setSelectionFilter({ vertices: !selectionFilter.vertices })}  colorClass="icon-blue" />
-          <ToolButton icon={<PenLine size={ICON_SM} />}  label="Sketches"     active={selectionFilter.sketches}     onClick={() => setSelectionFilter({ sketches: !selectionFilter.sketches })}  colorClass="icon-blue" />
-          <ToolButton icon={<Layers size={ICON_SM} />}   label="Construction" active={selectionFilter.construction} onClick={() => setSelectionFilter({ construction: !selectionFilter.construction })} colorClass="icon-blue" />
-        </div>
       </RibbonSection>
     </>
   );

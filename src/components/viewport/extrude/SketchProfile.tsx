@@ -1,19 +1,24 @@
 import { useMemo, useEffect, useRef } from 'react';
-import { type ThreeEvent, useFrame } from '@react-three/fiber';
+import { useFrame } from '@react-three/fiber';
 import * as THREE from 'three';
 import { GeometryEngine } from '../../../engine/GeometryEngine';
 import type { Sketch } from '../../../types/cad';
 import { PROFILE_MATERIAL, PROFILE_HOVER_MATERIAL, PROFILE_SELECTED_MATERIAL } from './materials';
 
+/**
+ * Renders a single sketch profile as a translucent fill mesh.
+ *
+ * Click and hover are handled by ExtrudeTool via native DOM event listeners
+ * (R3F's <primitive> onClick is unreliable for dynamically-created meshes).
+ * This component is purely visual — it renders the mesh, animates opacity
+ * based on state, and sets userData.profileKey for the DOM raycaster to find.
+ */
 export default function SketchProfile({
-  sketch, profileIndex, state, onSelect, onHover, onUnhover,
+  sketch, profileIndex, state,
 }: {
   sketch: Sketch;
   profileIndex?: number;
   state: 'idle' | 'hover' | 'selected';
-  onSelect: (event: ThreeEvent<MouseEvent>) => void;
-  onHover: () => void;
-  onUnhover: () => void;
 }) {
   const material =
     state === 'selected' ? PROFILE_SELECTED_MATERIAL :
@@ -61,9 +66,6 @@ export default function SketchProfile({
       ref={meshRef}
       object={mesh}
       renderOrder={1000}
-      onClick={(e: ThreeEvent<MouseEvent>) => { e.stopPropagation(); onSelect(e); }}
-      onPointerOver={(e: ThreeEvent<PointerEvent>) => { e.stopPropagation(); onHover(); }}
-      onPointerOut={() => onUnhover()}
     />
   );
 }

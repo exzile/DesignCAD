@@ -97,24 +97,37 @@ export function useFacePicker(options: UseFacePickerOptions): void {
       raycaster.setFromCamera(_mouse, camera);
       const hits = raycaster.intersectObjects(collectPickable(), false);
 
-      if (hits.length > 0 && hits[0].faceIndex !== undefined && hits[0].face) {
-        const hit = hits[0];
-        const result = GeometryEngine.computeCoplanarFaceBoundary(
-          hit.object as THREE.Mesh,
-          hit.faceIndex!,
-        );
+      // Try all hits and pick the one from the mesh with the MOST vertices.
+      // After CSG operations, the most-vertices mesh is the final merged body.
+      // Stale/duplicate bodies with fewer verts are deprioritized.
+      let bestResult: FacePickResult | null = null;
+      let bestMeshVerts = 0;
+      const checkedMeshes = new Set<THREE.Mesh>();
+      for (const hit of hits) {
+        if (hit.faceIndex === undefined || !hit.face) continue;
+        const hitMesh = hit.object as THREE.Mesh;
+        if (checkedMeshes.has(hitMesh)) continue;
+        checkedMeshes.add(hitMesh);
+        const meshVerts = hitMesh.geometry?.getAttribute('position')?.count ?? 0;
+        // Skip if this mesh has fewer verts than one we already found
+        if (bestResult && meshVerts <= bestMeshVerts) continue;
+        const result = GeometryEngine.computeCoplanarFaceBoundary(hitMesh, hit.faceIndex!);
         if (result) {
-          const faceResult: FacePickResult = {
-            mesh: hit.object as THREE.Mesh,
+          bestMeshVerts = meshVerts;
+          bestResult = {
+            mesh: hitMesh,
             faceIndex: hit.faceIndex!,
             boundary: result.boundary,
             normal: result.normal,
             centroid: result.centroid,
           };
-          hoverRef.current = faceResult;
-          optionsRef.current.onHover?.(faceResult);
-          return;
         }
+      }
+
+      if (bestResult) {
+        hoverRef.current = bestResult;
+        optionsRef.current.onHover?.(bestResult);
+        return;
       }
 
       if (hoverRef.current !== null) {
@@ -125,25 +138,9 @@ export function useFacePicker(options: UseFacePickerOptions): void {
 
     const handleClick = (event: MouseEvent) => {
       if (event.button !== 0) return;
-      updateMouse(event);
-      raycaster.setFromCamera(_mouse, camera);
-      const hits = raycaster.intersectObjects(collectPickable(), false);
-      if (hits.length === 0) return;
-      const hit = hits[0];
-      if (hit.faceIndex === undefined || !hit.face) return;
-      const result = GeometryEngine.computeCoplanarFaceBoundary(
-        hit.object as THREE.Mesh,
-        hit.faceIndex!,
-      );
-      if (result) {
-        const faceResult: FacePickResult = {
-          mesh: hit.object as THREE.Mesh,
-          faceIndex: hit.faceIndex!,
-          boundary: result.boundary,
-          normal: result.normal,
-          centroid: result.centroid,
-        };
-        optionsRef.current.onClick?.(faceResult);
+      // Use the currently hovered face result (already the best match)
+      if (hoverRef.current) {
+        optionsRef.current.onClick?.(hoverRef.current);
       }
     };
 

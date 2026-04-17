@@ -131,19 +131,221 @@
 }
 
 
-/* Component-specific styles have been extracted to CSS files
-   next to their components. See:
-   - components/toolbar/Toolbar.css
-   - components/panels/Timeline.css
-   - components/panels/StatusBar.css
-   - components/panels/ComponentTree.css
-   - components/panels/ParametersPanel.css
-   - components/printer/PrinterPanel.css
-   - components/viewport/SketchPalette.css
-   - components/viewport/ViewportOverlay.css
-   - components/viewport/viewcube/ViewCube.css
-   - components/viewport/canvasControls/CanvasControls.css
-   - components/dialogs/ExportDialog.css
-   - components/dialogs/FeatureDialogExtras.css
-   - components/ui/ExpressionInput.css
-*/
+/* ===== Shared Buttons ===== */
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 8px 18px;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.12s ease;
+}
+
+.btn-primary {
+  background: var(--accent);
+  color: white;
+}
+
+.btn-primary:hover {
+  background: var(--accent-hover);
+}
+
+.btn-secondary {
+  background: var(--bg-hover);
+  color: var(--text-secondary);
+  border-color: var(--border);
+}
+
+.btn-secondary:hover {
+  background: var(--bg-secondary);
+  color: var(--text-primary);
+}
+
+.btn-danger {
+  background: rgba(244, 67, 54, 0.1);
+  color: var(--error);
+  border-color: rgba(244, 67, 54, 0.3);
+}
+
+.btn-danger:hover {
+  background: rgba(244, 67, 54, 0.2);
+}
+
+.btn-sm {
+  padding: 6px 14px;
+  font-size: 12px;
+}
+
+.btn--full-width {
+  width: 100%;
+}
+
+/* ===== Icon Utilities ===== */
+.icon-blue { color: #0078d7; }
+.icon-orange { color: #ff6b00; }
+.icon-green { color: #4caf50; }
+.icon-purple { color: #7b1fa2; }
+.icon-teal { color: #00897b; }
+.icon-red { color: #f44336; }
+.icon-gray { color: #757575; }
+
+.icon-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  border: none;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+}
+
+.icon-btn:hover {
+  background: var(--bg-hover);
+  color: var(--text-primary);
+}
+
+.icon-btn.danger:hover {
+  background: rgba(244, 67, 54, 0.1);
+  color: var(--error);
+}
+
+/* ===== Checkbox ===== */
+.checkbox-label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  color: var(--text-secondary);
+  cursor: pointer;
+}
+
+.checkbox-label.indent {
+  margin-left: 24px;
+}
+
+.checkbox-label input[type="checkbox"] {
+  accent-color: var(--accent);
+}
+
+/* ===== Measure Select ===== */
+.measure-select {
+  background: var(--bg-elevated);
+  color: var(--text-primary);
+  border: 1px solid var(--border-light);
+  border-radius: 4px;
+  padding: 2px 6px;
+  font-size: 11px;
+  cursor: pointer;
+  outline: none;
+}
+
+/* ===== Advanced Toggle ===== */
+.advanced-toggle {
+  width: 100%;
+  text-align: center;
+  font-size: 12px;
+}
+
+/* ===== Banner ===== */
+.banner {
+  padding: 8px 12px;
+  border-radius: 6px;
+  font-size: 12px;
+}
+
+.banner.success {
+  background: rgba(76, 175, 80, 0.06);
+  color: var(--success);
+  border: 1px solid rgba(76, 175, 80, 0.15);
+}
+
+.banner.error {
+  background: rgba(244, 67, 54, 0.06);
+  color: var(--error);
+  border: 1px solid rgba(244, 67, 54, 0.15);
+}
+
+.banner.info {
+  background: var(--accent-light);
+  color: var(--text-muted);
+  border: 1px solid var(--border-light);
+}
+
+/* ===== Context Menu (Sketch + Body right-click) ===== */
+.sketch-ctx-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 9998;
+}
+
+.sketch-ctx-menu {
+  position: fixed;
+  z-index: 9999;
+  background: var(--bg-panel, #1e2128);
+  border: 1px solid var(--border, #333);
+  border-radius: 6px;
+  padding: 4px;
+  min-width: 240px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
+  font-size: 12px;
+}
+
+.sketch-ctx-item {
+  display: flex;
+  align-items: center;
+  width: 100%;
+  padding: 5px 10px;
+  border: none;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--text-secondary);
+  cursor: pointer;
+  text-align: left;
+  transition: background 0.1s;
+  gap: 8px;
+}
+
+.sketch-ctx-item:hover {
+  background: var(--bg-hover);
+  color: var(--text-primary);
+}
+
+.sketch-ctx-item.danger {
+  color: var(--error, #f44336);
+}
+
+.sketch-ctx-item.danger:hover {
+  background: rgba(244, 67, 54, 0.1);
+}
+
+.sketch-ctx-icon {
+  display: flex;
+  align-items: center;
+  width: 18px;
+  flex-shrink: 0;
+  color: var(--text-dim);
+}
+
+.sketch-ctx-label {
+  flex: 1;
+}
+
+.sketch-ctx-shortcut {
+  font-size: 11px;
+  color: var(--text-dim);
+  margin-left: auto;
+}
+
+.sketch-ctx-sep {
+  height: 1px;
+  background: var(--border-light, rgba(255, 255, 255, 0.07));
+  margin: 3px 6px;
+}

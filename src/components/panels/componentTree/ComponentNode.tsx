@@ -5,7 +5,6 @@ import {
 } from 'lucide-react';
 import { useComponentStore } from '../../../store/componentStore';
 import { useCADStore } from '../../../store/cadStore';
-import { BodyNode } from './BodyNode';
 import { ConstructionNode } from './ConstructionNode';
 import { JointNode } from './JointNode';
 
@@ -160,10 +159,7 @@ export function ComponentNode({ componentId, depth = 0 }: { componentId: string;
             <ConstructionNode key={id} id={id} />
           ))}
 
-          {/* Bodies */}
-          {component.bodyIds.map((id) => (
-            <BodyNode key={id} bodyId={id} />
-          ))}
+          {/* Bodies are rendered in the BodiesFolder at tree root */}
 
           {/* Joints */}
           {component.jointIds.map((id) => (

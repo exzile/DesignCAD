@@ -3,6 +3,7 @@ import { Plus } from 'lucide-react';
 import { useComponentStore } from '../../store/componentStore';
 import { ComponentNode } from './componentTree/ComponentNode';
 import { OriginTree } from './componentTree/OriginTree';
+import { BodiesFolder } from './componentTree/BodiesFolder';
 import { SketchesFolder } from './componentTree/SketchesFolder';
 
 export default function ComponentTree() {
@@ -24,6 +25,7 @@ export default function ComponentTree() {
       <div className="tree-scroll">
         <ComponentNode componentId={rootComponentId} />
         <OriginTree />
+        <BodiesFolder />
         <SketchesFolder />
       </div>
     </div>

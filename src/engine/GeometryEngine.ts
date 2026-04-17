@@ -117,10 +117,12 @@ export class GeometryEngine {
     if (hitNormal.lengthSq() < 0.5) return null; // degenerate
     const hitOffset = hitNormal.dot(hv0); // plane equation: n·p = offset
 
-    // Bounding radius for plane-distance tolerance scaling
+    // Bounding radius for plane-distance tolerance scaling.
+    // CSG boolean results can have slight floating-point drift between triangles
+    // that should be coplanar, so we use generous tolerances.
     if (!geom.boundingSphere) geom.computeBoundingSphere();
     const radius = geom.boundingSphere?.radius ?? 1;
-    const planeTol = Math.max(tol, tol * radius);
+    const planeTol = Math.max(0.01, tol * radius);
 
     // Find every coplanar triangle (same orientation + same plane).
     // Store triangles as triples of world-space vertex POSITIONS (not indices)
@@ -132,33 +134,130 @@ export class GeometryEngine {
       const va = getWorldVert(a), vb = getWorldVert(b), vc = getWorldVert(c);
       const n = triNormal(va, vb, vc);
       if (n.lengthSq() < 0.5) continue;
-      // Wider normal tolerance (0.99) since small triangles can have noisy normals
-      if (n.dot(hitNormal) < 0.99) continue;
+      // Normal tolerance: cos(~10°) ≈ 0.985 — generous enough for CSG output
+      if (n.dot(hitNormal) < 0.985) continue;
       const off = n.dot(va);
       if (Math.abs(off - hitOffset) > planeTol) continue;
       coplanarTris.push([va, vb, vc]);
     }
     if (coplanarTris.length === 0) return null;
 
-    // Quantize positions to a grid so duplicated verts at the same world
-    // location (common in ExtrudeGeometry between cap and side) hash equal.
-    const quantum = Math.max(1e-4, planeTol);
-    const hashKey = (v: THREE.Vector3) =>
-      `${Math.round(v.x / quantum)}|${Math.round(v.y / quantum)}|${Math.round(v.z / quantum)}`;
-    // Map: hash → first vector encountered (canonical position for that key)
+    // Merge vertices at the same world position so CSG seam duplicates are
+    // treated as the same vertex. Uses spatial hashing with a merge radius
+    // that handles rounding-boundary ambiguity by checking distance to the
+    // first vertex encountered at each grid cell.
+    const MERGE_RADIUS = 0.05;
+    const CELL = MERGE_RADIUS * 2;
+    const posKey = (v: THREE.Vector3) =>
+      `${Math.round(v.x / CELL)}|${Math.round(v.y / CELL)}|${Math.round(v.z / CELL)}`;
+    // Map: canonical key → position. A vertex matches an existing one if it's
+    // within MERGE_RADIUS of any previously seen vertex in its cell or 26 neighbors.
     const canonicalPos = new Map<string, THREE.Vector3>();
+    const vertexKeyCache = new Map<string, string>(); // posKey(v) → canonical key (perf cache)
+
     const keyFor = (v: THREE.Vector3): string => {
-      const k = hashKey(v);
-      if (!canonicalPos.has(k)) canonicalPos.set(k, v.clone());
+      // Check current cell + neighbors for a close-enough existing vertex
+      const cx = Math.round(v.x / CELL), cy = Math.round(v.y / CELL), cz = Math.round(v.z / CELL);
+      for (let dx = -1; dx <= 1; dx++) {
+        for (let dy = -1; dy <= 1; dy++) {
+          for (let dz = -1; dz <= 1; dz++) {
+            const nk = `${cx + dx}|${cy + dy}|${cz + dz}`;
+            const existing = canonicalPos.get(nk);
+            if (existing && existing.distanceTo(v) <= MERGE_RADIUS) {
+              return nk;
+            }
+          }
+        }
+      }
+      // New vertex — register at its cell
+      const k = `${cx}|${cy}|${cz}`;
+      canonicalPos.set(k, v.clone());
       return k;
     };
 
-    // Build undirected edge counts and a directed adjacency list (so a vertex
-    // may have MULTIPLE outgoing boundary edges when the boundary has more
-    // than one loop or branches).
+    // ── Fix T-junctions ──
+    // CSG results can have T-junctions where a long edge A→B from one triangle
+    // group passes through a vertex C used by an adjacent triangle group but
+    // the edge isn't split at C. This prevents proper edge-sharing detection.
+    // Solution: for each triangle edge, check if any coplanar vertex lies ON
+    // the edge segment and split it. We rebuild coplanarTris with split edges.
+    const allCoplanarKeys = new Set<string>();
+    const keyToPos = new Map<string, THREE.Vector3>();
+    for (const [va, vb, vc] of coplanarTris) {
+      for (const v of [va, vb, vc]) {
+        const k = keyFor(v);
+        allCoplanarKeys.add(k);
+        if (!keyToPos.has(k)) keyToPos.set(k, canonicalPos.get(k) ?? v.clone());
+      }
+    }
+
+    // For a triangle [A, B, C], split any edge that has an intermediate coplanar
+    // vertex, producing sub-triangles. We do this by replacing each triangle
+    // with a fan of sub-triangles if needed.
+    const splitTris: Array<[THREE.Vector3, THREE.Vector3, THREE.Vector3]> = [];
+    const EDGE_TOL = 0.06; // slightly larger than MERGE_RADIUS
+
+    const pointOnSegment = (p: THREE.Vector3, a: THREE.Vector3, b: THREE.Vector3): boolean => {
+      const ab = b.clone().sub(a);
+      const ap = p.clone().sub(a);
+      const lenSq = ab.lengthSq();
+      if (lenSq < 1e-8) return false;
+      const t = ap.dot(ab) / lenSq;
+      if (t <= EDGE_TOL / Math.sqrt(lenSq) || t >= 1 - EDGE_TOL / Math.sqrt(lenSq)) return false;
+      const proj = a.clone().add(ab.multiplyScalar(t));
+      return proj.distanceTo(p) < EDGE_TOL;
+    };
+
+    for (const tri of coplanarTris) {
+      // Check each edge for intermediate vertices
+      const triKeys = [keyFor(tri[0]), keyFor(tri[1]), keyFor(tri[2])];
+      let needsSplit = false;
+      const edgeMidpoints: Map<string, THREE.Vector3[]> = new Map();
+
+      for (let ei = 0; ei < 3; ei++) {
+        const a = tri[ei], b = tri[(ei + 1) % 3];
+        const eKey = `${ei}`;
+        const mids: THREE.Vector3[] = [];
+        for (const [k, pos] of keyToPos) {
+          if (triKeys.includes(k)) continue;
+          if (pointOnSegment(pos, a, b)) {
+            mids.push(pos);
+          }
+        }
+        if (mids.length > 0) {
+          needsSplit = true;
+          // Sort midpoints along the edge
+          const ab = b.clone().sub(a);
+          const lenSq = ab.lengthSq();
+          mids.sort((m1, m2) => m1.clone().sub(a).dot(ab) - m2.clone().sub(a).dot(ab));
+          edgeMidpoints.set(eKey, mids);
+        }
+      }
+
+      if (!needsSplit) {
+        splitTris.push(tri);
+        continue;
+      }
+
+      // Fan triangulate: for each edge with midpoints, create sub-triangles
+      // using the opposite vertex as the fan center
+      // Collect all edge vertices in order around the triangle
+      const perimeterPts: THREE.Vector3[] = [];
+      for (let ei = 0; ei < 3; ei++) {
+        perimeterPts.push(tri[ei]);
+        const mids = edgeMidpoints.get(`${ei}`);
+        if (mids) perimeterPts.push(...mids);
+      }
+      // Fan from first vertex (simple triangulation)
+      for (let pi = 1; pi < perimeterPts.length - 1; pi++) {
+        splitTris.push([perimeterPts[0], perimeterPts[pi], perimeterPts[pi + 1]]);
+      }
+    }
+
+    // Build undirected edge counts from the split triangles
     const undirectedKey = (a: string, b: string) => (a < b ? `${a}#${b}` : `${b}#${a}`);
     const edgeCount = new Map<string, number>();
-    for (const [va, vb, vc] of coplanarTris) {
+    for (const [va, vb, vc] of splitTris) {
       const ka = keyFor(va), kb = keyFor(vb), kc = keyFor(vc);
       for (const [e0, e1] of [[ka, kb], [kb, kc], [kc, ka]] as const) {
         const k = undirectedKey(e0, e1);
@@ -168,7 +267,7 @@ export class GeometryEngine {
 
     // Directed adjacency for boundary edges (preserves CCW around each triangle)
     const adjacency = new Map<string, string[]>();
-    for (const [va, vb, vc] of coplanarTris) {
+    for (const [va, vb, vc] of splitTris) {
       const ka = keyFor(va), kb = keyFor(vb), kc = keyFor(vc);
       for (const [e0, e1] of [[ka, kb], [kb, kc], [kc, ka]] as const) {
         if (edgeCount.get(undirectedKey(e0, e1)) === 1) {
@@ -260,17 +359,12 @@ export class GeometryEngine {
   }
 
   /**
-   * World direction the extrusion grows along, after the named-plane rotation
-   * is applied to the mesh. NOT the plane's visual face normal — for that see
-   * sketch.planeNormal (which is what's used for 'custom' face-based sketches).
+   * World direction the extrusion grows along. This is the sketch plane's
+   * normal — ExtrudeGeometry depth maps to local Z, which `extrudeSketch`
+   * aligns to `planeNormal` via `makeBasis(t1, t2, normal)`.
    */
   static getSketchExtrudeNormal(sketch: Sketch): THREE.Vector3 {
-    if (sketch.plane === 'custom') return sketch.planeNormal.clone().normalize();
-    switch (sketch.plane) {
-      case 'XZ': return new THREE.Vector3(0, 1, 0);
-      case 'YZ': return new THREE.Vector3(1, 0, 0);
-      default:   return new THREE.Vector3(0, 0, 1);
-    }
+    return sketch.planeNormal.clone().normalize();
   }
 
   /**
@@ -385,6 +479,16 @@ export class GeometryEngine {
    * Build a THREE.Shape from sketch entities using a custom (x,y) projection.
    * Used by both named-plane sketchToShape and custom-plane variants.
    */
+  /** Entity types that contribute to extrudable profiles. */
+  private static readonly BOUNDARY_TYPES = new Set([
+    'line', 'arc', 'spline', 'ellipse', 'elliptical-arc', 'polygon',
+  ]);
+
+  /** Entity types that are inherently closed and get their own shape. */
+  private static readonly CLOSED_PRIMITIVE_TYPES = new Set([
+    'rectangle', 'circle', 'ellipse', 'polygon',
+  ]);
+
   private static entitiesToShape(
     entities: SketchEntity[],
     proj: (p: SketchPoint) => { u: number; v: number },
@@ -437,6 +541,63 @@ export class GeometryEngine {
           }
           break;
         }
+        case 'spline': {
+          // Polyline-approximate: just connect the control/fit points
+          if (entity.points.length >= 2) {
+            const first = proj(entity.points[0]);
+            if (!hasContent) { shape.moveTo(first.u, first.v); hasContent = true; }
+            for (let i = 1; i < entity.points.length; i++) {
+              const p = proj(entity.points[i]);
+              shape.lineTo(p.u, p.v);
+            }
+          }
+          break;
+        }
+        case 'ellipse': {
+          if (entity.points.length >= 1 && entity.majorRadius && entity.minorRadius) {
+            const c = proj(entity.points[0]);
+            const rot = entity.rotation ?? 0;
+            const pts = new THREE.Path();
+            pts.absellipse(c.u, c.v, entity.majorRadius, entity.minorRadius, 0, Math.PI * 2, false, rot);
+            shape.setFromPoints(pts.getPoints(64));
+            hasContent = true;
+          }
+          break;
+        }
+        case 'elliptical-arc': {
+          if (entity.points.length >= 1 && entity.majorRadius && entity.minorRadius) {
+            const c = proj(entity.points[0]);
+            const rot = entity.rotation ?? 0;
+            const sa = entity.startAngle ?? 0;
+            const ea = entity.endAngle ?? Math.PI;
+            if (!hasContent) {
+              const cos = Math.cos(rot), sin = Math.sin(rot);
+              const sx = entity.majorRadius * Math.cos(sa);
+              const sy = entity.minorRadius * Math.sin(sa);
+              shape.moveTo(c.u + cos * sx - sin * sy, c.v + sin * sx + cos * sy);
+              hasContent = true;
+            }
+            shape.absellipse(c.u, c.v, entity.majorRadius, entity.minorRadius, sa, ea, false, rot);
+          }
+          break;
+        }
+        case 'polygon': {
+          const sides = entity.sides ?? 6;
+          if (entity.points.length >= 2 && sides >= 3) {
+            const center = proj(entity.points[0]);
+            const edge = proj(entity.points[1]);
+            const r = Math.hypot(edge.u - center.u, edge.v - center.v);
+            for (let i = 0; i <= sides; i++) {
+              const angle = (Math.PI * 2 * i) / sides - Math.PI / 2;
+              const pu = center.u + r * Math.cos(angle);
+              const pv = center.v + r * Math.sin(angle);
+              if (i === 0) shape.moveTo(pu, pv);
+              else shape.lineTo(pu, pv);
+            }
+            hasContent = true;
+          }
+          break;
+        }
       }
     }
     return hasContent ? shape : null;
@@ -444,18 +605,24 @@ export class GeometryEngine {
 
   /**
    * Build one or more closed shapes from sketch entities.
-   * Keeps inherently closed primitives (rectangle/circle) as independent loops
-   * to avoid triangulation bridges between disjoint profiles.
+   *
+   * - Inherently closed primitives (rectangle, circle, ellipse, polygon) each
+   *   produce an independent shape.
+   * - Non-boundary entities (construction-line, centerline, point, slot) are
+   *   excluded — they don't contribute to extrudable profiles.
+   * - Open-chain boundary entities (line, arc, spline, elliptical-arc) are
+   *   grouped into connected chains by endpoint proximity, and only closed
+   *   chains produce shapes. This supports multiple disjoint loops in one sketch.
    */
   private static entitiesToShapes(
     entities: SketchEntity[],
     proj: (p: SketchPoint) => { u: number; v: number },
   ): THREE.Shape[] {
     const shapes: THREE.Shape[] = [];
-    const chained: SketchEntity[] = [];
+    const TOL = 1e-3;
 
     const getEntityEndpoints = (entity: SketchEntity): [{ u: number; v: number }, { u: number; v: number }] | null => {
-      if (entity.type === 'line' || entity.type === 'construction-line' || entity.type === 'centerline') {
+      if (entity.type === 'line' || entity.type === 'spline') {
         if (entity.points.length < 2) return null;
         return [proj(entity.points[0]), proj(entity.points[entity.points.length - 1])];
       }
@@ -469,31 +636,83 @@ export class GeometryEngine {
           { u: c.u + Math.cos(ea) * entity.radius, v: c.v + Math.sin(ea) * entity.radius },
         ];
       }
+      if (entity.type === 'elliptical-arc') {
+        if (entity.points.length < 1 || !entity.majorRadius || !entity.minorRadius) return null;
+        const c = proj(entity.points[0]);
+        const rot = entity.rotation ?? 0;
+        const sa = entity.startAngle ?? 0;
+        const ea = entity.endAngle ?? Math.PI;
+        const cos = Math.cos(rot), sin = Math.sin(rot);
+        const startPt = () => {
+          const sx = entity.majorRadius! * Math.cos(sa);
+          const sy = entity.minorRadius! * Math.sin(sa);
+          return { u: c.u + cos * sx - sin * sy, v: c.v + sin * sx + cos * sy };
+        };
+        const endPt = () => {
+          const ex = entity.majorRadius! * Math.cos(ea);
+          const ey = entity.minorRadius! * Math.sin(ea);
+          return { u: c.u + cos * ex - sin * ey, v: c.v + sin * ex + cos * ey };
+        };
+        return [startPt(), endPt()];
+      }
       return null;
     };
 
-    const isChainClosed = (chain: SketchEntity[]) => {
-      if (chain.length === 0) return false;
-      const first = getEntityEndpoints(chain[0]);
-      const last = getEntityEndpoints(chain[chain.length - 1]);
-      if (!first || !last) return false;
-      const du = first[0].u - last[1].u;
-      const dv = first[0].v - last[1].v;
-      return Math.hypot(du, dv) <= 1e-3;
-    };
+    // 1. Closed primitives → individual shapes
+    // 2. Boundary chain entities → grouped into connected loops
+    const chainable: { entity: SketchEntity; endpoints: [{ u: number; v: number }, { u: number; v: number }] }[] = [];
 
     for (const entity of entities) {
-      if (entity.type === 'rectangle' || entity.type === 'circle') {
+      if (this.CLOSED_PRIMITIVE_TYPES.has(entity.type)) {
         const s = this.entitiesToShape([entity], proj);
         if (s) shapes.push(s);
-      } else {
-        chained.push(entity);
+      } else if (this.BOUNDARY_TYPES.has(entity.type)) {
+        const ep = getEntityEndpoints(entity);
+        if (ep) chainable.push({ entity, endpoints: ep });
       }
+      // Non-boundary types (construction-line, centerline, point, slot) are skipped
     }
 
-    if (isChainClosed(chained)) {
-      const chainedShape = this.entitiesToShape(chained, proj);
-      if (chainedShape) shapes.push(chainedShape);
+    // Group chainable entities into connected chains by endpoint proximity
+    const used = new Set<number>();
+    const ptClose = (a: { u: number; v: number }, b: { u: number; v: number }) =>
+      Math.hypot(a.u - b.u, a.v - b.v) <= TOL;
+
+    for (let seed = 0; seed < chainable.length; seed++) {
+      if (used.has(seed)) continue;
+      const chain: SketchEntity[] = [chainable[seed].entity];
+      let chainStart = chainable[seed].endpoints[0];
+      let chainEnd = chainable[seed].endpoints[1];
+      used.add(seed);
+
+      // Greedily extend the chain by finding an unused entity whose start
+      // connects to our chain's end (forward) or whose end connects to our
+      // chain's start (backward).
+      let extended = true;
+      while (extended) {
+        extended = false;
+        for (let i = 0; i < chainable.length; i++) {
+          if (used.has(i)) continue;
+          const ep = chainable[i].endpoints;
+          if (ptClose(chainEnd, ep[0])) {
+            chain.push(chainable[i].entity);
+            chainEnd = ep[1];
+            used.add(i);
+            extended = true;
+          } else if (ptClose(chainStart, ep[1])) {
+            chain.unshift(chainable[i].entity);
+            chainStart = ep[0];
+            used.add(i);
+            extended = true;
+          }
+        }
+      }
+
+      // Only emit a shape if the chain forms a closed loop
+      if (chain.length > 0 && ptClose(chainStart, chainEnd)) {
+        const s = this.entitiesToShape(chain, proj);
+        if (s) shapes.push(s);
+      }
     }
 
     return shapes;

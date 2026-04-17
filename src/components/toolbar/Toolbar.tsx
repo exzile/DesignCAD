@@ -1,4 +1,4 @@
-import { useRef, useState, useEffect, useCallback } from 'react';
+import { useRef, useState, useEffect, useCallback, useMemo } from 'react';
 import {
   MousePointer2, Minus, Circle, Square, Spline,
   ArrowUpFromLine, RotateCcw, Blend, Ruler, Hexagon,
@@ -71,6 +71,7 @@ export default function Toolbar() {
   const setActiveDialog = useCADStore((s) => s.setActiveDialog);
   const setSectionEnabled = useCADStore((s) => s.setSectionEnabled);
   const setSelectionFilter = useCADStore((s) => s.setSelectionFilter);
+  const selectionFilter = useCADStore((s) => s.selectionFilter);
   const selectedFeatureId = useCADStore((s) => s.selectedFeatureId);
   const removeFeature = useCADStore((s) => s.removeFeature);
   const addFeature = useCADStore((s) => s.addFeature);
@@ -369,34 +370,45 @@ export default function Toolbar() {
     { separator: true, icon: <Pipette size={MI} />, label: 'Display Component Colors', shortcut: 'Shift+N', checked: useCADStore.getState().showComponentColors, onClick: () => { const s = useCADStore.getState(); s.setShowComponentColors(!s.showComponentColors); s.setStatusMessage(s.showComponentColors ? 'Component colors: OFF' : 'Component colors: ON'); } },
   ];
 
-  const selectMenuItems: MenuItem[] = [
-    { icon: <MousePointer2 size={MI} />, label: 'Select', onClick: () => setActiveTool('select' as Tool) },
-    { icon: <Square size={MI} />, label: 'Window Selection', shortcut: '1', onClick: comingSoon('Window Selection') },
-    { icon: <Spline size={MI} />, label: 'Freeform Selection', shortcut: '2', onClick: comingSoon('Freeform Selection') },
-    { icon: <PenTool size={MI} />, label: 'Paint Selection', shortcut: '3', onClick: comingSoon('Paint Selection') },
-    {
-      separator: true,
-      icon: <MousePointer2 size={MI} />,
-      label: 'Selection Priority',
-      submenu: [
-        { icon: <Box size={MI} />, label: 'Body Priority', onClick: comingSoon('Body Priority') },
-        { icon: <Package size={MI} />, label: 'Component Priority', onClick: comingSoon('Component Priority') },
-        { icon: <Square size={MI} />, label: 'Face Priority', onClick: comingSoon('Face Priority') },
-        { icon: <Minus size={MI} />, label: 'Edge Priority', onClick: comingSoon('Edge Priority') },
-      ],
-    },
-    {
-      icon: <MousePointer2 size={MI} />,
-      label: 'Selection Filters',
-      submenu: [
-        { icon: <MousePointer2 size={MI} />, label: 'Select All', onClick: () => { setSelectionFilter({ bodies: true, faces: true, edges: true, vertices: true, sketches: true, construction: true }); setStatusMessage('Selection filter: All'); } },
-        { icon: <Box size={MI} />, label: 'Select Bodies', onClick: () => { setSelectionFilter({ bodies: true, faces: false, edges: false, vertices: false, sketches: false, construction: false }); setStatusMessage('Selection filter: Bodies only'); } },
-        { icon: <Square size={MI} />, label: 'Select Faces', onClick: () => { setSelectionFilter({ bodies: false, faces: true, edges: false, vertices: false, sketches: false, construction: false }); setStatusMessage('Selection filter: Faces only'); } },
-        { icon: <Minus size={MI} />, label: 'Select Edges', onClick: () => { setSelectionFilter({ bodies: false, faces: false, edges: true, vertices: false, sketches: false, construction: false }); setStatusMessage('Selection filter: Edges only'); } },
-        { icon: <PenTool size={MI} />, label: 'Select Sketches', onClick: () => { setSelectionFilter({ bodies: false, faces: false, edges: false, vertices: false, sketches: true, construction: false }); setStatusMessage('Selection filter: Sketches only'); } },
-      ],
-    },
-  ];
+  const selectMenuItems = useMemo<MenuItem[]>(() => {
+    const sf = selectionFilter;
+    // Derive which priority preset (if any) is active from the current filter
+    const isBodyPriority    = sf.bodies && !sf.faces && !sf.edges && !sf.vertices;
+    const isFacePriority    = sf.faces  && !sf.bodies && !sf.edges && !sf.vertices;
+    const isEdgePriority    = sf.edges  && !sf.bodies && !sf.faces && !sf.vertices;
+    const isVertexPriority  = sf.vertices && !sf.bodies && !sf.faces && !sf.edges;
+
+    const setPriority = (filter: Partial<typeof sf>, label: string) => {
+      setSelectionFilter({ bodies: false, faces: false, edges: false, vertices: false, ...filter });
+      setStatusMessage(`Selection priority: ${label}`);
+    };
+
+    return [
+      { icon: <MousePointer2 size={MI} />, label: 'Select', onClick: () => setActiveTool('select' as Tool) },
+      { icon: <Square size={MI} />, label: 'Window Selection', shortcut: '1', onClick: comingSoon('Window Selection') },
+      { icon: <Spline size={MI} />, label: 'Freeform Selection', shortcut: '2', onClick: comingSoon('Freeform Selection') },
+      { icon: <PenTool size={MI} />, label: 'Paint Selection', shortcut: '3', onClick: comingSoon('Paint Selection') },
+      {
+        separator: true,
+        icon: <MousePointer2 size={MI} />,
+        label: 'Selection Priority',
+        submenu: [
+          { icon: <Box size={MI} />,         label: 'Body Priority',      checked: isBodyPriority,   onClick: () => isBodyPriority   ? setSelectionFilter({ bodies: true, faces: true, edges: true, vertices: true }) : setPriority({ bodies: true }, 'Body') },
+          { icon: <Package size={MI} />,     label: 'Component Priority', checked: isBodyPriority,   onClick: () => isBodyPriority   ? setSelectionFilter({ bodies: true, faces: true, edges: true, vertices: true }) : setPriority({ bodies: true }, 'Component') },
+          { icon: <Square size={MI} />,      label: 'Face Priority',      checked: isFacePriority,   onClick: () => isFacePriority   ? setSelectionFilter({ bodies: true, faces: true, edges: true, vertices: true }) : setPriority({ faces: true }, 'Face') },
+          { icon: <Minus size={MI} />,       label: 'Edge Priority',      checked: isEdgePriority,   onClick: () => isEdgePriority   ? setSelectionFilter({ bodies: true, faces: true, edges: true, vertices: true }) : setPriority({ edges: true }, 'Edge') },
+          { icon: <Dot size={MI} />,         label: 'Vertex Priority',    checked: isVertexPriority, onClick: () => isVertexPriority ? setSelectionFilter({ bodies: true, faces: true, edges: true, vertices: true }) : setPriority({ vertices: true }, 'Vertex') },
+        ],
+      },
+      { separator: true, icon: <MousePointer2 size={MI} />, label: 'Select All', onClick: () => { setSelectionFilter({ bodies: true, faces: true, edges: true, vertices: true, sketches: true, construction: true }); setStatusMessage('Selection filter: All'); } },
+      { icon: <Box size={MI} />,         label: 'Bodies',       checked: sf.bodies,       onClick: () => setSelectionFilter({ bodies: !sf.bodies }) },
+      { icon: <Square size={MI} />,      label: 'Faces',        checked: sf.faces,        onClick: () => setSelectionFilter({ faces: !sf.faces }) },
+      { icon: <Minus size={MI} />,       label: 'Edges',        checked: sf.edges,        onClick: () => setSelectionFilter({ edges: !sf.edges }) },
+      { icon: <Dot size={MI} />,         label: 'Vertices',     checked: sf.vertices,     onClick: () => setSelectionFilter({ vertices: !sf.vertices }) },
+      { icon: <PenTool size={MI} />,     label: 'Sketches',     checked: sf.sketches,     onClick: () => setSelectionFilter({ sketches: !sf.sketches }) },
+      { icon: <Layers size={MI} />,      label: 'Construction', checked: sf.construction, onClick: () => setSelectionFilter({ construction: !sf.construction }) },
+    ];
+  }, [selectionFilter, setActiveTool, setSelectionFilter, setStatusMessage, comingSoon]);
 
   // ─── Sketch Mode Flyout Menus ──────────────────────────────────────────
 

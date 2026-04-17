@@ -82,7 +82,14 @@ export default function ExtrudedBodies() {
   const buildToolMesh = (feature: Feature, sketch: Sketch): THREE.Mesh | null => {
     const distance = (feature.params.distance as number) || 10;
     const direction = ((feature.params.direction as 'normal' | 'reverse' | 'symmetric') ?? 'normal');
-    return GeometryEngine.buildExtrudeFeatureMesh(sketch, distance, direction);
+    const profileIndex = feature.params.profileIndex as number | undefined;
+    // If a specific profile was selected, build a profile-only sketch so we
+    // don't extrude every profile in the source sketch.
+    const sketchForOp = profileIndex !== undefined
+      ? GeometryEngine.createProfileSketch(sketch, profileIndex)
+      : sketch;
+    if (!sketchForOp) return null;
+    return GeometryEngine.buildExtrudeFeatureMesh(sketchForOp, distance, direction);
   };
 
   const { bodies, featureIds, featureComponentIds } = useMemo(() => {
