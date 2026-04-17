@@ -254,6 +254,7 @@ export default function Toolbar() {
       label: 'Pattern',
       submenu: [
         { icon: <Repeat size={MI} />, label: 'Linear Pattern', onClick: () => setActiveDialog('linear-pattern') },
+        { icon: <Repeat size={MI} />, label: 'Rectangular Pattern', onClick: () => setActiveDialog('rectangular-pattern') },
         { icon: <Repeat size={MI} />, label: 'Circular Pattern', onClick: () => setActiveDialog('circular-pattern') },
         { icon: <Repeat size={MI} />, label: 'Pattern on Path', onClick: () => setActiveDialog('pattern-on-path') },
       ],

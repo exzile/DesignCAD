@@ -85,7 +85,8 @@ export default function SketchDimensionAnnotations() {
           }
 
           if (dim.type === 'linear') {
-            const ann = DimensionEngine.computeLinearDimension(pts[0], pts[1], OFFSET, 'auto');
+            // CORR-1: use stored orientation (horizontal / vertical / auto)
+            const ann = DimensionEngine.computeLinearDimension(pts[0], pts[1], OFFSET, dim.orientation ?? 'auto');
             const segs = makeSegments(
               [ann.extensionLine1, ann.extensionLine2, ann.dimensionLine],
               origin, t1, t2,

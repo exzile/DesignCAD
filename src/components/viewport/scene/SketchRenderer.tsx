@@ -21,20 +21,31 @@ function SketchGeometry({ sketch }: { sketch: Sketch }) {
   return <primitive object={group} />;
 }
 
-/** Memoize the filtered sketch so point-visibility toggles don't produce
+/** Memoize the filtered sketch so visibility toggles don't produce
  *  a new object identity on every render, defeating SketchGeometry's useMemo. */
-function ActiveSketchGeometry({ sketch, showSketchPoints }: { sketch: Sketch; showSketchPoints: boolean }) {
+function ActiveSketchGeometry({
+  sketch,
+  showSketchPoints,
+  showConstructionGeometries,
+}: {
+  sketch: Sketch;
+  showSketchPoints: boolean;
+  showConstructionGeometries: boolean;
+}) {
   const filteredSketch = useMemo(() => {
-    if (showSketchPoints) return sketch;
-    const filtered = sketch.entities.filter((e) => e.type !== 'point');
-    return filtered.length === sketch.entities.length
+    const entities = sketch.entities.filter((e) => {
+      if (!showSketchPoints && e.type === 'point') return false;
+      if (!showConstructionGeometries && e.isConstruction) return false;
+      return true;
+    });
+    return entities.length === sketch.entities.length
       ? sketch
-      : { ...sketch, entities: filtered };
-  }, [sketch, showSketchPoints]);
+      : { ...sketch, entities };
+  }, [sketch, showSketchPoints, showConstructionGeometries]);
 
   return (
     <SketchGeometry
-      key={`active-${sketch.id}-e${sketch.entities.length}-pts${showSketchPoints ? 1 : 0}`}
+      key={`active-${sketch.id}-e${sketch.entities.length}-pts${showSketchPoints ? 1 : 0}-cg${showConstructionGeometries ? 1 : 0}`}
       sketch={filteredSketch}
     />
   );
@@ -46,6 +57,7 @@ export default function SketchRenderer() {
   const sketches = useCADStore((s) => s.sketches);
   const showProfile = useCADStore((s) => s.showSketchProfile);
   const showSketchPoints = useCADStore((s) => s.showSketchPoints);
+  const showConstructionGeometries = useCADStore((s) => s.showConstructionGeometries);
   const rollbackIndex = useCADStore((s) => s.rollbackIndex);
 
   const profileMaterial = useMemo(() => new THREE.MeshBasicMaterial({
@@ -76,7 +88,11 @@ export default function SketchRenderer() {
         return <SketchGeometry key={feature.id} sketch={sketch} />;
       })}
       {activeSketch && activeSketch.entities.length > 0 && (
-        <ActiveSketchGeometry sketch={activeSketch} showSketchPoints={showSketchPoints} />
+        <ActiveSketchGeometry
+          sketch={activeSketch}
+          showSketchPoints={showSketchPoints}
+          showConstructionGeometries={showConstructionGeometries}
+        />
       )}
       {profileMesh && <primitive key={`profile-${activeSketch?.id}-${activeSketch?.entities.length}`} object={profileMesh} />}
     </>

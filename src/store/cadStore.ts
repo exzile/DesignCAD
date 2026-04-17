@@ -9,7 +9,8 @@ import type { LipGrooveParams } from '../components/dialogs/solid/LipGrooveDialo
 import type { DirectEditParams } from '../components/dialogs/solid/DirectEditDialog';
 import type { TextureExtrudeParams } from '../components/dialogs/solid/TextureExtrudeDialog';
 
-export type ExtrudeDirection = 'positive' | 'symmetric' | 'negative';
+/** CORR-2: 'two-sides' enables asymmetric extrude with separate side distances */
+export type ExtrudeDirection = 'positive' | 'symmetric' | 'negative' | 'two-sides';
 export type ExtrudeOperation = 'new-body' | 'join' | 'cut' | 'intersect' | 'new-component';
 import { evaluateExpression, resolveParameters } from '../utils/expressionEval';
 import { GeometryEngine } from '../engine/GeometryEngine';
@@ -97,6 +98,9 @@ interface CADState {
   autoConstrainSketch: () => void;
   /** D27: Run the Newton-Raphson constraint solver on the active sketch. */
   solveSketch: () => void;
+  /** CORR-7: when true, constraint solver is not called automatically on entity/constraint changes */
+  sketchComputeDeferred: boolean;
+  setSketchComputeDeferred: (v: boolean) => void;
   // D52: Constraint application state — accumulates clicked entity IDs before applying
   constraintSelection: string[];
   setConstraintSelection: (ids: string[]) => void;
@@ -139,6 +143,8 @@ interface CADState {
   renameFeatureGroup: (groupId: string, name: string) => void;
   deleteFeatureGroup: (groupId: string) => void;
   toggleFeatureGroup: (groupId: string) => void;
+  /** CTX-12: Move a feature into an existing group (or pass null to ungroup) */
+  moveFeatureToGroup: (featureId: string, groupId: string | null) => void;
 
   // Selection
   selectedEntityIds: string[];
@@ -283,6 +289,9 @@ interface CADState {
   setShowSketchConstraints: (v: boolean) => void;
   showProjectedGeometries: boolean;
   setShowProjectedGeometries: (v: boolean) => void;
+  /** SK-A7: toggle construction geometry visibility in the active sketch */
+  showConstructionGeometries: boolean;
+  setShowConstructionGeometries: (v: boolean) => void;
   gridVisible: boolean;
   setGridVisible: (visible: boolean) => void;
   gridLocked: boolean;
@@ -321,6 +330,9 @@ interface CADState {
   setExtrudeSelectedSketchIds: (ids: string[]) => void;
   extrudeDistance: number;
   setExtrudeDistance: (distance: number) => void;
+  /** CORR-2: second side distance used when direction === 'two-sides' */
+  extrudeDistance2: number;
+  setExtrudeDistance2: (distance: number) => void;
   extrudeDirection: ExtrudeDirection;
   setExtrudeDirection: (d: ExtrudeDirection) => void;
   extrudeOperation: ExtrudeOperation;
@@ -543,9 +555,14 @@ interface CADState {
   sketchTextContent: string;
   sketchTextHeight: number;
   sketchTextFont: string;
+  /** SK-A6: bold / italic formatting flags */
+  sketchTextBold: boolean;
+  sketchTextItalic: boolean;
   setSketchTextContent: (v: string) => void;
   setSketchTextHeight: (v: number) => void;
   setSketchTextFont: (v: string) => void;
+  setSketchTextBold: (v: boolean) => void;
+  setSketchTextItalic: (v: boolean) => void;
   startSketchTextTool: () => void;
   commitSketchTextEntities: (segments: Array<{ x1: number; y1: number; z1: number; x2: number; y2: number; z2: number }>) => void;
   cancelSketchTextTool: () => void;
@@ -553,9 +570,22 @@ interface CADState {
   // D28 — Dimension tool
   activeDimensionType: 'linear' | 'angular' | 'radial' | 'diameter' | 'arc-length' | 'aligned';
   dimensionOffset: number;
+  /** SK-A3: when true, newly created dimensions are marked driven (reference) */
+  dimensionDrivenMode: boolean;
+  /** CORR-1: orientation for newly created linear/aligned dimensions */
+  dimensionOrientation: 'horizontal' | 'vertical' | 'auto';
+  /** SK-A8: tolerance mode and values for newly created dimensions */
+  dimensionToleranceMode: 'none' | 'symmetric' | 'deviation';
+  dimensionToleranceUpper: number;
+  dimensionToleranceLower: number;
   pendingDimensionEntityIds: string[];
   setActiveDimensionType: (t: 'linear' | 'angular' | 'radial' | 'diameter' | 'arc-length' | 'aligned') => void;
   setDimensionOffset: (v: number) => void;
+  setDimensionDrivenMode: (v: boolean) => void;
+  setDimensionOrientation: (v: 'horizontal' | 'vertical' | 'auto') => void;
+  setDimensionToleranceMode: (v: 'none' | 'symmetric' | 'deviation') => void;
+  setDimensionToleranceUpper: (v: number) => void;
+  setDimensionToleranceLower: (v: number) => void;
   startDimensionTool: () => void;
   cancelDimensionTool: () => void;
   addPendingDimensionEntity: (id: string) => void;
@@ -648,6 +678,45 @@ interface CADState {
   setHoleDraftDiameter: (d: number) => void;
   setHoleDraftDepth: (d: number) => void;
   closeHoleDialog: () => void;
+
+  // ── SOL-I2: Shell face removal selection ────────────────────────────────
+  shellRemoveFaceIds: string[];
+  addShellRemoveFace: (id: string) => void;
+  removeShellRemoveFace: (id: string) => void;
+  clearShellRemoveFaces: () => void;
+
+  // ── SOL-I7: Shell individual face thickness overrides ────────────────────
+  shellFaceThicknesses: Record<string, number>;
+  setShellFaceThickness: (faceId: string, thickness: number) => void;
+  clearShellFaceThicknesses: () => void;
+
+  // ── SOL-I3: Draft parting line face picker ───────────────────────────────
+  draftPartingFaceId: string | null;
+  draftPartingFaceNormal: [number, number, number] | null;
+  draftPartingFaceCentroid: [number, number, number] | null;
+  setDraftPartingFace: (
+    id: string,
+    normal: [number, number, number],
+    centroid: [number, number, number],
+  ) => void;
+  clearDraftPartingFace: () => void;
+
+  // ── SOL-I5: Remove Face face picker ─────────────────────────────────────
+  removeFaceFaceId: string | null;
+  removeFaceFaceNormal: [number, number, number] | null;
+  removeFaceFaceCentroid: [number, number, number] | null;
+  setRemoveFaceFace: (
+    id: string,
+    normal: [number, number, number],
+    centroid: [number, number, number],
+  ) => void;
+  clearRemoveFaceFace: () => void;
+
+  // ── CTX-8: Mesh export trigger ───────────────────────────────────────────
+  exportBodyId: string | null;
+  exportBodyFormat: 'stl' | 'glb' | null;
+  triggerBodyExport: (bodyId: string, format: 'stl' | 'glb') => void;
+  clearBodyExport: () => void;
 
   // ── D183 Bounding Solid ──────────────────────────────────────────────────
   openBoundingSolidDialog: () => void;
@@ -1028,6 +1097,7 @@ const EXTRUDE_DEFAULTS = {
   extrudeSelectedSketchId: null,
   extrudeSelectedSketchIds: [] as string[],
   extrudeDistance: 10,
+  extrudeDistance2: 10,
   extrudeDirection: 'positive' as ExtrudeDirection,
   extrudeOperation: 'new-body' as ExtrudeOperation,
   extrudeThinEnabled: false,
@@ -1543,6 +1613,12 @@ export const useCADStore = create<CADState>()(persist((set, get) => ({
     features: state.features.map((f) => f.groupId === groupId ? { ...f, groupId: undefined } : f),
     statusMessage: 'Group deleted',
   })),
+  moveFeatureToGroup: (featureId, groupId) => set((state) => ({
+    features: state.features.map((f) =>
+      f.id === featureId ? { ...f, groupId: groupId ?? undefined } : f,
+    ),
+  })),
+
   toggleFeatureGroup: (groupId) => set((state) => ({
     featureGroups: state.featureGroups.map((g) =>
       g.id === groupId ? { ...g, collapsed: !g.collapsed } : g,
@@ -2318,6 +2394,9 @@ export const useCADStore = create<CADState>()(persist((set, get) => ({
   },
 
   // D27: Solve constraints on the active sketch using Newton-Raphson
+  sketchComputeDeferred: false,
+  setSketchComputeDeferred: (v) => set({ sketchComputeDeferred: v }),
+
   solveSketch: () => {
     const { activeSketch } = get();
     if (!activeSketch) return;
@@ -2370,7 +2449,8 @@ export const useCADStore = create<CADState>()(persist((set, get) => ({
       },
       statusMessage: `${constraint.type} constraint applied`,
     });
-    get().solveSketch();
+    // CORR-7: skip auto-solve when compute is deferred
+    if (!get().sketchComputeDeferred) get().solveSketch();
   },
 
   // Conic curve rho (D11)
@@ -2437,6 +2517,8 @@ export const useCADStore = create<CADState>()(persist((set, get) => ({
   setShowSketchConstraints: (v) => set({ showSketchConstraints: v }),
   showProjectedGeometries: true,
   setShowProjectedGeometries: (v) => set({ showProjectedGeometries: v }),
+  showConstructionGeometries: true,
+  setShowConstructionGeometries: (v) => set({ showConstructionGeometries: v }),
 
   gridLocked: false,
   setGridLocked: (locked) => set({ gridLocked: locked }),
@@ -2473,6 +2555,7 @@ export const useCADStore = create<CADState>()(persist((set, get) => ({
     extrudeSelectedSketchId: ids[0] ?? null,
   }),
   setExtrudeDistance: (distance) => set({ extrudeDistance: distance }),
+  setExtrudeDistance2: (distance) => set({ extrudeDistance2: distance }),
   setExtrudeDirection: (d) => set({ extrudeDirection: d }),
   setExtrudeOperation: (o) => set({ extrudeOperation: o }),
   // Thin extrude (D66)
@@ -2564,7 +2647,7 @@ export const useCADStore = create<CADState>()(persist((set, get) => ({
   },
   commitExtrude: () => {
     const {
-      extrudeSelectedSketchId, extrudeSelectedSketchIds, extrudeDistance, extrudeDirection,
+      extrudeSelectedSketchId, extrudeSelectedSketchIds, extrudeDistance, extrudeDistance2, extrudeDirection,
       extrudeOperation, extrudeThinEnabled, extrudeThinThickness, extrudeThinSide,
       extrudeStartType, extrudeStartOffset, extrudeExtentType, extrudeTaperAngle,
       extrudeBodyKind,
@@ -2604,8 +2687,9 @@ export const useCADStore = create<CADState>()(persist((set, get) => ({
     }
     // Use absolute distance — negative just means the user dragged in reverse
     const absDistance = extrudeExtentType === 'all' ? 10000 : Math.abs(extrudeDistance);
-    // Direction follows the sign of the distance
-    const finalDirection = extrudeDistance < 0 ? 'negative' : extrudeDirection;
+    const absDistance2 = extrudeExtentType === 'all' ? 10000 : Math.abs(extrudeDistance2);
+    // Direction follows the sign of the distance (two-sides never flips)
+    const finalDirection = extrudeDirection === 'two-sides' ? 'two-sides' : (extrudeDistance < 0 ? 'negative' : extrudeDirection);
     // Operation is set explicitly by the user in the panel (new-body, join, cut)
     const finalOperation = extrudeOperation;
 
@@ -2669,6 +2753,7 @@ export const useCADStore = create<CADState>()(persist((set, get) => ({
         params: {
           distance: finalDirection === 'symmetric' ? absDistance / 2 : absDistance,
           distanceExpr: String(absDistance),
+          ...(finalDirection === 'two-sides' ? { distance2: absDistance2 } : {}),
           direction: finalDirection,
           operation: finalOperation,
           thin: extrudeThinEnabled,
@@ -3266,9 +3351,13 @@ export const useCADStore = create<CADState>()(persist((set, get) => ({
   sketchTextContent: 'Text',
   sketchTextHeight: 5,
   sketchTextFont: 'default',
+  sketchTextBold: false,
+  sketchTextItalic: false,
   setSketchTextContent: (v) => set({ sketchTextContent: v }),
   setSketchTextHeight: (v) => set({ sketchTextHeight: v }),
   setSketchTextFont: (v) => set({ sketchTextFont: v }),
+  setSketchTextBold: (v) => set({ sketchTextBold: v }),
+  setSketchTextItalic: (v) => set({ sketchTextItalic: v }),
   startSketchTextTool: () => {
     const { activeSketch } = get();
     if (!activeSketch) {
@@ -3302,9 +3391,19 @@ export const useCADStore = create<CADState>()(persist((set, get) => ({
   // ─── D28: Dimension tool ──────────────────────────────────────────────────
   activeDimensionType: 'linear',
   dimensionOffset: 10,
+  dimensionDrivenMode: false,
+  dimensionOrientation: 'auto',
+  dimensionToleranceMode: 'none',
+  dimensionToleranceUpper: 0.1,
+  dimensionToleranceLower: 0.1,
   pendingDimensionEntityIds: [],
   setActiveDimensionType: (t) => set({ activeDimensionType: t }),
   setDimensionOffset: (v) => set({ dimensionOffset: v }),
+  setDimensionDrivenMode: (v) => set({ dimensionDrivenMode: v }),
+  setDimensionOrientation: (v) => set({ dimensionOrientation: v }),
+  setDimensionToleranceMode: (v) => set({ dimensionToleranceMode: v }),
+  setDimensionToleranceUpper: (v) => set({ dimensionToleranceUpper: v }),
+  setDimensionToleranceLower: (v) => set({ dimensionToleranceLower: v }),
   startDimensionTool: () => {
     const { activeSketch } = get();
     if (!activeSketch) {
@@ -3331,7 +3430,8 @@ export const useCADStore = create<CADState>()(persist((set, get) => ({
           : s
       ),
     });
-    get().solveSketch();
+    // CORR-7: skip auto-solve when compute is deferred
+    if (!get().sketchComputeDeferred) get().solveSketch();
   },
   removeDimension: (dimId) => {
     const { activeSketch } = get();
@@ -3607,6 +3707,61 @@ export const useCADStore = create<CADState>()(persist((set, get) => ({
     holeFaceNormal: null,
     holeFaceCentroid: null,
   }),
+
+  // ── SOL-I2: Shell face removal selection ────────────────────────────────
+  shellRemoveFaceIds: [],
+  addShellRemoveFace: (id) => set((state) => ({
+    shellRemoveFaceIds: state.shellRemoveFaceIds.includes(id)
+      ? state.shellRemoveFaceIds
+      : [...state.shellRemoveFaceIds, id],
+  })),
+  removeShellRemoveFace: (id) => set((state) => ({
+    shellRemoveFaceIds: state.shellRemoveFaceIds.filter((x) => x !== id),
+  })),
+  clearShellRemoveFaces: () => set({ shellRemoveFaceIds: [] }),
+
+  // ── SOL-I7: Shell individual face thickness overrides ────────────────────
+  shellFaceThicknesses: {},
+  setShellFaceThickness: (faceId, thickness) => set((state) => ({
+    shellFaceThicknesses: { ...state.shellFaceThicknesses, [faceId]: thickness },
+  })),
+  clearShellFaceThicknesses: () => set({ shellFaceThicknesses: {} }),
+
+  // ── SOL-I3: Draft parting line face picker ───────────────────────────────
+  draftPartingFaceId: null,
+  draftPartingFaceNormal: null,
+  draftPartingFaceCentroid: null,
+  setDraftPartingFace: (id, normal, centroid) => set({
+    draftPartingFaceId: id,
+    draftPartingFaceNormal: normal,
+    draftPartingFaceCentroid: centroid,
+  }),
+  clearDraftPartingFace: () => set({
+    draftPartingFaceId: null,
+    draftPartingFaceNormal: null,
+    draftPartingFaceCentroid: null,
+  }),
+
+  // ── SOL-I5: Remove Face face picker ─────────────────────────────────────
+  removeFaceFaceId: null,
+  removeFaceFaceNormal: null,
+  removeFaceFaceCentroid: null,
+  setRemoveFaceFace: (id, normal, centroid) => set({
+    removeFaceFaceId: id,
+    removeFaceFaceNormal: normal,
+    removeFaceFaceCentroid: centroid,
+  }),
+  clearRemoveFaceFace: () => set({
+    removeFaceFaceId: null,
+    removeFaceFaceNormal: null,
+    removeFaceFaceCentroid: null,
+  }),
+
+  // ── CTX-8: Mesh export trigger ───────────────────────────────────────────
+  exportBodyId: null,
+  exportBodyFormat: null,
+  triggerBodyExport: (bodyId, format) => set({ exportBodyId: bodyId, exportBodyFormat: format }),
+  clearBodyExport: () => set({ exportBodyId: null, exportBodyFormat: null }),
 
   // ── D183 Bounding Solid ──────────────────────────────────────────────────
   openBoundingSolidDialog: () => set({ activeDialog: 'bounding-solid' }),
@@ -5136,7 +5291,7 @@ export const useCADStore = create<CADState>()(persist((set, get) => ({
     const feature: Feature = {
       id: crypto.randomUUID(),
       name: `Emboss ${n} (${style}, ${depth}mm)`,
-      type: 'rib' as Feature['type'],
+      type: 'emboss',
       params: { featureKind: 'emboss', sketchId, depth, style, embossStyle: 'emboss' },
       mesh,
       visible: true,
@@ -5178,7 +5333,7 @@ export const useCADStore = create<CADState>()(persist((set, get) => ({
     const feature: Feature = {
       id: crypto.randomUUID(),
       name: `Boundary Fill ${n}`,
-      type: 'extrude' as Feature['type'],
+      type: 'boundary-fill',
       params: { featureKind: 'boundary-fill', toolFeatureIds: toolFeatureIds.join(','), operation, isBoundaryFill: true },
       mesh: fillMesh,
       visible: true,

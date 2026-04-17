@@ -1,7 +1,8 @@
+import { useState } from 'react';
 import { createPortal } from 'react-dom';
 import {
   Move, FolderOpen, Box, Layers, Settings, Link2, CircleDot,
-  Download, Copy, Scissors, Trash2, MoreHorizontal, Eye, EyeOff,
+  Download, Copy, Scissors, Trash2, MoreHorizontal, Eye,
   Search, MousePointer2, ScanEye,
 } from 'lucide-react';
 import { useComponentStore } from '../../../store/componentStore';
@@ -13,6 +14,39 @@ export interface BodyCtxMenu {
   y: number;
 }
 
+interface MenuItem {
+  label: string;
+  shortcut?: string;
+  icon?: React.ReactNode;
+  danger?: boolean;
+  separator?: boolean;
+  type?: 'opacity' | 'selectable';
+  onClick: () => void;
+}
+
+// ── Sub-component: opacity slider row ──────────────────────────────────────
+interface OpacityRowProps {
+  opacity: number;
+  onChange: (v: number) => void;
+}
+function OpacityRow({ opacity, onChange }: OpacityRowProps) {
+  return (
+    <div className="ctx-opacity-row">
+      <input
+        className="ctx-opacity-slider"
+        type="range"
+        min={0}
+        max={1}
+        step={0.05}
+        value={opacity}
+        onChange={(e) => onChange(Number(e.target.value))}
+      />
+      <span className="ctx-opacity-value">{Math.round(opacity * 100)}%</span>
+    </div>
+  );
+}
+
+// ── Main component ─────────────────────────────────────────────────────────
 export function BodyContextMenu({
   menu,
   bodyName,
@@ -24,20 +58,30 @@ export function BodyContextMenu({
   onClose: () => void;
   onOpenMaterial: () => void;
 }) {
-  const removeBody = useComponentStore((s) => s.removeBody);
-  const renameBody = useComponentStore((s) => s.renameBody);
-  const toggleVisibility = useComponentStore((s) => s.toggleBodyVisibility);
-  const isolateBody = useComponentStore((s) => s.isolateBody);
-  const showAllBodies = useComponentStore((s) => s.showAllBodies);
-  const setStatusMessage = useCADStore((s) => s.setStatusMessage);
-  const setActiveDialog = useCADStore((s) => s.setActiveDialog);
+  const [opacityOpen, setOpacityOpen] = useState(false);
+
+  const removeBody         = useComponentStore((s) => s.removeBody);
+  const renameBody         = useComponentStore((s) => s.renameBody);
+  const toggleVisibility   = useComponentStore((s) => s.toggleBodyVisibility);
+  const isolateBody        = useComponentStore((s) => s.isolateBody);
+  const showAllBodies      = useComponentStore((s) => s.showAllBodies);
+  const setBodyOpacity     = useComponentStore((s) => s.setBodyOpacity);
+  const toggleBodySelectable = useComponentStore((s) => s.toggleBodySelectable);
+  const body               = useComponentStore((s) => s.bodies[menu.bodyId]);
+
+  const setStatusMessage   = useCADStore((s) => s.setStatusMessage);
+  const setActiveDialog    = useCADStore((s) => s.setActiveDialog);
+  const triggerBodyExport  = useCADStore((s) => s.triggerBodyExport);
+
+  const isSelectable = body?.selectable !== false;
+  const currentOpacity = body?.opacity ?? 1;
 
   const cs = (label: string) => () => {
     setStatusMessage(`${label} — coming soon`);
     onClose();
   };
 
-  const items: Array<{ label: string; shortcut?: string; icon?: React.ReactNode; danger?: boolean; separator?: boolean; onClick: () => void }> = [
+  const items: MenuItem[] = [
     { label: 'Move/Copy', shortcut: 'M', icon: <Move size={13} />, onClick: cs('Move/Copy') },
     { label: 'Move to Group', icon: <FolderOpen size={13} />, onClick: cs('Move to Group') },
     { separator: true, label: 'Create Components from Bodies', icon: <Box size={13} />, onClick: cs('Create Components from Bodies') },
@@ -48,7 +92,8 @@ export function BodyContextMenu({
     { label: 'Appearance', shortcut: 'A', icon: <CircleDot size={13} />, onClick: () => { setActiveDialog('appearance'); onClose(); } },
     { label: 'Texture Map Controls', icon: <Settings size={13} />, onClick: cs('Texture Map Controls') },
     { label: 'Properties', icon: <MoreHorizontal size={13} />, onClick: cs('Properties') },
-    { separator: true, label: 'Save As Mesh', icon: <Download size={13} />, onClick: cs('Save As Mesh') },
+    { separator: true, label: 'Save As STL', icon: <Download size={13} />, onClick: () => { triggerBodyExport(menu.bodyId, 'stl'); onClose(); } },
+    { label: 'Save As GLB', icon: <Download size={13} />, onClick: () => { triggerBodyExport(menu.bodyId, 'glb'); onClose(); } },
     { label: 'Copy', shortcut: 'Ctrl+C', icon: <Copy size={13} />, onClick: cs('Copy') },
     { label: 'Cut', shortcut: 'Ctrl+X', icon: <Scissors size={13} />, onClick: cs('Cut') },
     {
@@ -79,8 +124,24 @@ export function BodyContextMenu({
     { label: 'Show/Hide', shortcut: 'V', icon: <Eye size={13} />, onClick: () => { toggleVisibility(menu.bodyId); onClose(); } },
     { label: 'Isolate', icon: <ScanEye size={13} />, onClick: () => { isolateBody(menu.bodyId); setStatusMessage(`Isolated: ${bodyName}`); onClose(); } },
     { label: 'Show All Bodies', icon: <Eye size={13} />, onClick: () => { showAllBodies(); setStatusMessage('All bodies visible'); onClose(); } },
-    { label: 'Selectable/Unselectable', icon: <MousePointer2 size={13} />, onClick: cs('Selectable/Unselectable') },
-    { label: 'Opacity Control', icon: <CircleDot size={13} />, onClick: cs('Opacity Control') },
+    // CTX-9: Selectable toggle — label reflects current state
+    {
+      label: isSelectable ? 'Make Unselectable' : 'Make Selectable',
+      type: 'selectable',
+      icon: <MousePointer2 size={13} />,
+      onClick: () => {
+        toggleBodySelectable(menu.bodyId);
+        setStatusMessage(isSelectable ? `${bodyName}: unselectable` : `${bodyName}: selectable`);
+        onClose();
+      },
+    },
+    // CTX-7: Opacity — expands slider inline, does NOT close menu
+    {
+      label: 'Opacity Control',
+      type: 'opacity',
+      icon: <CircleDot size={13} />,
+      onClick: () => setOpacityOpen((prev) => !prev),
+    },
     { separator: true, label: 'Find in Window', icon: <Search size={13} />, onClick: cs('Find in Window') },
   ];
 
@@ -89,21 +150,39 @@ export function BodyContextMenu({
       <div className="sketch-ctx-backdrop" onClick={onClose} />
       {/* top/left are dynamic (cursor position) — must stay inline */}
       <div className="sketch-ctx-menu" style={{ top: menu.y, left: menu.x }}>
-        {items.map((item, i) =>
-          item.separator ? (
-            <div key={i} className="sketch-ctx-sep" />
-          ) : (
-            <button
-              key={i}
-              className={`sketch-ctx-item${item.danger ? ' danger' : ''}`}
-              onClick={item.onClick}
-            >
-              <span className="sketch-ctx-icon">{item.icon}</span>
-              <span className="sketch-ctx-label">{item.label}</span>
-              {item.shortcut && <span className="sketch-ctx-shortcut">{item.shortcut}</span>}
-            </button>
-          )
-        )}
+        {items.map((item, i) => {
+          if (item.separator) {
+            return <div key={i} className="sketch-ctx-sep" />;
+          }
+
+          const isActive = item.type === 'opacity' && opacityOpen;
+          const isToggledOn = item.type === 'selectable' && !isSelectable;
+
+          return (
+            <div key={i}>
+              <button
+                className={[
+                  'sketch-ctx-item',
+                  item.danger ? 'danger' : '',
+                  isActive ? 'active' : '',
+                  isToggledOn ? 'toggled-on' : '',
+                ].filter(Boolean).join(' ')}
+                onClick={item.onClick}
+              >
+                <span className="sketch-ctx-icon">{item.icon}</span>
+                <span className="sketch-ctx-label">{item.label}</span>
+                {item.shortcut && <span className="sketch-ctx-shortcut">{item.shortcut}</span>}
+              </button>
+
+              {item.type === 'opacity' && opacityOpen && (
+                <OpacityRow
+                  opacity={currentOpacity}
+                  onChange={(v) => setBodyOpacity(menu.bodyId, v)}
+                />
+              )}
+            </div>
+          );
+        })}
       </div>
     </>,
     document.body,

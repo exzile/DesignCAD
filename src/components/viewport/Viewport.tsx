@@ -59,6 +59,10 @@ import TextureExtrudeFacePicker from './scene/TextureExtrudeFacePicker';
 import DecalFacePicker from './scene/DecalFacePicker';
 import SplitFacePicker from './scene/SplitFacePicker';
 import HoleFacePicker from './scene/HoleFacePicker';
+import ShellFacePicker from './scene/ShellFacePicker';
+import RemoveFacePicker from './scene/RemoveFacePicker';
+import DraftPartingLinePicker from './scene/DraftPartingLinePicker';
+import MeshExporter from './scene/MeshExporter';
 import SnapFitFacePicker from './scene/SnapFitFacePicker';
 import LipGrooveEdgePicker from './scene/LipGrooveEdgePicker';
 import ConstructTwoPlanePanel from './ConstructTwoPlanePanel';
@@ -328,6 +332,10 @@ export default function Viewport() {
         <DecalFacePicker />
         <SplitFacePicker />
         <HoleFacePicker />
+        <ShellFacePicker />
+        <RemoveFacePicker />
+        <DraftPartingLinePicker />
+        <MeshExporter />
         <SnapFitFacePicker />
         <LipGrooveEdgePicker />
         <JointOriginPicker />

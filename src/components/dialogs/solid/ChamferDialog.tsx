@@ -3,7 +3,8 @@ import { X } from 'lucide-react';
 import { useCADStore } from '../../../store/cadStore';
 import type { Feature } from '../../../types/cad';
 
-export type ChamferMode = 'equal-dist' | 'two-dist' | 'dist-angle';
+/** SOL-I6: 'three-face' added per Fusion SDK ThreeEdgeChamferEdge */
+export type ChamferMode = 'equal-dist' | 'two-dist' | 'dist-angle' | 'three-face';
 
 export interface ChamferParams {
   mode: ChamferMode;
@@ -57,7 +58,7 @@ function ChamferDialogUI({ open, selectedEdgeCount, onClose, onConfirm }: Chamfe
           <button className="dialog-close" onClick={onClose}><X size={16} /></button>
         </div>
         <div className="dialog-body">
-          <p className="dialog-hint" style={{ marginBottom: 12 }}>
+          <p className="dialog-hint">
             {selectedEdgeCount} edge(s) selected
           </p>
 
@@ -70,20 +71,28 @@ function ChamferDialogUI({ open, selectedEdgeCount, onClose, onConfirm }: Chamfe
               <option value="equal-dist">Equal Distance</option>
               <option value="two-dist">Two Distances</option>
               <option value="dist-angle">Distance + Angle</option>
+              <option value="three-face">Three Face</option>
             </select>
           </div>
 
-          <div className="form-group">
-            <label>Distance (mm)</label>
-            <input
-              type="number"
-              value={distance}
-              onChange={(e) => setDistance(clamp(parseFloat(e.target.value) || 2, 0.01, 500))}
-              min={0.01}
-              max={500}
-              step={0.5}
-            />
-          </div>
+          {mode === 'three-face' ? (
+            <p className="dialog-hint">
+              Select edges at the intersection of three faces. The chamfer is
+              automatically sized to blend all three faces tangentially.
+            </p>
+          ) : (
+            <div className="form-group">
+              <label>Distance (mm)</label>
+              <input
+                type="number"
+                value={distance}
+                onChange={(e) => setDistance(clamp(parseFloat(e.target.value) || 2, 0.01, 500))}
+                min={0.01}
+                max={500}
+                step={0.5}
+              />
+            </div>
+          )}
 
           {mode === 'two-dist' && (
             <div className="form-group">
@@ -113,16 +122,18 @@ function ChamferDialogUI({ open, selectedEdgeCount, onClose, onConfirm }: Chamfe
             </div>
           )}
 
-          <div className="form-group">
-            <label className="checkbox-label">
-              <input
-                type="checkbox"
-                checked={propagate}
-                onChange={(e) => setPropagate(e.target.checked)}
-              />
-              Propagate Along Tangent Edges
-            </label>
-          </div>
+          {mode !== 'three-face' && (
+            <div className="form-group">
+              <label className="checkbox-label">
+                <input
+                  type="checkbox"
+                  checked={propagate}
+                  onChange={(e) => setPropagate(e.target.checked)}
+                />
+                Propagate Along Tangent Edges
+              </label>
+            </div>
+          )}
         </div>
         <div className="dialog-footer">
           <button className="btn btn-secondary" onClick={onClose}>Cancel</button>

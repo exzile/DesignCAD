@@ -15,6 +15,8 @@ export default function ExtrudePanel() {
   const setSelectedIds = useCADStore((s) => s.setExtrudeSelectedSketchIds);
   const distance = useCADStore((s) => s.extrudeDistance);
   const setDistance = useCADStore((s) => s.setExtrudeDistance);
+  const distance2 = useCADStore((s) => s.extrudeDistance2);
+  const setDistance2 = useCADStore((s) => s.setExtrudeDistance2);
   const direction = useCADStore((s) => s.extrudeDirection);
   const setDirection = useCADStore((s) => s.setExtrudeDirection);
   const operation = useCADStore((s) => s.extrudeOperation);
@@ -140,6 +142,7 @@ export default function ExtrudePanel() {
               <option value="positive">One Side</option>
               <option value="symmetric">Symmetric</option>
               <option value="negative">Reversed</option>
+              <option value="two-sides">Two Sides</option>
             </select>
           </div>
 
@@ -156,13 +159,24 @@ export default function ExtrudePanel() {
           </div>
 
           {extentType === 'distance' && (
-            <div className="tp-row">
-              <span className="tp-label">Distance</span>
-              <div className="tp-input-group">
-                <ExpressionInput value={distance} onChange={setDistance} step={0.1} />
-                <span className="tp-unit">{units}</span>
+            <>
+              <div className="tp-row">
+                <span className="tp-label">{direction === 'two-sides' ? 'Side 1' : 'Distance'}</span>
+                <div className="tp-input-group">
+                  <ExpressionInput value={distance} onChange={setDistance} step={0.1} />
+                  <span className="tp-unit">{units}</span>
+                </div>
               </div>
-            </div>
+              {direction === 'two-sides' && (
+                <div className="tp-row">
+                  <span className="tp-label">Side 2</span>
+                  <div className="tp-input-group">
+                    <ExpressionInput value={distance2} onChange={setDistance2} step={0.1} />
+                    <span className="tp-unit">{units}</span>
+                  </div>
+                </div>
+              )}
+            </>
           )}
 
           <div className="tp-row">

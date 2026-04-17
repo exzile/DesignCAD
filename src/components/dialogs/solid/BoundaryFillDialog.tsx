@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { X } from 'lucide-react';
 import { useCADStore } from '../../../store/cadStore';
 import type { Feature } from '../../../types/cad';
+import './BoundaryFillDialog.css';
 
 export function BoundaryFillDialog({ onClose }: { onClose: () => void }) {
   const editingFeatureId = useCADStore((s) => s.editingFeatureId);
@@ -43,7 +44,7 @@ export function BoundaryFillDialog({ onClose }: { onClose: () => void }) {
       const feature: Feature = {
         id: crypto.randomUUID(),
         name: `Boundary Fill ${boundaryFillCount}`,
-        type: 'extrude',
+        type: 'boundary-fill',
         params: { fillType, operation, isBoundaryFill: true, toolFeatureIds: '' },
         visible: true,
         suppressed: false,
@@ -80,10 +81,12 @@ export function BoundaryFillDialog({ onClose }: { onClose: () => void }) {
           </div>
           <div className="form-group">
             <label>Tool Bodies (select all that form the boundary)</label>
-            <div style={{ maxHeight: 120, overflowY: 'auto', border: '1px solid var(--border)', borderRadius: 4, padding: 4 }}>
-              {bodyFeatures.length === 0 && <span style={{ color: 'var(--text-muted)', fontSize: 12 }}>No bodies in scene</span>}
+            <div className="boundary-fill-body-list">
+              {bodyFeatures.length === 0 && (
+                <span className="boundary-fill-empty">No bodies in scene</span>
+              )}
               {bodyFeatures.map((f) => (
-                <label key={f.id} className="checkbox-label" style={{ display: 'flex', gap: 6, padding: '2px 0' }}>
+                <label key={f.id} className="checkbox-label boundary-fill-body-item">
                   <input
                     type="checkbox"
                     checked={selectedToolIds.includes(f.id)}

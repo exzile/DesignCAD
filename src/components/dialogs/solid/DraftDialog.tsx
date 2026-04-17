@@ -1,8 +1,9 @@
 import { useState } from 'react';
-import { X } from 'lucide-react';
 import * as THREE from 'three';
+import { X } from 'lucide-react';
 import { useCADStore } from '../../../store/cadStore';
 import type { Feature } from '../../../types/cad';
+import '../FeatureDialogExtras.css';
 
 export function DraftDialog({ onClose }: { onClose: () => void }) {
   const editingFeatureId = useCADStore((s) => s.editingFeatureId);
@@ -24,7 +25,16 @@ export function DraftDialog({ onClose }: { onClose: () => void }) {
   const commitDraft = useCADStore((s) => s.commitDraft);
   const setStatusMessage = useCADStore((s) => s.setStatusMessage);
 
+  // SOL-I3: parting line face picker
+  const draftPartingFaceId = useCADStore((s) => s.draftPartingFaceId);
+  const draftPartingFaceNormal = useCADStore((s) => s.draftPartingFaceNormal);
+  const draftPartingFaceCentroid = useCADStore((s) => s.draftPartingFaceCentroid);
+  const clearDraftPartingFace = useCADStore((s) => s.clearDraftPartingFace);
+
   const getPullAxisDir = (): THREE.Vector3 => {
+    if (draftType === 'parting-line' && draftPartingFaceNormal) {
+      return new THREE.Vector3(...draftPartingFaceNormal).normalize();
+    }
     switch (pullAxis) {
       case '+X': return new THREE.Vector3(1, 0, 0);
       case '-X': return new THREE.Vector3(-1, 0, 0);
@@ -35,20 +45,32 @@ export function DraftDialog({ onClose }: { onClose: () => void }) {
     }
   };
 
+  const partingPlaneOffset = draftPartingFaceCentroid
+    ? new THREE.Vector3(...draftPartingFaceCentroid).dot(getPullAxisDir())
+    : fixedPlaneY;
+
   const handleApply = () => {
+    if (draftType === 'parting-line' && !draftPartingFaceId) {
+      setStatusMessage('Draft (Parting Line): click a face in the viewport to set the parting plane');
+      return;
+    }
+    const dir = getPullAxisDir();
+    const offset = draftType === 'parting-line' ? partingPlaneOffset : fixedPlaneY;
+    const params = { draftType, angle, mode, pullAxis, fixedPlaneOffset: fixedPlaneY, bodyId: selectedBodyId, partingFaceId: draftPartingFaceId };
+
     if (editing) {
-      updateFeatureParams(editing.id, { draftType, angle, mode, pullAxis, fixedPlaneOffset: fixedPlaneY, bodyId: selectedBodyId });
-      if (selectedBodyId) commitDraft(selectedBodyId, getPullAxisDir(), angle, fixedPlaneY);
+      updateFeatureParams(editing.id, params);
+      if (selectedBodyId) commitDraft(selectedBodyId, dir, angle, offset);
       setStatusMessage(`Updated draft: ${angle}° (${mode})`);
     } else if (selectedBodyId) {
-      commitDraft(selectedBodyId, getPullAxisDir(), angle, fixedPlaneY);
-      setStatusMessage(`Draft applied: ${angle}° along ${pullAxis}`);
+      commitDraft(selectedBodyId, dir, angle, offset);
+      setStatusMessage(`Draft applied: ${angle}° (${draftType})`);
     } else {
       const feature: Feature = {
         id: crypto.randomUUID(),
         name: `Draft (${angle}°)`,
         type: 'draft',
-        params: { draftType, angle, mode, pullAxis, fixedPlaneOffset: fixedPlaneY },
+        params,
         visible: true,
         suppressed: false,
         timestamp: Date.now(),
@@ -56,15 +78,21 @@ export function DraftDialog({ onClose }: { onClose: () => void }) {
       addFeature(feature);
       setStatusMessage(`Draft applied: ${angle}° (${mode})`);
     }
+    clearDraftPartingFace();
+    onClose();
+  };
+
+  const handleClose = () => {
+    clearDraftPartingFace();
     onClose();
   };
 
   return (
-    <div className="dialog-overlay">
+    <div className={`dialog-overlay${draftType === 'parting-line' ? ' dialog-overlay--passthrough' : ''}`}>
       <div className="dialog dialog-sm">
         <div className="dialog-header">
           <h3>{editing ? 'Edit Draft' : 'Draft'}</h3>
-          <button className="dialog-close" onClick={onClose}><X size={16} /></button>
+          <button className="dialog-close" onClick={handleClose}><X size={16} /></button>
         </div>
         <div className="dialog-body">
           <div className="form-group">
@@ -116,10 +144,33 @@ export function DraftDialog({ onClose }: { onClose: () => void }) {
               onChange={(e) => setFixedPlaneY(parseFloat(e.target.value) || 0)}
               step={0.5} />
           </div>
+          {/* SOL-I3: Parting face selector */}
+          {draftType === 'parting-line' && (
+            <div className="form-group">
+              <label>Parting Face</label>
+              {draftPartingFaceId ? (
+                <div className="face-selector">
+                  <span className="face-selector__chip">
+                    1 face selected
+                    <button
+                      type="button"
+                      className="face-selector__chip-clear"
+                      onClick={clearDraftPartingFace}
+                      title="Clear parting face"
+                    >
+                      <X size={11} />
+                    </button>
+                  </span>
+                </div>
+              ) : (
+                <p className="dialog-hint">Click a face in the viewport to set the parting plane.</p>
+              )}
+            </div>
+          )}
           <p className="dialog-hint">Select the face(s) to draft in the viewport.</p>
         </div>
         <div className="dialog-footer">
-          <button className="btn btn-secondary" onClick={onClose}>Cancel</button>
+          <button className="btn btn-secondary" onClick={handleClose}>Cancel</button>
           <button className="btn btn-primary" onClick={handleApply}>OK</button>
         </div>
       </div>

@@ -24,6 +24,7 @@ export function RibbonManageTab() {
       <RibbonSection title="PATTERN">
         <div className="ribbon-stack">
           <ToolButton icon={<Repeat size={ICON_SM} />} label="Linear" onClick={() => setActiveDialog('linear-pattern')} colorClass="icon-gray" />
+          <ToolButton icon={<Repeat size={ICON_SM} />} label="Rectangular" onClick={() => setActiveDialog('rectangular-pattern')} colorClass="icon-gray" />
           <ToolButton icon={<Repeat size={ICON_SM} />} label="Circular" onClick={() => setActiveDialog('circular-pattern')} colorClass="icon-gray" />
         </div>
         <ToolButton icon={<FlipHorizontal size={ICON_LG} />} label="Mirror" onClick={() => setActiveDialog('mirror')} large colorClass="icon-gray" />

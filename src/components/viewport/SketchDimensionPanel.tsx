@@ -1,5 +1,6 @@
 import { X } from 'lucide-react';
 import { useCADStore } from '../../store/cadStore';
+import './SketchPalette.css';
 
 export default function SketchDimensionPanel() {
   const activeTool = useCADStore((s) => s.activeTool);
@@ -7,7 +8,17 @@ export default function SketchDimensionPanel() {
   const setActiveDimensionType = useCADStore((s) => s.setActiveDimensionType);
   const dimensionOffset = useCADStore((s) => s.dimensionOffset);
   const setDimensionOffset = useCADStore((s) => s.setDimensionOffset);
+  const dimensionDrivenMode = useCADStore((s) => s.dimensionDrivenMode);
+  const setDimensionDrivenMode = useCADStore((s) => s.setDimensionDrivenMode);
+  const dimensionOrientation = useCADStore((s) => s.dimensionOrientation);
+  const setDimensionOrientation = useCADStore((s) => s.setDimensionOrientation);
   const cancelDimensionTool = useCADStore((s) => s.cancelDimensionTool);
+  const dimensionToleranceMode = useCADStore((s) => s.dimensionToleranceMode);
+  const setDimensionToleranceMode = useCADStore((s) => s.setDimensionToleranceMode);
+  const dimensionToleranceUpper = useCADStore((s) => s.dimensionToleranceUpper);
+  const setDimensionToleranceUpper = useCADStore((s) => s.setDimensionToleranceUpper);
+  const dimensionToleranceLower = useCADStore((s) => s.dimensionToleranceLower);
+  const setDimensionToleranceLower = useCADStore((s) => s.setDimensionToleranceLower);
 
   if (activeTool !== 'dimension') return null;
 
@@ -21,9 +32,9 @@ export default function SketchDimensionPanel() {
   };
 
   return (
-    <div className="extrude-panel">
+    <div className="sketch-palette">
       <div className="sketch-palette-header">
-        <span className="sketch-palette-dot" style={{ background: '#f59e0b' }} />
+        <span className="sketch-palette-dot" />
         <span className="sketch-palette-title">DIMENSION</span>
         <button className="sketch-palette-close" onClick={cancelDimensionTool} title="Cancel">
           <X size={12} />
@@ -31,12 +42,15 @@ export default function SketchDimensionPanel() {
       </div>
 
       <div className="sketch-palette-body">
+        {/* Dimension Type */}
         <div className="sketch-palette-row">
           <span className="sketch-palette-label">Type</span>
           <select
-            className="measure-select"
+            className="sketch-palette-input--narrow"
             value={activeDimensionType}
-            onChange={(e) => setActiveDimensionType(e.target.value as 'linear' | 'angular' | 'radial' | 'diameter' | 'arc-length' | 'aligned')}
+            onChange={(e) => setActiveDimensionType(
+              e.target.value as 'linear' | 'angular' | 'radial' | 'diameter' | 'arc-length' | 'aligned'
+            )}
           >
             <option value="linear">Linear</option>
             <option value="angular">Angular</option>
@@ -47,31 +61,125 @@ export default function SketchDimensionPanel() {
           </select>
         </div>
 
+        {/* Offset */}
         <div className="sketch-palette-row">
           <span className="sketch-palette-label">Offset (mm)</span>
           <input
             type="number"
-            className="measure-select"
+            className="sketch-palette-input--narrow"
             value={dimensionOffset}
             min={2}
             max={50}
             step={1}
             onChange={(e) => setDimensionOffset(Number(e.target.value))}
-            style={{ width: 70 }}
           />
         </div>
 
-        <div style={{ fontSize: 11, color: '#94a3b8', padding: '4px' }}>
+        {/* CORR-1: Orientation — only meaningful for linear/aligned */}
+        {(activeDimensionType === 'linear' || activeDimensionType === 'aligned') && (
+          <div className="sketch-palette-row">
+            <span className="sketch-palette-label">Orientation</span>
+            <select
+              className="sketch-palette-input--narrow"
+              value={dimensionOrientation}
+              onChange={(e) => setDimensionOrientation(
+                e.target.value as 'horizontal' | 'vertical' | 'auto'
+              )}
+            >
+              <option value="auto">Auto</option>
+              <option value="horizontal">Horizontal</option>
+              <option value="vertical">Vertical</option>
+            </select>
+          </div>
+        )}
+
+        {/* SK-A3: Reference (Driven) toggle */}
+        <div className="sketch-palette-row">
+          <span className="sketch-palette-label">Reference</span>
+          <label className="sketch-palette-check">
+            <input
+              type="checkbox"
+              checked={dimensionDrivenMode}
+              onChange={() => setDimensionDrivenMode(!dimensionDrivenMode)}
+            />
+            <span className="sketch-palette-checkmark" />
+          </label>
+        </div>
+
+        {/* SK-A8: Tolerance */}
+        <div className="sketch-palette-row">
+          <span className="sketch-palette-label">Tolerance</span>
+          <select
+            className="sketch-palette-input--narrow"
+            value={dimensionToleranceMode}
+            onChange={(e) => setDimensionToleranceMode(e.target.value as 'none' | 'symmetric' | 'deviation')}
+          >
+            <option value="none">None</option>
+            <option value="symmetric">Symmetric ±</option>
+            <option value="deviation">Deviation +/−</option>
+          </select>
+        </div>
+        {dimensionToleranceMode === 'symmetric' && (
+          <div className="sketch-palette-row">
+            <span className="sketch-palette-label">± (mm)</span>
+            <input
+              type="number"
+              className="sketch-palette-input--narrow"
+              value={dimensionToleranceUpper}
+              min={0}
+              step={0.01}
+              onChange={(e) => {
+                const v = parseFloat(e.target.value);
+                if (Number.isFinite(v) && v >= 0) {
+                  setDimensionToleranceUpper(v);
+                  setDimensionToleranceLower(v);
+                }
+              }}
+            />
+          </div>
+        )}
+        {dimensionToleranceMode === 'deviation' && (
+          <>
+            <div className="sketch-palette-row">
+              <span className="sketch-palette-label">+ (mm)</span>
+              <input
+                type="number"
+                className="sketch-palette-input--narrow"
+                value={dimensionToleranceUpper}
+                min={0}
+                step={0.01}
+                onChange={(e) => {
+                  const v = parseFloat(e.target.value);
+                  if (Number.isFinite(v) && v >= 0) setDimensionToleranceUpper(v);
+                }}
+              />
+            </div>
+            <div className="sketch-palette-row">
+              <span className="sketch-palette-label">− (mm)</span>
+              <input
+                type="number"
+                className="sketch-palette-input--narrow"
+                value={dimensionToleranceLower}
+                min={0}
+                step={0.01}
+                onChange={(e) => {
+                  const v = parseFloat(e.target.value);
+                  if (Number.isFinite(v) && v >= 0) setDimensionToleranceLower(v);
+                }}
+              />
+            </div>
+          </>
+        )}
+
+        {/* Hint text */}
+        <div className="sketch-palette-hint">
           {hints[activeDimensionType]}
         </div>
 
-        <div className="extrude-panel-actions">
-          <button
-            className="btn btn-secondary"
-            style={{ width: '100%', display: 'flex', alignItems: 'center', gap: 4 }}
-            onClick={cancelDimensionTool}
-          >
-            <X size={14} /> Cancel
+        {/* Cancel button */}
+        <div className="sketch-palette-footer">
+          <button className="sketch-palette-finish" onClick={cancelDimensionTool}>
+            <X size={12} /> Cancel
           </button>
         </div>
       </div>

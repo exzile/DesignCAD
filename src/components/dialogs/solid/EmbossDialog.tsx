@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { X } from 'lucide-react';
 import { useCADStore } from '../../../store/cadStore';
-import type { Feature, FeatureType } from '../../../types/cad';
+import type { Feature } from '../../../types/cad';
 
 export function EmbossDialog({ onClose }: { onClose: () => void }) {
   const editingFeatureId = useCADStore((s) => s.editingFeatureId);
@@ -40,7 +40,7 @@ export function EmbossDialog({ onClose }: { onClose: () => void }) {
         const feature: Feature = {
           id: crypto.randomUUID(),
           name: `Emboss (${style}, ${depth}mm)`,
-          type: 'rib' as FeatureType,
+          type: 'emboss',
           params: { profileId, profileName: sketch?.name ?? '', depth, style, angle, embossStyle: 'emboss' },
           visible: true,
           suppressed: false,

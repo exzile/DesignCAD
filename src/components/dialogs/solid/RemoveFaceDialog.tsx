@@ -1,15 +1,8 @@
 import { useState } from 'react';
-import { X } from 'lucide-react';
 import * as THREE from 'three';
+import { X } from 'lucide-react';
 import { useCADStore } from '../../../store/cadStore';
-const FACE_NORMALS: Record<string, THREE.Vector3> = {
-  Top:    new THREE.Vector3(0,  1, 0),
-  Bottom: new THREE.Vector3(0, -1, 0),
-  Front:  new THREE.Vector3(0,  0, 1),
-  Back:   new THREE.Vector3(0,  0, -1),
-  Left:   new THREE.Vector3(-1, 0, 0),
-  Right:  new THREE.Vector3(1,  0, 0),
-};
+import '../FeatureDialogExtras.css';
 
 export function RemoveFaceDialog({ onClose }: { onClose: () => void }) {
   const editingFeatureId = useCADStore((s) => s.editingFeatureId);
@@ -21,54 +14,50 @@ export function RemoveFaceDialog({ onClose }: { onClose: () => void }) {
   const commitRemoveFace = useCADStore((s) => s.commitRemoveFace);
   const setStatusMessage = useCADStore((s) => s.setStatusMessage);
 
+  // SOL-I5: face picker state
+  const removeFaceFaceId = useCADStore((s) => s.removeFaceFaceId);
+  const removeFaceFaceNormal = useCADStore((s) => s.removeFaceFaceNormal);
+  const removeFaceFaceCentroid = useCADStore((s) => s.removeFaceFaceCentroid);
+  const clearRemoveFaceFace = useCADStore((s) => s.clearRemoveFaceFace);
+
   const bodyFeatures = features.filter((f) => !!f.mesh);
   const [selectedId, setSelectedId] = useState<string>(String(p.bodyId ?? bodyFeatures[0]?.id ?? ''));
-  const [faceDescription, setFaceDescription] = useState(String(p.faceDescription ?? 'Top'));
   const [keepShape, setKeepShape] = useState(p.keepShape !== false);
 
-  const getFaceCentroid = (bodyId: string, faceDesc: string): THREE.Vector3 => {
-    const mesh = features.find((f) => f.id === bodyId)?.mesh as THREE.Mesh | undefined;
-    if (mesh?.isMesh) {
-      const box = new THREE.Box3().setFromObject(mesh);
-      const center = new THREE.Vector3();
-      box.getCenter(center);
-      const size = new THREE.Vector3();
-      box.getSize(size);
-      const n = FACE_NORMALS[faceDesc] ?? new THREE.Vector3(0, 1, 0);
-      return new THREE.Vector3(
-        center.x + n.x * size.x * 0.5,
-        center.y + n.y * size.y * 0.5,
-        center.z + n.z * size.z * 0.5,
-      );
-    }
-    return new THREE.Vector3();
-  };
+  const canApply = !!selectedId && !!removeFaceFaceId;
 
   const handleApply = () => {
-    if (!selectedId) {
-      setStatusMessage('Remove Face: no body selected');
+    if (!canApply || !removeFaceFaceNormal || !removeFaceFaceCentroid) {
+      setStatusMessage('Remove Face: select a body and click a face in the viewport');
       return;
     }
-    const faceNormal = FACE_NORMALS[faceDescription] ?? new THREE.Vector3(0, 1, 0);
-    const faceCentroid = getFaceCentroid(selectedId, faceDescription);
+
+    const faceNormal = new THREE.Vector3(...removeFaceFaceNormal);
+    const faceCentroid = new THREE.Vector3(...removeFaceFaceCentroid);
 
     if (editing) {
-      updateFeatureParams(editing.id, { bodyId: selectedId, faceDescription, keepShape });
+      updateFeatureParams(editing.id, { bodyId: selectedId, keepShape });
       commitRemoveFace(selectedId, faceNormal, faceCentroid);
-      setStatusMessage(`Updated Remove Face: "${faceDescription}" face`);
+      setStatusMessage('Updated Remove Face');
     } else {
       commitRemoveFace(selectedId, faceNormal, faceCentroid);
-      setStatusMessage(`Remove Face applied: "${faceDescription}" face on ${features.find((f) => f.id === selectedId)?.name ?? selectedId}`);
+      setStatusMessage(`Remove Face applied on ${features.find((f) => f.id === selectedId)?.name ?? selectedId}`);
     }
+    clearRemoveFaceFace();
+    onClose();
+  };
+
+  const handleClose = () => {
+    clearRemoveFaceFace();
     onClose();
   };
 
   return (
-    <div className="dialog-overlay">
+    <div className="dialog-overlay dialog-overlay--passthrough">
       <div className="dialog dialog-sm">
         <div className="dialog-header">
           <h3>{editing ? 'Edit Remove Face' : 'Remove Face'}</h3>
-          <button className="dialog-close" onClick={onClose}><X size={16} /></button>
+          <button className="dialog-close" onClick={handleClose}><X size={16} /></button>
         </div>
         <div className="dialog-body">
           <div className="form-group">
@@ -80,29 +69,41 @@ export function RemoveFaceDialog({ onClose }: { onClose: () => void }) {
               ))}
             </select>
           </div>
+
           <div className="form-group">
             <label>Face to Remove</label>
-            <select value={faceDescription} onChange={(e) => setFaceDescription(e.target.value)}>
-              {Object.keys(FACE_NORMALS).map((name) => (
-                <option key={name} value={name}>{name}</option>
-              ))}
-            </select>
+            {removeFaceFaceId ? (
+              <div className="face-selector">
+                <span className="face-selector__chip">
+                  1 face selected
+                  <button
+                    type="button"
+                    className="face-selector__chip-clear"
+                    onClick={clearRemoveFaceFace}
+                    title="Clear face selection"
+                  >
+                    <X size={11} />
+                  </button>
+                </span>
+              </div>
+            ) : (
+              <p className="dialog-hint">Click a face in the viewport to select it.</p>
+            )}
           </div>
-          <div className="form-group">
-            <label className="checkbox-label">
-              <input
-                type="checkbox"
-                checked={keepShape}
-                onChange={(e) => setKeepShape(e.target.checked)}
-              />
-              Keep Shape (extend adjacent faces)
-            </label>
-          </div>
-          <p className="dialog-hint">Removes the specified face and extends adjacent faces to close the gap.</p>
+
+          <label className="checkbox-label">
+            <input
+              type="checkbox"
+              checked={keepShape}
+              onChange={(e) => setKeepShape(e.target.checked)}
+            />
+            Keep Shape (extend adjacent faces)
+          </label>
+          <p className="dialog-hint">Removes the selected face and extends adjacent faces to close the gap.</p>
         </div>
         <div className="dialog-footer">
-          <button className="btn btn-secondary" onClick={onClose}>Cancel</button>
-          <button className="btn btn-primary" onClick={handleApply} disabled={!selectedId}>OK</button>
+          <button className="btn btn-secondary" onClick={handleClose}>Cancel</button>
+          <button className="btn btn-primary" onClick={handleApply} disabled={!canApply}>OK</button>
         </div>
       </div>
     </div>

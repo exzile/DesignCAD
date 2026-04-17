@@ -1,4 +1,45 @@
 /* ===== Feature Dialog extras ===== */
+
+/* ── Shell face removal list (SOL-I2) ── */
+.shell-face-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-top: 4px;
+}
+
+.shell-face-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 8px;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-light);
+  border-radius: 4px;
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+
+.shell-face-label {
+  flex: 1;
+}
+
+/* SOL-I7: per-face thickness input */
+.shell-face-thickness {
+  width: 54px;
+  padding: 2px 4px;
+  border: 1px solid var(--border-light);
+  border-radius: 3px;
+  background: var(--bg-input);
+  color: var(--text-primary);
+  font-size: 11px;
+  text-align: right;
+}
+
+.shell-face-thickness:focus {
+  outline: none;
+  border-color: var(--accent);
+}
 .dialog-sm {
   min-width: 340px;
   max-width: 400px;
@@ -9,6 +50,12 @@
   color: var(--text-muted);
   font-style: italic;
   margin: 0;
+}
+
+.dialog-hint--error {
+  color: var(--error, #f44336);
+  font-style: normal;
+  font-weight: 500;
 }
 
 .direction-inputs {

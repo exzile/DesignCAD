@@ -56,6 +56,13 @@ export interface TextSegment {
   y2: number;
 }
 
+export interface TextFormatOptions {
+  /** Italic shear factor applied to segment X (0 = upright, ~0.25 = standard italic) */
+  italic?: boolean;
+  /** Bold — stored as metadata; visual stroke-width expansion is not implemented for polyline */
+  bold?: boolean;
+}
+
 /**
  * Convert a font + text string into flat polyline segments.
  *
@@ -68,6 +75,7 @@ export interface TextSegment {
  * @param anchorY  sketch-plane Y of the text anchor (baseline)
  * @param fontSize character height in sketch units (model-space mm)
  * @param samples  number of linear segments per bezier curve (default 8)
+ * @param format   optional SK-A6 formatting flags (italic, bold)
  */
 export function fontPathToSegments(
   font: opentype.Font,
@@ -76,6 +84,7 @@ export function fontPathToSegments(
   anchorY: number,
   fontSize: number,
   samples = 8,
+  format: TextFormatOptions = {},
 ): TextSegment[] {
   // opentype renders at (0,0) in its own space; we translate afterwards
   const path = font.getPath(text, 0, 0, fontSize);
@@ -132,11 +141,19 @@ export function fontPathToSegments(
     }
   }
 
-  // Translate to anchor and flip Y (opentype Y-down → sketch Y-up)
-  return segments.map((s) => ({
-    x1: anchorX + s.x1,
-    y1: anchorY - s.y1,
-    x2: anchorX + s.x2,
-    y2: anchorY - s.y2,
-  }));
+  // Italic shear factor (SK-A6): x += y * SHEAR to create slanted appearance
+  // Using 0.25 which corresponds to ~14° lean — standard italic angle
+  const ITALIC_SHEAR = 0.25;
+
+  // Translate to anchor, flip Y (opentype Y-down → sketch Y-up), optionally apply italic shear
+  return segments.map((s) => {
+    const fy1 = -s.y1;
+    const fy2 = -s.y2;
+    return {
+      x1: anchorX + s.x1 + (format.italic ? fy1 * ITALIC_SHEAR : 0),
+      y1: anchorY + fy1,
+      x2: anchorX + s.x2 + (format.italic ? fy2 * ITALIC_SHEAR : 0),
+      y2: anchorY + fy2,
+    };
+  });
 }

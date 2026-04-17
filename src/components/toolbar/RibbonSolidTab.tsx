@@ -2,7 +2,8 @@ import {
   PenTool, ArrowUpFromLine, RotateCcw, CircleDot, Box,
   Blend, Scissors, Combine, Copy, Link2, Layers,
   Anchor, Expand, Axis3D, Ruler, FolderOpen,
-  Image, Edit2, MousePointer2,
+  Image, Edit2, MousePointer2, ArrowUp, Move, Square,
+  Minus, Stamp, Wrench, Repeat, FlipHorizontal,
 } from 'lucide-react';
 import { useCADStore } from '../../store/cadStore';
 import { useComponentStore } from '../../store/componentStore';
@@ -44,6 +45,7 @@ export function RibbonSolidTab({
   const sketchPlaneSelecting = useCADStore((s) => s.sketchPlaneSelecting);
   const startSketch = useCADStore((s) => s.startSketch);
   const setStatusMessage = useCADStore((s) => s.setStatusMessage);
+  const startRibTool = useCADStore((s) => s.startRibTool);
   const openDecalDialog = useCADStore((s) => s.openDecalDialog);
   const openAttachedCanvasDialog = useCADStore((s) => s.openAttachedCanvasDialog);
   const openBoundingSolidDialog = useCADStore((s) => s.openBoundingSolidDialog);
@@ -78,6 +80,9 @@ export function RibbonSolidTab({
         <div className="ribbon-stack">
           <ToolButton icon={<CircleDot size={ICON_SM} />} label="Hole" onClick={() => useCADStore.getState().openHoleDialog()} colorClass="icon-blue" />
           <ToolButton icon={<Box size={ICON_SM} />} label="Shell" onClick={() => setActiveDialog('shell')} colorClass="icon-blue" />
+          <ToolButton icon={<Minus size={ICON_SM} />} label="Rib" onClick={startRibTool} colorClass="icon-blue" />
+          <ToolButton icon={<Wrench size={ICON_SM} />} label="Thread" onClick={() => setActiveDialog('thread')} colorClass="icon-blue" />
+          <ToolButton icon={<Stamp size={ICON_SM} />} label="Emboss" onClick={() => setActiveDialog('emboss')} colorClass="icon-blue" />
         </div>
       </RibbonSection>
 
@@ -87,6 +92,11 @@ export function RibbonSolidTab({
         <div className="ribbon-stack">
           <ToolButton icon={<Scissors size={ICON_SM} />} label="Split" onClick={() => setActiveDialog('split')} colorClass="icon-orange" />
           <ToolButton icon={<Combine size={ICON_SM} />} label="Combine" onClick={() => setActiveDialog('combine')} colorClass="icon-orange" />
+          <ToolButton icon={<ArrowUp size={ICON_SM} />} label="Draft" onClick={() => setActiveDialog('draft')} colorClass="icon-orange" />
+          <ToolButton icon={<Square size={ICON_SM} />} label="Offset Face" onClick={() => setActiveDialog('offset-face')} colorClass="icon-orange" />
+          <ToolButton icon={<Move size={ICON_SM} />} label="Move Body" onClick={() => setActiveDialog('move-body')} colorClass="icon-orange" />
+          <ToolButton icon={<FlipHorizontal size={ICON_SM} />} label="Mirror" onClick={() => setActiveDialog('mirror')} colorClass="icon-orange" />
+          <ToolButton icon={<Repeat size={ICON_SM} />} label="Pattern" onClick={() => setActiveDialog('rectangular-pattern')} colorClass="icon-orange" />
         </div>
       </RibbonSection>
 

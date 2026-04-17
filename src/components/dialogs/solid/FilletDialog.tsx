@@ -3,14 +3,22 @@ import { X } from 'lucide-react';
 import { useCADStore } from '../../../store/cadStore';
 import type { Feature } from '../../../types/cad';
 
+/** SOL-I1: Fillet type discriminator */
+export type FilletMode = 'constant' | 'variable' | 'full-round';
+
 export interface FilletParams {
   radius: number;
   edgeIds: string[];
+  /** @deprecated use mode instead */
   variable: boolean;
+  /** SOL-I1: fillet mode */
+  mode: FilletMode;
   startRadius?: number;
   endRadius?: number;
   setback: boolean;
   propagate: boolean;
+  /** CORR-11: G2 curvature-continuous fillet (smoother blend than G1 tangent) */
+  isG2: boolean;
 }
 
 interface FilletDialogProps {
@@ -22,11 +30,12 @@ interface FilletDialogProps {
 
 function FilletDialogUI({ open, selectedEdgeCount, onClose, onConfirm }: FilletDialogProps) {
   const [radius, setRadius] = useState(2);
-  const [variable, setVariable] = useState(false);
+  const [mode, setMode] = useState<FilletMode>('constant');
   const [startRadius, setStartRadius] = useState(1);
   const [endRadius, setEndRadius] = useState(4);
   const [setback, setSetback] = useState(false);
   const [propagate, setPropagate] = useState(true);
+  const [isG2, setIsG2] = useState(false);
 
   if (!open) return null;
 
@@ -34,11 +43,13 @@ function FilletDialogUI({ open, selectedEdgeCount, onClose, onConfirm }: FilletD
     const params: FilletParams = {
       radius,
       edgeIds: [],
-      variable,
+      variable: mode === 'variable',
+      mode,
       setback,
       propagate,
+      isG2,
     };
-    if (variable) {
+    if (mode === 'variable') {
       params.startRadius = startRadius;
       params.endRadius = endRadius;
     }
@@ -56,11 +67,21 @@ function FilletDialogUI({ open, selectedEdgeCount, onClose, onConfirm }: FilletD
           <button className="dialog-close" onClick={onClose}><X size={16} /></button>
         </div>
         <div className="dialog-body">
-          <p className="dialog-hint" style={{ marginBottom: 12 }}>
+          <p className="dialog-hint">
             {selectedEdgeCount} edge(s) selected
           </p>
 
-          {!variable && (
+          {/* SOL-I1: Fillet mode */}
+          <div className="form-group">
+            <label>Type</label>
+            <select value={mode} onChange={(e) => setMode(e.target.value as FilletMode)}>
+              <option value="constant">Constant Radius</option>
+              <option value="variable">Variable Radius</option>
+              <option value="full-round">Full Round</option>
+            </select>
+          </div>
+
+          {mode === 'constant' && (
             <div className="form-group">
               <label>Radius (mm)</label>
               <input
@@ -74,43 +95,41 @@ function FilletDialogUI({ open, selectedEdgeCount, onClose, onConfirm }: FilletD
             </div>
           )}
 
-          {variable && (
-            <div className="settings-grid">
-              <div className="form-group">
-                <label>Start Radius (mm)</label>
-                <input
-                  type="number"
-                  value={startRadius}
-                  onChange={(e) => setStartRadius(clamp(parseFloat(e.target.value) || 1, 0.01, 500))}
-                  min={0.01}
-                  max={500}
-                  step={0.5}
-                />
+          {mode === 'variable' && (
+            <>
+              <div className="settings-grid">
+                <div className="form-group">
+                  <label>Start Radius (mm)</label>
+                  <input
+                    type="number"
+                    value={startRadius}
+                    onChange={(e) => setStartRadius(clamp(parseFloat(e.target.value) || 1, 0.01, 500))}
+                    min={0.01}
+                    max={500}
+                    step={0.5}
+                  />
+                </div>
+                <div className="form-group">
+                  <label>End Radius (mm)</label>
+                  <input
+                    type="number"
+                    value={endRadius}
+                    onChange={(e) => setEndRadius(clamp(parseFloat(e.target.value) || 4, 0.01, 500))}
+                    min={0.01}
+                    max={500}
+                    step={0.5}
+                  />
+                </div>
               </div>
-              <div className="form-group">
-                <label>End Radius (mm)</label>
-                <input
-                  type="number"
-                  value={endRadius}
-                  onChange={(e) => setEndRadius(clamp(parseFloat(e.target.value) || 4, 0.01, 500))}
-                  min={0.01}
-                  max={500}
-                  step={0.5}
-                />
-              </div>
-            </div>
+            </>
           )}
 
-          <div className="form-group">
-            <label className="checkbox-label">
-              <input
-                type="checkbox"
-                checked={variable}
-                onChange={(e) => setVariable(e.target.checked)}
-              />
-              Variable Radius
-            </label>
-          </div>
+          {mode === 'full-round' && (
+            <p className="dialog-hint">
+              Select three edge sets: Side Face 1 → Center Face → Side Face 2.
+              The fillet radius is computed automatically to create a tangent blend.
+            </p>
+          )}
 
           <div className="form-group">
             <label className="checkbox-label">
@@ -131,6 +150,17 @@ function FilletDialogUI({ open, selectedEdgeCount, onClose, onConfirm }: FilletD
                 onChange={(e) => setSetback(e.target.checked)}
               />
               Setback
+            </label>
+          </div>
+
+          <div className="form-group">
+            <label className="checkbox-label">
+              <input
+                type="checkbox"
+                checked={isG2}
+                onChange={(e) => setIsG2(e.target.checked)}
+              />
+              G2 Smooth (curvature continuity)
             </label>
           </div>
         </div>

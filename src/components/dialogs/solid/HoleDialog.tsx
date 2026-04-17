@@ -1,6 +1,11 @@
 import { useEffect, useState } from 'react';
 import { X, Check } from 'lucide-react';
 import { useCADStore } from '../../../store/cadStore';
+import {
+  type HoleStandard,
+  type HoleSizeEntry,
+  STANDARD_SIZES,
+} from './HoleSizePresets';
 import type { Feature } from '../../../types/cad';
 import { CollapsibleSection } from '../common/CollapsibleSection';
 import { SegmentedIconGroup } from '../common/SegmentedIconGroup';
@@ -84,6 +89,22 @@ export function HoleDialog({ onClose }: { onClose: () => void }) {
   const setDraftDiameter = useCADStore((s) => s.setHoleDraftDiameter);
   const draftDepth = useCADStore((s) => s.holeDraftDepth);
   const setDraftDepth = useCADStore((s) => s.setHoleDraftDepth);
+
+  // SOL-I4: Standard library
+  const [standard, setStandard] = useState<HoleStandard>('custom');
+  const [selectedPreset, setSelectedPreset] = useState<HoleSizeEntry | null>(null);
+
+  const handleApplyPreset = (label: string) => {
+    const entries = STANDARD_SIZES[standard];
+    const entry = entries.find((e) => e.label === label) ?? null;
+    setSelectedPreset(entry);
+    if (entry) {
+      // For tapped holes use tap drill; for clearance/simple use clearance diameter
+      const isTapped = tapType === 'tapped' || tapType === 'taper-tapped';
+      setDraftDiameter(isTapped ? entry.tapDiameter : entry.clearanceDiameter);
+      if (!through) setDraftDepth(entry.recommendedDepth);
+    }
+  };
 
   const [placement, setPlacement] = useState<Placement>((p.placement as Placement) ?? 'single');
   const [holeType, setHoleType] = useState<HoleType>((p.holeType as HoleType) ?? 'simple');
@@ -243,6 +264,39 @@ export function HoleDialog({ onClose }: { onClose: () => void }) {
                 ariaLabel="Drill Point"
               />
             </div>
+
+            {/* SOL-I4: Standard size lookup */}
+            <div className="tp-row">
+              <span className="tp-label">Standard</span>
+              <select
+                className="tp-select"
+                value={standard}
+                onChange={(e) => {
+                  setStandard(e.target.value as HoleStandard);
+                  setSelectedPreset(null);
+                }}
+              >
+                <option value="custom">Custom</option>
+                <option value="ISO">ISO Metric</option>
+                <option value="ANSI">ANSI Inch</option>
+                <option value="NPT">NPT Pipe</option>
+              </select>
+            </div>
+            {standard !== 'custom' && (
+              <div className="tp-row">
+                <span className="tp-label">Size</span>
+                <select
+                  className="tp-select"
+                  value={selectedPreset?.label ?? ''}
+                  onChange={(e) => handleApplyPreset(e.target.value)}
+                >
+                  <option value="">— select —</option>
+                  {STANDARD_SIZES[standard].map((entry) => (
+                    <option key={entry.label} value={entry.label}>{entry.label}</option>
+                  ))}
+                </select>
+              </div>
+            )}
 
             {/* Schematic readout — head depth, drill angle, diameter */}
             <div className="hole-diagram">

@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { Brush, Evaluator, ADDITION, SUBTRACTION, INTERSECTION } from 'three-bvh-csg';
 import type { Sketch, SketchEntity, SketchPoint, SketchPlane } from '../types/cad';
-import { SURFACE_MATERIAL } from '../components/viewport/scene/bodyMaterial';
+import { BODY_MATERIAL, SURFACE_MATERIAL } from '../components/viewport/scene/bodyMaterial';
 
 // Single shared CSG evaluator — constructing one is cheap but reusing is free
 const _csgEvaluator = new Evaluator();
@@ -1289,10 +1289,39 @@ export class GeometryEngine {
   static buildExtrudeFeatureMesh(
     sketch: Sketch,
     distance: number,
-    direction: 'positive' | 'negative' | 'symmetric',
+    direction: 'positive' | 'negative' | 'symmetric' | 'two-sides',
     taperAngleDeg = 0,
     startOffset = 0,
+    distance2 = 0,
   ): THREE.Mesh | null {
+    // CORR-2: Two-sides — build positive side + negative side, merge via CSG union
+    if (direction === 'two-sides') {
+      const meshPos = Math.abs(taperAngleDeg) > 0.01
+        ? this.extrudeSketchWithTaper(sketch, distance, taperAngleDeg)
+        : this.extrudeSketch(sketch, distance);
+      const meshNeg = Math.abs(taperAngleDeg) > 0.01
+        ? this.extrudeSketchWithTaper(sketch, distance2 || distance, taperAngleDeg)
+        : this.extrudeSketch(sketch, distance2 || distance);
+      if (!meshPos) return meshNeg;
+      if (!meshNeg) return meshPos;
+      const normal = this.getSketchExtrudeNormal(sketch);
+      meshNeg.position.addScaledVector(normal, -(distance2 || distance));
+      // Bake positions into geometry before CSG merge
+      meshPos.updateMatrixWorld(true);
+      meshNeg.updateMatrixWorld(true);
+      const gPos = meshPos.geometry.clone().applyMatrix4(meshPos.matrixWorld);
+      const gNeg = meshNeg.geometry.clone().applyMatrix4(meshNeg.matrixWorld);
+      const merged = this.csgUnion(gPos, gNeg);
+      gPos.dispose();
+      gNeg.dispose();
+      meshPos.geometry.dispose();
+      meshNeg.geometry.dispose();
+      const result = new THREE.Mesh(merged, BODY_MATERIAL);
+      result.castShadow = true;
+      result.receiveShadow = true;
+      return result;
+    }
+
     // Symmetric: extrude the full distance but shift half back so the body
     // is centred on the sketch plane. Reverse: shift the full distance back.
     const mesh = Math.abs(taperAngleDeg) > 0.01

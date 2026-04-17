@@ -94,10 +94,12 @@ export default function ExtrudedBodies() {
       const body = bodiesById[bodyId];
       if (!body || !body.material) return fallback;
       const m = body.material;
-      // Skip override when body still uses the default aluminum so we keep the
-      // singleton and don't allocate a clone for every untouched body.
-      if (m.id === 'aluminum' && m.color === '#B0B8C0' && m.opacity === 1) return fallback;
-      const key = `${m.color}|${m.metalness}|${m.roughness}|${m.opacity}`;
+      // CTX-7: per-body display opacity (independent of material.opacity)
+      const displayOpacity = body.opacity ?? 1;
+      // Skip override when body uses default aluminum + no display opacity override
+      if (m.id === 'aluminum' && m.color === '#B0B8C0' && m.opacity === 1 && displayOpacity === 1) return fallback;
+      const finalOpacity = m.opacity * displayOpacity;
+      const key = `${m.color}|${m.metalness}|${m.roughness}|${m.opacity}|${displayOpacity}`;
       const cached = materialCache.current.get(bodyId);
       if (cached && cached.key === key) return cached.mat;
       if (cached) cached.mat.dispose();
@@ -105,8 +107,8 @@ export default function ExtrudedBodies() {
         color: m.color,
         metalness: m.metalness,
         roughness: m.roughness,
-        opacity: m.opacity,
-        transparent: m.opacity < 1,
+        opacity: finalOpacity,
+        transparent: finalOpacity < 1,
       });
       materialCache.current.set(bodyId, { mat, key });
       return mat;
@@ -127,7 +129,8 @@ export default function ExtrudedBodies() {
 
   const buildToolMesh = (feature: Feature, sketch: Sketch): THREE.Mesh | null => {
     const distance = (feature.params.distance as number) || 10;
-    const direction = ((feature.params.direction as 'positive' | 'negative' | 'symmetric') ?? 'positive');
+    const distance2 = (feature.params.distance2 as number) || distance;
+    const direction = ((feature.params.direction as 'positive' | 'negative' | 'symmetric' | 'two-sides') ?? 'positive');
     const profileIndex = feature.params.profileIndex as number | undefined;
     const taperAngle = (feature.params.taperAngle as number) ?? 0;
     const startOffset = (feature.params.startType as string) === 'offset'
@@ -137,7 +140,7 @@ export default function ExtrudedBodies() {
       ? GeometryEngine.createProfileSketch(sketch, profileIndex)
       : sketch;
     if (!sketchForOp) return null;
-    return GeometryEngine.buildExtrudeFeatureMesh(sketchForOp, distance, direction, taperAngle, startOffset);
+    return GeometryEngine.buildExtrudeFeatureMesh(sketchForOp, distance, direction, taperAngle, startOffset, distance2);
   };
 
   const { bodies, featureIds, featureComponentIds } = useMemo(() => {
@@ -237,7 +240,9 @@ export default function ExtrudedBodies() {
             castShadow
             receiveShadow
             onUpdate={(m) => {
-              m.userData.pickable = true;
+              // CTX-9: respect body.selectable flag
+              const bodySelectable = bodyId ? (bodiesById[bodyId]?.selectable !== false) : true;
+              m.userData.pickable = bodySelectable;
               m.userData.featureId = fId;
               m.userData.bodyId = bodyId;
             }}

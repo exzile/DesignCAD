@@ -5,16 +5,7 @@ import { Eye, X, FileDown, Zap } from 'lucide-react';
 import { useCADStore } from '../../store/cadStore';
 import { downloadDXF } from '../../utils/dxfExport';
 
-interface SketchOption {
-  label: string;
-  key: string;
-  defaultValue: boolean;
-}
-
-// Local-only palette options (no store backing needed)
-const SKETCH_OPTIONS: SketchOption[] = [
-  { label: 'Construction Geometries', key: 'constructionGeom', defaultValue: true },
-];
+// No local-only sketch options remain — all toggles are store-backed
 
 export default function SketchPalette() {
   const activeSketch = useCADStore((s) => s.activeSketch);
@@ -55,8 +46,13 @@ export default function SketchPalette() {
   const setShowSketchConstraints = useCADStore((s) => s.setShowSketchConstraints);
   const showProjectedGeometries = useCADStore((s) => s.showProjectedGeometries);
   const setShowProjectedGeometries = useCADStore((s) => s.setShowProjectedGeometries);
+  const showConstructionGeometries = useCADStore((s) => s.showConstructionGeometries);
+  const setShowConstructionGeometries = useCADStore((s) => s.setShowConstructionGeometries);
   const setCameraTargetQuaternion = useCADStore((s) => s.setCameraTargetQuaternion);
   const solveSketch = useCADStore((s) => s.solveSketch);
+  // CORR-7: deferred compute flag
+  const sketchComputeDeferred = useCADStore((s) => s.sketchComputeDeferred);
+  const setSketchComputeDeferred = useCADStore((s) => s.setSketchComputeDeferred);
   const sketchGridEnabled = useCADStore((s) => s.sketchGridEnabled);
   const setSketchGridEnabled = useCADStore((s) => s.setSketchGridEnabled);
   const sketchSnapEnabled = useCADStore((s) => s.sketchSnapEnabled);
@@ -90,19 +86,10 @@ export default function SketchPalette() {
     if (activeSketch) setDismissed(false);
   }, [activeSketch?.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const [options, setOptions] = useState<Record<string, boolean>>(() => {
-    const init: Record<string, boolean> = {};
-    SKETCH_OPTIONS.forEach((o) => { init[o.key] = o.defaultValue; });
-    return init;
-  });
   const [lineType, setLineType] = useState<'normal' | 'construction'>('normal');
   const [collapsed, setCollapsed] = useState(false);
 
   if (!activeSketch || dismissed) return null;
-
-  const toggleOption = (key: string) => {
-    setOptions((prev) => ({ ...prev, [key]: !prev[key] }));
-  };
 
   return (
     <div className="sketch-palette">
@@ -461,13 +448,7 @@ export default function SketchPalette() {
           {sketch3DMode && (
             <div className="sketch-palette-row sketch-palette-row--wrap">
               <span className="sketch-palette-label">Plane</span>
-              <span
-                style={{
-                  fontSize: 11,
-                  color: sketch3DActivePlane ? '#f97316' : '#94a3b8',
-                  flexShrink: 0,
-                }}
-              >
+              <span className={`sketch-palette-plane-label${sketch3DActivePlane ? ' sketch-palette-plane-label--active' : ''}`}>
                 {sketch3DActivePlane ? 'Custom Face' : activeSketch?.plane ?? 'XY'}
               </span>
               {sketch3DActivePlane && (
@@ -482,20 +463,31 @@ export default function SketchPalette() {
             </div>
           )}
 
-          {/* Remaining local-only options */}
-          {SKETCH_OPTIONS.map((opt) => (
-            <div className="sketch-palette-row" key={opt.key}>
-              <span className="sketch-palette-label">{opt.label}</span>
-              <label className="sketch-palette-check">
-                <input
-                  type="checkbox"
-                  checked={options[opt.key]}
-                  onChange={() => toggleOption(opt.key)}
-                />
-                <span className="sketch-palette-checkmark" />
-              </label>
-            </div>
-          ))}
+          {/* SK-A7: Construction geometry visibility toggle */}
+          <div className="sketch-palette-row">
+            <span className="sketch-palette-label">Construction Geom.</span>
+            <label className="sketch-palette-check">
+              <input
+                type="checkbox"
+                checked={showConstructionGeometries}
+                onChange={() => setShowConstructionGeometries(!showConstructionGeometries)}
+              />
+              <span className="sketch-palette-checkmark" />
+            </label>
+          </div>
+
+          {/* CORR-7: Deferred Compute toggle */}
+          <div className="sketch-palette-row">
+            <span className="sketch-palette-label">Defer Solve</span>
+            <label className="sketch-palette-check">
+              <input
+                type="checkbox"
+                checked={sketchComputeDeferred}
+                onChange={() => setSketchComputeDeferred(!sketchComputeDeferred)}
+              />
+              <span className="sketch-palette-checkmark" />
+            </label>
+          </div>
 
           {/* D27: Solve constraints button */}
           <div className="sketch-palette-row">

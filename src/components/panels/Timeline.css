@@ -308,6 +308,61 @@
   padding: 2px 6px;
 }
 
+/* TL-1: Step-navigation controls */
+.timeline-nav {
+  display: flex;
+  align-items: center;
+  gap: 1px;
+}
+
+.timeline-nav__btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  padding: 0;
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  background: var(--bg-secondary);
+  color: var(--text-muted);
+  cursor: pointer;
+  transition: all 0.1s ease;
+}
+
+.timeline-nav__btn:hover:not(:disabled) {
+  background: var(--bg-hover);
+  border-color: var(--accent);
+  color: var(--text-primary);
+}
+
+.timeline-nav__btn:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+}
+
+.timeline-nav__icon--flip {
+  transform: scaleX(-1);
+}
+
+/* CTX-12: Move to Group submenu */
+.timeline-submenu-container {
+  position: relative;
+}
+
+.timeline-context-submenu {
+  position: absolute;
+  left: 100%;
+  top: 0;
+  background: var(--surface-2, #2a2a2a);
+  border: 1px solid var(--border, #444);
+  border-radius: 4px;
+  z-index: 1001;
+  min-width: 150px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
+  padding: 4px 0;
+}
+
 .timeline-drop-target {
   height: 6px;
   border-radius: 3px;

@@ -1,12 +1,74 @@
 import { useState } from 'react';
 import {
   ChevronRight, ChevronDown, Eye, EyeOff, Box, Layers,
-  Plus, Trash2, Copy, Anchor, MoreHorizontal,
+  Plus, Trash2, Copy, Anchor, MoreHorizontal, Circle, Minus,
 } from 'lucide-react';
 import { useComponentStore } from '../../../store/componentStore';
 import { useCADStore } from '../../../store/cadStore';
 import { ConstructionNode } from './ConstructionNode';
 import { JointNode } from './JointNode';
+
+// ── CORR-15: Full origin entities folder ─────────────────────────────────────
+// Shows origin point, X/Y/Z axes, and XY/XZ/YZ planes — matching Fusion SDK
+// Component.originConstructionPoint + xConstructionAxis etc.
+function OriginFolder() {
+  const [expanded, setExpanded] = useState(true);
+
+  const AXES = [
+    { label: 'X Axis', color: '#e53935' },
+    { label: 'Y Axis', color: '#43a047' },
+    { label: 'Z Axis', color: '#1e88e5' },
+  ] as const;
+
+  const PLANES = [
+    { label: 'XY Plane' },
+    { label: 'XZ Plane' },
+    { label: 'YZ Plane' },
+  ] as const;
+
+  return (
+    <div className="tree-origin-group">
+      {/* Folder header */}
+      <div
+        className="tree-item origin-item"
+        onClick={() => setExpanded((v) => !v)}
+        role="button"
+        tabIndex={0}
+        onKeyDown={(e) => e.key === 'Enter' && setExpanded((v) => !v)}
+      >
+        {expanded ? <ChevronDown size={10} className="origin-icon" /> : <ChevronRight size={10} className="origin-icon" />}
+        <Layers size={11} className="origin-icon" />
+        <span className="tree-name origin-name">Origin</span>
+      </div>
+
+      {expanded && (
+        <div className="tree-children">
+          {/* Origin Point */}
+          <div className="tree-item origin-item origin-entity">
+            <Circle size={9} className="origin-icon" />
+            <span className="tree-name origin-name">Origin Point</span>
+          </div>
+
+          {/* X / Y / Z Axes */}
+          {AXES.map(({ label, color }) => (
+            <div key={label} className="tree-item origin-item origin-entity">
+              <Minus size={9} style={{ color }} />
+              <span className="tree-name origin-name">{label}</span>
+            </div>
+          ))}
+
+          {/* XY / XZ / YZ Planes */}
+          {PLANES.map(({ label }) => (
+            <div key={label} className="tree-item origin-item origin-entity">
+              <Layers size={9} className="origin-icon" />
+              <span className="tree-name origin-name">{label}</span>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
 
 export function ComponentNode({ componentId, depth = 0 }: { componentId: string; depth?: number }) {
   const component = useComponentStore((s) => s.components[componentId]);
@@ -144,15 +206,8 @@ export function ComponentNode({ componentId, depth = 0 }: { componentId: string;
       {/* Children */}
       {isExpanded && (
         <div className="tree-children">
-          {/* Origin planes/axes (always shown for active component) */}
-          {isActive && (
-            <div className="tree-origin-group">
-              <div className="tree-item origin-item">
-                <Layers size={11} className="origin-icon" />
-                <span className="tree-name origin-name">Origin</span>
-              </div>
-            </div>
-          )}
+          {/* CORR-15: Full origin entities folder (always shown for active component) */}
+          {isActive && <OriginFolder />}
 
           {/* Construction geometry */}
           {component.constructionIds.map((id) => (

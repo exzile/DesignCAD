@@ -15,6 +15,7 @@ import {
   ShellDialog,
   LinearPatternDialog,
   CircularPatternDialog,
+  RectangularPatternDialog,
   PatternOnPathDialog,
   ThreadDialog,
   ThickenDialog,
@@ -420,6 +421,7 @@ function ActiveDialog() {
     case 'shell': return <ShellDialog onClose={close} />;
     case 'linear-pattern': return <LinearPatternDialog onClose={close} />;
     case 'circular-pattern': return <CircularPatternDialog onClose={close} />;
+    case 'rectangular-pattern': return <RectangularPatternDialog onClose={close} />;
     case 'mirror': return <MirrorDialog onClose={close} />;
     case 'combine': return <CombineDialog onClose={close} />;
     case 'hole': return <HoleDialog onClose={() => useCADStore.getState().closeHoleDialog()} />;

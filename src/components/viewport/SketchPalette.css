@@ -185,3 +185,83 @@
   border-color: var(--accent);
 }
 
+/* ── Narrow number inputs used inside palette rows ── */
+.sketch-palette-input--narrow {
+  width: 64px;
+  padding: 3px 6px;
+  border: 1px solid var(--border-light);
+  border-radius: 4px;
+  background: var(--bg-input);
+  color: var(--text-primary);
+  font-size: 12px;
+  text-align: right;
+}
+
+.sketch-palette-input--narrow:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+
+/* ── Hint text inside palette body ── */
+.sketch-palette-hint {
+  padding: 2px 10px 2px 16px;
+  font-size: 11px;
+  color: var(--text-muted);
+}
+
+/* ── Small offset button ── */
+.spl-btn--offset {
+  width: 18px;
+  height: 18px;
+  font-size: 9px;
+}
+
+/* ── Row with wrapped content ── */
+.sketch-palette-row--wrap {
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+/* ── Section header with extra top margin ── */
+.sketch-palette-section-header--spaced {
+  margin-top: 4px;
+}
+
+/* ── Column-direction row (label above control) ── */
+.sketch-palette-row--col {
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 4px;
+}
+
+/* ── Multi-line text input (SK-A5) ── */
+.sketch-palette-textarea {
+  width: 100%;
+  min-height: 56px;
+  padding: 4px 6px;
+  font-size: 12px;
+  font-family: inherit;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: var(--bg-secondary);
+  color: var(--text-primary);
+  resize: vertical;
+  outline: none;
+  box-sizing: border-box;
+}
+
+.sketch-palette-textarea:focus {
+  border-color: var(--accent);
+}
+
+/* ── 3D sketch plane label ── */
+.sketch-palette-plane-label {
+  font-size: 11px;
+  color: var(--text-muted);
+  flex-shrink: 0;
+}
+
+.sketch-palette-plane-label--active {
+  color: #f97316;
+}
+

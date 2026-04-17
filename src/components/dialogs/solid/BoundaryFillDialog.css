@@ -1,0 +1,19 @@
+/* ===== Boundary Fill Dialog ===== */
+.boundary-fill-body-list {
+  max-height: 120px;
+  overflow-y: auto;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 4px;
+}
+
+.boundary-fill-empty {
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+.boundary-fill-body-item {
+  display: flex;
+  gap: 6px;
+  padding: 2px 0;
+}

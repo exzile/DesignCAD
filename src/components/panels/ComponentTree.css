@@ -210,6 +210,12 @@
   padding-bottom: 2px;
 }
 
+/* CORR-15: Origin child entities (point, axes, planes) */
+.origin-entity {
+  padding-left: 20px !important;
+  cursor: default;
+}
+
 /* Context menu */
 .tree-context-menu {
   position: relative;

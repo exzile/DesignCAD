@@ -34,7 +34,10 @@ export default function SketchInteraction() {
   const themeColors = useThemeStore((s) => s.colors);
   // D12: Sketch Text
   const sketchTextContent = useCADStore((s) => s.sketchTextContent);
-  const sketchTextHeight = useCADStore((s) => s.sketchTextHeight);
+  const sketchTextHeight  = useCADStore((s) => s.sketchTextHeight);
+  // SK-A6: formatting flags
+  const sketchTextBold    = useCADStore((s) => s.sketchTextBold);
+  const sketchTextItalic  = useCADStore((s) => s.sketchTextItalic);
   const commitSketchTextEntities = useCADStore((s) => s.commitSketchTextEntities);
   // D45: Project / Include live-link toggle
   const projectLiveLink = useCADStore((s) => s.projectLiveLink);
@@ -43,6 +46,11 @@ export default function SketchInteraction() {
   // D28: Dimension tool
   const activeDimensionType = useCADStore((s) => s.activeDimensionType);
   const dimensionOffset = useCADStore((s) => s.dimensionOffset);
+  const dimensionDrivenMode = useCADStore((s) => s.dimensionDrivenMode);
+  const dimensionOrientation = useCADStore((s) => s.dimensionOrientation);
+  const dimensionToleranceMode = useCADStore((s) => s.dimensionToleranceMode);
+  const dimensionToleranceUpper = useCADStore((s) => s.dimensionToleranceUpper);
+  const dimensionToleranceLower = useCADStore((s) => s.dimensionToleranceLower);
   const pendingDimensionEntityIds = useCADStore((s) => s.pendingDimensionEntityIds);
   const addPendingDimensionEntity = useCADStore((s) => s.addPendingDimensionEntity);
   const addSketchDimension = useCADStore((s) => s.addSketchDimension);
@@ -383,11 +391,12 @@ export default function SketchInteraction() {
       // D12: Sketch Text — resolve font async, then push entities
       if (activeTool === 'sketch-text') {
         const anchorPt = point;
-        const textStr = sketchTextContent;
-        const textH = sketchTextHeight;
+        const textStr    = sketchTextContent;
+        const textH      = sketchTextHeight;
+        const textFormat = { bold: sketchTextBold, italic: sketchTextItalic };
         setStatusMessage('Placing text…');
         loadDefaultFont().then((font) => {
-          const segs2d = fontPathToSegments(font, textStr, 0, 0, textH);
+          const segs2d = fontPathToSegments(font, textStr, 0, 0, textH, 8, textFormat);
           // Transform 2D font segments to 3D world space using sketch axes
           const seg3d = segs2d.map((s) => {
             const p1 = anchorPt.clone()
@@ -1075,7 +1084,9 @@ export default function SketchInteraction() {
           entityIds: [firstId, secondEntity.id],
           value: dim.value,
           position: dim.textPosition,
-          driven: false,
+          driven: dimensionDrivenMode,
+          orientation: dimensionOrientation,
+          ...(dimensionToleranceMode !== 'none' && { toleranceUpper: dimensionToleranceUpper, toleranceLower: dimensionToleranceLower }),
         });
 
         useCADStore.setState({ pendingDimensionEntityIds: [] });
@@ -1101,7 +1112,8 @@ export default function SketchInteraction() {
           entityIds: [entity.id],
           value: entity.radius,
           position: dim.textPosition,
-          driven: false,
+          driven: dimensionDrivenMode,
+          ...(dimensionToleranceMode !== 'none' && { toleranceUpper: dimensionToleranceUpper, toleranceLower: dimensionToleranceLower }),
         });
         setStatusMessage(`Radial dimension added: r=${entity.radius.toFixed(2)}`);
         return;
@@ -1123,7 +1135,8 @@ export default function SketchInteraction() {
           entityIds: [entity.id],
           value: dim.value,
           position: dim.textPosition,
-          driven: false,
+          driven: dimensionDrivenMode,
+          ...(dimensionToleranceMode !== 'none' && { toleranceUpper: dimensionToleranceUpper, toleranceLower: dimensionToleranceLower }),
         });
         setStatusMessage(`Diameter dimension added: ⌀${dim.value.toFixed(2)}`);
         return;
@@ -1147,7 +1160,8 @@ export default function SketchInteraction() {
           entityIds: [entity.id],
           value: dim.value,
           position: dim.textPosition,
-          driven: false,
+          driven: dimensionDrivenMode,
+          ...(dimensionToleranceMode !== 'none' && { toleranceUpper: dimensionToleranceUpper, toleranceLower: dimensionToleranceLower }),
         });
         setStatusMessage(`Arc length dimension added: ${dim.value.toFixed(2)}`);
         return;
@@ -1195,7 +1209,8 @@ export default function SketchInteraction() {
           entityIds: [firstId, secondEntity.id],
           value: dim.value,
           position: dim.textPosition,
-          driven: false,
+          driven: dimensionDrivenMode,
+          ...(dimensionToleranceMode !== 'none' && { toleranceUpper: dimensionToleranceUpper, toleranceLower: dimensionToleranceLower }),
         });
 
         useCADStore.setState({ pendingDimensionEntityIds: [] });
@@ -1215,7 +1230,7 @@ export default function SketchInteraction() {
       canvas.removeEventListener('click', handleClick);
       window.removeEventListener('keydown', handleKeyDown);
     };
-  }, [activeTool, activeSketch, activeDimensionType, dimensionOffset, pendingDimensionEntityIds, addPendingDimensionEntity, addSketchDimension, cancelDimensionTool, getWorldPoint, setStatusMessage, gl]);
+  }, [activeTool, activeSketch, activeDimensionType, dimensionOffset, dimensionDrivenMode, dimensionOrientation, dimensionToleranceMode, dimensionToleranceUpper, dimensionToleranceLower, pendingDimensionEntityIds, addPendingDimensionEntity, addSketchDimension, cancelDimensionTool, getWorldPoint, setStatusMessage, gl]);
 
   // D52: Constraint tools — click N entities → apply constraint
   useEffect(() => {

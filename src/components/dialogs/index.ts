@@ -21,6 +21,7 @@ export { SilhouetteSplitDialog } from './solid/SilhouetteSplitDialog';
 // pattern
 export { LinearPatternDialog } from './pattern/LinearPatternDialog';
 export { CircularPatternDialog } from './pattern/CircularPatternDialog';
+export { RectangularPatternDialog } from './pattern/RectangularPatternDialog';
 export { MirrorDialog } from './pattern/MirrorDialog';
 export { PatternOnPathDialog } from './pattern/PatternOnPathDialog';
 

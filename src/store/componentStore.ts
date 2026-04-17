@@ -56,6 +56,10 @@ interface ComponentStore {
   setBodyMaterial: (id: string, material: MaterialAppearance) => void;
   setBodyMesh: (id: string, mesh: THREE.Mesh | THREE.Group) => void;
   addFeatureToBody: (bodyId: string, featureId: string) => void;
+  /** CTX-7: Set body opacity [0,1]. */
+  setBodyOpacity: (id: string, opacity: number) => void;
+  /** CTX-9: Toggle body selectability. */
+  toggleBodySelectable: (id: string) => void;
   /** D168: Mirror a body through XY/XZ/YZ plane, adding the reflected body to the same component. */
   mirrorBody: (bodyId: string, plane: 'XY' | 'XZ' | 'YZ') => string | null;
 
@@ -471,6 +475,22 @@ export const useComponentStore = create<ComponentStore>((set, get) => ({
     const body = bodies[id];
     if (!body) return;
     set({ bodies: { ...bodies, [id]: { ...body, mesh } } });
+  },
+
+  setBodyOpacity: (id, opacity) => {
+    const { bodies } = get();
+    const body = bodies[id];
+    if (!body) return;
+    const clamped = Math.max(0, Math.min(1, opacity));
+    set({ bodies: { ...bodies, [id]: { ...body, opacity: clamped } } });
+  },
+
+  toggleBodySelectable: (id) => {
+    const { bodies } = get();
+    const body = bodies[id];
+    if (!body) return;
+    const next = body.selectable === false ? true : false;
+    set({ bodies: { ...bodies, [id]: { ...body, selectable: next } } });
   },
 
   addFeatureToBody: (bodyId, featureId) => {

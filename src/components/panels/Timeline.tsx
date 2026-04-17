@@ -4,20 +4,27 @@ import {
   Eye, EyeOff, Trash2, PenTool, ArrowUpFromLine,
   RotateCcw, Blend, FileBox, ChevronDown, PauseCircle, PlayCircle,
   SkipBack, CheckSquare, Folder, FolderOpen, ChevronRight, Pencil,
+  Stamp, GitBranch, BoxSelect, Repeat, Grid,
 } from 'lucide-react';
 import { useCADStore } from '../../store/cadStore';
 import type { Feature, FeatureGroup } from '../../types/cad';
 
 function FeatureIcon({ type }: { type: Feature['type'] }) {
   switch (type) {
-    case 'sketch': return <PenTool size={14} />;
-    case 'extrude': return <ArrowUpFromLine size={14} />;
-    case 'revolve': return <RotateCcw size={14} />;
-    case 'fillet': return <Blend size={14} />;
-    case 'chamfer': return <ChevronDown size={14} />;
-    case 'base-feature': return <FileBox size={14} />;
-    case 'import': return <FileBox size={14} />;
-    default: return <FileBox size={14} />;
+    case 'sketch':        return <PenTool size={14} />;
+    case 'extrude':       return <ArrowUpFromLine size={14} />;
+    case 'revolve':       return <RotateCcw size={14} />;
+    case 'fillet':        return <Blend size={14} />;
+    case 'chamfer':       return <ChevronDown size={14} />;
+    case 'emboss':               return <Stamp size={14} />;
+    case 'pipe':                 return <GitBranch size={14} />;
+    case 'boundary-fill':        return <BoxSelect size={14} />;
+    case 'linear-pattern':       return <Repeat size={14} />;
+    case 'rectangular-pattern':  return <Grid size={14} />;
+    case 'circular-pattern':     return <RotateCcw size={14} />;
+    case 'base-feature':         return <FileBox size={14} />;
+    case 'import':               return <FileBox size={14} />;
+    default:                     return <FileBox size={14} />;
   }
 }
 
@@ -90,6 +97,7 @@ function editDialogFor(feature: Feature): string | null {
     case 'thicken':         return 'thicken';
     case 'linear-pattern':  return 'linear-pattern';
     case 'circular-pattern':return 'circular-pattern';
+    case 'rectangular-pattern': return 'rectangular-pattern';
     case 'pattern-on-path': return 'pattern-on-path';
     case 'mirror':          return 'mirror';
     case 'offset-face':     return 'offset-face';
@@ -98,9 +106,11 @@ function editDialogFor(feature: Feature): string | null {
       if (p.isSurfaceSplit)  return 'surface-split';
       if (p.unstitch)        return 'unstitch';
       return 'split';
+    case 'emboss':       return 'emboss';
+    case 'pipe':         return 'pipe';
+    case 'boundary-fill': return 'boundary-fill';
     case 'rib':
       if (p.webStyle === 'perpendicular') return 'web';
-      if (p.embossStyle === 'emboss')     return 'emboss';
       if (p.restStyle === 'rest')         return 'rest';
       return null;
     case 'construction-plane': return 'construction-plane';
@@ -117,15 +127,13 @@ function editDialogFor(feature: Feature): string | null {
       if (p.isPhysicalMaterial)  return 'physical-material';
       if (p.isAppearance)        return 'appearance';
       if (p.isMoveBody)          return 'move-body';
-      if (p.isBoundaryFill)      return 'boundary-fill';
       if (p.baseFeature)         return 'base-feature';
       if (p.isCanvasRef)         return 'insert-canvas';
       return null;
     case 'sweep':
-      if (p.isPipe)              return 'pipe';
       if (p.isSurfaceOffset)     return 'offset-surface';
       if (p.isSurfaceExtend)     return 'surface-extend';
-      return null;
+      return 'sweep';
     default:                    return null;
   }
 }
@@ -143,8 +151,11 @@ function FeatureItem({ feature, index, indented }: { feature: Feature; index: nu
   const rollbackIndex = useCADStore((s) => s.rollbackIndex);
   const setRollbackIndex = useCADStore((s) => s.setRollbackIndex);
   const setStatusMessage = useCADStore((s) => s.setStatusMessage);
-  const createFeatureGroup = useCADStore((s) => s.createFeatureGroup);
+  const createFeatureGroup  = useCADStore((s) => s.createFeatureGroup);
+  const moveFeatureToGroup  = useCADStore((s) => s.moveFeatureToGroup);
+  const featureGroups       = useCADStore((s) => s.featureGroups);
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number } | null>(null);
+  const [moveToGroupOpen, setMoveToGroupOpen] = useState(false);
 
   const isSelected = selectedFeatureId === feature.id;
   // D190: feature is rolled back (skipped) if index > rollbackIndex (and rollbackIndex >= 0)
@@ -198,7 +209,7 @@ function FeatureItem({ feature, index, indented }: { feature: Feature; index: nu
     setContextMenu({ x: e.clientX, y: e.clientY });
   };
 
-  const closeContextMenu = () => setContextMenu(null);
+  const closeContextMenu = () => { setContextMenu(null); setMoveToGroupOpen(false); };
 
   return (
     <>
@@ -335,6 +346,50 @@ function FeatureItem({ feature, index, indented }: { feature: Feature; index: nu
 
           <div className="timeline-context-menu__sep" />
 
+          {/* CTX-12: Move to Group */}
+          {featureGroups.length > 0 && (
+            <div className="timeline-submenu-container">
+              <button
+                className="timeline-context-menu__btn"
+                onClick={() => setMoveToGroupOpen((v) => !v)}
+              >
+                <FolderOpen size={12} />
+                Move to Group ▸
+              </button>
+              {moveToGroupOpen && (
+                <div className="timeline-context-submenu">
+                  {featureGroups.map((g) => (
+                    <button
+                      key={g.id}
+                      className="timeline-context-menu__btn"
+                      onClick={() => {
+                        moveFeatureToGroup(feature.id, g.id);
+                        setStatusMessage(`Moved "${feature.name}" to group "${g.name}"`);
+                        closeContextMenu();
+                      }}
+                    >
+                      <Folder size={12} />
+                      {g.name}
+                    </button>
+                  ))}
+                  {feature.groupId && (
+                    <button
+                      className="timeline-context-menu__btn"
+                      onClick={() => {
+                        moveFeatureToGroup(feature.id, null);
+                        setStatusMessage(`Removed "${feature.name}" from group`);
+                        closeContextMenu();
+                      }}
+                    >
+                      <FolderOpen size={12} />
+                      Remove from Group
+                    </button>
+                  )}
+                </div>
+              )}
+            </div>
+          )}
+
           {/* Group */}
           <button
             className="timeline-context-menu__btn"
@@ -441,13 +496,57 @@ export default function Timeline() {
       <div className="timeline-header">
         <h3>Timeline</h3>
         <div className="timeline-header__controls">
+          {/* TL-1: Step navigation */}
+          <div className="timeline-nav">
+            <button
+              className="timeline-nav__btn"
+              onClick={() => { setRollbackIndex(0); }}
+              title="Beginning — roll back to first feature"
+              disabled={features.length === 0}
+            >
+              <SkipBack size={11} />
+            </button>
+            <button
+              className="timeline-nav__btn"
+              onClick={() => {
+                const cur = rollbackIndex < 0 ? features.length - 1 : rollbackIndex;
+                setRollbackIndex(Math.max(0, cur - 1));
+              }}
+              title="Previous feature"
+              disabled={features.length === 0 || rollbackIndex === 0}
+            >
+              <ChevronRight size={11} className="timeline-nav__icon--flip" />
+            </button>
+            <button
+              className="timeline-nav__btn"
+              onClick={() => {
+                if (rollbackIndex < 0 || rollbackIndex >= features.length - 1) {
+                  setRollbackIndex(-1);
+                } else {
+                  setRollbackIndex(rollbackIndex + 1);
+                }
+              }}
+              title="Next feature"
+              disabled={features.length === 0 || rollbackIndex < 0}
+            >
+              <ChevronRight size={11} />
+            </button>
+            <button
+              className="timeline-nav__btn"
+              onClick={() => setRollbackIndex(-1)}
+              title="End — show all features"
+              disabled={rollbackIndex < 0}
+            >
+              <PlayCircle size={11} />
+            </button>
+          </div>
           {rollbackIndex >= 0 && (
             <button
               className="timeline-action-btn active timeline-action-btn--small"
               onClick={() => setRollbackIndex(-1)}
               title="Clear rollback marker"
             >
-              Rollback @ {rollbackIndex + 1}
+              @ {rollbackIndex + 1}/{features.length}
             </button>
           )}
           <span className="feature-count">{features.length} features</span>

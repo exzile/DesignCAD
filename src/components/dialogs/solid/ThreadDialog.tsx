@@ -2,47 +2,70 @@ import { useState } from 'react';
 import { X } from 'lucide-react';
 import { useCADStore } from '../../../store/cadStore';
 import type { Feature } from '../../../types/cad';
-
-// ISO Metric pitch lookup (nominal diameter in mm → pitch in mm)
-const ISO_PITCH: Record<string, number> = {
-  'M3x0.5': 0.5, 'M4x0.7': 0.7, 'M5x0.8': 0.8, 'M6x1.0': 1.0,
-  'M8x1.25': 1.25, 'M10x1.5': 1.5, 'M12x1.75': 1.75, 'M16x2.0': 2.0,
-  'M20x2.5': 2.5, 'M24x3.0': 3.0,
-};
-
-type ThreadStandard = 'iso-metric' | 'ansi-unified' | 'npt';
+import { THREAD_SIZES, findThreadSize } from './ThreadSizePresets';
+import type { ThreadStandard } from './ThreadSizePresets';
+import '../FeatureDialogExtras.css';
 
 export function ThreadDialog({ onClose }: { onClose: () => void }) {
-  const editingFeatureId = useCADStore((s) => s.editingFeatureId);
-  const features = useCADStore((s) => s.features);
-  const editing = editingFeatureId ? features.find((f) => f.id === editingFeatureId) : null;
-  const p = editing?.params ?? {};
+  const editingFeatureId  = useCADStore((s) => s.editingFeatureId);
+  const features          = useCADStore((s) => s.features);
+  const editing           = editingFeatureId ? features.find((f) => f.id === editingFeatureId) : null;
+  const p                 = editing?.params ?? {};
 
   const [threadType, setThreadType] = useState<'cosmetic' | 'modeled'>((p.threadType as 'cosmetic' | 'modeled') ?? 'cosmetic');
-  const [standard, setStandard] = useState<ThreadStandard>((p.standard as ThreadStandard) ?? 'iso-metric');
+  const [standard, setStandard]     = useState<ThreadStandard>((p.standard as ThreadStandard) ?? 'iso-metric');
   const [designation, setDesignation] = useState(String(p.designation ?? 'M6x1.0'));
   const [threadClass, setThreadClass] = useState(String(p.threadClass ?? '6H'));
-  const [diameter, setDiameter] = useState(Number(p.diameter ?? 6));
-  const [length, setLength] = useState(Number(p.length ?? 15));
-  const [offset, setOffset] = useState(Number(p.offset ?? 0));
+  const [diameter, setDiameter]     = useState(Number(p.diameter ?? 6));
+  const [pitch, setPitch]           = useState(Number(p.pitch ?? 1.0));
+  const [length, setLength]         = useState(Number(p.length ?? 15));
+  const [offset, setOffset]         = useState(Number(p.offset ?? 0));
   const [fullLength, setFullLength] = useState(p.fullLength !== false && !!p.fullLength);
-  const [direction, setDirection] = useState<'right-hand' | 'left-hand'>((p.direction as 'right-hand' | 'left-hand') ?? 'right-hand');
+  const [direction, setDirection]   = useState<'right-hand' | 'left-hand'>((p.direction as 'right-hand' | 'left-hand') ?? 'right-hand');
 
-  const addFeature = useCADStore((s) => s.addFeature);
-  const commitThread = useCADStore((s) => s.commitThread);
+  const addFeature         = useCADStore((s) => s.addFeature);
+  const commitThread       = useCADStore((s) => s.commitThread);
   const updateFeatureParams = useCADStore((s) => s.updateFeatureParams);
-  const setStatusMessage = useCADStore((s) => s.setStatusMessage);
+  const setStatusMessage   = useCADStore((s) => s.setStatusMessage);
 
-  const ISO_DESIGNATIONS = ['M3x0.5', 'M4x0.7', 'M5x0.8', 'M6x1.0', 'M8x1.25', 'M10x1.5', 'M12x1.75', 'M16x2.0', 'M20x2.5', 'M24x3.0'];
-  const ANSI_DESIGNATIONS = ['1/4-20', '5/16-18', '3/8-16', '7/16-14', '1/2-13', '5/8-11', '3/4-10', '7/8-9', '1-8'];
-  const NPT_DESIGNATIONS = ['1/8 NPT', '1/4 NPT', '3/8 NPT', '1/2 NPT', '3/4 NPT', '1 NPT'];
-  const designations = standard === 'iso-metric' ? ISO_DESIGNATIONS : standard === 'ansi-unified' ? ANSI_DESIGNATIONS : NPT_DESIGNATIONS;
+  const designations = THREAD_SIZES[standard].map((e) => e.designation);
+
+  // SOL-I9: auto-populate diameter, pitch, and class when standard changes
+  const handleStandardChange = (next: ThreadStandard) => {
+    setStandard(next);
+    const sizes = THREAD_SIZES[next];
+    if (sizes.length > 0) {
+      const first = sizes[0];
+      setDesignation(first.designation);
+      setDiameter(parseFloat(first.diameter.toFixed(3)));
+      setPitch(parseFloat(first.pitch.toFixed(4)));
+      setThreadClass(first.defaultClass);
+    }
+  };
+
+  // SOL-I9: auto-populate from designation lookup
+  const handleDesignationChange = (des: string) => {
+    setDesignation(des);
+    const entry = findThreadSize(standard, des);
+    if (entry) {
+      setDiameter(parseFloat(entry.diameter.toFixed(3)));
+      setPitch(parseFloat(entry.pitch.toFixed(4)));
+      setThreadClass(entry.defaultClass);
+    }
+  };
+
+  // SOL-I9: validate pitch — must be positive and smaller than diameter
+  const pitchError = pitch <= 0 ? 'Pitch must be > 0'
+    : pitch >= diameter ? 'Pitch must be less than diameter'
+    : null;
+
+  const canApply = !pitchError && diameter > 0 && length > 0;
 
   const handleApply = () => {
+    if (!canApply) return;
     const params = {
       threadType, standard, designation, threadClass,
-      diameter, length, offset, fullLength,
-      direction,
+      diameter, pitch, length, offset, fullLength, direction,
     };
     if (editing) {
       updateFeatureParams(editing.id, params);
@@ -57,13 +80,9 @@ export function ThreadDialog({ onClose }: { onClose: () => void }) {
         suppressed: false,
         timestamp: Date.now(),
       };
-      const added = addFeature(feature);
-      void added; // addFeature returns void
-      // For cosmetic threads, generate a helix overlay
+      addFeature(feature);
       if (threadType === 'cosmetic') {
-        const pitch = ISO_PITCH[designation] ?? 1.0;
-        const threadLength = fullLength ? length : length;
-        commitThread(feature.id, diameter / 2, pitch, threadLength);
+        commitThread(feature.id, diameter / 2, pitch, fullLength ? length : length);
       }
       setStatusMessage(`Created ${threadType} thread: ${designation}`);
     }
@@ -94,10 +113,11 @@ export function ThreadDialog({ onClose }: { onClose: () => void }) {
               </select>
             </div>
           </div>
+
           <div className="settings-grid">
             <div className="form-group">
               <label>Standard</label>
-              <select value={standard} onChange={(e) => { setStandard(e.target.value as ThreadStandard); setDesignation(''); }}>
+              <select value={standard} onChange={(e) => handleStandardChange(e.target.value as ThreadStandard)}>
                 <option value="iso-metric">ISO Metric</option>
                 <option value="ansi-unified">ANSI Unified</option>
                 <option value="npt">NPT</option>
@@ -105,31 +125,74 @@ export function ThreadDialog({ onClose }: { onClose: () => void }) {
             </div>
             <div className="form-group">
               <label>Designation</label>
-              <select value={designation} onChange={(e) => setDesignation(e.target.value)}>
+              <select value={designation} onChange={(e) => handleDesignationChange(e.target.value)}>
                 {designations.map((d) => <option key={d} value={d}>{d}</option>)}
               </select>
             </div>
           </div>
+
           <div className="settings-grid">
             <div className="form-group">
               <label>Class</label>
-              <input type="text" value={threadClass} onChange={(e) => setThreadClass(e.target.value)} placeholder="e.g. 6H" />
+              <input
+                type="text"
+                value={threadClass}
+                onChange={(e) => setThreadClass(e.target.value)}
+                placeholder="e.g. 6H"
+              />
             </div>
             <div className="form-group">
               <label>Diameter (mm)</label>
-              <input type="number" value={diameter} onChange={(e) => setDiameter(Math.max(0.1, parseFloat(e.target.value) || 6))} step={0.5} min={0.1} />
+              <input
+                type="number"
+                value={diameter}
+                onChange={(e) => setDiameter(Math.max(0.1, parseFloat(e.target.value) || 6))}
+                step={0.5}
+                min={0.1}
+              />
             </div>
           </div>
+
           <div className="settings-grid">
             <div className="form-group">
-              <label>Length (mm)</label>
-              <input type="number" value={length} onChange={(e) => setLength(Math.max(0.1, parseFloat(e.target.value) || 15))} disabled={fullLength} step={0.5} min={0.1} />
+              <label>Pitch (mm)</label>
+              <input
+                type="number"
+                value={pitch}
+                onChange={(e) => setPitch(Math.max(0.01, parseFloat(e.target.value) || 1))}
+                step={0.05}
+                min={0.01}
+              />
             </div>
             <div className="form-group">
-              <label>Offset (mm)</label>
-              <input type="number" value={offset} onChange={(e) => setOffset(parseFloat(e.target.value) || 0)} step={0.5} />
+              <label>Length (mm)</label>
+              <input
+                type="number"
+                value={length}
+                onChange={(e) => setLength(Math.max(0.1, parseFloat(e.target.value) || 15))}
+                disabled={fullLength}
+                step={0.5}
+                min={0.1}
+              />
             </div>
           </div>
+
+          {pitchError && (
+            <div className="dialog-hint dialog-hint--error">{pitchError}</div>
+          )}
+
+          <div className="settings-grid">
+            <div className="form-group">
+              <label>Offset (mm)</label>
+              <input
+                type="number"
+                value={offset}
+                onChange={(e) => setOffset(parseFloat(e.target.value) || 0)}
+                step={0.5}
+              />
+            </div>
+          </div>
+
           <label className="checkbox-label">
             <input type="checkbox" checked={fullLength} onChange={(e) => setFullLength(e.target.checked)} />
             Full Length
@@ -137,7 +200,7 @@ export function ThreadDialog({ onClose }: { onClose: () => void }) {
         </div>
         <div className="dialog-footer">
           <button className="btn btn-secondary" onClick={onClose}>Cancel</button>
-          <button className="btn btn-primary" onClick={handleApply}>OK</button>
+          <button className="btn btn-primary" onClick={handleApply} disabled={!canApply}>OK</button>
         </div>
       </div>
     </div>

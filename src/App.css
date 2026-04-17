@@ -356,3 +356,35 @@
   cursor: default;
   pointer-events: none;
 }
+
+/* ── Context menu inline opacity slider (CTX-7) ── */
+.ctx-opacity-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 10px 6px 28px;
+}
+
+.ctx-opacity-slider {
+  flex: 1;
+  height: 4px;
+  accent-color: var(--accent);
+  cursor: pointer;
+}
+
+.ctx-opacity-value {
+  font-size: 11px;
+  color: var(--text-muted);
+  min-width: 30px;
+  text-align: right;
+}
+
+/* ── Active/toggled context menu item ── */
+.sketch-ctx-item.active {
+  background: var(--bg-active, rgba(91, 155, 213, 0.12));
+  color: var(--accent);
+}
+
+.sketch-ctx-item.toggled-on .sketch-ctx-icon {
+  color: var(--accent);
+}

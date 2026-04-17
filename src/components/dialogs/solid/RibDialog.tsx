@@ -18,10 +18,13 @@ export function RibDialog({ onClose }: { onClose: () => void }) {
   const [height, setHeight] = useState(Number(p.height ?? 10));
   const [direction, setDirection] = useState<'normal' | 'flip' | 'symmetric'>((p.direction as 'normal' | 'flip' | 'symmetric') ?? 'normal');
   const [operation, setOperation] = useState<'join' | 'new-body'>((p.operation as 'join' | 'new-body') ?? 'join');
+  // SOL-I8: SDK RibFeatureInput toggles
+  const [fillAllEnclosedFaces, setFillAllEnclosedFaces] = useState(p.fillAllEnclosedFaces !== false);
+  const [preserveCorners, setPreserveCorners] = useState(p.preserveCorners !== false);
 
   const handleApply = () => {
     if (editing) {
-      updateFeatureParams(editing.id, { sketchId, thickness, height, direction, operation });
+      updateFeatureParams(editing.id, { sketchId, thickness, height, direction, operation, fillAllEnclosedFaces, preserveCorners });
       setStatusMessage(`Updated rib: ${thickness}mm thick`);
       onClose();
     } else {
@@ -71,6 +74,14 @@ export function RibDialog({ onClose }: { onClose: () => void }) {
               <option value="new-body">New Body</option>
             </select>
           </div>
+          <label className="checkbox-label">
+            <input type="checkbox" checked={fillAllEnclosedFaces} onChange={(e) => setFillAllEnclosedFaces(e.target.checked)} />
+            Fill All Enclosed Faces
+          </label>
+          <label className="checkbox-label">
+            <input type="checkbox" checked={preserveCorners} onChange={(e) => setPreserveCorners(e.target.checked)} />
+            Preserve Corners
+          </label>
           <p className="dialog-hint">Select a sketch profile to extrude as a thin structural rib.</p>
         </div>
         <div className="dialog-footer">

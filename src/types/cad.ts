@@ -52,6 +52,7 @@ export type Tool =
   | 'measure'
   | 'linear-pattern'
   | 'circular-pattern'
+  | 'rectangular-pattern'
   | 'mirror'
   | 'joint'
   | 'as-built-joint'
@@ -197,6 +198,10 @@ export interface SketchConstraint {
   value?: number;          // for dimensional constraints
 }
 
+/** CORR-1: orientation controls whether the dimension line is horizontal,
+ *  vertical, or auto-aligned to the measured geometry (Fusion default = 'auto'). */
+export type DimensionOrientation = 'horizontal' | 'vertical' | 'auto';
+
 export interface SketchDimension {
   id: string;
   type: 'linear' | 'angular' | 'radial' | 'diameter' | 'arc-length' | 'aligned';
@@ -204,6 +209,11 @@ export interface SketchDimension {
   value: number;
   position: { x: number; y: number }; // label position
   driven: boolean; // driven vs driving dimension
+  /** CORR-1: dimension line orientation for linear/aligned types */
+  orientation?: DimensionOrientation;
+  /** SK-A8: symmetric tolerance (±) when toleranceUpper == toleranceLower */
+  toleranceUpper?: number;
+  toleranceLower?: number;
 }
 
 export interface Sketch {
@@ -234,6 +244,7 @@ export type FeatureType =
   | 'thread'
   | 'linear-pattern'
   | 'circular-pattern'
+  | 'rectangular-pattern'
   | 'mirror'
   | 'combine'
   | 'construction-plane'
@@ -255,7 +266,10 @@ export type FeatureType =
   | 'texture-extrude'
   | 'decal'
   | 'split-face'
-  | 'bounding-solid';
+  | 'bounding-solid'
+  | 'emboss'
+  | 'pipe'
+  | 'boundary-fill';
 
 export type BooleanOperation = 'new-body' | 'join' | 'cut' | 'intersect';
 
@@ -344,6 +358,10 @@ export interface Body {
   componentId: string;
   mesh: THREE.Mesh | THREE.Group | null;
   visible: boolean;
+  /** CTX-7: body opacity in range [0, 1]. Undefined means fully opaque (1). */
+  opacity?: number;
+  /** CTX-9: when false the body cannot be selected in the viewport. */
+  selectable?: boolean;
   material: MaterialAppearance;
   featureIds: string[];     // features that built this body
 }

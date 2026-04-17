@@ -18,7 +18,7 @@ export function PipeDialog({ onClose }: { onClose: () => void }) {
     const feature: Feature = {
       id: crypto.randomUUID(),
       name: `Pipe (⌀${outerDiameter}mm)`,
-      type: 'sweep',
+      type: 'pipe',
       params: { isPipe: true, outerDiameter, hollow, wallThickness, operation, pathSketchId },
       bodyKind: 'solid',
       visible: true,
