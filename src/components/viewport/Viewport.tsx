@@ -2,6 +2,7 @@ import "./ViewportOverlay.css";
 import { useRef, useCallback, useState, useEffect } from 'react';
 import { Canvas } from '@react-three/fiber';
 import { OrbitControls, Environment, ContactShadows } from '@react-three/drei';
+import type { PresetsType } from '@react-three/drei/helpers/environment-assets';
 import * as THREE from 'three';
 import { useCADStore } from '../../store/cadStore';
 import { useThemeStore } from '../../store/themeStore';
@@ -33,6 +34,7 @@ import SketchConstraintOverlay from './scene/SketchConstraintOverlay';
 import SketchDimensionAnnotations from './scene/SketchDimensionAnnotations';
 import SketchSplineHandles from './scene/SketchSplineHandles';
 import PrimitiveBodies from './scene/PrimitiveBodies';
+import FastenerBodies from './scene/FastenerBodies';
 import ExtrudedBodies from './scene/ExtrudedBodies';
 import ImportedModels from './scene/ImportedModels';
 import SketchPlaneIndicator from './scene/SketchPlaneIndicator';
@@ -82,6 +84,8 @@ import { ViewportContextMenu } from './ViewportContextMenu';
 import type { ViewportCtxState } from './ViewportContextMenu';
 import CameraProjectionSwitcher from './scene/CameraProjectionSwitcher';
 import LookAtInteraction from './scene/LookAtInteraction';
+import { EffectComposer, SSAO } from '@react-three/postprocessing';
+import MultiViewportLayout from './MultiViewportLayout';
 
 
 
@@ -90,13 +94,13 @@ export default function Viewport() {
   const cameraNavMode = useCADStore((s) => s.cameraNavMode);
   const gridVisible = useCADStore((s) => s.gridVisible);
   const activeSketch = useCADStore((s) => s.activeSketch);
-  const showEnvironment = useCADStore((s) => s.showEnvironment);
   const showReflections = useCADStore((s) => s.showReflections);
-  const environmentPreset = useCADStore((s) => s.environmentPreset);
+  const environmentPreset = useCADStore((s) => s.environmentPreset) as PresetsType;
   const showShadows = useCADStore((s) => s.showShadows);
   const showGroundPlane = useCADStore((s) => s.showGroundPlane);
   const groundPlaneOffset = useCADStore((s) => s.groundPlaneOffset);
   const shadowSoftness = useCADStore((s) => s.shadowSoftness);
+  const ambientOcclusionEnabled = useCADStore((s) => s.ambientOcclusionEnabled);
   const setCameraTargetQuaternion = useCADStore((s) => s.setCameraTargetQuaternion);
   const themeColors = useThemeStore((s) => s.colors);
 
@@ -284,12 +288,9 @@ export default function Viewport() {
           intensity={0.3}
         />
 
-        {/* Environment */}
-        {/* NAV-11 / NAV-22: showReflections controls IBL (scene.environment).
-            showEnvironment controls whether the HDRI is shown as background.
-            showReflections=false → no <Environment>, surfaces lit by directional/ambient only. */}
+        {/* Environment — IBL/reflections only; background is always the solid canvasBg color */}
         {showReflections && (
-          <Environment preset={environmentPreset as any} background={showEnvironment} />
+          <Environment preset={environmentPreset} background={false} />
         )}
         {showShadows && showGroundPlane && (
           <ContactShadows
@@ -328,6 +329,7 @@ export default function Viewport() {
         <SketchSplineHandles />
         <ExtrudedBodies />
         <PrimitiveBodies />
+        <FastenerBodies />
         <ImportedModels />
         <SketchPlaneIndicator />
         <SketchInteraction />
@@ -387,7 +389,22 @@ export default function Viewport() {
 
         {/* Shift + Middle-click pan (in addition to right-click pan) */}
         <ShiftMiddlePan />
+
+        {/* NAV-21: Ambient Occlusion — SSAO via @react-three/postprocessing */}
+        {ambientOcclusionEnabled && (
+          <EffectComposer>
+            <SSAO
+              radius={0.1}
+              intensity={20}
+              luminanceInfluence={0.6}
+              color={new THREE.Color('black')}
+            />
+          </EffectComposer>
+        )}
       </Canvas>
+
+      {/* NAV-19: Multi-viewport layout overlay */}
+      <MultiViewportLayout />
 
       {/* MM6/MM7 Finish Edit In Place banner */}
       <FinishEditInPlaceBar />

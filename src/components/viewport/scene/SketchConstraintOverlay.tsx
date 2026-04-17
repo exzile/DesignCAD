@@ -360,8 +360,46 @@ export default function SketchConstraintOverlay() {
           // SK-A9: Offset constraint — parallel-lines symbol at each entity + a tick between them
           for (const entity of entities) {
             const mid = entityMidpoint(entity, sketch);
-            if (mid) objs.push(makeParallelLines(mid, t1, t2, SIZE, c(0x66ddff)));
+            if (mid) objs.push(makeParallelLines(mid, t1, t2, SIZE, c(new THREE.Color(0x66ddff))));
           }
+          break;
+        }
+        case 'coincident-surface': {
+          // SK-A1: point-on-plane — small dot + horizontal line at entity midpoint
+          const entity = entities[0];
+          if (!entity) break;
+          const mid = entityMidpoint(entity, sketch);
+          if (!mid) break;
+          const color = c(new THREE.Color(0x44ff88));
+          objs.push(makeCoincidentRing(mid, t1, t2, SIZE * 0.35, color));
+          objs.push(makeHArrow(mid, t1, t2, SIZE * 0.6, color));
+          break;
+        }
+        case 'perpendicular-surface': {
+          // SK-A1: line normal to surface — right-angle symbol (orange)
+          const entity = entities[0];
+          if (!entity) break;
+          const mid = entityMidpoint(entity, sketch);
+          if (!mid) break;
+          objs.push(makePerpSymbol(mid, t1, t2, SIZE, c(new THREE.Color(0xff8800))));
+          break;
+        }
+        case 'line-on-surface': {
+          // SK-A1: line lies in plane — parallel lines in purple
+          const entity = entities[0];
+          if (!entity) break;
+          const mid = entityMidpoint(entity, sketch);
+          if (!mid) break;
+          objs.push(makeParallelLines(mid, t1, t2, SIZE, c(new THREE.Color(0xcc66ff))));
+          break;
+        }
+        case 'distance-surface': {
+          // SK-A1: parametric distance from entity to plane — distance arrow in cyan
+          const entity = entities[0];
+          if (!entity) break;
+          const mid = entityMidpoint(entity, sketch);
+          if (!mid) break;
+          objs.push(makeHArrow(mid, t1, t2, SIZE, c(new THREE.Color(0x66ddff))));
           break;
         }
         default: {

@@ -3,7 +3,7 @@ import {
   Blend, Scissors, Combine, Copy, Link2, Layers,
   Anchor, Expand, Axis3D, Ruler, FolderOpen,
   Image, Edit2, MousePointer2, ArrowUp, Move, Square,
-  Minus, Stamp, Wrench, Repeat, FlipHorizontal,
+  Minus, Stamp, Wrench, Repeat, FlipHorizontal, FileCode,
 } from 'lucide-react';
 import { useCADStore } from '../../store/cadStore';
 import { useComponentStore } from '../../store/componentStore';
@@ -146,6 +146,8 @@ export function RibbonSolidTab({
           <ToolButton icon={<Image size={ICON_SM} />} label="Decal" onClick={openDecalDialog} colorClass="icon-gray" />
           <ToolButton icon={<Edit2 size={ICON_SM} />} label="Attached Canvas" onClick={() => openAttachedCanvasDialog()} colorClass="icon-gray" />
           <ToolButton icon={<Box size={ICON_SM} />} label="Bounding Solid" onClick={openBoundingSolidDialog} colorClass="icon-gray" />
+          <ToolButton icon={<Wrench size={ICON_SM} />} label="Insert Fastener" onClick={() => setActiveDialog('insert-fastener')} colorClass="icon-gray" />
+          <ToolButton icon={<FileCode size={ICON_SM} />} label="Derive" onClick={() => setActiveDialog('derive')} colorClass="icon-gray" />
         </div>
       </RibbonSection>
 

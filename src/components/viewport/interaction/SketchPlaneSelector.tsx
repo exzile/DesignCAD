@@ -14,6 +14,25 @@ const FACE_RING_POSITIONS = (() => {
   return new Float32Array(pts);
 })();
 
+// Plane dimensions — module-level so the grid geometry is built once
+const PLANE_SIZE = 40;
+const HALF_PS = PLANE_SIZE / 2;
+const GRID_DIVISIONS = 10; // squares per side
+
+// Grid line positions (LineSegments, Z=0 plane) — reused across all 3 planes via rotation
+const PLANE_GRID_POSITIONS = (() => {
+  const step = PLANE_SIZE / GRID_DIVISIONS;
+  const pts: number[] = [];
+  for (let i = 0; i <= GRID_DIVISIONS; i++) {
+    const t = -HALF_PS + i * step;
+    // horizontal
+    pts.push(-HALF_PS, t, 0,  HALF_PS, t, 0);
+    // vertical
+    pts.push(t, -HALF_PS, 0,  t, HALF_PS, 0);
+  }
+  return new Float32Array(pts);
+})();
+
 /** Interactive plane selection for "Create Sketch" — shows 3 origin planes the user can click */
 export default function SketchPlaneSelector() {
   const selecting = useCADStore((s) => s.sketchPlaneSelecting);
@@ -129,27 +148,24 @@ export default function SketchPlaneSelector() {
 
   if (!selecting) return null;
 
-  const PLANE_SIZE = 40;
-  const HALF_PS = PLANE_SIZE / 2;
-
-  const planes: { id: string; plane: 'XY' | 'XZ' | 'YZ'; color: string; hoverColor: string; position: [number, number, number]; rotation: [number, number, number]; labelPos: [number, number, number]; }[] = [
+  const planes: { id: string; plane: 'XY' | 'XZ' | 'YZ'; color: string; gridColor: string; hoverColor: string; position: [number, number, number]; rotation: [number, number, number]; labelPos: [number, number, number]; }[] = [
     {
       id: 'xy', plane: 'XY',
-      color: '#4488ff', hoverColor: '#66aaff',
+      color: '#3366dd', gridColor: '#5588ff', hoverColor: '#77aaff',
       position: [0, 0, 0],
       rotation: [-Math.PI / 2, 0, 0],
       labelPos: [HALF_PS + 3, 0, HALF_PS + 3],
     },
     {
       id: 'xz', plane: 'XZ',
-      color: '#44cc44', hoverColor: '#66ee66',
+      color: '#228822', gridColor: '#44cc44', hoverColor: '#66ee66',
       position: [0, 0, 0],
       rotation: [0, 0, 0],
       labelPos: [HALF_PS + 3, HALF_PS + 3, 0],
     },
     {
       id: 'yz', plane: 'YZ',
-      color: '#ff4444', hoverColor: '#ff6666',
+      color: '#cc2222', gridColor: '#ff4444', hoverColor: '#ff7777',
       position: [0, 0, 0],
       rotation: [0, Math.PI / 2, 0],
       labelPos: [0, HALF_PS + 3, HALF_PS + 3],
@@ -162,7 +178,7 @@ export default function SketchPlaneSelector() {
         const isHovered = hovered === p.id;
         return (
           <group key={p.id}>
-            {/* Clickable plane */}
+            {/* Glass fill — tinted, semi-transparent */}
             <mesh
               position={p.position}
               rotation={p.rotation}
@@ -171,20 +187,33 @@ export default function SketchPlaneSelector() {
               onClick={(e) => { e.stopPropagation(); startSketch(p.plane); }}
             >
               <planeGeometry args={[PLANE_SIZE, PLANE_SIZE]} />
-              <meshBasicMaterial
-                color={isHovered ? p.hoverColor : p.color}
+              <meshPhongMaterial
+                color={isHovered ? p.hoverColor : p.gridColor}
+                emissive={isHovered ? p.hoverColor : p.color}
+                emissiveIntensity={isHovered ? 0.25 : 0.12}
                 transparent
-                opacity={isHovered ? 0.35 : 0.15}
+                opacity={isHovered ? 0.42 : 0.22}
+                shininess={120}
                 side={THREE.DoubleSide}
                 depthWrite={false}
               />
             </mesh>
 
-            {/* Plane border */}
-            <lineLoop
-              position={p.position}
-              rotation={p.rotation}
-            >
+            {/* Interior grid lines — fully visible */}
+            <lineSegments position={p.position} rotation={p.rotation}>
+              <bufferGeometry>
+                <bufferAttribute attach="attributes-position" args={[PLANE_GRID_POSITIONS, 3]} />
+              </bufferGeometry>
+              <lineBasicMaterial
+                color={isHovered ? p.hoverColor : p.gridColor}
+                transparent
+                opacity={isHovered ? 0.95 : 0.65}
+                depthWrite={false}
+              />
+            </lineSegments>
+
+            {/* Bright border */}
+            <lineLoop position={p.position} rotation={p.rotation}>
               <bufferGeometry>
                 <bufferAttribute
                   attach="attributes-position"
@@ -197,9 +226,9 @@ export default function SketchPlaneSelector() {
                 />
               </bufferGeometry>
               <lineBasicMaterial
-                color={isHovered ? p.hoverColor : p.color}
+                color={isHovered ? '#ffffff' : p.hoverColor}
                 transparent
-                opacity={isHovered ? 0.8 : 0.4}
+                opacity={isHovered ? 1.0 : 0.85}
               />
             </lineLoop>
           </group>

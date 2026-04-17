@@ -379,6 +379,57 @@ function computeResiduals(
         }
         break;
       }
+      case 'coincident-surface': {
+        // Point (entityIds[0], pointIndices[0] ?? 0) lies on plane: nu*px + nv*py + d = 0
+        if (!c.surfacePlane) break;
+        const e = entityMap.get(c.entityIds[0]);
+        if (!e) break;
+        const pi = c.pointIndices?.[0] ?? 0;
+        const p = getPoint(e.id, pi, pointMap);
+        residuals.push(c.surfacePlane.nu * p.x + c.surfacePlane.nv * p.y + c.surfacePlane.d);
+        break;
+      }
+      case 'perpendicular-surface': {
+        // Line direction (dx, dy) is parallel to surface normal (nu, nv): cross = 0
+        // i.e., line is NORMAL TO the surface → direction aligns with surface normal
+        if (!c.surfacePlane || c.entityIds.length < 1) break;
+        const e = entityMap.get(c.entityIds[0]);
+        if (!e || e.points.length < 2) break;
+        const p0 = getPoint(e.id, 0, pointMap);
+        const p1 = getPoint(e.id, e.points.length - 1, pointMap);
+        const dx = p1.x - p0.x;
+        const dy = p1.y - p0.y;
+        const { nu, nv } = c.surfacePlane;
+        // cross(line_dir, normal_dir) = 0
+        residuals.push(dx * nv - dy * nu);
+        break;
+      }
+      case 'line-on-surface': {
+        // Both endpoints of line lie on the plane: nu*px + nv*py + d = 0 for both
+        if (!c.surfacePlane || c.entityIds.length < 1) break;
+        const e = entityMap.get(c.entityIds[0]);
+        if (!e || e.points.length < 2) break;
+        const p0 = getPoint(e.id, 0, pointMap);
+        const p1 = getPoint(e.id, e.points.length - 1, pointMap);
+        const { nu, nv, d } = c.surfacePlane;
+        residuals.push(nu * p0.x + nv * p0.y + d);
+        residuals.push(nu * p1.x + nv * p1.y + d);
+        break;
+      }
+      case 'distance-surface': {
+        // Signed distance from point to plane = value
+        // dist = (nu*px + nv*py + d) / sqrt(nu²+nv²) - value = 0
+        if (!c.surfacePlane || c.entityIds.length < 1) break;
+        const e = entityMap.get(c.entityIds[0]);
+        if (!e) break;
+        const pi = c.pointIndices?.[0] ?? 0;
+        const p = getPoint(e.id, pi, pointMap);
+        const { nu, nv, d } = c.surfacePlane;
+        const len = Math.sqrt(nu * nu + nv * nv);
+        if (len < 1e-10) break;
+        residuals.push((nu * p.x + nv * p.y + d) / len - (c.value ?? 0));
+        break;
+      }
       default:
         break;
     }

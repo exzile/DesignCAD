@@ -4,8 +4,6 @@ export default function DisplaySettingsPanel({ onClose }: { onClose: () => void 
   void onClose; // available for future use (e.g. close-on-apply)
   const visualStyle = useCADStore((s) => s.visualStyle);
   const setVisualStyle = useCADStore((s) => s.setVisualStyle);
-  const showEnvironment = useCADStore((s) => s.showEnvironment);
-  const setShowEnvironment = useCADStore((s) => s.setShowEnvironment);
   const showShadows = useCADStore((s) => s.showShadows);
   const setShowShadows = useCADStore((s) => s.setShowShadows);
   const showReflections = useCADStore((s) => s.showReflections);
@@ -20,6 +18,8 @@ export default function DisplaySettingsPanel({ onClose }: { onClose: () => void 
   const setGroundPlaneOffset = useCADStore((s) => s.setGroundPlaneOffset);
   const shadowSoftness = useCADStore((s) => s.shadowSoftness);
   const setShadowSoftness = useCADStore((s) => s.setShadowSoftness);
+  const ambientOcclusionEnabled = useCADStore((s) => s.ambientOcclusionEnabled);
+  const setAmbientOcclusionEnabled = useCADStore((s) => s.setAmbientOcclusionEnabled);
   const entityVisSketchBodies = useCADStore((s) => s.entityVisSketchBodies);
   const setEntityVisSketchBodies = useCADStore((s) => s.setEntityVisSketchBodies);
   const entityVisConstruction = useCADStore((s) => s.entityVisConstruction);
@@ -73,12 +73,12 @@ export default function DisplaySettingsPanel({ onClose }: { onClose: () => void 
         <label className="cc-panel-check">
           <input
             type="checkbox"
-            checked={showEnvironment}
-            onChange={(e) => setShowEnvironment(e.target.checked)}
+            checked={showReflections}
+            onChange={(e) => setShowReflections(e.target.checked)}
           />
-          <span>Show Environment</span>
+          <span>Reflections (IBL)</span>
         </label>
-        {showEnvironment && (
+        {showReflections && (
           <div className="cc-panel-row" style={{ marginTop: 4 }}>
             <span className="cc-panel-label">Preset</span>
             <select
@@ -147,6 +147,15 @@ export default function DisplaySettingsPanel({ onClose }: { onClose: () => void 
             onChange={(e) => setShowGroundPlane(e.target.checked)}
           />
           <span>Ground Plane</span>
+        </label>
+        {/* NAV-21: Ambient Occlusion (SSAO) */}
+        <label className="cc-panel-check">
+          <input
+            type="checkbox"
+            checked={ambientOcclusionEnabled}
+            onChange={(e) => setAmbientOcclusionEnabled(e.target.checked)}
+          />
+          <span>Ambient Occlusion</span>
         </label>
         {showGroundPlane && (
           <div className="cc-panel-row" style={{ marginTop: 4 }}>

@@ -297,7 +297,7 @@ export default function Toolbar() {
     { icon: <Package size={MI} />, label: 'New Component', onClick: handleNewComponent },
     { icon: <Copy size={MI} />, label: 'Duplicate With Joints', onClick: () => { if (activeComponentId) openDuplicateWithJointsDialog(activeComponentId); else comingSoon('Duplicate With Joints')(); } },
     { icon: <FlipHorizontal size={MI} />, label: 'Mirror Component', onClick: openMirrorComponentDialog },
-    { separator: true, icon: <Link2 size={MI} />, label: 'Constrain Components', onClick: comingSoon('Constrain Components') },
+    { separator: true, icon: <Link2 size={MI} />, label: 'Constrain Components', onClick: () => setActiveDialog('constrain-components') },
     { icon: <Link2 size={MI} />, label: 'Joint', shortcut: 'J', onClick: () => setActiveDialog('joint') },
     { icon: <Link2 size={MI} />, label: 'As-Built Joint', shortcut: 'Shift+J', onClick: () => setActiveDialog('as-built-joint') },
     { separator: true, icon: <Layers size={MI} />, label: 'Rigid Group', onClick: () => setActiveDialog('rigid-group') },

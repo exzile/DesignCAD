@@ -83,6 +83,14 @@ export default function SketchPalette() {
   const constraintOffsetValue = useCADStore((s) => s.constraintOffsetValue);
   const setConstraintOffsetValue = useCADStore((s) => s.setConstraintOffsetValue);
   const isOffsetConstraintTool = activeTool === 'constrain-offset';
+  // SK-A1: surface constraint pending surface pick
+  const constraintSurfacePlane = useCADStore((s) => s.constraintSurfacePlane);
+  const setConstraintSurfacePlane = useCADStore((s) => s.setConstraintSurfacePlane);
+  const isSurfaceConstraintTool =
+    activeTool === 'constrain-coincident-surface' ||
+    activeTool === 'constrain-perpendicular-surface' ||
+    activeTool === 'constrain-line-on-surface' ||
+    activeTool === 'constrain-distance-surface';
 
   // Reset dismissed state each time a new sketch session starts
   useEffect(() => {
@@ -304,6 +312,27 @@ export default function SketchPalette() {
                 }}
                 className="sketch-palette-input--narrow"
               />
+            </div>
+          )}
+
+          {/* SK-A1: Surface constraint hint — visible while any surface constraint tool is active */}
+          {isSurfaceConstraintTool && (
+            <div className="sketch-palette-row sketch-palette-row--wrap">
+              <span className="sketch-palette-label">Surface Plane</span>
+              {constraintSurfacePlane == null ? (
+                <span style={{ fontSize: '0.75rem', color: '#94a3b8' }}>Pick a construction plane</span>
+              ) : (
+                <>
+                  <span style={{ fontSize: '0.75rem', color: '#4ade80' }}>&#x2713; Plane set — now pick sketch entity</span>
+                  <button
+                    className="spl-btn spl-btn--offset"
+                    title="Clear surface plane selection"
+                    onClick={() => setConstraintSurfacePlane(null)}
+                  >
+                    Clear
+                  </button>
+                </>
+              )}
             </div>
           )}
 

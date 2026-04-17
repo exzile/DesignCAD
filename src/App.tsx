@@ -97,10 +97,13 @@ import TextureExtrudeDialog from './components/dialogs/solid/TextureExtrudeDialo
 import ReplaceFacePanel from './components/viewport/ReplaceFacePanel';
 import { DecalDialog } from './components/dialogs/insert/DecalDialog';
 import { AttachedCanvasDialog } from './components/dialogs/insert/AttachedCanvasDialog';
+import { FastenerDialog } from './components/dialogs/insert/FastenerDialog';
+import { DeriveDialog } from './components/dialogs/insert/DeriveDialog';
 import { SplitFaceDialog } from './components/dialogs/solid/SplitFaceDialog';
 import { BoundingSolidDialog } from './components/dialogs/solid/BoundingSolidDialog';
 import { ContactSetsDialog } from './components/dialogs/assembly/ContactSetsDialog';
 import { InsertComponentDialog } from './components/dialogs/assembly/InsertComponentDialog';
+import { ConstrainComponentsDialog } from './components/dialogs/assembly/ConstrainComponentsDialog';
 import { useCADStore } from './store/cadStore';
 import { useComponentStore } from './store/componentStore';
 import './App.css';
@@ -484,6 +487,9 @@ function ActiveDialog() {
     case 'mirror-component': return <MirrorComponentDialogConnected onClose={close} />;
     case 'duplicate-with-joints': return <DuplicateWithJointsDialogConnected onClose={close} />;
     case 'bom': return <BOMDialogConnected onClose={close} />;
+    case 'insert-fastener': return <FastenerDialog onClose={close} />;
+    case 'derive': return <DeriveDialog onClose={close} />;
+    case 'constrain-components': return <ConstrainComponentsDialog onClose={close} />;
 default: return null;
   }
 }

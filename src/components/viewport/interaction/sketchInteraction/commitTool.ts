@@ -1815,5 +1815,44 @@ export function commitSketchTool(ctx: SketchCommitCtx): void {
           }
           break;
         }
+
+        // S4: Isoparametric Curve — single-click places a full-span construction line
+        // at the clicked U (horizontal) or V (vertical) parameter along the sketch plane.
+        // NOTE: Shift-key direction is handled in SketchInteraction.tsx before this is called;
+        // this case provides a fallback that always uses 'u'.
+        case 'isoparametric': {
+          const dir: 'u' | 'v' = 'u';
+
+          // The click world point is sketchPoint; decompose onto t1/t2 to get the iso value.
+          // The sketch origin is approximated as the world origin projected onto the plane —
+          // we measure the dot product along the chosen axis.
+          const clickWorld = new THREE.Vector3(sketchPoint.x, sketchPoint.y, sketchPoint.z);
+          const isoValue = dir === 'u' ? clickWorld.dot(t1) : clickWorld.dot(t2);
+
+          // Build two spanning endpoint world positions ±500 along the other axis.
+          const SPAN = 500;
+          const along = dir === 'u' ? t2 : t1;    // axis we sweep along
+          const fixed  = dir === 'u' ? t1 : t2;   // axis we hold constant
+
+          // Base point: on the fixed axis at isoValue, at zero along 'along'
+          const base = fixed.clone().multiplyScalar(isoValue);
+          const p1World = base.clone().addScaledVector(along, -SPAN);
+          const p2World = base.clone().addScaledVector(along,  SPAN);
+
+          const startPt: SketchPoint = { id: crypto.randomUUID(), x: p1World.x, y: p1World.y, z: p1World.z };
+          const endPt: SketchPoint   = { id: crypto.randomUUID(), x: p2World.x, y: p2World.y, z: p2World.z };
+
+          addSketchEntity({
+            id: crypto.randomUUID(),
+            type: 'isoparametric',
+            points: [startPt, endPt],
+            isConstruction: true,
+            isoParamDir: dir,
+            isoParamValue: isoValue,
+          });
+          setDrawingPoints([]);
+          setStatusMessage(`Iso Curve (${dir.toUpperCase()}) placed at ${isoValue.toFixed(2)} — click again for another`);
+          break;
+        }
       }
 }

@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import {
   ChevronRight, ChevronDown, Eye, EyeOff, Box, Layers,
-  Plus, Trash2, Copy, Anchor, MoreHorizontal, Circle, Minus,
+  Plus, Trash2, Copy, Anchor, MoreHorizontal, Circle, Minus, Unlink,
 } from 'lucide-react';
 import { useComponentStore } from '../../../store/componentStore';
 import { useCADStore } from '../../../store/cadStore';
@@ -82,6 +82,7 @@ export function ComponentNode({ componentId, depth = 0 }: { componentId: string;
   const duplicateComponent = useComponentStore((s) => s.duplicateComponent);
   const addBody = useComponentStore((s) => s.addBody);
   const setComponentGrounded = useComponentStore((s) => s.setComponentGrounded);
+  const makeComponentIndependent = useComponentStore((s) => s.makeComponentIndependent);
   const setStatusMessage = useCADStore((s) => s.setStatusMessage);
   const historyEnabled = useCADStore((s) => s.historyEnabled);
   const toggleHistoryMode = useCADStore((s) => s.toggleHistoryMode);
@@ -192,6 +193,16 @@ export function ComponentNode({ componentId, depth = 0 }: { componentId: string;
           )}
           {!isRoot && (
             <>
+              {/* A28: Make Independent — only shown for externally-linked components */}
+              {component.isLinked && (
+                <button onClick={() => {
+                  makeComponentIndependent(componentId);
+                  setStatusMessage(`${component.name}: made independent (link broken)`);
+                  setShowContextMenu(false);
+                }}>
+                  <Unlink size={12} /> Make Independent
+                </button>
+              )}
               <button onClick={() => { duplicateComponent(componentId); setShowContextMenu(false); }}>
                 <Copy size={12} /> Duplicate
               </button>

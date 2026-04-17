@@ -6,7 +6,7 @@ import {
   LocateFixed, FlipHorizontal, GitMerge, Zap,
   Grid3X3, Magnet, FileUp, MousePointer2, Square, Crosshair,
   ArrowLeftRight, ArrowUpDown,
-  Check, ChevronDown, X,
+  Check, ChevronDown, X, Grid,
 } from 'lucide-react';
 import { useCADStore } from '../../store/cadStore';
 import { RibbonSection } from './FlyoutMenu';
@@ -128,6 +128,13 @@ export function RibbonSketchMode({
         <ToolButton icon={<Scissors size={20} />} label="Intersect" active={activeTool === 'sketch-intersect'} onClick={() => { setActiveTool('sketch-intersect' as T); setStatusMessage('Click a solid face to create intersection curve with sketch plane'); }} colorClass="icon-blue" />
         <ToolButton icon={<Download size={20} />} label="Proj Surface" active={activeTool === 'sketch-project-surface'} onClick={startSketchProjectSurfaceTool} colorClass="icon-blue" />
         <ToolButton icon={<Type size={20} />} label="Text" active={activeTool === 'sketch-text'} onClick={startSketchTextTool} colorClass="icon-blue" />
+        <ToolButton
+          icon={<Grid size={20} />}
+          label="Iso Curve"
+          active={activeTool === 'isoparametric'}
+          onClick={() => { setActiveTool('isoparametric' as T); setStatusMessage('Iso Curve: click to place a U (horizontal) isoparametric line — hold Shift for V (vertical)'); }}
+          colorClass="icon-blue"
+        />
       </RibbonSection>
 
       {/* ── MODIFY ─────────────────────────────────── */}
@@ -158,6 +165,10 @@ export function RibbonSketchMode({
         <ToolButton icon={<FlipHorizontal size={20} />} label="Symmetric" active={activeTool === 'constrain-symmetric'} onClick={() => { setActiveTool('constrain-symmetric' as T); setStatusMessage('Symmetric: click two entities and a symmetry line'); }} colorClass="icon-orange" />
         <ToolButton icon={<ChevronsRight size={20} />} label="Offset Const." active={activeTool === 'constrain-offset'} onClick={() => { setActiveTool('constrain-offset' as T); setStatusMessage('Offset: set distance in palette, then click two parallel lines'); }} colorClass="icon-orange" />
         <ToolButton icon={<GitMerge size={20} />} label="Curvature (G2)" active={activeTool === 'constrain-curvature'} onClick={() => { setActiveTool('constrain-curvature' as T); setStatusMessage('Curvature (G2): click two splines sharing a point to apply G2 continuity'); }} colorClass="icon-orange" />
+        <ToolButton icon={<Crosshair size={20} />} label="Pt on Surf" active={activeTool === 'constrain-coincident-surface'} onClick={() => { setActiveTool('constrain-coincident-surface' as T); setStatusMessage('Pt on Surf: set surface plane in palette, then click a point'); }} colorClass="icon-orange" />
+        <ToolButton icon={<CornerDownRight size={20} />} label="⊥ Surface" active={activeTool === 'constrain-perpendicular-surface'} onClick={() => { setActiveTool('constrain-perpendicular-surface' as T); setStatusMessage('Perp Surface: set surface plane in palette, then click a line to constrain normal to plane'); }} colorClass="icon-orange" />
+        <ToolButton icon={<Minus size={20} />} label="Ln on Surf" active={activeTool === 'constrain-line-on-surface'} onClick={() => { setActiveTool('constrain-line-on-surface' as T); setStatusMessage('Ln on Surf: set surface plane in palette, then click a line'); }} colorClass="icon-orange" />
+        <ToolButton icon={<Ruler size={20} />} label="Dist Surface" active={activeTool === 'constrain-distance-surface'} onClick={() => { setActiveTool('constrain-distance-surface' as T); setStatusMessage('Dist Surface: set surface plane in palette, then click a point'); }} colorClass="icon-orange" />
         <ToolButton icon={<Zap size={20} />} label="AutoConstrain" onClick={() => autoConstrainSketch()} colorClass="icon-orange" />
       </RibbonSection>
 

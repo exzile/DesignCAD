@@ -540,6 +540,31 @@ export default function SketchInteraction() {
         return;
       }
 
+      // S4: Isoparametric Curve — handled here to access the MouseEvent shiftKey.
+      if (activeTool === 'isoparametric') {
+        const dir: 'u' | 'v' = event.shiftKey ? 'v' : 'u';
+        const clickWorld = point;
+        const isoValue = dir === 'u' ? clickWorld.dot(t1) : clickWorld.dot(t2);
+        const SPAN = 500;
+        const along = dir === 'u' ? t2 : t1;
+        const fixed  = dir === 'u' ? t1 : t2;
+        const base = fixed.clone().multiplyScalar(isoValue);
+        const p1World = base.clone().addScaledVector(along, -SPAN);
+        const p2World = base.clone().addScaledVector(along,  SPAN);
+        const startPt: SketchPoint = { id: crypto.randomUUID(), x: p1World.x, y: p1World.y, z: p1World.z };
+        const endPt: SketchPoint   = { id: crypto.randomUUID(), x: p2World.x, y: p2World.y, z: p2World.z };
+        addSketchEntity({
+          id: crypto.randomUUID(),
+          type: 'isoparametric',
+          points: [startPt, endPt],
+          isConstruction: true,
+          isoParamDir: dir,
+          isoParamValue: isoValue,
+        });
+        setStatusMessage(`Iso Curve (${dir.toUpperCase()}) placed at ${isoValue.toFixed(2)} — click again for another, Shift+click for V direction`);
+        return;
+      }
+
       // S10: construction-mode toggle — wrap addSketchEntity to inject isConstruction flag
       const addSketchEntityWrapped: typeof addSketchEntity = drawingConstructionRef.current
         ? (entity) => addSketchEntity({ ...entity, isConstruction: true })

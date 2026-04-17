@@ -8,6 +8,7 @@ import {
 import ExpressionInput from '../ui/ExpressionInput';
 import { ParticipantBodyPicker } from '../ui/ParticipantBodyPicker';
 import { GeometryEngine } from '../../engine/GeometryEngine';
+import { useComponentStore } from '../../store/componentStore';
 
 export default function ExtrudePanel() {
   const activeTool = useCADStore((s) => s.activeTool);
@@ -45,6 +46,14 @@ export default function ExtrudePanel() {
   const setParticipantBodyIds = useCADStore((s) => s.setExtrudeParticipantBodyIds);
   const confinedFaceIds = useCADStore((s) => s.extrudeConfinedFaceIds);
   const setConfinedFaceIds = useCADStore((s) => s.setExtrudeConfinedFaceIds);
+  // EX-15: creationOccurrence — which ComponentOccurrence context the profile lives in
+  const creationOccurrence = useCADStore((s) => s.extrudeCreationOccurrence);
+  const setCreationOccurrence = useCADStore((s) => s.setExtrudeCreationOccurrence);
+  const occurrences = useComponentStore((s) => s.occurrences);
+  const occurrenceList = Object.values(occurrences);
+  // EX-16: targetBaseFeature — direct-edit mode container
+  const targetBaseFeature = useCADStore((s) => s.extrudeTargetBaseFeature);
+  const setTargetBaseFeature = useCADStore((s) => s.setExtrudeTargetBaseFeature);
   const extentType = useCADStore((s) => s.extrudeExtentType);
   const setExtentType = useCADStore((s) => s.setExtrudeExtentType);
   const extentType2 = useCADStore((s) => s.extrudeExtentType2);
@@ -117,6 +126,9 @@ export default function ExtrudePanel() {
       return sketches.find((s) => s.id === sketchId);
     })
     .filter(Boolean) as typeof extrudable;
+
+  // EX-16: base feature containers available as direct-edit targets
+  const baseFeatureContainers = features.filter((f) => f.isBaseFeatureContainer);
 
   const allClosedProfiles = selectedSketches.length > 0 && selectedSketches.every((s) => GeometryEngine.isSketchClosedProfile(s));
   const effectiveBodyKind: 'solid' | 'surface' = allClosedProfiles ? bodyKind : 'surface';
@@ -562,6 +574,41 @@ export default function ExtrudePanel() {
           {confinedFaceIds.length === 0 && (
             <div style={{ fontSize: 10, color: '#666', padding: '0 6px 4px' }}>
               Enable to limit extrude to selected bounding faces (face-pick via viewport)
+            </div>
+          )}
+          {/* EX-15: Creation Occurrence — profile occurrence context (CORR-4) */}
+          {occurrenceList.length > 0 && (
+            <div className="tp-row">
+              <label className="tp-label">Occurrence</label>
+              <select
+                className="tp-select"
+                value={creationOccurrence ?? ''}
+                onChange={(e) => setCreationOccurrence(e.target.value || null)}
+                style={{ flex: 1 }}
+              >
+                <option value="">(Active component)</option>
+                {occurrenceList.map((occ) => (
+                  <option key={occ.id} value={occ.id}>{occ.name}</option>
+                ))}
+              </select>
+            </div>
+          )}
+
+          {/* EX-16: Target Base Feature — direct-edit context */}
+          {baseFeatureContainers.length > 0 && (
+            <div className="tp-row">
+              <label className="tp-label">Base Feature</label>
+              <select
+                className="tp-select"
+                value={targetBaseFeature ?? ''}
+                onChange={(e) => setTargetBaseFeature(e.target.value || null)}
+                style={{ flex: 1 }}
+              >
+                <option value="">(Parametric — none)</option>
+                {baseFeatureContainers.map((f) => (
+                  <option key={f.id} value={f.id}>{f.name}</option>
+                ))}
+              </select>
             </div>
           )}
         </div>

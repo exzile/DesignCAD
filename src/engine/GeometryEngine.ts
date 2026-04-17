@@ -17,6 +17,10 @@ const CONSTRUCTION_MATERIAL = new THREE.LineDashedMaterial({
 const CENTERLINE_MATERIAL = new THREE.LineDashedMaterial({
   color: 0x00aa55, linewidth: 1, dashSize: 0.7, gapSize: 0.2,
 });
+// S4: Isoparametric curves: magenta, medium dash — UV-parameter construction line on a surface
+const ISOPARAMETRIC_MATERIAL = new THREE.LineDashedMaterial({
+  color: 0xcc44ff, linewidth: 1, dashSize: 0.5, gapSize: 0.25,
+});
 const EXTRUDE_MATERIAL = new THREE.MeshPhysicalMaterial({
   color: 0x8899aa,
   metalness: 0.3,
@@ -747,6 +751,7 @@ export class GeometryEngine {
       case 'spline':            return this.createLine(entity.points, material);
       case 'ellipse':           return this.createEllipse(entity, material, planeAxes);
       case 'elliptical-arc':    return this.createEllipticalArc(entity, material, planeAxes);
+      case 'isoparametric':     return this.createDashedLine(entity.points, ISOPARAMETRIC_MATERIAL);
       default: return null;
     }
   }

@@ -13,6 +13,7 @@
   "dependencies": {
     "@react-three/drei": "^10.7.7",
     "@react-three/fiber": "^9.6.0",
+    "@react-three/postprocessing": "^3.0.4",
     "fflate": "^0.8.2",
     "lucide-react": "^1.8.0",
     "mathjs": "^15.2.0",

@@ -15,6 +15,7 @@ import {
   ScanSearch,
   Eye,
   Home,
+  LayoutGrid,
 } from 'lucide-react';
 import { useCADStore } from '../../store/cadStore';
 import Popover from './canvasControls/Popover';
@@ -37,6 +38,8 @@ export default function CanvasControls() {
   const cameraNavMode = useCADStore((s) => s.cameraNavMode);
   const setCameraNavMode = useCADStore((s) => s.setCameraNavMode);
   const triggerZoomToFit = useCADStore((s) => s.triggerZoomToFit);
+  const viewportLayout = useCADStore((s) => s.viewportLayout);
+  const setViewportLayout = useCADStore((s) => s.setViewportLayout);
 
   // Popover state
   const [openPopover, setOpenPopover] = useState<string | null>(null);
@@ -54,6 +57,13 @@ export default function CanvasControls() {
   const handleNavMode = useCallback((mode: 'orbit' | 'pan' | 'zoom' | 'zoom-window' | 'look-at') => {
     setCameraNavMode(cameraNavMode === mode ? null : mode);
   }, [cameraNavMode, setCameraNavMode]);
+
+  const LAYOUT_CYCLE = ['1', '2h', '2v', '4'] as const;
+  const handleCycleViewportLayout = useCallback(() => {
+    const idx = LAYOUT_CYCLE.indexOf(viewportLayout);
+    const next = LAYOUT_CYCLE[(idx + 1) % LAYOUT_CYCLE.length];
+    setViewportLayout(next);
+  }, [viewportLayout, setViewportLayout]);
 
   return (
     <div className="canvas-controls-bar">
@@ -215,6 +225,32 @@ export default function CanvasControls() {
           onClick={() => triggerCameraHome()}
         >
           <Home size={14} />
+        </button>
+
+        <div className="cc-divider" />
+
+        {/* NAV-19: Viewport layout cycle */}
+        <button
+          className={`cc-btn ${viewportLayout !== '1' ? 'active' : ''}`}
+          title="Viewports"
+          onClick={handleCycleViewportLayout}
+          style={{ position: 'relative' }}
+        >
+          <LayoutGrid size={14} />
+          {viewportLayout !== '1' && (
+            <span style={{
+              position: 'absolute',
+              top: 1,
+              right: 1,
+              fontSize: 8,
+              fontWeight: 700,
+              lineHeight: 1,
+              color: 'inherit',
+              pointerEvents: 'none',
+            }}>
+              {viewportLayout}
+            </span>
+          )}
         </button>
       </div>
     </div>

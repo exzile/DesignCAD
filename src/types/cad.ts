@@ -95,6 +95,11 @@ export type Tool =
   | 'constrain-midpoint'
   | 'constrain-symmetric'
   | 'constrain-curvature'
+  // SK-A1: surface-based constraint tools
+  | 'constrain-coincident-surface'
+  | 'constrain-perpendicular-surface'
+  | 'constrain-line-on-surface'
+  | 'constrain-distance-surface'
   // ── Form (T-Spline / subdivision) workspace tools ──
   | 'form-box'
   | 'form-plane'
@@ -128,6 +133,7 @@ export type Tool =
   | 'patch'
   | 'ruled-surface'
   | 'sketch-text'
+  | 'isoparametric'
   // ── Construction Geometry tools ──
   | 'construct-plane-two-edges'
   | 'construct-axis-through-edge'
@@ -157,7 +163,7 @@ export interface SketchPoint {
 
 export interface SketchEntity {
   id: string;
-  type: 'line' | 'circle' | 'arc' | 'rectangle' | 'spline' | 'polygon' | 'slot' | 'point' | 'construction-line' | 'centerline' | 'ellipse' | 'elliptical-arc';
+  type: 'line' | 'circle' | 'arc' | 'rectangle' | 'spline' | 'polygon' | 'slot' | 'point' | 'construction-line' | 'centerline' | 'ellipse' | 'elliptical-arc' | 'isoparametric';
   points: SketchPoint[];
   closed?: boolean;
   radius?: number;
@@ -174,6 +180,12 @@ export interface SketchEntity {
   majorRadius?: number;     // semi-major axis length
   minorRadius?: number;     // semi-minor axis length
   rotation?: number;        // angle of major axis from t1, in radians (default 0)
+  /** S4: isoparametric curve parameter direction ('u' = along t1 axis, 'v' = along t2 axis) */
+  isoParamDir?: 'u' | 'v';
+  /** S4: parameter value along the u or v axis (world-space distance from sketch origin along that axis) */
+  isoParamValue?: number;
+  /** S4: the body or face being referenced (stored for documentation; geometry is sampled at draw time) */
+  isoParamBodyId?: string;
 }
 
 export type ConstraintType =
@@ -189,8 +201,12 @@ export type ConstraintType =
   | 'vertical'
   | 'fix'
   | 'midpoint'
-  | 'curvature'   // G2 curvature continuity between spline and adjacent curve (D51/S10)
-  | 'offset';     // SK-A9: parametric parallel-offset constraint (value = distance in mm)
+  | 'curvature'              // G2 curvature continuity between spline and adjacent curve (D51/S10)
+  | 'offset'                 // SK-A9: parametric parallel-offset constraint (value = distance in mm)
+  | 'coincident-surface'     // SK-A1: point lies on a construction plane
+  | 'perpendicular-surface'  // SK-A1: line is normal to a plane
+  | 'line-on-surface'        // SK-A1: line lies within a plane
+  | 'distance-surface';      // SK-A1: parametric distance from entity to plane
 
 export interface SketchConstraint {
   id: string;
@@ -198,6 +214,8 @@ export interface SketchConstraint {
   entityIds: string[];     // entities involved
   pointIndices?: number[]; // specific points on entities
   value?: number;          // for dimensional constraints
+  /** SK-A1: plane equation in sketch UV coordinates. nu*u + nv*v + d = 0. */
+  surfacePlane?: { nu: number; nv: number; d: number };
 }
 
 /** CORR-1: orientation controls whether the dimension line is horizontal,
@@ -276,7 +294,11 @@ export type FeatureType =
   | 'emboss'
   | 'pipe'
   | 'boundary-fill'
-  | 'coil';
+  | 'coil'
+  | 'snapFit'
+  | 'lipGroove'
+  | 'fastener'
+  | 'derive';
 
 export type BooleanOperation = 'new-body' | 'join' | 'cut' | 'intersect';
 
@@ -315,6 +337,8 @@ export interface Feature {
   startFaceIds?: string[];
   endFaceIds?: string[];
   sideFaceIds?: string[];
+  /** D195: filename of source design this feature was derived from. */
+  derivedFrom?: string;
 }
 
 /** MM4: A named, collapsible folder that groups timeline features together.
@@ -415,6 +439,48 @@ export interface Component {
   color: string;
 }
 
+/**
+ * CORR-4: ComponentDefinition — the canonical body/sketch/construction data store.
+ * Mirrors SDK Component.h. Multiple ComponentOccurrences can reference one definition.
+ */
+export interface ComponentDefinition {
+  id: string;
+  name: string;
+  /** Body IDs owned by this definition. */
+  bodyIds: string[];
+  sketchIds: string[];
+  constructionIds: string[];
+  constructionPlaneIds: string[];
+  constructionAxisIds: string[];
+  constructionPointIds: string[];
+  jointIds: string[];
+  color: string;
+  /** IDs of child ComponentDefinitions (sub-component library entries). */
+  childDefinitionIds: string[];
+}
+
+/**
+ * CORR-4: ComponentOccurrence — a placed instance of a ComponentDefinition.
+ * Mirrors SDK Occurrence.h. Has its own transform, visibility, and grounded state.
+ */
+export interface ComponentOccurrence {
+  id: string;
+  /** The ComponentDefinition this occurrence is based on. */
+  definitionId: string;
+  /** Display name for this instance (defaults to definition name). */
+  name: string;
+  /** Parent occurrence ID, or null if this is a root-level occurrence. */
+  parentOccurrenceId: string | null;
+  /** Child occurrence IDs placed within this occurrence's context. */
+  childOccurrenceIds: string[];
+  transform: THREE.Matrix4;
+  visible: boolean;
+  /** CORR-5: grounded is per-occurrence (not per-definition). */
+  isGrounded: boolean;
+  /** A28: whether this occurrence references an external file. */
+  isLinked: boolean;
+}
+
 // ===== Construction Geometry =====
 export type ConstructionType = 'plane' | 'axis' | 'point';
 
@@ -499,6 +565,33 @@ export interface Joint {
   locked: boolean;
   /** A17: created from current component positions (As-Built Joint) */
   asBuilt?: boolean;
+}
+
+// ===== A24: Component Constraints (Inventor-style assembly constraints) =====
+export type ComponentConstraintType = 'mate' | 'flush' | 'angle' | 'tangent' | 'insert';
+
+export interface ComponentConstraintEntity {
+  /** Component ID */
+  componentId: string;
+  /** Synthetic face ID (e.g. featureId_end_0) or construction geometry ID */
+  faceId: string;
+  /** Face normal direction in world space */
+  normal: [number, number, number];
+  /** Face centroid in world space */
+  centroid: [number, number, number];
+}
+
+export interface ComponentConstraint {
+  id: string;
+  type: ComponentConstraintType;
+  entityA: ComponentConstraintEntity;
+  entityB: ComponentConstraintEntity;
+  /** Angle in degrees (for 'angle' type) */
+  angle?: number;
+  /** Offset distance in mm (for 'mate' and 'flush' types) */
+  offset?: number;
+  /** Whether the constraint is currently suppressed */
+  suppressed: boolean;
 }
 
 // ===== Rigid Group (A18) =====

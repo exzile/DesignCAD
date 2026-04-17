@@ -154,8 +154,6 @@ export default function RevolvePanel() {
               </div>
             </div>
           )}
-        </div>
-
           <div className="tp-row">
             <label className="tp-checkbox-label">
               <input

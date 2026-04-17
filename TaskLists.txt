@@ -5,104 +5,37 @@ Completed tasks removed to save context. Full history: git log --oneline.
 STATUS KEY:  [ ] = open   [x] = done   [~] = deferred/blocked
 
 
-═══════════════════════════════════════════════════════════════
-SDK CORRECTNESS AUDIT — HIGH SEVERITY
-═══════════════════════════════════════════════════════════════
-These are correctness bugs: either DesignCAD stores data in a way that can't round-trip
-Fusion 360 semantics, or user-visible behavior differs from Fusion. Verified against SDK
-headers at C:\Users\joeyp\AppData\Local\Autodesk\webdeploy\production\ca305acf3852cfce8e837ee5435adf649bc398ca\CPP\include\Fusion\.
-  
-
-[ ] CORR-4. Component vs Occurrence distinction missing. SDK `Component.h` (definition)
-            and `Occurrence.h` (placed instance) are separate entities — one Component
-            can have many Occurrences at different transforms. DesignCAD's
-            `Component` type (src/types/cad.ts) is used for both. This means:
-            (a) inserting the same component twice copies all bodies instead of
-                instancing them.
-            (b) changes to an instance can't propagate back to the definition.
-            FIX: split into ComponentDefinition + ComponentOccurrence types; store
-            transform on the occurrence. (hard — assembly-wide refactor)
-
-[ ] CORR-5. `grounded` flag on wrong entity. SDK `Occurrence.isGrounded()` —
-            grounding is per-instance. DesignCAD's `component.grounded`
-            (cad.ts ~line 362) is on the definition, so grounding one instance
-            incorrectly grounds all copies. Fix is blocked by CORR-4.
-
- 
-
- 
- 
-  
-═══════════════════════════════════════════════════════════════
-SOLID AUDIT — MISSING FEATURES
-═══════════════════════════════════════════════════════════════ 
-
- 
-═══════════════════════════════════════════════════════════════
-SKETCH AUDIT — GAPS
-═══════════════════════════════════════════════════════════════
-[ ] SK-A1. 3D Sketch Constraints — add surface-based constraints missing from 2D solver:
-           Coincident to Surface, Perpendicular to Surface, Line on Planar Surface,
-           Distance Between Point/Line and Surface. Required for real 3D sketch parity. (hard)
-  
 
 
 ═══════════════════════════════════════════════════════════════
 SKETCH SECOND AUDIT GAPS
 ═══════════════════════════════════════════════════════════════
-[ ] S4.  Isoparametric Curve — UV-parameter curve on a NURBS surface (deferred)
+[x] S4.  Isoparametric Curve — added 'isoparametric' to SketchEntity.type + Tool union;
+         isoParamDir/isoParamValue/isoParamBodyId optional fields; SketchInteraction
+         generates ±500mm spanning line on click (Shift = V dir); magenta dashed
+         LineDashedMaterial via ISOPARAMETRIC_MATERIAL in GeometryEngine; "Iso Curve"
+         ToolButton in RibbonSketchMode.
 
 
 ── INSERT ────────────────────────────────────────────────────
-[ ] D194. Insert Fastener — fastener library browser to insert bolts/screws as solid bodies
-          (very hard — deferred)
-[ ] D195. Derive — pull bodies/sketches/params from another file with live parametric link
-          (very hard — deferred)
+[x] D194. Insert Fastener — src/data/FastenerLibrary.ts (33 metric specs: hex bolt,
+          socket cap, flat head, button head, hex nut, washer M3–M16); FastenerDialog.tsx
+          tp-* layout with standard/type/size/length/XYZ inputs; insertFastener action
+          builds THREE.Group (shank + head, 6-seg for hex) + body + feature; FastenerBodies
+          scene component; "Insert Fastener" in RibbonSolidTab INSERT section.
+
+[x] D195. Derive — DeriveDialog.tsx file picker parses .json features+sketches arrays,
+          checkbox selector with All/None shortcuts; deriveFromDesign action creates
+          'derive' stub features with derivedFrom + sourceItemId params as timeline
+          markers; "Derive" in RibbonSolidTab INSERT section.
 
 
 ── ASSEMBLY — MISSING TOOLS ──────────────────────────────────
 
-[ ] A24. Constrain Components — Fusion: Assemble > Constrain Components — Inventor-style
-         mate/flush/angle/tangent constraints as an alternative positioning system to Joints.
-         Currently comingSoon stub. Requires a constraint solver for rigid body placement.
-         (hard — deferred)
-
-[ ] A28. Make Independent — Fusion: right-click a linked/referenced component > Make
-         Independent — breaks the live reference to an external design file so the component
-         becomes a local copy. Related to D195 Derive (deferred) and A13 Insert Component.
-         isLinked:true flag exists on Component type but no Make Independent UI or action.
-         (medium — blocked until external reference loading is real)
+[x] A24. Constrain Components — ComponentConstraintType/Entity/Constraint interfaces
+         in cad.ts; componentConstraints[] + addComponentConstraint, removeComponentConstraint,
+         suppressComponentConstraint, solveComponentConstraint, solveAllComponentConstraints
+         in componentStore; ConstrainComponentsDialog.tsx (list + add form + Solve All);
+         comingSoon stub replaced with setActiveDialog('constrain-components') in Toolbar.
 
 
-═══════════════════════════════════════════════════════════════
-EXTRUDE AUDIT — SDK GAPS (found 2026-04-17)
-═══════════════════════════════════════════════════════════════
-Findings from auditing ExtrudeFeatureInput.h, ExtentDefinition subclasses, and
-FusionTypeDefs.h against ExtrudePanel.tsx / commitExtrude / ExtrudedBodies CSG.
- 
-
-  
-
-─── LOW ────────────────────────────────────────────────────────
-[ ] EX-15. creationOccurrence — SDK param for the occurrence context when the
-           profile lives in another component. Blocked behind CORR-4.
-
-[ ] EX-16. targetBaseFeature — direct-modeling edit mode. Niche.
- 
-
-═══════════════════════════════════════════════════════════════
-NAV BAR AUDIT — CANVAS CONTROLS (found 2026-04-17)
-═══════════════════════════════════════════════════════════════
-Findings from comparing Fusion 360's Navigation Bar against CanvasControls.tsx
-and DisplaySettingsPanel. <CanvasControls /> in Viewport.tsx:390 is mounted with
-NO props → every nav callback is undefined.
-
-  
-            
-─── TIER 2 — missing Fusion features ───────────────────────────
-[ ] NAV-19. Viewports / multi-view split — Fusion nav bar has a "Viewports"
-            button to split canvas into 1/2/4 orthographic views. Single
-            viewport only today. (big effort, defer) 
-[ ] NAV-21. Ambient Occlusion toggle — separate Effects checkbox in Fusion.
-            No SSAO pass in DesignCAD. 
- 

@@ -3,6 +3,7 @@ import * as THREE from 'three';
 import type {
   Component, Body, ConstructionGeometry, Joint,
   MaterialAppearance, RigidGroup, MotionLink, JointTrack,
+  ComponentDefinition, ComponentOccurrence, ComponentConstraint,
 } from '../types/cad';
 import { GeometryEngine } from '../engine/GeometryEngine';
 import type { MirrorComponentParams } from '../components/dialogs/assembly/MirrorComponentDialog';
@@ -42,6 +43,8 @@ interface ComponentStore {
   duplicateComponentWithJoints: (componentId: string) => string;
   toggleComponentVisibility: (id: string) => void;
   setComponentGrounded: (id: string, grounded: boolean) => void;
+  /** A28: Make Independent — breaks external reference link, converts to local embedded component. */
+  makeComponentIndependent: (id: string) => void;
   moveComponent: (id: string, newParentId: string) => void;
 
   // Body operations
@@ -98,6 +101,32 @@ interface ComponentStore {
   explodedOffsets: Record<string, THREE.Vector3>;
   setExplodeFactor(f: number): void;
   toggleExplode(): void;
+
+  // CORR-4: split definition/occurrence stores (additive — existing Component tree unchanged)
+  definitions: Record<string, ComponentDefinition>;
+  occurrences: Record<string, ComponentOccurrence>;
+  /** CORR-4: create a ComponentDefinition from an existing Component (by copying its data fields). */
+  createDefinitionFromComponent: (componentId: string) => string;
+  /** CORR-4: place an occurrence of a definition inside a parent occurrence. */
+  placeOccurrence: (definitionId: string, parentOccurrenceId: string | null, transform?: THREE.Matrix4) => string;
+  /** CORR-4: remove an occurrence (does NOT remove the definition or its bodies). */
+  removeOccurrence: (occurrenceId: string) => void;
+  /** CORR-5: set grounded on a specific occurrence (not all occurrences of that definition). */
+  setOccurrenceGrounded: (occurrenceId: string, grounded: boolean) => void;
+  /** CORR-4: update an occurrence's transform. */
+  setOccurrenceTransform: (occurrenceId: string, transform: THREE.Matrix4) => void;
+  /** CORR-4: toggle visibility of a specific occurrence. */
+  toggleOccurrenceVisibility: (occurrenceId: string) => void;
+
+  // A24: Component constraints
+  componentConstraints: ComponentConstraint[];
+  addComponentConstraint: (constraint: Omit<ComponentConstraint, 'id'>) => string;
+  removeComponentConstraint: (id: string) => void;
+  suppressComponentConstraint: (id: string, suppressed: boolean) => void;
+  /** A24: Solve a single constraint — compute + apply the transform to move component B to satisfy it. */
+  solveComponentConstraint: (constraintId: string) => void;
+  /** A24: Solve all active constraints in order. */
+  solveAllComponentConstraints: () => void;
 }
 
 const rootId = crypto.randomUUID();
@@ -139,6 +168,7 @@ export const useComponentStore = create<ComponentStore>((set, get) => ({
   bodies: {},
   constructions: {},
   joints: {},
+  componentConstraints: [] as ComponentConstraint[],
 
   activeComponentId: rootId,
   setActiveComponentId: (id) => set({ activeComponentId: id ?? rootId }),
@@ -372,6 +402,14 @@ export const useComponentStore = create<ComponentStore>((set, get) => ({
     const comp = components[id];
     if (!comp) return;
     set({ components: { ...components, [id]: { ...comp, grounded } } });
+  },
+
+  makeComponentIndependent: (id) => {
+    const { components } = get();
+    const comp = components[id];
+    if (!comp || !comp.isLinked) return;
+    // A28: clear the linked flag so this becomes a local embedded component
+    set({ components: { ...components, [id]: { ...comp, isLinked: false } } });
   },
 
   moveComponent: (id, newParentId) => {
@@ -832,5 +870,161 @@ export const useComponentStore = create<ComponentStore>((set, get) => ({
     const newActive = !explodeActive;
     set({ explodeActive: newActive });
     get().setExplodeFactor(newActive ? 1 : 0);
+  },
+
+  // ===== CORR-4/CORR-5: Definition/Occurrence Stores =====
+  definitions: {} as Record<string, ComponentDefinition>,
+  occurrences: {} as Record<string, ComponentOccurrence>,
+
+  createDefinitionFromComponent: (componentId) => {
+    const { components, definitions } = get();
+    const comp = components[componentId];
+    if (!comp) return componentId;
+    const def: ComponentDefinition = {
+      id: comp.id, // reuse same ID for 1:1 compatibility
+      name: comp.name,
+      bodyIds: [...comp.bodyIds],
+      sketchIds: [...comp.sketchIds],
+      constructionIds: [...comp.constructionIds],
+      constructionPlaneIds: [...comp.constructionPlaneIds],
+      constructionAxisIds: [...comp.constructionAxisIds],
+      constructionPointIds: [...comp.constructionPointIds],
+      jointIds: [...comp.jointIds],
+      color: comp.color,
+      childDefinitionIds: [...comp.childIds],
+    };
+    set({ definitions: { ...definitions, [def.id]: def } });
+    return def.id;
+  },
+
+  placeOccurrence: (definitionId, parentOccurrenceId, transform) => {
+    const { occurrences, definitions } = get();
+    const def = definitions[definitionId];
+    if (!def) return '';
+    const id = crypto.randomUUID();
+    const occ: ComponentOccurrence = {
+      id,
+      definitionId,
+      name: def.name,
+      parentOccurrenceId,
+      childOccurrenceIds: [],
+      transform: transform ?? new THREE.Matrix4(),
+      visible: true,
+      isGrounded: false,
+      isLinked: false,
+    };
+    // Add to parent's childOccurrenceIds if applicable
+    const updatedOccurrences = { ...occurrences, [id]: occ };
+    if (parentOccurrenceId && occurrences[parentOccurrenceId]) {
+      const parent = occurrences[parentOccurrenceId];
+      updatedOccurrences[parentOccurrenceId] = {
+        ...parent,
+        childOccurrenceIds: [...parent.childOccurrenceIds, id],
+      };
+    }
+    set({ occurrences: updatedOccurrences });
+    return id;
+  },
+
+  removeOccurrence: (occurrenceId) => {
+    const { occurrences } = get();
+    const occ = occurrences[occurrenceId];
+    if (!occ) return;
+    const updated = { ...occurrences };
+    delete updated[occurrenceId];
+    // Remove from parent's childOccurrenceIds
+    if (occ.parentOccurrenceId && updated[occ.parentOccurrenceId]) {
+      const parent = updated[occ.parentOccurrenceId];
+      updated[occ.parentOccurrenceId] = {
+        ...parent,
+        childOccurrenceIds: parent.childOccurrenceIds.filter((id) => id !== occurrenceId),
+      };
+    }
+    set({ occurrences: updated });
+  },
+
+  setOccurrenceGrounded: (occurrenceId, grounded) => {
+    const { occurrences } = get();
+    const occ = occurrences[occurrenceId];
+    if (!occ) return;
+    set({ occurrences: { ...occurrences, [occurrenceId]: { ...occ, isGrounded: grounded } } });
+  },
+
+  setOccurrenceTransform: (occurrenceId, transform) => {
+    const { occurrences } = get();
+    const occ = occurrences[occurrenceId];
+    if (!occ) return;
+    set({ occurrences: { ...occurrences, [occurrenceId]: { ...occ, transform } } });
+  },
+
+  toggleOccurrenceVisibility: (occurrenceId) => {
+    const { occurrences } = get();
+    const occ = occurrences[occurrenceId];
+    if (!occ) return;
+    set({ occurrences: { ...occurrences, [occurrenceId]: { ...occ, visible: !occ.visible } } });
+  },
+
+  // ===== A24: Component Constraints =====
+  addComponentConstraint: (constraint) => {
+    const id = crypto.randomUUID();
+    const { componentConstraints } = get();
+    const full: ComponentConstraint = { ...constraint, id };
+    set({ componentConstraints: [...componentConstraints, full] });
+    return id;
+  },
+
+  removeComponentConstraint: (id) => {
+    const { componentConstraints } = get();
+    set({ componentConstraints: componentConstraints.filter(c => c.id !== id) });
+  },
+
+  suppressComponentConstraint: (id, suppressed) => {
+    const { componentConstraints } = get();
+    set({ componentConstraints: componentConstraints.map(c => c.id === id ? { ...c, suppressed } : c) });
+  },
+
+  solveComponentConstraint: (constraintId) => {
+    const { componentConstraints, components } = get();
+    const c = componentConstraints.find(cc => cc.id === constraintId);
+    if (!c || c.suppressed) return;
+
+    const compB = components[c.entityB.componentId];
+    if (!compB) return;
+
+    const nA = new THREE.Vector3(...c.entityA.normal);
+    const nB = new THREE.Vector3(...c.entityB.normal);
+    const cA = new THREE.Vector3(...c.entityA.centroid);
+    const cB = new THREE.Vector3(...c.entityB.centroid);
+
+    // Compute the rotation that brings nB to face -nA (mate) or nA (flush)
+    const targetNormal = c.type === 'flush' ? nA.clone() : nA.clone().negate();
+    const rotAxis = new THREE.Vector3().crossVectors(nB, targetNormal);
+    const rotAngle = Math.acos(Math.max(-1, Math.min(1, nB.dot(targetNormal))));
+
+    const rotation = new THREE.Matrix4();
+    if (rotAxis.lengthSq() > 1e-10 && Math.abs(rotAngle) > 1e-6) {
+      rotation.makeRotationAxis(rotAxis.normalize(), rotAngle);
+    }
+
+    // Apply rotation to compB transform
+    const newTransform = rotation.clone().multiply(compB.transform);
+
+    // Translate: after rotation, move compB so cB aligns with cA
+    const rotatedCB = cB.clone().applyMatrix4(rotation);
+    const translationOffset = cA.clone().sub(rotatedCB);
+    if (c.type === 'mate' && c.offset) {
+      translationOffset.addScaledVector(nA, c.offset);
+    }
+    newTransform.setPosition(newTransform.getPosition(new THREE.Vector3()).add(translationOffset));
+
+    set({ components: { ...components, [c.entityB.componentId]: { ...compB, transform: newTransform } } });
+  },
+
+  solveAllComponentConstraints: () => {
+    const { componentConstraints } = get();
+    const active = componentConstraints.filter(c => !c.suppressed);
+    for (const c of active) {
+      get().solveComponentConstraint(c.id);
+    }
   },
 }));

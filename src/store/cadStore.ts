@@ -107,6 +107,9 @@ interface CADState {
   /** SK-A9: offset distance for the 'constrain-offset' tool */
   constraintOffsetValue: number;
   setConstraintOffsetValue: (v: number) => void;
+  /** SK-A1: surface constraint pending surface pick */
+  constraintSurfacePlane: { nu: number; nv: number; d: number } | null;
+  setConstraintSurfacePlane: (plane: { nu: number; nv: number; d: number } | null) => void;
   /** D52: Add a single constraint to the active sketch (deduplicates by type+entityIds). */
   addSketchConstraint: (constraint: SketchConstraint) => void;
 
@@ -114,6 +117,14 @@ interface CADState {
   features: Feature[];
   addFeature: (feature: Feature) => void;
   addPrimitive: (kind: 'box' | 'cylinder' | 'sphere' | 'torus' | 'coil', params: Record<string, number>) => void;
+  /** D194: Insert a fastener from the fastener library as a solid body feature. */
+  insertFastener: (params: {
+    type: string; size: string;
+    diameter: number; headDiameter: number; headHeight: number; length: number;
+    x: number; y: number; z: number;
+  }) => void;
+  /** D195: import selected items from a derived source file */
+  deriveFromDesign: (itemIds: string[], sourceFileName: string) => void;
   /** D119: Clone a feature's geometry as a new mesh-body primitive. */
   tessellateFeature: (featureId: string) => void;
   removeFeature: (id: string) => void;
@@ -344,6 +355,9 @@ interface CADState {
   // NAV-26: shadow softness (ContactShadows blur)
   shadowSoftness: number;
   setShadowSoftness: (v: number) => void;
+  // NAV-21: Ambient Occlusion (SSAO via @react-three/postprocessing)
+  ambientOcclusionEnabled: boolean;
+  setAmbientOcclusionEnabled: (enabled: boolean) => void;
   environmentPreset: string;
   setEnvironmentPreset: (preset: string) => void;
 
@@ -450,6 +464,12 @@ interface CADState {
   // SDK-12: confined faces (bounding faces that restrict extude extent)
   extrudeConfinedFaceIds: string[];
   setExtrudeConfinedFaceIds: (ids: string[]) => void;
+  // EX-15: creationOccurrence — the ComponentOccurrence context the profile lives in (CORR-4 prerequisite now satisfied)
+  extrudeCreationOccurrence: string | null;
+  setExtrudeCreationOccurrence: (id: string | null) => void;
+  // EX-16: targetBaseFeature — direct-modeling context: place this extrude inside a base feature container
+  extrudeTargetBaseFeature: string | null;
+  setExtrudeTargetBaseFeature: (id: string | null) => void;
 
   // Revolve tool
   revolveSelectedSketchId: string | null;
@@ -642,6 +662,9 @@ interface CADState {
   triggerCameraHome: () => void;
   cameraNavMode: 'orbit' | 'pan' | 'zoom' | 'zoom-window' | 'look-at' | null;
   setCameraNavMode: (mode: 'orbit' | 'pan' | 'zoom' | 'zoom-window' | 'look-at' | null) => void;
+  // NAV-19: multi-viewport layout
+  viewportLayout: '1' | '2h' | '2v' | '4';
+  setViewportLayout: (layout: '1' | '2h' | '2v' | '4') => void;
   zoomToFitCounter: number;
   triggerZoomToFit: () => void;
   // NAV-5: Zoom Window
@@ -1187,6 +1210,10 @@ const EXTRUDE_DEFAULTS = {
   extrudeParticipantBodyIds: [] as string[],
   // SDK-12: confined faces (limit extrude within a cage of bounding faces)
   extrudeConfinedFaceIds: [] as string[],
+  // EX-15: creationOccurrence
+  extrudeCreationOccurrence: null as string | null,
+  // EX-16: targetBaseFeature
+  extrudeTargetBaseFeature: null as string | null,
 };
 
 const REVOLVE_DEFAULTS = {
@@ -1592,6 +1619,64 @@ export const useCADStore = create<CADState>()(persist((set, get) => ({
       statusMessage: `${label} added`,
     };
   }),
+
+  insertFastener: (params) => {
+    get().pushUndo();
+    const { features, units } = get();
+    const componentStore = useComponentStore.getState();
+    const { rootComponentId } = componentStore;
+    const scale = units === 'in' ? 1 / 25.4 : 1;
+    const d = params.diameter * scale;
+    const hd = params.headDiameter * scale;
+    const hh = params.headHeight * scale;
+    const len = params.length * scale;
+
+    const group = new THREE.Group();
+
+    const isNut = params.type === 'hex-nut';
+    const isWasher = params.type === 'washer';
+
+    if (!isNut && !isWasher) {
+      const shankGeo = new THREE.CylinderGeometry(d / 2, d / 2, len, 16);
+      const shankMesh = new THREE.Mesh(shankGeo, new THREE.MeshStandardMaterial({ color: '#B0B8C0', metalness: 0.8, roughness: 0.3 }));
+      shankMesh.position.y = -len / 2;
+      group.add(shankMesh);
+    }
+
+    const headSegs = (params.type === 'hex-bolt' || params.type === 'hex-nut') ? 6 : 16;
+    const headGeo = new THREE.CylinderGeometry(hd / 2, hd / 2, hh, headSegs);
+    const headMesh = new THREE.Mesh(headGeo, new THREE.MeshStandardMaterial({ color: '#B0B8C0', metalness: 0.8, roughness: 0.3 }));
+
+    if (isNut || isWasher) {
+      headMesh.position.y = 0;
+    } else if (params.type === 'flat-head') {
+      headMesh.position.y = -hh / 2;
+    } else {
+      headMesh.position.y = hh / 2;
+    }
+    group.add(headMesh);
+
+    group.position.set(params.x * scale, params.y * scale, params.z * scale);
+
+    const featureId = crypto.randomUUID();
+    const bodyId = componentStore.addBody(rootComponentId, `${params.size} ${params.type}`);
+    if (bodyId) {
+      componentStore.addFeatureToBody(bodyId, featureId);
+    }
+    const feature: Feature = {
+      id: featureId,
+      name: `${params.size} ${params.type.replace(/-/g, ' ')}`,
+      type: 'fastener',
+      params: { ...params } as unknown as Record<string, number | string | boolean | number[]>,
+      mesh: group as unknown as THREE.Mesh,
+      visible: true,
+      suppressed: false,
+      timestamp: Date.now(),
+      bodyKind: 'brep',
+    };
+    set({ features: [...features, feature], statusMessage: `${params.size} ${params.type} inserted` });
+  },
+
   removeFeature: (id) => {
     get().pushUndo();
     // Capture the mesh reference before removal so we can dispose AFTER
@@ -1613,6 +1698,22 @@ export const useCADStore = create<CADState>()(persist((set, get) => ({
         });
       }
     }
+  },
+  deriveFromDesign: (itemIds, sourceFileName) => {
+    get().pushUndo();
+    const { features } = get();
+    const now = Date.now();
+    const newFeatures: Feature[] = itemIds.map((itemId, i) => ({
+      id: crypto.randomUUID(),
+      name: `Derived: ${itemId.slice(0, 8)}\u2026`,
+      type: 'derive' as import('../types/cad').FeatureType,
+      params: { sourceFileName, sourceItemId: itemId } as unknown as Record<string, number | string | boolean | number[]>,
+      visible: true,
+      suppressed: false,
+      timestamp: now + i,
+      derivedFrom: sourceFileName,
+    }));
+    set({ features: [...features, ...newFeatures], statusMessage: `Derived ${newFeatures.length} item(s) from ${sourceFileName}` });
   },
   renameFeature: (id, name) => set((state) => ({
     features: state.features.map((f) => f.id === id ? { ...f, name } : f),
@@ -2646,6 +2747,9 @@ export const useCADStore = create<CADState>()(persist((set, get) => ({
   // SK-A9: offset constraint distance (user edits in SketchPalette before clicking entities)
   constraintOffsetValue: 10,
   setConstraintOffsetValue: (v) => set({ constraintOffsetValue: Math.max(0.001, v) }),
+  // SK-A1: surface constraint pending surface pick
+  constraintSurfacePlane: null,
+  setConstraintSurfacePlane: (plane) => set({ constraintSurfacePlane: plane }),
 
   // D52: Add a single constraint to the active sketch
   addSketchConstraint: (constraint) => {
@@ -2761,7 +2865,7 @@ export const useCADStore = create<CADState>()(persist((set, get) => ({
 
   visualStyle: 'shadedEdges',
   setVisualStyle: (style) => set({ visualStyle: style }),
-  showEnvironment: true,
+  showEnvironment: false,
   setShowEnvironment: (show) => set({ showEnvironment: show }),
   showShadows: true,
   setShowShadows: (show) => set({ showShadows: show }),
@@ -2773,6 +2877,8 @@ export const useCADStore = create<CADState>()(persist((set, get) => ({
   setGroundPlaneOffset: (v) => set({ groundPlaneOffset: v }),
   shadowSoftness: 2,
   setShadowSoftness: (v) => set({ shadowSoftness: v }),
+  ambientOcclusionEnabled: false,
+  setAmbientOcclusionEnabled: (enabled) => set({ ambientOcclusionEnabled: enabled }),
   environmentPreset: 'studio',
   setEnvironmentPreset: (preset) => set({ environmentPreset: preset }),
 
@@ -2859,6 +2965,8 @@ export const useCADStore = create<CADState>()(persist((set, get) => ({
   // EX-9 / CORR-14
   setExtrudeParticipantBodyIds: (ids) => set({ extrudeParticipantBodyIds: ids }),
   setExtrudeConfinedFaceIds: (ids) => set({ extrudeConfinedFaceIds: ids }),
+  setExtrudeCreationOccurrence: (id) => set({ extrudeCreationOccurrence: id }),
+  setExtrudeTargetBaseFeature: (id) => set({ extrudeTargetBaseFeature: id }),
   startExtrudeTool: () => {
     // Clean up orphaned Press Pull profiles from previous sessions
     const { sketches, features } = get();
@@ -2998,6 +3106,8 @@ export const useCADStore = create<CADState>()(persist((set, get) => ({
       extrudeBodyKind: (feature.bodyKind === 'surface' ? 'surface' : 'solid') as 'solid' | 'surface',
       extrudeParticipantBodyIds: Array.isArray(p.participantBodyIds) ? (p.participantBodyIds as unknown as string[]) : [],
       extrudeConfinedFaceIds: Array.isArray(p.confinedFaceIds) ? (p.confinedFaceIds as unknown as string[]) : [],
+      extrudeCreationOccurrence: typeof p.creationOccurrence === 'string' ? p.creationOccurrence : null,
+      extrudeTargetBaseFeature: typeof p.targetBaseFeature === 'string' ? p.targetBaseFeature : null,
       statusMessage: `Edit extrude: "${feature.name}"`,
     });
   },
@@ -3026,6 +3136,8 @@ export const useCADStore = create<CADState>()(persist((set, get) => ({
       extrudeExtentType2,
       extrudeToEntityFaceId, extrudeToEntityFaceNormal,
       extrudeStartFaceCentroid, extrudeStartFaceNormal,
+      extrudeCreationOccurrence,
+      extrudeTargetBaseFeature,
       editingFeatureId,
       sketches, features, units,
     } = get();
@@ -3255,6 +3367,10 @@ export const useCADStore = create<CADState>()(persist((set, get) => ({
           ...(extrudeParticipantBodyIds.length > 0 ? { participantBodyIds: extrudeParticipantBodyIds } : {}),
           // SDK-12: confined faces (empty = no confinement)
           ...(extrudeConfinedFaceIds.length > 0 ? { confinedFaceIds: extrudeConfinedFaceIds } : {}),
+          // EX-15: occurrence context the profile was created in
+          ...(extrudeCreationOccurrence ? { creationOccurrence: extrudeCreationOccurrence } : {}),
+          // EX-16: target base feature container for direct-edit mode
+          ...(extrudeTargetBaseFeature ? { targetBaseFeature: extrudeTargetBaseFeature } : {}),
           extentType: extrudeExtentType,
           // EX-3/EX-12: save to-object face data + flip for edit round-trip
           ...(extrudeExtentType === 'to-object' && extrudeToEntityFaceCentroid
@@ -3275,6 +3391,8 @@ export const useCADStore = create<CADState>()(persist((set, get) => ({
         // from just sketch + distance + direction).
         mesh: needsStoredMesh ? featureMesh : undefined,
         bodyKind: resolvedBodyKind,
+        // EX-16: when targeting a base feature, exclude from parametric timeline
+        ...(extrudeTargetBaseFeature ? { suppressTimeline: true } : {}),
         // EX-17: stable synthetic face IDs — start, end, and one side-face per sketch edge
         startFaceIds: [`${featureId}_start_0`],
         endFaceIds: [`${featureId}_end_0`],
@@ -3791,6 +3909,9 @@ export const useCADStore = create<CADState>()(persist((set, get) => ({
   triggerCameraHome: () => set((state) => ({ cameraHomeCounter: state.cameraHomeCounter + 1 })),
   cameraNavMode: null,
   setCameraNavMode: (mode) => set({ cameraNavMode: mode }),
+  // NAV-19
+  viewportLayout: '1',
+  setViewportLayout: (layout) => set({ viewportLayout: layout }),
   zoomToFitCounter: 0,
   triggerZoomToFit: () => set((state) => ({ zoomToFitCounter: state.zoomToFitCounter + 1 })),
   zoomWindowTrigger: null,
