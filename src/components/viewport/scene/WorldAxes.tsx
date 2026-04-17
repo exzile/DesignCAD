@@ -1,8 +1,12 @@
 import { useThemeStore } from '../../../store/themeStore';
+import { useCADStore } from '../../../store/cadStore';
 
 export default function WorldAxes() {
   const themeColors = useThemeStore((s) => s.colors);
+  const entityVisOrigins = useCADStore((s) => s.entityVisOrigins);
   const AXIS_LEN = 500;
+
+  if (!entityVisOrigins) return null;
 
   return (
     <group>

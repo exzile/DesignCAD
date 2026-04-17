@@ -66,6 +66,8 @@ import DraftPartingLinePicker from './scene/DraftPartingLinePicker';
 import MeshExporter from './scene/MeshExporter';
 import SnapFitFacePicker from './scene/SnapFitFacePicker';
 import LipGrooveEdgePicker from './scene/LipGrooveEdgePicker';
+import ExtrudeToEntityPicker from './scene/ExtrudeToEntityPicker';
+import ExtrudeStartEntityPicker from './scene/ExtrudeStartEntityPicker';
 import ConstructTwoPlanePanel from './ConstructTwoPlanePanel';
 import ConstructThreePlanePanel from './ConstructThreePlanePanel';
 import AnalysisOverlay from './scene/AnalysisOverlay';
@@ -74,9 +76,12 @@ import JointOriginPicker from './scene/JointOriginPicker';
 import JointOriginRenderer from './scene/JointOriginRenderer';
 import WindowSelectOverlay from './WindowSelectOverlay';
 import LassoSelectOverlay from './LassoSelectOverlay';
+import ZoomWindowOverlay from './ZoomWindowOverlay';
 import FinishEditInPlaceBar from './FinishEditInPlaceBar';
 import { ViewportContextMenu } from './ViewportContextMenu';
 import type { ViewportCtxState } from './ViewportContextMenu';
+import CameraProjectionSwitcher from './scene/CameraProjectionSwitcher';
+import LookAtInteraction from './scene/LookAtInteraction';
 
 
 
@@ -86,8 +91,12 @@ export default function Viewport() {
   const gridVisible = useCADStore((s) => s.gridVisible);
   const activeSketch = useCADStore((s) => s.activeSketch);
   const showEnvironment = useCADStore((s) => s.showEnvironment);
+  const showReflections = useCADStore((s) => s.showReflections);
+  const environmentPreset = useCADStore((s) => s.environmentPreset);
   const showShadows = useCADStore((s) => s.showShadows);
   const showGroundPlane = useCADStore((s) => s.showGroundPlane);
+  const groundPlaneOffset = useCADStore((s) => s.groundPlaneOffset);
+  const shadowSoftness = useCADStore((s) => s.shadowSoftness);
   const setCameraTargetQuaternion = useCADStore((s) => s.setCameraTargetQuaternion);
   const themeColors = useThemeStore((s) => s.colors);
 
@@ -276,13 +285,18 @@ export default function Viewport() {
         />
 
         {/* Environment */}
-        {showEnvironment && <Environment preset="studio" background={false} />}
+        {/* NAV-11 / NAV-22: showReflections controls IBL (scene.environment).
+            showEnvironment controls whether the HDRI is shown as background.
+            showReflections=false → no <Environment>, surfaces lit by directional/ambient only. */}
+        {showReflections && (
+          <Environment preset={environmentPreset as any} background={showEnvironment} />
+        )}
         {showShadows && showGroundPlane && (
           <ContactShadows
-            position={[0, -0.01, 0]}
+            position={[0, groundPlaneOffset - 0.01, 0]}
             opacity={0.3}
             scale={100}
-            blur={2}
+            blur={shadowSoftness}
           />
         )}
 
@@ -342,12 +356,18 @@ export default function Viewport() {
         <MeshExporter />
         <SnapFitFacePicker />
         <LipGrooveEdgePicker />
+        <ExtrudeToEntityPicker />
+        <ExtrudeStartEntityPicker />
         <JointOriginPicker />
         <JointOriginRenderer />
         <AnalysisOverlay />
 
         {/* Camera controller — also feeds quaternion to ViewCube */}
         <CameraController onQuaternionChange={handleQuaternionChange} />
+        {/* NAV-20: Perspective / Orthographic switcher */}
+        <CameraProjectionSwitcher />
+        {/* NAV-6: Look At face pick */}
+        <LookAtInteraction />
 
         {/* Controls */}
         <OrbitControls
@@ -385,6 +405,9 @@ export default function Viewport() {
 
       {/* D205 Lasso Select overlay */}
       <LassoSelectOverlay />
+
+      {/* NAV-5: Zoom Window overlay */}
+      <ZoomWindowOverlay />
 
       {/* ViewCube overlay (top-right) */}
       <ViewCube

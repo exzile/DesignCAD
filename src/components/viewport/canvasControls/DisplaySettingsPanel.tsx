@@ -12,6 +12,22 @@ export default function DisplaySettingsPanel({ onClose }: { onClose: () => void 
   const setShowReflections = useCADStore((s) => s.setShowReflections);
   const showGroundPlane = useCADStore((s) => s.showGroundPlane);
   const setShowGroundPlane = useCADStore((s) => s.setShowGroundPlane);
+  const environmentPreset = useCADStore((s) => s.environmentPreset);
+  const setEnvironmentPreset = useCADStore((s) => s.setEnvironmentPreset);
+  const cameraProjection = useCADStore((s) => s.cameraProjection);
+  const setCameraProjection = useCADStore((s) => s.setCameraProjection);
+  const groundPlaneOffset = useCADStore((s) => s.groundPlaneOffset);
+  const setGroundPlaneOffset = useCADStore((s) => s.setGroundPlaneOffset);
+  const shadowSoftness = useCADStore((s) => s.shadowSoftness);
+  const setShadowSoftness = useCADStore((s) => s.setShadowSoftness);
+  const entityVisSketchBodies = useCADStore((s) => s.entityVisSketchBodies);
+  const setEntityVisSketchBodies = useCADStore((s) => s.setEntityVisSketchBodies);
+  const entityVisConstruction = useCADStore((s) => s.entityVisConstruction);
+  const setEntityVisConstruction = useCADStore((s) => s.setEntityVisConstruction);
+  const entityVisOrigins = useCADStore((s) => s.entityVisOrigins);
+  const setEntityVisOrigins = useCADStore((s) => s.setEntityVisOrigins);
+  const entityVisJoints = useCADStore((s) => s.entityVisJoints);
+  const setEntityVisJoints = useCADStore((s) => s.setEntityVisJoints);
 
   const styles: { value: typeof visualStyle; label: string }[] = [
     { value: 'shaded', label: 'Shaded' },
@@ -23,6 +39,19 @@ export default function DisplaySettingsPanel({ onClose }: { onClose: () => void 
   return (
     <div className="cc-panel">
       <div className="cc-panel-title">Display Settings</div>
+
+      <div className="cc-panel-section">
+        <div className="cc-panel-section-title">Camera</div>
+        <button
+          className={`cc-panel-option ${cameraProjection === 'perspective' ? 'active' : ''}`}
+          onClick={() => setCameraProjection('perspective')}
+        >Perspective</button>
+        <button
+          className={`cc-panel-option ${cameraProjection === 'orthographic' ? 'active' : ''}`}
+          onClick={() => setCameraProjection('orthographic')}
+        >Orthographic</button>
+      </div>
+      <div className="cc-panel-divider" />
 
       <div className="cc-panel-section">
         <div className="cc-panel-section-title">Visual Style</div>
@@ -48,6 +77,46 @@ export default function DisplaySettingsPanel({ onClose }: { onClose: () => void 
             onChange={(e) => setShowEnvironment(e.target.checked)}
           />
           <span>Show Environment</span>
+        </label>
+        {showEnvironment && (
+          <div className="cc-panel-row" style={{ marginTop: 4 }}>
+            <span className="cc-panel-label">Preset</span>
+            <select
+              value={environmentPreset}
+              onChange={(e) => setEnvironmentPreset(e.target.value)}
+              style={{ fontSize: 11, padding: '2px 4px', borderRadius: 3, flex: 1 }}
+            >
+              {['apartment','city','dawn','forest','lobby','night','park','studio','sunset','warehouse']
+                .map((p) => <option key={p} value={p}>{p}</option>)}
+            </select>
+          </div>
+        )}
+      </div>
+
+      <div className="cc-panel-divider" />
+
+      {/* NAV-23: Object Visibility per entity type */}
+      <div className="cc-panel-section">
+        <div className="cc-panel-section-title">Object Visibility</div>
+        <label className="cc-panel-check">
+          <input type="checkbox" checked={entityVisSketchBodies}
+            onChange={(e) => setEntityVisSketchBodies(e.target.checked)} />
+          <span>Sketches</span>
+        </label>
+        <label className="cc-panel-check">
+          <input type="checkbox" checked={entityVisConstruction}
+            onChange={(e) => setEntityVisConstruction(e.target.checked)} />
+          <span>Construction Geometry</span>
+        </label>
+        <label className="cc-panel-check">
+          <input type="checkbox" checked={entityVisOrigins}
+            onChange={(e) => setEntityVisOrigins(e.target.checked)} />
+          <span>Origins / Axes</span>
+        </label>
+        <label className="cc-panel-check">
+          <input type="checkbox" checked={entityVisJoints}
+            onChange={(e) => setEntityVisJoints(e.target.checked)} />
+          <span>Joints</span>
         </label>
       </div>
 
@@ -79,6 +148,33 @@ export default function DisplaySettingsPanel({ onClose }: { onClose: () => void 
           />
           <span>Ground Plane</span>
         </label>
+        {showGroundPlane && (
+          <div className="cc-panel-row" style={{ marginTop: 4 }}>
+            <span className="cc-panel-label">GP Offset</span>
+            <input
+              type="number"
+              step="0.1"
+              value={groundPlaneOffset}
+              onChange={(e) => { const v = parseFloat(e.target.value); if (!isNaN(v)) setGroundPlaneOffset(v); }}
+              style={{ width: 52, fontSize: 11, padding: '2px 4px', borderRadius: 3 }}
+            />
+          </div>
+        )}
+        {showShadows && (
+          <div className="cc-panel-row" style={{ marginTop: 4 }}>
+            <span className="cc-panel-label">Shadow Blur</span>
+            <input
+              type="range"
+              min="0"
+              max="10"
+              step="0.5"
+              value={shadowSoftness}
+              onChange={(e) => setShadowSoftness(parseFloat(e.target.value))}
+              style={{ flex: 1 }}
+            />
+            <span style={{ fontSize: 10, minWidth: 22, textAlign: 'right' }}>{shadowSoftness}</span>
+          </div>
+        )}
       </div>
     </div>
   );

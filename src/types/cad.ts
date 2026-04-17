@@ -61,6 +61,7 @@ export type Tool =
   | 'sketch-fillet'
   | 'sketch-rect-pattern'
   | 'sketch-circ-pattern'
+  | 'sketch-path-pattern'
   | 'sketch-move'
   | 'sketch-copy'
   | 'sketch-scale'
@@ -188,7 +189,8 @@ export type ConstraintType =
   | 'vertical'
   | 'fix'
   | 'midpoint'
-  | 'curvature';  // G2 curvature continuity between spline and adjacent curve (D51/S10)
+  | 'curvature'   // G2 curvature continuity between spline and adjacent curve (D51/S10)
+  | 'offset';     // SK-A9: parametric parallel-offset constraint (value = distance in mm)
 
 export interface SketchConstraint {
   id: string;
@@ -226,7 +228,13 @@ export interface Sketch {
   constraints: SketchConstraint[];
   dimensions: SketchDimension[];
   fullyConstrained: boolean;
+  overConstrained?: boolean;
   componentId?: string;
+  // CORR-6: per-sketch Fusion SDK display flags (undefined = inherit global default)
+  arePointsShown?: boolean;
+  areProfilesShown?: boolean;
+  areDimensionsShown?: boolean;
+  areConstraintsShown?: boolean;
 }
 
 // ===== Feature Types =====
@@ -267,7 +275,8 @@ export type FeatureType =
   | 'bounding-solid'
   | 'emboss'
   | 'pipe'
-  | 'boundary-fill';
+  | 'boundary-fill'
+  | 'coil';
 
 export type BooleanOperation = 'new-body' | 'join' | 'cut' | 'intersect';
 
@@ -296,13 +305,26 @@ export interface Feature {
   groupId?: string;
   /** MM1: when true, this feature was created in Direct Modeling mode and is excluded from the timeline. */
   suppressTimeline?: boolean;
+  /**
+   * EX-17: Synthetic face-ID lists generated at commit time.
+   * Matches SDK ExtrudeFeature.startFaces / endFaces / sideFaces.
+   * Format: `${featureId}_start_0`, `${featureId}_end_0`, `${featureId}_side_N`
+   * These stable IDs can be referenced by downstream face-picker tools
+   * (shell, fillet edge selection, etc.) without a real BRep kernel.
+   */
+  startFaceIds?: string[];
+  endFaceIds?: string[];
+  sideFaceIds?: string[];
 }
 
-/** MM4: A named, collapsible folder that groups timeline features together. */
+/** MM4: A named, collapsible folder that groups timeline features together.
+ *  CORR-17: parentGroupId enables nested groups (TimelineGroup contains other groups). */
 export interface FeatureGroup {
   id: string;
   name: string;
   collapsed: boolean;
+  /** CORR-17: ID of the parent group, if this group is nested inside another. */
+  parentGroupId?: string;
 }
 
 // ===== Form (T-Spline / Catmull-Clark Subdivision) Types =====
@@ -362,6 +384,14 @@ export interface Body {
   selectable?: boolean;
   material: MaterialAppearance;
   featureIds: string[];     // features that built this body
+  /** CORR-18: discriminates BRep vs mesh body. Defaults to 'brep'. */
+  bodyKind?: 'brep' | 'mesh';
+  /** CORR-18: mesh-only — approximate triangle count (populated on import/tessellation). */
+  triangleCount?: number;
+  /** CORR-18: mesh-only — watertightness flag (closed = solid-like, open = shell). */
+  isClosed?: boolean;
+  /** CORR-18: mesh-only — repair state from validation pass. */
+  repairState?: 'valid' | 'needs-repair' | 'repaired';
 }
 
 export interface Component {
@@ -371,7 +401,12 @@ export interface Component {
   childIds: string[];
   bodyIds: string[];
   sketchIds: string[];
+  /** All construction geometry IDs (planes + axes + points). */
   constructionIds: string[];
+  /** CORR-16: typed sub-collections derived from constructionIds. */
+  constructionPlaneIds: string[];
+  constructionAxisIds: string[];
+  constructionPointIds: string[];
   jointIds: string[];
   transform: THREE.Matrix4;
   visible: boolean;

@@ -24,14 +24,24 @@ export default function SketchPatternPanel() {
   const setCirc = useCADStore((s) => s.setSketchCircPattern);
   const commitCirc = useCADStore((s) => s.commitSketchCircPattern);
 
+  // SK-A2: Path pattern state
+  const pathCount = useCADStore((s) => s.sketchPathPatternCount);
+  const pathEntityId = useCADStore((s) => s.sketchPathPatternPathEntityId);
+  const pathAlignment = useCADStore((s) => s.sketchPathPatternAlignment);
+  const setPath = useCADStore((s) => s.setSketchPathPattern);
+  const commitPath = useCADStore((s) => s.commitSketchPathPattern);
+  const activeSketch = useCADStore((s) => s.activeSketch);
+
   const isRect = activeTool === 'sketch-rect-pattern';
   const isCirc = activeTool === 'sketch-circ-pattern';
+  const isPath = activeTool === 'sketch-path-pattern';
 
-  if (!isRect && !isCirc) return null;
+  if (!isRect && !isCirc && !isPath) return null;
 
   const cancel = () => setActiveTool('select');
   const commit = () => {
     if (isRect) commitRect();
+    else if (isPath) commitPath();
     else commitCirc();
     setActiveTool('select');
   };
@@ -76,7 +86,7 @@ export default function SketchPatternPanel() {
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12 }}>
         <span style={{ width: 8, height: 8, borderRadius: '50%', background: '#44aaff', display: 'inline-block' }} />
         <span style={{ fontWeight: 700, letterSpacing: 1, fontSize: 11, color: '#aaaacc' }}>
-          {isRect ? 'RECTANGULAR PATTERN' : 'CIRCULAR PATTERN'}
+          {isRect ? 'RECTANGULAR PATTERN' : isPath ? 'PATTERN ON PATH' : 'CIRCULAR PATTERN'}
         </span>
       </div>
 
@@ -116,6 +126,44 @@ export default function SketchPatternPanel() {
             <span>Angle (°)</span>
             <input type="number" min={1} max={360} step={5} value={circAngle} style={inputStyle}
               onChange={(e) => { const v = parseFloat(e.target.value); if (!isNaN(v) && v > 0) setCirc({ angle: v }); }} />
+          </div>
+        </>
+      )}
+
+      {isPath && (
+        <>
+          <div style={rowStyle}>
+            <span>Path Curve</span>
+            <select
+              value={pathEntityId}
+              onChange={(e) => setPath({ pathEntityId: e.target.value })}
+              style={{ ...inputStyle, width: 120 }}
+            >
+              <option value="" disabled>Select curve</option>
+              {(activeSketch?.entities ?? [])
+                .filter((e) => e.points.length >= 2)
+                .map((e) => (
+                  <option key={e.id} value={e.id}>
+                    {e.type} ({e.points.length} pts)
+                  </option>
+                ))}
+            </select>
+          </div>
+          <div style={rowStyle}>
+            <span>Count</span>
+            <input type="number" min={2} max={128} step={1} value={pathCount} style={inputStyle}
+              onChange={(e) => { const v = parseInt(e.target.value); if (!isNaN(v) && v >= 2) setPath({ count: v }); }} />
+          </div>
+          <div style={rowStyle}>
+            <span>Orientation</span>
+            <select
+              value={pathAlignment}
+              onChange={(e) => setPath({ alignment: e.target.value as 'tangent' | 'fixed' })}
+              style={{ ...inputStyle, width: 120 }}
+            >
+              <option value="tangent">Tangent to Path</option>
+              <option value="fixed">Fixed (Parallel)</option>
+            </select>
           </div>
         </>
       )}

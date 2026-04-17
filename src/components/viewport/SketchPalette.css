@@ -40,6 +40,18 @@
   flex: 1;
 }
 
+.sketch-palette-overcon-badge {
+  font-size: 10px;
+  font-weight: 600;
+  color: #ef4444;
+  background: rgba(239, 68, 68, 0.12);
+  border: 1px solid rgba(239, 68, 68, 0.35);
+  border-radius: 3px;
+  padding: 1px 5px;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
 .sketch-palette-collapse,
 .sketch-palette-close {
   display: flex;

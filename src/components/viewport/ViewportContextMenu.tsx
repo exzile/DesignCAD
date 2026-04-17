@@ -27,6 +27,7 @@ export function ViewportContextMenu({
   const activeSketch = useCADStore((s) => s.activeSketch);
   const finishSketch = useCADStore((s) => s.finishSketch);
   const setStatusMessage = useCADStore((s) => s.setStatusMessage);
+  const setCameraNavMode = useCADStore((s) => s.setCameraNavMode);
   const showAllBodies = useComponentStore((s) => s.showAllBodies);
 
   type Item =
@@ -117,7 +118,9 @@ export function ViewportContextMenu({
     label: 'Look At Selection',
     icon: <ScanEye size={13} />,
     onClick: () => {
-      setStatusMessage('Look At — click a face in the viewport');
+      // NAV-27: engage look-at mode — click a face to orient camera toward it
+      setCameraNavMode('look-at');
+      setStatusMessage('Look At — click a face to orient the camera toward it');
       onClose();
     },
   });

@@ -76,6 +76,7 @@ import {
   MeshTransformDialog,
   ConvertMeshToBRepDialog,
   PipeDialog,
+  CoilDialog,
   MoveBodyDialog,
   SplitBodyDialog,
   PhysicalMaterialDialog,
@@ -461,6 +462,7 @@ function ActiveDialog() {
     case 'mesh-transform': return <MeshTransformDialog onClose={close} />;
     case 'convert-mesh-to-brep': return <ConvertMeshToBRepDialog onClose={close} />;
     case 'pipe': return <PipeDialog onClose={close} />;
+    case 'coil': return <CoilDialog onClose={close} />;
     case 'move-body': return <MoveBodyDialog onClose={close} />;
     case 'split': return <SplitBodyDialog onClose={close} />;
     case 'physical-material': return <PhysicalMaterialDialog onClose={close} />;

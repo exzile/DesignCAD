@@ -14,6 +14,7 @@ export default function ExtrudePreview({ sketch, distance, direction }: {
   const startType  = useCADStore((s) => s.extrudeStartType);
   const startOffset = useCADStore((s) => s.extrudeStartOffset);
   const taperAngle = useCADStore((s) => s.extrudeTaperAngle);
+  const taperAngle2 = useCADStore((s) => s.extrudeTaperAngle2);
   const distance2  = useCADStore((s) => s.extrudeDistance2);
 
   const isCut = operation === 'cut';
@@ -33,11 +34,12 @@ export default function ExtrudePreview({ sketch, distance, direction }: {
       taperAngle,
       effectiveOffset,
       Math.abs(distance2),
+      taperAngle2,
     );
     if (!m) return null;
     m.material = isCut ? PREVIEW_MATERIAL_CUT : PREVIEW_MATERIAL;
     return m;
-  }, [sketch, absDistance, effectiveDirection, taperAngle, effectiveOffset, distance2, isCut]);
+  }, [sketch, absDistance, effectiveDirection, taperAngle, taperAngle2, effectiveOffset, distance2, isCut]);
 
   useEffect(() => {
     return () => { mesh?.geometry.dispose(); };

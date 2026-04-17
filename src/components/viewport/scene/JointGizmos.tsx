@@ -5,6 +5,7 @@ import { useCADStore } from '../../../store/cadStore';
 /** Renders a small yellow sphere + Y-axis line gizmo at world origin for each joint feature. */
 export default function JointGizmos() {
   const features = useCADStore((s) => s.features);
+  const entityVisJoints = useCADStore((s) => s.entityVisJoints);
 
   const jointFeatures = useMemo(
     () =>
@@ -16,7 +17,7 @@ export default function JointGizmos() {
     [features]
   );
 
-  if (jointFeatures.length === 0) return null;
+  if (jointFeatures.length === 0 || !entityVisJoints) return null;
 
   return (
     <>

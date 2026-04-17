@@ -58,6 +58,7 @@ export default function SketchRenderer() {
   const showProfile = useCADStore((s) => s.showSketchProfile);
   const showSketchPoints = useCADStore((s) => s.showSketchPoints);
   const showConstructionGeometries = useCADStore((s) => s.showConstructionGeometries);
+  const entityVisSketchBodies = useCADStore((s) => s.entityVisSketchBodies);
   const rollbackIndex = useCADStore((s) => s.rollbackIndex);
 
   const profileMaterial = useMemo(() => new THREE.MeshBasicMaterial({
@@ -77,7 +78,7 @@ export default function SketchRenderer() {
 
   return (
     <>
-      {features.filter((f, i) => {
+      {entityVisSketchBodies && features.filter((f, i) => {
         // D187 suppress + D190 rollback + visibility
         if (f.type !== 'sketch' || !f.visible || f.suppressed) return false;
         if (rollbackIndex >= 0 && i > rollbackIndex) return false;

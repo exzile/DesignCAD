@@ -140,7 +140,8 @@ export default function ExtrudedBodies() {
       ? GeometryEngine.createProfileSketch(sketch, profileIndex)
       : sketch;
     if (!sketchForOp) return null;
-    return GeometryEngine.buildExtrudeFeatureMesh(sketchForOp, distance, direction, taperAngle, startOffset, distance2);
+    const taperAngle2 = (feature.params.taperAngle2 as number) ?? taperAngle;
+    return GeometryEngine.buildExtrudeFeatureMesh(sketchForOp, distance, direction, taperAngle, startOffset, distance2, taperAngle2);
   };
 
   const { bodies, featureIds, featureComponentIds } = useMemo(() => {

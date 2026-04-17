@@ -124,6 +124,9 @@ export const useComponentStore = create<ComponentStore>((set, get) => ({
       bodyIds: [],
       sketchIds: [],
       constructionIds: [],
+      constructionPlaneIds: [],
+      constructionAxisIds: [],
+      constructionPointIds: [],
       jointIds: [],
       transform: new THREE.Matrix4(),
       visible: true,
@@ -162,6 +165,9 @@ export const useComponentStore = create<ComponentStore>((set, get) => ({
       bodyIds: [],
       sketchIds: [],
       constructionIds: [],
+      constructionPlaneIds: [],
+      constructionAxisIds: [],
+      constructionPointIds: [],
       jointIds: [],
       transform: new THREE.Matrix4(),
       visible: true,
@@ -561,6 +567,16 @@ export const useComponentStore = create<ComponentStore>((set, get) => ({
         [geometry.componentId]: {
           ...comp,
           constructionIds: [...comp.constructionIds, id],
+          // CORR-16: also maintain typed sub-collections
+          constructionPlaneIds: geometry.type === 'plane'
+            ? [...(comp.constructionPlaneIds ?? []), id]
+            : (comp.constructionPlaneIds ?? []),
+          constructionAxisIds: geometry.type === 'axis'
+            ? [...(comp.constructionAxisIds ?? []), id]
+            : (comp.constructionAxisIds ?? []),
+          constructionPointIds: geometry.type === 'point'
+            ? [...(comp.constructionPointIds ?? []), id]
+            : (comp.constructionPointIds ?? []),
         },
       } : components,
     });
@@ -584,6 +600,10 @@ export const useComponentStore = create<ComponentStore>((set, get) => ({
         [construction.componentId]: {
           ...comp,
           constructionIds: comp.constructionIds.filter(cid => cid !== id),
+          // CORR-16: also remove from the appropriate typed collection
+          constructionPlaneIds: (comp.constructionPlaneIds ?? []).filter(cid => cid !== id),
+          constructionAxisIds: (comp.constructionAxisIds ?? []).filter(cid => cid !== id),
+          constructionPointIds: (comp.constructionPointIds ?? []).filter(cid => cid !== id),
         },
       } : components,
     });

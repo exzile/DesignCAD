@@ -1296,14 +1296,15 @@ export class GeometryEngine {
     taperAngleDeg = 0,
     startOffset = 0,
     distance2 = 0,
+    taperAngleDeg2 = taperAngleDeg,
   ): THREE.Mesh | null {
     // CORR-2: Two-sides — build positive side + negative side, merge via CSG union
     if (direction === 'two-sides') {
       const meshPos = Math.abs(taperAngleDeg) > 0.01
         ? this.extrudeSketchWithTaper(sketch, distance, taperAngleDeg)
         : this.extrudeSketch(sketch, distance);
-      const meshNeg = Math.abs(taperAngleDeg) > 0.01
-        ? this.extrudeSketchWithTaper(sketch, distance2 || distance, taperAngleDeg)
+      const meshNeg = Math.abs(taperAngleDeg2) > 0.01
+        ? this.extrudeSketchWithTaper(sketch, distance2 || distance, taperAngleDeg2)
         : this.extrudeSketch(sketch, distance2 || distance);
       if (!meshPos) return meshNeg;
       if (!meshNeg) return meshPos;

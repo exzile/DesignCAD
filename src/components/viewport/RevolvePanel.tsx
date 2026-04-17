@@ -23,6 +23,8 @@ export default function RevolvePanel() {
   const setAngle2 = useCADStore((s) => s.setRevolveAngle2);
   const bodyKind = useCADStore((s) => s.revolveBodyKind);
   const setBodyKind = useCADStore((s) => s.setRevolveBodyKind);
+  const isProjectAxis = useCADStore((s) => s.revolveIsProjectAxis);
+  const setIsProjectAxis = useCADStore((s) => s.setRevolveIsProjectAxis);
 
   const commitRevolve = useCADStore((s) => s.commitRevolve);
   const cancelRevolveTool = useCADStore((s) => s.cancelRevolveTool);
@@ -152,6 +154,18 @@ export default function RevolvePanel() {
               </div>
             </div>
           )}
+        </div>
+
+          <div className="tp-row">
+            <label className="tp-checkbox-label">
+              <input
+                type="checkbox"
+                checked={isProjectAxis}
+                onChange={(e) => setIsProjectAxis(e.target.checked)}
+              />
+              <span>Project Axis to Profile Plane</span>
+            </label>
+          </div>
         </div>
 
         <div className="tp-divider" />

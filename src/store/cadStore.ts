@@ -104,6 +104,9 @@ interface CADState {
   setConstraintSelection: (ids: string[]) => void;
   addToConstraintSelection: (id: string) => void;
   clearConstraintSelection: () => void;
+  /** SK-A9: offset distance for the 'constrain-offset' tool */
+  constraintOffsetValue: number;
+  setConstraintOffsetValue: (v: number) => void;
   /** D52: Add a single constraint to the active sketch (deduplicates by type+entityIds). */
   addSketchConstraint: (constraint: SketchConstraint) => void;
 
@@ -143,6 +146,8 @@ interface CADState {
   toggleFeatureGroup: (groupId: string) => void;
   /** CTX-12: Move a feature into an existing group (or pass null to ungroup) */
   moveFeatureToGroup: (featureId: string, groupId: string | null) => void;
+  /** CORR-17: Nest a group inside another group (or pass null to move to top level) */
+  nestGroupInGroup: (childGroupId: string, parentGroupId: string | null) => void;
 
   // Selection
   selectedEntityIds: string[];
@@ -192,6 +197,21 @@ interface CADState {
   setSketchGridSize: (size: number | null) => void;
   snapEnabled: boolean;
   setSnapEnabled: (enabled: boolean) => void;
+  // NAV-24: per-type object snap toggles (master toggle + six types)
+  objectSnapEnabled: boolean;
+  setObjectSnapEnabled: (v: boolean) => void;
+  snapToEndpoint: boolean;
+  setSnapToEndpoint: (v: boolean) => void;
+  snapToMidpoint: boolean;
+  setSnapToMidpoint: (v: boolean) => void;
+  snapToCenter: boolean;
+  setSnapToCenter: (v: boolean) => void;
+  snapToIntersection: boolean;
+  setSnapToIntersection: (v: boolean) => void;
+  snapToPerpendicular: boolean;
+  setSnapToPerpendicular: (v: boolean) => void;
+  snapToTangent: boolean;
+  setSnapToTangent: (v: boolean) => void;
 
   // Sketch tool options
   sketchPolygonSides: number;
@@ -212,6 +232,12 @@ interface CADState {
   sketchCircPatternAngle: number; // total sweep angle in degrees
   setSketchCircPattern: (params: { count?: number; radius?: number; angle?: number }) => void;
   commitSketchCircPattern: () => void;
+  // SK-A2: Sketch Pattern on Path
+  sketchPathPatternCount: number;
+  sketchPathPatternPathEntityId: string;
+  sketchPathPatternAlignment: 'tangent' | 'fixed';
+  setSketchPathPattern: (params: { count?: number; pathEntityId?: string; alignment?: 'tangent' | 'fixed' }) => void;
+  commitSketchPathPattern: () => void;
   // Sketch transform state (D24/D25/D26)
   sketchMoveDx: number;
   sketchMoveDy: number;
@@ -312,8 +338,24 @@ interface CADState {
   setShowReflections: (show: boolean) => void;
   showGroundPlane: boolean;
   setShowGroundPlane: (show: boolean) => void;
+  // NAV-25: ground plane Y offset
+  groundPlaneOffset: number;
+  setGroundPlaneOffset: (v: number) => void;
+  // NAV-26: shadow softness (ContactShadows blur)
+  shadowSoftness: number;
+  setShadowSoftness: (v: number) => void;
   environmentPreset: string;
   setEnvironmentPreset: (preset: string) => void;
+
+  // NAV-23: Object Visibility per entity type
+  entityVisSketchBodies: boolean;   // non-active sketch outlines
+  entityVisConstruction: boolean;    // construction planes/axes/points
+  entityVisOrigins: boolean;         // world axes (X/Y/Z)
+  entityVisJoints: boolean;          // joint gizmos
+  setEntityVisSketchBodies: (v: boolean) => void;
+  setEntityVisConstruction: (v: boolean) => void;
+  setEntityVisOrigins: (v: boolean) => void;
+  setEntityVisJoints: (v: boolean) => void;
 
   // NAV-20: Camera projection
   cameraProjection: 'perspective' | 'orthographic';
@@ -343,6 +385,8 @@ interface CADState {
   setExtrudeOperation: (o: ExtrudeOperation) => void;
   startExtrudeTool: () => void;
   startExtrudeFromFace: (boundary: THREE.Vector3[], normal: THREE.Vector3, centroid: THREE.Vector3) => void;
+  /** EX-13: load an existing extrude feature into the panel for editing. */
+  loadExtrudeForEdit: (featureId: string) => void;
   cancelExtrudeTool: () => void;
   commitExtrude: () => void;
   // Thin extrude (D66)
@@ -352,23 +396,60 @@ interface CADState {
   setExtrudeThinThickness: (t: number) => void;
   extrudeThinSide: 'side1' | 'side2' | 'center';
   setExtrudeThinSide: (s: 'side1' | 'side2' | 'center') => void;
-  // Extrude start options (D67)
-  extrudeStartType: 'profile' | 'offset';
-  setExtrudeStartType: (t: 'profile' | 'offset') => void;
+  // EX-7: independent wall location per side for two-sided thin extrude
+  extrudeThinSide2: 'side1' | 'side2' | 'center';
+  setExtrudeThinSide2: (s: 'side1' | 'side2' | 'center') => void;
+  // EX-8: independent thickness per side for two-sided thin extrude
+  extrudeThinThickness2: number;
+  setExtrudeThinThickness2: (t: number) => void;
+  // Extrude start options (D67 / CORR-8)
+  extrudeStartType: 'profile' | 'offset' | 'entity';
+  setExtrudeStartType: (t: 'profile' | 'offset' | 'entity') => void;
   extrudeStartOffset: number;
   setExtrudeStartOffset: (v: number) => void;
-  // Extrude extent types (D68)
-  extrudeExtentType: 'distance' | 'all';
-  setExtrudeExtentType: (t: 'distance' | 'all') => void;
+  // CORR-8: EntityStartDefinition — face/plane ID to start from
+  extrudeStartEntityId: string | null;
+  setExtrudeStartEntityId: (id: string | null) => void;
+  /** EX-4: face normal + centroid for From-Entity start (picked via viewport) */
+  extrudeStartFaceNormal: [number, number, number] | null;
+  extrudeStartFaceCentroid: [number, number, number] | null;
+  setExtrudeStartFace: (normal: [number, number, number], centroid: [number, number, number]) => void;
+  clearExtrudeStartFace: () => void;
+  // Extrude extent types (D68) — EX-3: added 'to-object'
+  extrudeExtentType: 'distance' | 'all' | 'to-object';
+  setExtrudeExtentType: (t: 'distance' | 'all' | 'to-object') => void;
+  // EX-10: independent extent type for side 2 when direction=two-sides
+  extrudeExtentType2: 'distance' | 'all' | 'to-object';
+  setExtrudeExtentType2: (t: 'distance' | 'all' | 'to-object') => void;
+  /** EX-3: face data for To-Object terminus (picked via viewport) */
+  extrudeToEntityFaceId: string | null;
+  extrudeToEntityFaceNormal: [number, number, number] | null;
+  extrudeToEntityFaceCentroid: [number, number, number] | null;
+  setExtrudeToEntityFace: (id: string, normal: [number, number, number], centroid: [number, number, number]) => void;
+  clearExtrudeToEntityFace: () => void;
+  /** EX-12: directionHint — flip the "to-object" direction when the face is behind the profile */
+  extrudeToObjectFlipDirection: boolean;
+  setExtrudeToObjectFlipDirection: (v: boolean) => void;
+  /** EX-11: add a planar face as an additional profile while a sketch is already selected */
+  addFaceToExtrude: (boundary: THREE.Vector3[], normal: THREE.Vector3, centroid: THREE.Vector3) => void;
   // Extrude taper angle (D69)
   extrudeTaperAngle: number;
   setExtrudeTaperAngle: (a: number) => void;
+  // EX-6: independent taper angle for side 2
+  extrudeTaperAngle2: number;
+  setExtrudeTaperAngle2: (a: number) => void;
   // Symmetric full-length toggle (EX-5)
   extrudeSymmetricFullLength: boolean;
   setExtrudeSymmetricFullLength: (v: boolean) => void;
   // Extrude body kind (D102)
   extrudeBodyKind: 'solid' | 'surface';
   setExtrudeBodyKind: (k: 'solid' | 'surface') => void;
+  // EX-9 / CORR-14: participant bodies (empty = apply to all)
+  extrudeParticipantBodyIds: string[];
+  setExtrudeParticipantBodyIds: (ids: string[]) => void;
+  // SDK-12: confined faces (bounding faces that restrict extude extent)
+  extrudeConfinedFaceIds: string[];
+  setExtrudeConfinedFaceIds: (ids: string[]) => void;
 
   // Revolve tool
   revolveSelectedSketchId: string | null;
@@ -385,6 +466,9 @@ interface CADState {
   // Revolve body kind (D103)
   revolveBodyKind: 'solid' | 'surface';
   setRevolveBodyKind: (k: 'solid' | 'surface') => void;
+  // CORR-10: project axis onto profile plane before revolving
+  revolveIsProjectAxis: boolean;
+  setRevolveIsProjectAxis: (v: boolean) => void;
   revolveProfileMode: 'sketch' | 'face';
   setRevolveProfileMode: (m: 'sketch' | 'face') => void;
   revolveFaceBoundary: number[] | null;
@@ -403,13 +487,20 @@ interface CADState {
   sweepBodyKind: 'solid' | 'surface';
   setSweepBodyKind: (k: 'solid' | 'surface') => void;
   // D71 sweep upgrades
-  sweepOrientation: 'perpendicular' | 'parallel';
+  sweepOrientation: 'perpendicular' | 'parallel' | 'default';
+  sweepProfileScaling: 'none' | 'scale-to-path' | 'scale-to-rail';  // SDK-4
   sweepTwistAngle: number;
   sweepTaperAngle: number;
   sweepGuideRailId: string | null;
   sweepOperation: 'new-body' | 'join' | 'cut';
   sweepDistance: 'entire' | 'distance';
-  setSweepOrientation: (v: 'perpendicular' | 'parallel') => void;
+  // SDK-5: path parametric start/end (0–1 fraction of path length)
+  sweepDistanceOne: number;
+  sweepDistanceTwo: number;
+  setSweepDistanceOne: (v: number) => void;
+  setSweepDistanceTwo: (v: number) => void;
+  setSweepOrientation: (v: 'perpendicular' | 'parallel' | 'default') => void;
+  setSweepProfileScaling: (v: 'none' | 'scale-to-path' | 'scale-to-rail') => void;  // SDK-4
   setSweepTwistAngle: (v: number) => void;
   setSweepTaperAngle: (v: number) => void;
   setSweepGuideRailId: (v: string | null) => void;
@@ -426,10 +517,12 @@ interface CADState {
   setLoftBodyKind: (k: 'solid' | 'surface') => void;
   // D72 loft upgrades
   loftClosed: boolean;
+  loftTangentEdgesMerged: boolean;  // SDK-8
   loftStartCondition: 'free' | 'tangent' | 'curvature';
   loftEndCondition: 'free' | 'tangent' | 'curvature';
   loftRailSketchId: string | null;
   setLoftClosed: (v: boolean) => void;
+  setLoftTangentEdgesMerged: (v: boolean) => void;  // SDK-8
   setLoftStartCondition: (v: 'free' | 'tangent' | 'curvature') => void;
   setLoftEndCondition: (v: 'free' | 'tangent' | 'curvature') => void;
   setLoftRailSketchId: (v: string | null) => void;
@@ -1063,17 +1156,37 @@ const EXTRUDE_DEFAULTS = {
   extrudeThinEnabled: false,
   extrudeThinThickness: 2,
   extrudeThinSide: 'side1' as 'side1' | 'side2' | 'center',
-  // D67 start options
-  extrudeStartType: 'profile' as 'profile' | 'offset',
+  // EX-7/EX-8: per-side two values (used when direction=two-sides)
+  extrudeThinSide2: 'side1' as 'side1' | 'side2' | 'center',
+  extrudeThinThickness2: 2,
+  // D67 / CORR-8 start options
+  extrudeStartType: 'profile' as 'profile' | 'offset' | 'entity',
   extrudeStartOffset: 0,
-  // D68 extent types
-  extrudeExtentType: 'distance' as 'distance' | 'all',
+  extrudeStartEntityId: null as string | null,
+  // EX-4: face data for From-Entity start
+  extrudeStartFaceNormal: null as [number, number, number] | null,
+  extrudeStartFaceCentroid: null as [number, number, number] | null,
+  // D68 extent types (EX-10: independent per side; EX-3: 'to-object' added)
+  extrudeExtentType: 'distance' as 'distance' | 'all' | 'to-object',
+  extrudeExtentType2: 'distance' as 'distance' | 'all' | 'to-object',
+  // EX-3: face data for To-Object terminus
+  extrudeToEntityFaceId: null as string | null,
+  extrudeToEntityFaceNormal: null as [number, number, number] | null,
+  extrudeToEntityFaceCentroid: null as [number, number, number] | null,
+  // EX-12: directionHint — flip direction when to-object face is behind profile
+  extrudeToObjectFlipDirection: false,
   // D69 taper angle
   extrudeTaperAngle: 0,
+  // EX-6 taper angle side 2
+  extrudeTaperAngle2: 0,
   // EX-5 symmetric full-length
   extrudeSymmetricFullLength: false,
   // D102 body kind
   extrudeBodyKind: 'solid' as 'solid' | 'surface',
+  // EX-9 / CORR-14: participant bodies
+  extrudeParticipantBodyIds: [] as string[],
+  // SDK-12: confined faces (limit extrude within a cage of bounding faces)
+  extrudeConfinedFaceIds: [] as string[],
 };
 
 const REVOLVE_DEFAULTS = {
@@ -1085,6 +1198,8 @@ const REVOLVE_DEFAULTS = {
   revolveAngle2: 360,
   // D103 body kind
   revolveBodyKind: 'solid' as 'solid' | 'surface',
+  // CORR-10: project axis onto profile plane before revolving
+  revolveIsProjectAxis: false as boolean,
   // Face-based revolve
   revolveProfileMode: 'sketch' as 'sketch' | 'face',
   revolveFaceBoundary: null as number[] | null, // flat [x0,y0,z0,x1,y1,z1,...]
@@ -1251,6 +1366,11 @@ export const useCADStore = create<CADState>()(persist((set, get) => ({
       cameraTargetQuaternion: targetQuat,
       cameraTargetOrbit: origin,
       statusMessage: `Editing ${sketch.name}${isCustom ? ' on face' : ` on ${sketch.plane} plane`}`,
+      // CORR-6: restore per-sketch display flags (fallback to global defaults if undefined)
+      ...(sketch.arePointsShown !== undefined ? { showSketchPoints: sketch.arePointsShown } : {}),
+      ...(sketch.areProfilesShown !== undefined ? { showSketchProfile: sketch.areProfilesShown } : {}),
+      ...(sketch.areDimensionsShown !== undefined ? { showSketchDimensions: sketch.areDimensionsShown } : {}),
+      ...(sketch.areConstraintsShown !== undefined ? { showSketchConstraints: sketch.areConstraintsShown } : {}),
     });
   },
   finishSketch: () => {
@@ -1584,6 +1704,12 @@ export const useCADStore = create<CADState>()(persist((set, get) => ({
   toggleFeatureGroup: (groupId) => set((state) => ({
     featureGroups: state.featureGroups.map((g) =>
       g.id === groupId ? { ...g, collapsed: !g.collapsed } : g,
+    ),
+  })),
+  // CORR-17: nest a group inside another
+  nestGroupInGroup: (childGroupId, parentGroupId) => set((state) => ({
+    featureGroups: state.featureGroups.map((g) =>
+      g.id === childGroupId ? { ...g, parentGroupId: parentGroupId ?? undefined } : g,
     ),
   })),
   // D119 Tessellate
@@ -1993,6 +2119,21 @@ export const useCADStore = create<CADState>()(persist((set, get) => ({
   setSketchGridSize: (size) => set({ sketchGridSize: size }),
   snapEnabled: true,
   setSnapEnabled: (enabled) => set({ snapEnabled: enabled }),
+  // NAV-24: per-type object snap toggles (all on by default)
+  objectSnapEnabled: true,
+  setObjectSnapEnabled: (v) => set({ objectSnapEnabled: v }),
+  snapToEndpoint: true,
+  setSnapToEndpoint: (v) => set({ snapToEndpoint: v }),
+  snapToMidpoint: true,
+  setSnapToMidpoint: (v) => set({ snapToMidpoint: v }),
+  snapToCenter: true,
+  setSnapToCenter: (v) => set({ snapToCenter: v }),
+  snapToIntersection: true,
+  setSnapToIntersection: (v) => set({ snapToIntersection: v }),
+  snapToPerpendicular: true,
+  setSnapToPerpendicular: (v) => set({ snapToPerpendicular: v }),
+  snapToTangent: true,
+  setSnapToTangent: (v) => set({ snapToTangent: v }),
   gridVisible: true,
   setGridVisible: (visible) => set({ gridVisible: visible }),
   sketchPolygonSides: 6,
@@ -2087,6 +2228,115 @@ export const useCADStore = create<CADState>()(persist((set, get) => ({
     set({
       activeSketch: { ...activeSketch, entities: [...activeSketch.entities, ...copies] },
       statusMessage: `Circular pattern: ${cnt} instances (${copies.length} new entities added)`,
+    });
+  },
+
+  // SK-A2: Sketch Pattern on Path
+  sketchPathPatternCount: 4,
+  sketchPathPatternPathEntityId: '',
+  sketchPathPatternAlignment: 'tangent' as 'tangent' | 'fixed',
+  setSketchPathPattern: (params) => set((state) => ({
+    sketchPathPatternCount: params.count ?? state.sketchPathPatternCount,
+    sketchPathPatternPathEntityId: params.pathEntityId ?? state.sketchPathPatternPathEntityId,
+    sketchPathPatternAlignment: params.alignment ?? state.sketchPathPatternAlignment,
+  })),
+  commitSketchPathPattern: () => {
+    const { activeSketch, sketchPathPatternCount: cnt,
+            sketchPathPatternPathEntityId: pathId,
+            sketchPathPatternAlignment: alignment } = get();
+    if (!activeSketch) return;
+    // Find the path entity by id
+    const pathEnt = activeSketch.entities.find((e) => e.id === pathId);
+    if (!pathEnt || pathEnt.points.length < 2) {
+      set({ statusMessage: 'Pattern on Path: select a path curve with at least 2 points' });
+      return;
+    }
+    // Build a polyline of cumulative arc lengths along the path
+    const pts = pathEnt.points;
+    const segLengths: number[] = [];
+    let total = 0;
+    for (let i = 1; i < pts.length; i++) {
+      const dx = pts[i].x - pts[i-1].x, dy = pts[i].y - pts[i-1].y, dz = pts[i].z - pts[i-1].z;
+      const len = Math.sqrt(dx*dx + dy*dy + dz*dz);
+      segLengths.push(len);
+      total += len;
+    }
+    if (total < 0.001) {
+      set({ statusMessage: 'Pattern on Path: path has zero length' });
+      return;
+    }
+    // Sample `cnt` equidistant points along the path
+    const samplePt = (frac: number): { x: number; y: number; z: number; tx: number; ty: number; tz: number } => {
+      const target = frac * total;
+      let acc = 0;
+      for (let i = 0; i < segLengths.length; i++) {
+        const segEnd = acc + segLengths[i];
+        if (target <= segEnd + 1e-9) {
+          const t = segLengths[i] > 0 ? (target - acc) / segLengths[i] : 0;
+          const p0 = pts[i], p1 = pts[i+1];
+          const tx = p1.x - p0.x, ty = p1.y - p0.y, tz = p1.z - p0.z;
+          const tLen = Math.sqrt(tx*tx + ty*ty + tz*tz) || 1;
+          return {
+            x: p0.x + tx * t, y: p0.y + ty * t, z: p0.z + tz * t,
+            tx: tx/tLen, ty: ty/tLen, tz: tz/tLen,
+          };
+        }
+        acc = segEnd;
+      }
+      const last = pts[pts.length - 1];
+      const prev = pts[pts.length - 2];
+      const tx = last.x - prev.x, ty = last.y - prev.y, tz = last.z - prev.z;
+      const tLen = Math.sqrt(tx*tx + ty*ty + tz*tz) || 1;
+      return { x: last.x, y: last.y, z: last.z, tx: tx/tLen, ty: ty/tLen, tz: tz/tLen };
+    };
+    // The origin of the pattern is at the path start (frac=0)
+    const origin = samplePt(0);
+    // Entities to pattern = all non-path entities
+    const sourceEnts = activeSketch.entities.filter((e) => e.id !== pathId);
+    if (sourceEnts.length === 0) {
+      set({ statusMessage: 'Pattern on Path: no entities to pattern (path entity only)' });
+      return;
+    }
+    const copies: SketchEntity[] = [];
+    for (let i = 1; i < cnt; i++) {
+      const sp = samplePt(i / (cnt - 1));
+      const dx = sp.x - origin.x, dy = sp.y - origin.y, dz = sp.z - origin.z;
+      for (const ent of sourceEnts) {
+        const newEnt: SketchEntity = {
+          ...ent,
+          id: crypto.randomUUID(),
+          points: ent.points.map((p) => ({ ...p, id: crypto.randomUUID(), x: p.x + dx, y: p.y + dy, z: p.z + dz })),
+        };
+        if (alignment === 'tangent') {
+          // Rotate entities in sketch plane to align with path tangent (2D rotation)
+          const { t1, t2 } = GeometryEngine.getSketchAxes(activeSketch);
+          // Origin tangent direction projected into sketch plane
+          const otx = origin.tx * t1.x + origin.ty * t1.y + origin.tz * t1.z;
+          const oty = origin.tx * t2.x + origin.ty * t2.y + origin.tz * t2.z;
+          const oAngle = Math.atan2(oty, otx);
+          const stx = sp.tx * t1.x + sp.ty * t1.y + sp.tz * t1.z;
+          const sty = sp.tx * t2.x + sp.ty * t2.y + sp.tz * t2.z;
+          const sAngle = Math.atan2(sty, stx);
+          const dAngle = sAngle - oAngle;
+          const cosA = Math.cos(dAngle), sinA = Math.sin(dAngle);
+          // Pivot = position of the entity centroid after translation
+          let px = 0, py = 0, pz = 0, pc = 0;
+          for (const p of newEnt.points) { px += p.x; py += p.y; pz += p.z; pc++; }
+          if (pc > 0) { px /= pc; py /= pc; pz /= pc; }
+          newEnt.points = newEnt.points.map((p) => {
+            const lx = (p.x - px) * t1.x + (p.y - py) * t1.y + (p.z - pz) * t1.z;
+            const ly = (p.x - px) * t2.x + (p.y - py) * t2.y + (p.z - pz) * t2.z;
+            const rx = lx * cosA - ly * sinA;
+            const ry = lx * sinA + ly * cosA;
+            return { ...p, id: crypto.randomUUID(), x: px + t1.x*rx + t2.x*ry, y: py + t1.y*rx + t2.y*ry, z: pz + t1.z*rx + t2.z*ry };
+          });
+        }
+        copies.push(newEnt);
+      }
+    }
+    set({
+      activeSketch: { ...activeSketch, entities: [...activeSketch.entities, ...copies] },
+      statusMessage: `Pattern on Path: ${cnt} instances (${copies.length} new entities added)`,
     });
   },
 
@@ -2365,7 +2615,10 @@ export const useCADStore = create<CADState>()(persist((set, get) => ({
 
     const result = solveConstraints(activeSketch.entities, activeSketch.constraints ?? []);
     if (!result.solved) {
-      get().setStatusMessage(`Constraint solve failed (residual ${result.residual.toFixed(3)}) after ${result.iterations} iterations`);
+      set((s) => ({
+        activeSketch: s.activeSketch ? { ...s.activeSketch, overConstrained: true } : null,
+        statusMessage: `Over-constrained sketch (residual ${result.residual.toFixed(3)}) after ${result.iterations} iterations`,
+      }));
       return;
     }
 
@@ -2380,7 +2633,7 @@ export const useCADStore = create<CADState>()(persist((set, get) => ({
     });
 
     set((s) => ({
-      activeSketch: s.activeSketch ? { ...s.activeSketch, entities: updatedEntities } : null,
+      activeSketch: s.activeSketch ? { ...s.activeSketch, entities: updatedEntities, overConstrained: false } : null,
       statusMessage: `Constraints solved (${result.iterations} iteration${result.iterations === 1 ? '' : 's'})`,
     }));
   },
@@ -2390,6 +2643,9 @@ export const useCADStore = create<CADState>()(persist((set, get) => ({
   setConstraintSelection: (ids) => set({ constraintSelection: ids }),
   addToConstraintSelection: (id) => set((s) => ({ constraintSelection: [...s.constraintSelection, id] })),
   clearConstraintSelection: () => set({ constraintSelection: [] }),
+  // SK-A9: offset constraint distance (user edits in SketchPalette before clicking entities)
+  constraintOffsetValue: 10,
+  setConstraintOffsetValue: (v) => set({ constraintOffsetValue: Math.max(0.001, v) }),
 
   // D52: Add a single constraint to the active sketch
   addSketchConstraint: (constraint) => {
@@ -2437,7 +2693,10 @@ export const useCADStore = create<CADState>()(persist((set, get) => ({
 
   // Show Profile (D55)
   showSketchProfile: false,
-  setShowSketchProfile: (show) => set({ showSketchProfile: show }),
+  setShowSketchProfile: (show) => set((s) => ({
+    showSketchProfile: show,
+    activeSketch: s.activeSketch ? { ...s.activeSketch, areProfilesShown: show } : null,
+  })),
 
   // Slice (D54)
   sliceEnabled: false,
@@ -2472,11 +2731,20 @@ export const useCADStore = create<CADState>()(persist((set, get) => ({
 
   // Visibility toggles (D56)
   showSketchPoints: true,
-  setShowSketchPoints: (v) => set({ showSketchPoints: v }),
+  setShowSketchPoints: (v) => set((s) => ({
+    showSketchPoints: v,
+    activeSketch: s.activeSketch ? { ...s.activeSketch, arePointsShown: v } : null,
+  })),
   showSketchDimensions: true,
-  setShowSketchDimensions: (v) => set({ showSketchDimensions: v }),
+  setShowSketchDimensions: (v) => set((s) => ({
+    showSketchDimensions: v,
+    activeSketch: s.activeSketch ? { ...s.activeSketch, areDimensionsShown: v } : null,
+  })),
   showSketchConstraints: true,
-  setShowSketchConstraints: (v) => set({ showSketchConstraints: v }),
+  setShowSketchConstraints: (v) => set((s) => ({
+    showSketchConstraints: v,
+    activeSketch: s.activeSketch ? { ...s.activeSketch, areConstraintsShown: v } : null,
+  })),
   showProjectedGeometries: true,
   setShowProjectedGeometries: (v) => set({ showProjectedGeometries: v }),
   showConstructionGeometries: true,
@@ -2501,8 +2769,22 @@ export const useCADStore = create<CADState>()(persist((set, get) => ({
   setShowReflections: (show) => set({ showReflections: show }),
   showGroundPlane: true,
   setShowGroundPlane: (show) => set({ showGroundPlane: show }),
+  groundPlaneOffset: 0,
+  setGroundPlaneOffset: (v) => set({ groundPlaneOffset: v }),
+  shadowSoftness: 2,
+  setShadowSoftness: (v) => set({ shadowSoftness: v }),
   environmentPreset: 'studio',
   setEnvironmentPreset: (preset) => set({ environmentPreset: preset }),
+
+  // NAV-23: Object Visibility
+  entityVisSketchBodies: true,
+  entityVisConstruction: true,
+  entityVisOrigins: true,
+  entityVisJoints: true,
+  setEntityVisSketchBodies: (v) => set({ entityVisSketchBodies: v }),
+  setEntityVisConstruction: (v) => set({ entityVisConstruction: v }),
+  setEntityVisOrigins: (v) => set({ entityVisOrigins: v }),
+  setEntityVisJoints: (v) => set({ entityVisJoints: v }),
 
   cameraProjection: 'perspective',
   setCameraProjection: (p) => set({ cameraProjection: p }),
@@ -2529,17 +2811,54 @@ export const useCADStore = create<CADState>()(persist((set, get) => ({
   setExtrudeThinEnabled: (v) => set({ extrudeThinEnabled: v }),
   setExtrudeThinThickness: (t) => set({ extrudeThinThickness: Math.max(0.01, t) }),
   setExtrudeThinSide: (s) => set({ extrudeThinSide: s }),
-  // D67 start options
+  // EX-7/EX-8 per-side
+  setExtrudeThinSide2: (s) => set({ extrudeThinSide2: s }),
+  setExtrudeThinThickness2: (t) => set({ extrudeThinThickness2: Math.max(0.01, t) }),
+  // D67 / CORR-8 start options
   setExtrudeStartType: (t) => set({ extrudeStartType: t }),
   setExtrudeStartOffset: (v) => set({ extrudeStartOffset: v }),
-  // D68 extent types
+  setExtrudeStartEntityId: (id) => set({ extrudeStartEntityId: id }),
+  // EX-4: From-Entity face data
+  setExtrudeStartFace: (normal, centroid) => set({
+    extrudeStartEntityId: centroid.join(','),
+    extrudeStartFaceNormal: normal,
+    extrudeStartFaceCentroid: centroid,
+    statusMessage: 'Start face selected — set extent distance, then OK',
+  }),
+  clearExtrudeStartFace: () => set({
+    extrudeStartEntityId: null,
+    extrudeStartFaceNormal: null,
+    extrudeStartFaceCentroid: null,
+  }),
+  // D68 extent types (EX-3: to-object added)
   setExtrudeExtentType: (t) => set({ extrudeExtentType: t }),
+  setExtrudeExtentType2: (t) => set({ extrudeExtentType2: t }),
+  // EX-3: To-Object face data
+  setExtrudeToEntityFace: (id, normal, centroid) => set({
+    extrudeToEntityFaceId: id,
+    extrudeToEntityFaceNormal: normal,
+    extrudeToEntityFaceCentroid: centroid,
+    statusMessage: 'To-object face selected — OK to commit',
+  }),
+  clearExtrudeToEntityFace: () => set({
+    extrudeToEntityFaceId: null,
+    extrudeToEntityFaceNormal: null,
+    extrudeToEntityFaceCentroid: null,
+    extrudeToObjectFlipDirection: false,
+  }),
+  // EX-12
+  setExtrudeToObjectFlipDirection: (v) => set({ extrudeToObjectFlipDirection: v }),
   // D69 taper angle
   setExtrudeTaperAngle: (a) => set({ extrudeTaperAngle: a }),
+  // EX-6 taper angle side 2
+  setExtrudeTaperAngle2: (a) => set({ extrudeTaperAngle2: a }),
   // EX-5 symmetric full-length
   setExtrudeSymmetricFullLength: (v) => set({ extrudeSymmetricFullLength: v }),
   // D102 body kind
   setExtrudeBodyKind: (k) => set({ extrudeBodyKind: k }),
+  // EX-9 / CORR-14
+  setExtrudeParticipantBodyIds: (ids) => set({ extrudeParticipantBodyIds: ids }),
+  setExtrudeConfinedFaceIds: (ids) => set({ extrudeConfinedFaceIds: ids }),
   startExtrudeTool: () => {
     // Clean up orphaned Press Pull profiles from previous sessions
     const { sketches, features } = get();
@@ -2600,6 +2919,88 @@ export const useCADStore = create<CADState>()(persist((set, get) => ({
       statusMessage: 'Press-pull profile selected — drag arrow or set distance, then OK',
     });
   },
+  // EX-11: add a planar face as an additional profile while sketch(es) already selected.
+  // Creates a Press Pull Profile sketch from the face boundary and appends it to the
+  // current selection — does NOT reset EXTRUDE_DEFAULTS (unlike startExtrudeFromFace).
+  addFaceToExtrude: (boundary, normal, centroid) => {
+    if (boundary.length < 3) {
+      set({ statusMessage: 'Cannot add face — boundary too small' });
+      return;
+    }
+    const points: SketchPoint[] = boundary.map((p) => ({
+      id: crypto.randomUUID(),
+      x: p.x, y: p.y, z: p.z,
+    }));
+    const entities: SketchEntity[] = [];
+    for (let i = 0; i < points.length; i++) {
+      const next = (i + 1) % points.length;
+      entities.push({
+        id: crypto.randomUUID(),
+        type: 'line',
+        points: [points[i], points[next]],
+      });
+    }
+    const { sketches, extrudeSelectedSketchIds } = get();
+    const pressPullCount = sketches.filter((s) => s.name.startsWith('Press Pull Profile')).length;
+    const sketch: Sketch = {
+      id: crypto.randomUUID(),
+      name: `Press Pull Profile ${pressPullCount + 1}`,
+      plane: 'custom',
+      planeNormal: normal.clone().normalize(),
+      planeOrigin: centroid.clone(),
+      entities,
+      constraints: [],
+      dimensions: [],
+      fullyConstrained: false,
+    };
+    const newIds = [...extrudeSelectedSketchIds, sketch.id];
+    set({
+      sketches: [...sketches, sketch],
+      extrudeSelectedSketchId: sketch.id,
+      extrudeSelectedSketchIds: newIds,
+      statusMessage: `${newIds.length} profiles selected — drag arrow or set distance, then OK`,
+    });
+  },
+  loadExtrudeForEdit: (featureId) => {
+    const { features } = get();
+    const feature = features.find((f) => f.id === featureId);
+    if (!feature || feature.type !== 'extrude') return;
+    const p = feature.params;
+    const sketchId = feature.sketchId ?? null;
+    set({
+      activeTool: 'extrude',
+      editingFeatureId: featureId,
+      extrudeSelectedSketchId: sketchId,
+      extrudeSelectedSketchIds: sketchId ? [sketchId] : [],
+      extrudeDistance: typeof p.distance === 'number' ? p.distance : 10,
+      extrudeDistance2: typeof p.distance2 === 'number' ? p.distance2 : 10,
+      extrudeDirection: (p.direction as ExtrudeDirection) ?? 'positive',
+      extrudeOperation: (p.operation as ExtrudeOperation) ?? 'new-body',
+      extrudeThinEnabled: !!p.thin,
+      extrudeThinThickness: typeof p.thinThickness === 'number' ? p.thinThickness : 2,
+      extrudeThinSide: (p.thinSide as 'side1' | 'side2' | 'center') ?? 'side1',
+      extrudeThinSide2: (p.thinSide2 as 'side1' | 'side2' | 'center') ?? 'side1',
+      extrudeThinThickness2: typeof p.thinThickness2 === 'number' ? p.thinThickness2 : 2,
+      extrudeStartType: (p.startType as 'profile' | 'offset' | 'entity') ?? 'profile',
+      extrudeStartOffset: typeof p.startOffset === 'number' ? p.startOffset : 0,
+      extrudeStartEntityId: (p.startEntityId as string | null) ?? null,
+      extrudeExtentType: (p.extentType as 'distance' | 'all' | 'to-object') ?? 'distance',
+      extrudeExtentType2: (p.extentType2 as 'distance' | 'all' | 'to-object') ?? 'distance',
+      extrudeToEntityFaceId: (p.toEntityFaceId as string | null) ?? null,
+      extrudeToEntityFaceNormal: (p.toEntityFaceNormal as [number, number, number] | null) ?? null,
+      extrudeToEntityFaceCentroid: (p.toEntityFaceCentroid as [number, number, number] | null) ?? null,
+      extrudeToObjectFlipDirection: !!(p.toObjectFlipDirection),
+      extrudeStartFaceNormal: (p.startFaceNormal as [number, number, number] | null) ?? null,
+      extrudeStartFaceCentroid: (p.startFaceCentroid as [number, number, number] | null) ?? null,
+      extrudeTaperAngle: typeof p.taperAngle === 'number' ? p.taperAngle : 0,
+      extrudeTaperAngle2: typeof p.taperAngle2 === 'number' ? p.taperAngle2 : 0,
+      extrudeSymmetricFullLength: false,
+      extrudeBodyKind: (feature.bodyKind === 'surface' ? 'surface' : 'solid') as 'solid' | 'surface',
+      extrudeParticipantBodyIds: Array.isArray(p.participantBodyIds) ? (p.participantBodyIds as unknown as string[]) : [],
+      extrudeConfinedFaceIds: Array.isArray(p.confinedFaceIds) ? (p.confinedFaceIds as unknown as string[]) : [],
+      statusMessage: `Edit extrude: "${feature.name}"`,
+    });
+  },
   cancelExtrudeTool: () => {
     // Discard any auto-generated press-pull profiles that were never committed
     const { sketches, features } = get();
@@ -2618,10 +3019,21 @@ export const useCADStore = create<CADState>()(persist((set, get) => ({
     const {
       extrudeSelectedSketchId, extrudeSelectedSketchIds, extrudeDistance, extrudeDistance2, extrudeDirection,
       extrudeOperation, extrudeThinEnabled, extrudeThinThickness, extrudeThinSide,
-      extrudeStartType, extrudeStartOffset, extrudeExtentType, extrudeTaperAngle,
-      extrudeBodyKind, extrudeSymmetricFullLength,
+      extrudeThinSide2, extrudeThinThickness2,
+      extrudeStartType, extrudeStartOffset, extrudeStartEntityId, extrudeExtentType, extrudeTaperAngle, extrudeTaperAngle2,
+      extrudeBodyKind, extrudeSymmetricFullLength, extrudeParticipantBodyIds,
+      extrudeConfinedFaceIds,
+      extrudeExtentType2,
+      extrudeToEntityFaceId, extrudeToEntityFaceNormal,
+      extrudeStartFaceCentroid, extrudeStartFaceNormal,
+      editingFeatureId,
       sketches, features, units,
     } = get();
+    // EX-13: edit mode — identify the feature being replaced
+    const editingExtrude = editingFeatureId
+      ? features.find((f) => f.id === editingFeatureId && f.type === 'extrude') ?? null
+      : null;
+    const editingIndex = editingExtrude ? features.findIndex((f) => f.id === editingFeatureId) : -1;
     const selectedSketchIds =
       extrudeSelectedSketchIds.length > 0
         ? extrudeSelectedSketchIds
@@ -2654,15 +3066,47 @@ export const useCADStore = create<CADState>()(persist((set, get) => ({
       set({ statusMessage: 'Distance must be non-zero' });
       return;
     }
+    // EX-3: for to-object extent, derive distance from profile plane → face centroid projection
+    const { extrudeToEntityFaceCentroid, extrudeToObjectFlipDirection } = get();
+    const computeToObjectDistance = (profileSketch: Sketch): number => {
+      if (!extrudeToEntityFaceCentroid) return Math.abs(extrudeDistance);
+      const target = new THREE.Vector3(...extrudeToEntityFaceCentroid);
+      const origin = profileSketch.planeOrigin.clone();
+      // EX-4: if From-Entity start is set, use that face centroid as origin
+      if (extrudeStartFaceCentroid) origin.set(...extrudeStartFaceCentroid);
+      const n = extrudeToEntityFaceNormal
+        ? new THREE.Vector3(...extrudeToEntityFaceNormal)
+        : profileSketch.planeNormal.clone().normalize();
+      // EX-12: directionHint — flip the sign so the extrude goes the other way
+      const raw = target.clone().sub(origin).dot(n);
+      const d = extrudeToObjectFlipDirection ? -raw : raw;
+      return Math.max(0.01, Math.abs(d));
+    };
     // Use absolute distance — negative just means the user dragged in reverse
-    const absDistance = extrudeExtentType === 'all' ? 10000 : Math.abs(extrudeDistance);
-    const absDistance2 = extrudeExtentType === 'all' ? 10000 : Math.abs(extrudeDistance2);
+    const absDistance = extrudeExtentType === 'all'
+      ? 10000
+      : extrudeExtentType === 'to-object'
+        ? computeToObjectDistance(
+            (selectedProfiles[0]?.sketchForOp) ?? (selectedProfiles[0]?.sourceSketch)
+          )
+        : Math.abs(extrudeDistance);
+    // EX-10: side 2 uses its own independent extent type
+    const absDistance2 = extrudeExtentType2 === 'all'
+      ? 10000
+      : extrudeExtentType2 === 'to-object'
+        ? computeToObjectDistance(
+            (selectedProfiles[0]?.sketchForOp) ?? (selectedProfiles[0]?.sourceSketch)
+          )
+        : Math.abs(extrudeDistance2);
     // Direction follows the sign of the distance (two-sides never flips)
     const finalDirection = extrudeDirection === 'two-sides' ? 'two-sides' : (extrudeDistance < 0 ? 'negative' : extrudeDirection);
     // Operation is set explicitly by the user in the panel (new-body, join, cut)
     const finalOperation = extrudeOperation;
 
-    const nextFeatures = [...features];
+    // EX-13: in edit mode, remove the old feature first (new one inserts at same position)
+    const nextFeatures = editingExtrude
+      ? features.filter((f) => f.id !== editingFeatureId)
+      : [...features];
     let createdCount = 0;
     let firstCreatedSketchName: string | null = null;
 
@@ -2715,6 +3159,7 @@ export const useCADStore = create<CADState>()(persist((set, get) => ({
             sketchForOp, absDistance, finalDirection, extrudeTaperAngle,
             extrudeStartType === 'offset' ? extrudeStartOffset : 0,
             absDistance2,
+            extrudeTaperAngle2,
           );
           if (proposedMesh) {
             proposedMesh.updateMatrixWorld(true);
@@ -2798,10 +3243,26 @@ export const useCADStore = create<CADState>()(persist((set, get) => ({
           thin: extrudeThinEnabled,
           thinThickness: extrudeThinThickness,
           thinSide: extrudeThinSide,
+          // EX-7/EX-8: per-side thin values (relevant only when direction=two-sides)
+          thinSide2: extrudeThinSide2,
+          thinThickness2: extrudeThinThickness2,
           startType: extrudeStartType,
           startOffset: extrudeStartOffset,
+          ...(extrudeStartType === 'entity' ? { startEntityId: extrudeStartEntityId } : {}),
+          // EX-4: From-Entity face data
+          ...(extrudeStartFaceCentroid ? { startFaceCentroid: extrudeStartFaceCentroid, startFaceNormal: extrudeStartFaceNormal } : {}),
+          // EX-9: participant bodies (empty array = all bodies)
+          ...(extrudeParticipantBodyIds.length > 0 ? { participantBodyIds: extrudeParticipantBodyIds } : {}),
+          // SDK-12: confined faces (empty = no confinement)
+          ...(extrudeConfinedFaceIds.length > 0 ? { confinedFaceIds: extrudeConfinedFaceIds } : {}),
           extentType: extrudeExtentType,
+          // EX-3/EX-12: save to-object face data + flip for edit round-trip
+          ...(extrudeExtentType === 'to-object' && extrudeToEntityFaceCentroid
+            ? { toEntityFaceId: extrudeToEntityFaceId, toEntityFaceNormal: extrudeToEntityFaceNormal, toEntityFaceCentroid: extrudeToEntityFaceCentroid, toObjectFlipDirection: extrudeToObjectFlipDirection }
+            : {}),
+          ...(finalDirection === 'two-sides' ? { extentType2: extrudeExtentType2 } : {}),
           taperAngle: extrudeTaperAngle,
+          ...(finalDirection === 'two-sides' ? { taperAngle2: extrudeTaperAngle2 } : {}),
           profileIndex,
         },
         visible: true,
@@ -2814,6 +3275,10 @@ export const useCADStore = create<CADState>()(persist((set, get) => ({
         // from just sketch + distance + direction).
         mesh: needsStoredMesh ? featureMesh : undefined,
         bodyKind: resolvedBodyKind,
+        // EX-17: stable synthetic face IDs — start, end, and one side-face per sketch edge
+        startFaceIds: [`${featureId}_start_0`],
+        endFaceIds: [`${featureId}_end_0`],
+        sideFaceIds: sketchForOp.entities.map((_, ei) => `${featureId}_side_${ei}`),
       };
 
       // Dispose the mesh if we're not storing it to avoid GPU leak
@@ -2821,19 +3286,26 @@ export const useCADStore = create<CADState>()(persist((set, get) => ({
         featureMesh.geometry.dispose();
       }
 
-      nextFeatures.push(feature);
+      // EX-13: edit mode inserts at the old feature's index; create mode appends
+      if (editingExtrude && editingIndex >= 0) {
+        nextFeatures.splice(editingIndex, 0, feature);
+      } else {
+        nextFeatures.push(feature);
+      }
       createdCount += 1;
       if (!firstCreatedSketchName) firstCreatedSketchName = sourceSketch.name;
     }
 
+    const actionVerb = editingExtrude ? 'Updated' : (finalOperation === 'cut' ? 'Cut' : 'Extruded');
     set({
       features: nextFeatures,
       activeTool: 'select',
+      editingFeatureId: null,
       ...EXTRUDE_DEFAULTS,
       statusMessage:
         createdCount > 1
-          ? `${finalOperation === 'cut' ? 'Cut' : 'Extruded'} ${createdCount} profiles${extrudeExtentType === 'all' ? ' (All)' : ` by ${absDistance}${units}`}`
-          : `${finalOperation === 'cut' ? 'Cut' : 'Extruded'} ${firstCreatedSketchName ?? 'profile'}${extrudeExtentType === 'all' ? ' (All)' : ` by ${absDistance}${units}`}`,
+          ? `${actionVerb} ${createdCount} profiles${extrudeExtentType === 'all' ? ' (All)' : ` by ${absDistance}${units}`}`
+          : `${actionVerb} ${firstCreatedSketchName ?? 'profile'}${extrudeExtentType === 'all' ? ' (All)' : ` by ${absDistance}${units}`}`,
     });
   },
 
@@ -2847,6 +3319,8 @@ export const useCADStore = create<CADState>()(persist((set, get) => ({
   setRevolveAngle2: (a) => set({ revolveAngle2: a }),
   // D103 body kind
   setRevolveBodyKind: (k) => set({ revolveBodyKind: k }),
+  // CORR-10
+  setRevolveIsProjectAxis: (v) => set({ revolveIsProjectAxis: v }),
   // Face mode
   setRevolveProfileMode: (m) => set({ revolveProfileMode: m }),
   startRevolveFromFace: (boundary, normal) => {
@@ -2873,7 +3347,7 @@ export const useCADStore = create<CADState>()(persist((set, get) => ({
     });
   },
   commitRevolve: () => {
-    const { revolveProfileMode, revolveSelectedSketchId, revolveFaceBoundary, revolveAxis, revolveAngle, revolveDirection, revolveAngle2, revolveBodyKind, sketches, features, units } = get();
+    const { revolveProfileMode, revolveSelectedSketchId, revolveFaceBoundary, revolveAxis, revolveAngle, revolveDirection, revolveAngle2, revolveBodyKind, revolveIsProjectAxis, sketches, features, units } = get();
 
     // ── Face mode ──────────────────────────────────────────────────────────
     if (revolveProfileMode === 'face') {
@@ -2897,6 +3371,7 @@ export const useCADStore = create<CADState>()(persist((set, get) => ({
           angle2: revolveAngle2,
           faceRevolve: true,
           faceBoundary: revolveFaceBoundary,
+          isProjectAxis: revolveIsProjectAxis,
         },
         visible: true,
         suppressed: false,
@@ -2960,6 +3435,7 @@ export const useCADStore = create<CADState>()(persist((set, get) => ({
         ...(centerlineAxisDirection ? { useCenterline: true, axisDirection: centerlineAxisDirection, axisOrigin: centerlineAxisOrigin } : {}),
         direction: revolveDirection,
         angle2: revolveAngle2,
+        isProjectAxis: revolveIsProjectAxis,
       },
       visible: true,
       suppressed: false,
@@ -2987,18 +3463,25 @@ export const useCADStore = create<CADState>()(persist((set, get) => ({
   sweepBodyKind: 'solid',
   setSweepBodyKind: (k) => set({ sweepBodyKind: k }),
   // D71 sweep upgrades
-  sweepOrientation: 'perpendicular' as const,
+  sweepOrientation: 'perpendicular' as 'perpendicular' | 'parallel' | 'default',
+  sweepProfileScaling: 'none' as 'none' | 'scale-to-path' | 'scale-to-rail',
   sweepTwistAngle: 0,
   sweepTaperAngle: 0,
   sweepGuideRailId: null,
   sweepOperation: 'new-body' as 'new-body' | 'join' | 'cut',
   sweepDistance: 'entire' as 'entire' | 'distance',
+  // SDK-5: path parametric start/end (0–1 fraction)
+  sweepDistanceOne: 0,
+  sweepDistanceTwo: 1,
   setSweepOrientation: (v) => set({ sweepOrientation: v }),
+  setSweepProfileScaling: (v) => set({ sweepProfileScaling: v }),
   setSweepTwistAngle: (v) => set({ sweepTwistAngle: v }),
   setSweepTaperAngle: (v) => set({ sweepTaperAngle: v }),
   setSweepGuideRailId: (v) => set({ sweepGuideRailId: v }),
   setSweepOperation: (v) => set({ sweepOperation: v }),
   setSweepDistance: (v) => set({ sweepDistance: v }),
+  setSweepDistanceOne: (v) => set({ sweepDistanceOne: Math.max(0, Math.min(1, v)) }),
+  setSweepDistanceTwo: (v) => set({ sweepDistanceTwo: Math.max(0, Math.min(1, v)) }),
   startSweepTool: () => {
     const extrudable = get().sketches.filter((s) => s.entities.length > 0);
     if (extrudable.length < 2) {
@@ -3007,9 +3490,9 @@ export const useCADStore = create<CADState>()(persist((set, get) => ({
     }
     set({ activeTool: 'sweep', sweepProfileSketchId: null, sweepPathSketchId: null, statusMessage: 'Sweep — pick a profile sketch, then a path sketch in the panel' });
   },
-  cancelSweepTool: () => set({ activeTool: 'select', sweepProfileSketchId: null, sweepPathSketchId: null, sweepOrientation: 'perpendicular', sweepTwistAngle: 0, sweepTaperAngle: 0, sweepGuideRailId: null, statusMessage: 'Sweep cancelled' }),
+  cancelSweepTool: () => set({ activeTool: 'select', sweepProfileSketchId: null, sweepPathSketchId: null, sweepOrientation: 'perpendicular', sweepTwistAngle: 0, sweepTaperAngle: 0, sweepGuideRailId: null, sweepDistance: 'entire', sweepDistanceOne: 0, sweepDistanceTwo: 1, statusMessage: 'Sweep cancelled' }),
   commitSweep: () => {
-    const { sweepProfileSketchId, sweepPathSketchId, sweepBodyKind, sketches, features, units } = get();
+    const { sweepProfileSketchId, sweepPathSketchId, sweepBodyKind, sweepDistance, sweepDistanceOne, sweepDistanceTwo, sweepOrientation, sweepProfileScaling, sweepTwistAngle, sweepTaperAngle, sweepGuideRailId, sweepOperation, sketches, features, units } = get();
     if (!sweepProfileSketchId || !sweepPathSketchId) {
       set({ statusMessage: 'Select both a profile sketch and a path sketch' });
       return;
@@ -3026,7 +3509,17 @@ export const useCADStore = create<CADState>()(persist((set, get) => ({
       name: `${sweepBodyKind === 'surface' ? 'Surface ' : ''}Sweep ${features.filter((f) => f.type === 'sweep').length + 1}`,
       type: 'sweep',
       sketchId: sweepProfileSketchId,
-      params: { pathSketchId: sweepPathSketchId },
+      params: {
+        pathSketchId: sweepPathSketchId,
+        orientation: sweepOrientation,
+        profileScaling: sweepProfileScaling,
+        twistAngle: sweepTwistAngle,
+        taperAngle: sweepTaperAngle,
+        guideRailId: sweepGuideRailId,
+        operation: sweepOperation,
+        distance: sweepDistance,
+        ...(sweepDistance === 'distance' ? { distanceOne: sweepDistanceOne, distanceTwo: sweepDistanceTwo } : {}),
+      },
       visible: true,
       suppressed: false,
       timestamp: Date.now(),
@@ -3050,10 +3543,12 @@ export const useCADStore = create<CADState>()(persist((set, get) => ({
   setLoftBodyKind: (k) => set({ loftBodyKind: k }),
   // D72 loft upgrades
   loftClosed: false,
+  loftTangentEdgesMerged: false,
   loftStartCondition: 'free' as const,
   loftEndCondition: 'free' as const,
   loftRailSketchId: null,
   setLoftClosed: (v) => set({ loftClosed: v }),
+  setLoftTangentEdgesMerged: (v) => set({ loftTangentEdgesMerged: v }),
   setLoftStartCondition: (v) => set({ loftStartCondition: v }),
   setLoftEndCondition: (v) => set({ loftEndCondition: v }),
   setLoftRailSketchId: (v) => set({ loftRailSketchId: v }),
@@ -3065,7 +3560,7 @@ export const useCADStore = create<CADState>()(persist((set, get) => ({
     }
     set({ activeTool: 'loft', loftProfileSketchIds: ['', ''], statusMessage: 'Loft — select 2+ profile sketches in the panel, then OK' });
   },
-  cancelLoftTool: () => set({ activeTool: 'select', loftProfileSketchIds: [], loftClosed: false, loftStartCondition: 'free', loftEndCondition: 'free', loftRailSketchId: null, statusMessage: 'Loft cancelled' }),
+  cancelLoftTool: () => set({ activeTool: 'select', loftProfileSketchIds: [], loftClosed: false, loftTangentEdgesMerged: false, loftStartCondition: 'free', loftEndCondition: 'free', loftRailSketchId: null, statusMessage: 'Loft cancelled' }),
   commitLoft: () => {
     const { loftProfileSketchIds, loftBodyKind, sketches, features, units } = get();
     const validIds = loftProfileSketchIds.filter(Boolean);

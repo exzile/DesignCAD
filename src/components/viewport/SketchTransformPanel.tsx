@@ -29,6 +29,15 @@ export default function SketchTransformPanel() {
   const setRotateAngle = useCADStore((s) => s.setSketchRotateAngle);
   const commitRotate = useCADStore((s) => s.commitSketchRotate);
 
+  // NAV-8/NAV-9: incremental move/rotate snapping
+  const incrementalMove = useCADStore((s) => s.incrementalMove);
+  const moveIncrement = useCADStore((s) => s.moveIncrement);
+  const rotateIncrement = useCADStore((s) => s.rotateIncrement);
+  const snapToStep = (v: number, step: number) =>
+    incrementalMove ? Math.round(v / step) * step : v;
+  const moveStep = incrementalMove ? moveIncrement : 1;
+  const rotStep = incrementalMove ? rotateIncrement : 5;
+
   const isMove = activeTool === 'sketch-move' || activeTool === 'sketch-copy';
   const isScale = activeTool === 'sketch-scale';
   const isRotate = activeTool === 'sketch-rotate';
@@ -59,13 +68,13 @@ export default function SketchTransformPanel() {
         <>
           <div className="sketch-tool-panel__row">
             <span>Δ X (along t1)</span>
-            <input type="number" step={1} value={moveDx} className="sketch-tool-panel__input"
-              onChange={(e) => { const v = parseFloat(e.target.value); if (!isNaN(v)) setMove({ dx: v }); }} />
+            <input type="number" step={moveStep} value={moveDx} className="sketch-tool-panel__input"
+              onChange={(e) => { const v = parseFloat(e.target.value); if (!isNaN(v)) setMove({ dx: snapToStep(v, moveStep) }); }} />
           </div>
           <div className="sketch-tool-panel__row">
             <span>Δ Y (along t2)</span>
-            <input type="number" step={1} value={moveDy} className="sketch-tool-panel__input"
-              onChange={(e) => { const v = parseFloat(e.target.value); if (!isNaN(v)) setMove({ dy: v }); }} />
+            <input type="number" step={moveStep} value={moveDy} className="sketch-tool-panel__input"
+              onChange={(e) => { const v = parseFloat(e.target.value); if (!isNaN(v)) setMove({ dy: snapToStep(v, moveStep) }); }} />
           </div>
           <div className="sketch-tool-panel__row sketch-tool-panel__row--last">
             <span>Copy entities</span>
@@ -89,8 +98,8 @@ export default function SketchTransformPanel() {
       {isRotate && (
         <div className="sketch-tool-panel__row">
           <span>Angle (°)</span>
-          <input type="number" step={5} value={rotateAngle} className="sketch-tool-panel__input"
-            onChange={(e) => { const v = parseFloat(e.target.value); if (!isNaN(v)) setRotateAngle(v); }} />
+          <input type="number" step={rotStep} value={rotateAngle} className="sketch-tool-panel__input"
+            onChange={(e) => { const v = parseFloat(e.target.value); if (!isNaN(v)) setRotateAngle(snapToStep(v, rotStep)); }} />
         </div>
       )}
 

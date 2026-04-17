@@ -21,6 +21,7 @@ import Popover from './canvasControls/Popover';
 import DisplaySettingsPanel from './canvasControls/DisplaySettingsPanel';
 import GridSettingsPanel from './canvasControls/GridSettingsPanel';
 import IncrementSettingsPanel from './canvasControls/IncrementSettingsPanel';
+import ObjectSnapPanel from './canvasControls/ObjectSnapPanel';
 
 export default function CanvasControls() {
   const gridVisible = useCADStore((s) => s.gridVisible);
@@ -29,6 +30,7 @@ export default function CanvasControls() {
   const setGridLocked = useCADStore((s) => s.setGridLocked);
   const snapEnabled = useCADStore((s) => s.snapEnabled);
   const setSnapEnabled = useCADStore((s) => s.setSnapEnabled);
+  const objectSnapEnabled = useCADStore((s) => s.objectSnapEnabled);
   const incrementalMove = useCADStore((s) => s.incrementalMove);
   const setIncrementalMove = useCADStore((s) => s.setIncrementalMove);
   const triggerCameraHome = useCADStore((s) => s.triggerCameraHome);
@@ -41,6 +43,7 @@ export default function CanvasControls() {
   const displayRef = useRef<HTMLButtonElement>(null);
   const gridSettingsRef = useRef<HTMLButtonElement>(null);
   const incrementRef = useRef<HTMLButtonElement>(null);
+  const objectSnapRef = useRef<HTMLButtonElement>(null);
 
   const togglePopover = useCallback((id: string) => {
     setOpenPopover((prev) => (prev === id ? null : id));
@@ -99,6 +102,21 @@ export default function CanvasControls() {
         >
           <Magnet size={14} />
         </button>
+
+        {/* Object Snaps — NAV-24 */}
+        <div className="cc-popover-anchor">
+          <button
+            ref={objectSnapRef}
+            className={`cc-btn ${objectSnapEnabled ? 'active' : ''}`}
+            title="Object Snaps"
+            onClick={() => togglePopover('object-snap')}
+          >
+            <ScanSearch size={14} />
+          </button>
+          <Popover anchorRef={objectSnapRef} open={openPopover === 'object-snap'} onClose={closePopover}>
+            <ObjectSnapPanel onClose={closePopover} />
+          </Popover>
+        </div>
 
         {/* Grid settings */}
         <div className="cc-popover-anchor">

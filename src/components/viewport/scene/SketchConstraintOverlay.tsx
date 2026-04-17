@@ -13,6 +13,7 @@ const COLOR_PERPENDICULAR = new THREE.Color('#a78bfa'); // purple
 const COLOR_EQUAL        = new THREE.Color('#f472b6'); // pink
 const COLOR_TANGENT      = new THREE.Color('#fb923c'); // orange
 const COLOR_DEFAULT      = new THREE.Color('#94a3b8'); // slate (fallback)
+const COLOR_CONFLICT     = new THREE.Color('#ef4444'); // red — over-constrained
 
 // Reuse materials keyed by hex color — avoids new allocations per render
 const materialCache = new Map<string, THREE.LineBasicMaterial>();
@@ -227,11 +228,15 @@ export default function SketchConstraintOverlay() {
     }
 
     const sketch = activeSketch;
+    const overCon = !!sketch.overConstrained;
     const entityMap = new Map<string, SketchEntity>();
     for (const e of sketch.entities) entityMap.set(e.id, e);
 
     const { t1, t2 } = GeometryEngine.getSketchAxes(sketch);
     const SIZE = 1.0; // base indicator size in world units
+
+    // When the sketch is over-constrained, all glyphs render red
+    const c = (normal: THREE.Color) => overCon ? COLOR_CONFLICT : normal;
 
     const objs: THREE.Object3D[] = [];
 
@@ -246,7 +251,7 @@ export default function SketchConstraintOverlay() {
           if (!entity) break;
           const mid = entityMidpoint(entity, sketch);
           if (!mid) break;
-          objs.push(makeHArrow(mid, t1, t2, SIZE, COLOR_HORIZONTAL));
+          objs.push(makeHArrow(mid, t1, t2, SIZE, c(COLOR_HORIZONTAL)));
           break;
         }
         case 'vertical': {
@@ -254,7 +259,7 @@ export default function SketchConstraintOverlay() {
           if (!entity) break;
           const mid = entityMidpoint(entity, sketch);
           if (!mid) break;
-          objs.push(makeVArrow(mid, t1, t2, SIZE, COLOR_VERTICAL));
+          objs.push(makeVArrow(mid, t1, t2, SIZE, c(COLOR_VERTICAL)));
           break;
         }
         case 'coincident': {
@@ -265,7 +270,7 @@ export default function SketchConstraintOverlay() {
           }
           if (!pos && entities[0]) pos = entityMidpoint(entities[0], sketch);
           if (!pos) break;
-          objs.push(makeCoincidentRing(pos, t1, t2, SIZE * 0.5, COLOR_COINCIDENT));
+          objs.push(makeCoincidentRing(pos, t1, t2, SIZE * 0.5, c(COLOR_COINCIDENT)));
           break;
         }
         case 'concentric': {
@@ -274,21 +279,21 @@ export default function SketchConstraintOverlay() {
           if (!entity) break;
           const mid = entityMidpoint(entity, sketch);
           if (!mid) break;
-          objs.push(makeCoincidentRing(mid, t1, t2, SIZE * 0.5, COLOR_COINCIDENT));
+          objs.push(makeCoincidentRing(mid, t1, t2, SIZE * 0.5, c(COLOR_COINCIDENT)));
           break;
         }
         case 'parallel': {
           // One parallel indicator at each involved entity midpoint
           for (const entity of entities) {
             const mid = entityMidpoint(entity, sketch);
-            if (mid) objs.push(makeParallelLines(mid, t1, t2, SIZE, COLOR_PARALLEL));
+            if (mid) objs.push(makeParallelLines(mid, t1, t2, SIZE, c(COLOR_PARALLEL)));
           }
           break;
         }
         case 'collinear': {
           for (const entity of entities) {
             const mid = entityMidpoint(entity, sketch);
-            if (mid) objs.push(makeParallelLines(mid, t1, t2, SIZE, COLOR_PARALLEL));
+            if (mid) objs.push(makeParallelLines(mid, t1, t2, SIZE, c(COLOR_PARALLEL)));
           }
           break;
         }
@@ -298,7 +303,7 @@ export default function SketchConstraintOverlay() {
           if (!entity) break;
           const mid = entityMidpoint(entity, sketch);
           if (!mid) break;
-          objs.push(makePerpSymbol(mid, t1, t2, SIZE, COLOR_PERPENDICULAR));
+          objs.push(makePerpSymbol(mid, t1, t2, SIZE, c(COLOR_PERPENDICULAR)));
           break;
         }
         case 'tangent': {
@@ -309,7 +314,7 @@ export default function SketchConstraintOverlay() {
           }
           if (!pos && entities[0]) pos = entityMidpoint(entities[0], sketch);
           if (!pos) break;
-          objs.push(makeTangentSymbol(pos, t1, t2, SIZE, COLOR_TANGENT));
+          objs.push(makeTangentSymbol(pos, t1, t2, SIZE, c(COLOR_TANGENT)));
           break;
         }
         case 'curvature': {
@@ -320,14 +325,14 @@ export default function SketchConstraintOverlay() {
           }
           if (!pos && entities[0]) pos = entityMidpoint(entities[0], sketch);
           if (!pos) break;
-          objs.push(makeTangentSymbol(pos, t1, t2, SIZE, COLOR_TANGENT));
+          objs.push(makeTangentSymbol(pos, t1, t2, SIZE, c(COLOR_TANGENT)));
           break;
         }
         case 'equal': {
           // Tick mark on each involved entity
           for (const entity of entities) {
             const mid = entityMidpoint(entity, sketch);
-            if (mid) objs.push(makeEqualTicks(mid, t1, t2, SIZE, COLOR_EQUAL));
+            if (mid) objs.push(makeEqualTicks(mid, t1, t2, SIZE, c(COLOR_EQUAL)));
           }
           break;
         }
@@ -335,7 +340,7 @@ export default function SketchConstraintOverlay() {
           // Equal-style ticks on each entity
           for (const entity of entities) {
             const mid = entityMidpoint(entity, sketch);
-            if (mid) objs.push(makeEqualTicks(mid, t1, t2, SIZE, COLOR_EQUAL));
+            if (mid) objs.push(makeEqualTicks(mid, t1, t2, SIZE, c(COLOR_EQUAL)));
           }
           break;
         }
@@ -348,7 +353,15 @@ export default function SketchConstraintOverlay() {
           }
           if (!pos && entities[0]) pos = entityMidpoint(entities[0], sketch);
           if (!pos) break;
-          objs.push(makeCoincidentRing(pos, t1, t2, SIZE * 0.4, COLOR_DEFAULT));
+          objs.push(makeCoincidentRing(pos, t1, t2, SIZE * 0.4, c(COLOR_DEFAULT)));
+          break;
+        }
+        case 'offset': {
+          // SK-A9: Offset constraint — parallel-lines symbol at each entity + a tick between them
+          for (const entity of entities) {
+            const mid = entityMidpoint(entity, sketch);
+            if (mid) objs.push(makeParallelLines(mid, t1, t2, SIZE, c(0x66ddff)));
+          }
           break;
         }
         default: {
@@ -356,7 +369,7 @@ export default function SketchConstraintOverlay() {
           const entity = entities[0];
           if (entity) {
             const mid = entityMidpoint(entity, sketch);
-            if (mid) objs.push(makeDot(mid, t1, t2, SIZE, COLOR_DEFAULT));
+            if (mid) objs.push(makeDot(mid, t1, t2, SIZE, c(COLOR_DEFAULT)));
           }
           break;
         }

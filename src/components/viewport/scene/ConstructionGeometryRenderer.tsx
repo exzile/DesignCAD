@@ -162,6 +162,9 @@ export default function ConstructionGeometryRenderer() {
   const planes = useCADStore((s) => s.constructionPlanes);
   const axes = useCADStore((s) => s.constructionAxes);
   const points = useCADStore((s) => s.constructionPoints);
+  const entityVisConstruction = useCADStore((s) => s.entityVisConstruction);
+
+  if (!entityVisConstruction) return null;
 
   return (
     <>

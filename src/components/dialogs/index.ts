@@ -94,6 +94,7 @@ export { LipGrooveDialog } from './solid/LipGrooveDialog';
 export { OffsetFaceDialog } from './solid/OffsetFaceDialog';
 export { AlignDialog } from './solid/AlignDialog';
 export { PipeDialog } from './solid/PipeDialog';
+export { CoilDialog } from './solid/CoilDialog';
 export { MoveBodyDialog } from './solid/MoveBodyDialog';
 export { SplitBodyDialog } from './solid/SplitBodyDialog';
 export { PhysicalMaterialDialog } from './solid/PhysicalMaterialDialog';

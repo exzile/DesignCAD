@@ -13,6 +13,8 @@ export default function LoftPanel() {
   // D72 upgrades
   const closed = useCADStore((s) => s.loftClosed);
   const setClosed = useCADStore((s) => s.setLoftClosed);
+  const tangentEdgesMerged = useCADStore((s) => s.loftTangentEdgesMerged);
+  const setTangentEdgesMerged = useCADStore((s) => s.setLoftTangentEdgesMerged);
   const startCond = useCADStore((s) => s.loftStartCondition);
   const setStartCond = useCADStore((s) => s.setLoftStartCondition);
   const endCond = useCADStore((s) => s.loftEndCondition);
@@ -109,6 +111,12 @@ export default function LoftPanel() {
           <label className="loft-checkbox-label">
             <input type="checkbox" checked={closed} onChange={(e) => setClosed(e.target.checked)} />
             <span className="sketch-palette-label">Closed Loft</span>
+          </label>
+        </div>
+        <div className="sketch-palette-row">
+          <label className="loft-checkbox-label">
+            <input type="checkbox" checked={tangentEdgesMerged} onChange={(e) => setTangentEdgesMerged(e.target.checked)} />
+            <span className="sketch-palette-label">Merge Tangent Edges</span>
           </label>
         </div>
 

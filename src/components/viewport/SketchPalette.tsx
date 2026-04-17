@@ -79,6 +79,10 @@ export default function SketchPalette() {
   const slotWidth = useCADStore((s) => s.sketchSlotWidth);
   const setSlotWidth = useCADStore((s) => s.setSketchSlotWidth);
   const isArcSlotTool = activeTool === 'slot-3point-arc' || activeTool === 'slot-center-arc';
+  // SK-A9: offset constraint distance input
+  const constraintOffsetValue = useCADStore((s) => s.constraintOffsetValue);
+  const setConstraintOffsetValue = useCADStore((s) => s.setConstraintOffsetValue);
+  const isOffsetConstraintTool = activeTool === 'constrain-offset';
 
   // Reset dismissed state each time a new sketch session starts
   useEffect(() => {
@@ -97,6 +101,11 @@ export default function SketchPalette() {
       <div className="sketch-palette-header">
         <span className="sketch-palette-dot" />
         <span className="sketch-palette-title">SKETCH PALETTE</span>
+        {activeSketch?.overConstrained && (
+          <span className="sketch-palette-overcon-badge" title="Sketch is over-constrained — remove a conflicting constraint">
+            ⚠ Over-constrained
+          </span>
+        )}
         <button
           className="sketch-palette-collapse"
           onClick={() => setCollapsed(!collapsed)}
@@ -274,6 +283,24 @@ export default function SketchPalette() {
                 onChange={(e) => {
                   const v = Number(e.target.value);
                   if (!Number.isNaN(v)) setPolygonSides(v);
+                }}
+                className="sketch-palette-input--narrow"
+              />
+            </div>
+          )}
+
+          {/* SK-A9: Offset distance — only visible while constrain-offset tool is active */}
+          {isOffsetConstraintTool && (
+            <div className="sketch-palette-row">
+              <span className="sketch-palette-label">Offset (mm)</span>
+              <input
+                type="number"
+                min={0.001}
+                step={0.5}
+                value={constraintOffsetValue}
+                onChange={(e) => {
+                  const v = Number(e.target.value);
+                  if (!Number.isNaN(v) && v > 0) setConstraintOffsetValue(v);
                 }}
                 className="sketch-palette-input--narrow"
               />

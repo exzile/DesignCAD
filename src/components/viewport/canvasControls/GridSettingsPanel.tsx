@@ -5,6 +5,7 @@ export default function GridSettingsPanel({ onClose }: { onClose: () => void }) 
   void onClose;
   const gridSize = useCADStore((s) => s.gridSize);
   const setGridSize = useCADStore((s) => s.setGridSize);
+  const gridLocked = useCADStore((s) => s.gridLocked);
   const [localSize, setLocalSize] = useState(String(gridSize));
 
   const apply = () => {
@@ -17,6 +18,11 @@ export default function GridSettingsPanel({ onClose }: { onClose: () => void }) 
   return (
     <div className="cc-panel">
       <div className="cc-panel-title">Grid Settings</div>
+      {gridLocked && (
+        <div style={{ padding: '4px 8px', fontSize: 10, color: '#888', fontStyle: 'italic' }}>
+          Grid is locked. Unlock to change settings.
+        </div>
+      )}
       <div className="cc-panel-section">
         <div className="cc-panel-field">
           <label className="cc-panel-field-label">Grid Size</label>
@@ -25,11 +31,13 @@ export default function GridSettingsPanel({ onClose }: { onClose: () => void }) 
               type="number"
               className="cc-panel-field-input"
               value={localSize}
+              disabled={gridLocked}
               onChange={(e) => setLocalSize(e.target.value)}
               onBlur={apply}
               onKeyDown={(e) => { if (e.key === 'Enter') apply(); }}
               min={0.1}
               step={1}
+              style={gridLocked ? { opacity: 0.5, cursor: 'not-allowed' } : undefined}
             />
             <span className="cc-panel-field-unit">mm</span>
           </div>

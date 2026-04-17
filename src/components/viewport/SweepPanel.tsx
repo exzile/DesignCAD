@@ -15,6 +15,8 @@ export default function SweepPanel() {
 
   const orientation = useCADStore((s) => s.sweepOrientation);
   const setOrientation = useCADStore((s) => s.setSweepOrientation);
+  const profileScaling = useCADStore((s) => s.sweepProfileScaling);
+  const setProfileScaling = useCADStore((s) => s.setSweepProfileScaling);
   const twistAngle = useCADStore((s) => s.sweepTwistAngle);
   const setTwistAngle = useCADStore((s) => s.setSweepTwistAngle);
   const taperAngle = useCADStore((s) => s.sweepTaperAngle);
@@ -22,6 +24,10 @@ export default function SweepPanel() {
 
   const distance = useCADStore((s) => s.sweepDistance);
   const setDistance = useCADStore((s) => s.setSweepDistance);
+  const distanceOne = useCADStore((s) => s.sweepDistanceOne);
+  const setDistanceOne = useCADStore((s) => s.setSweepDistanceOne);
+  const distanceTwo = useCADStore((s) => s.sweepDistanceTwo);
+  const setDistanceTwo = useCADStore((s) => s.setSweepDistanceTwo);
   const operation = useCADStore((s) => s.sweepOperation);
   const setOperation = useCADStore((s) => s.setSweepOperation);
   const bodyKind = useCADStore((s) => s.sweepBodyKind);
@@ -75,10 +81,34 @@ export default function SweepPanel() {
             <span className="tp-label">Distance</span>
             <select className="tp-select" value={distance}
               onChange={(e) => setDistance(e.target.value as 'entire' | 'distance')}>
-              <option value="entire">Entire</option>
-              <option value="distance" disabled>Distance</option>
+              <option value="entire">Entire Path</option>
+              <option value="distance">Partial (0–1)</option>
             </select>
           </div>
+          {distance === 'distance' && (
+            <>
+              <div className="tp-row">
+                <span className="tp-label">Start (0–1)</span>
+                <input
+                  type="number"
+                  className="tp-input"
+                  min={0} max={1} step={0.05}
+                  value={distanceOne}
+                  onChange={(e) => setDistanceOne(parseFloat(e.target.value) || 0)}
+                />
+              </div>
+              <div className="tp-row">
+                <span className="tp-label">End (0–1)</span>
+                <input
+                  type="number"
+                  className="tp-input"
+                  min={0} max={1} step={0.05}
+                  value={distanceTwo}
+                  onChange={(e) => setDistanceTwo(parseFloat(e.target.value) || 1)}
+                />
+              </div>
+            </>
+          )}
           <div className="tp-row">
             <span className="tp-label">Guide Rail</span>
             <select className="tp-select" value={guideRailId ?? ''}
@@ -98,9 +128,19 @@ export default function SweepPanel() {
           <div className="tp-row">
             <span className="tp-label">Orientation</span>
             <select className="tp-select" value={orientation}
-              onChange={(e) => setOrientation(e.target.value as 'perpendicular' | 'parallel')}>
+              onChange={(e) => setOrientation(e.target.value as 'perpendicular' | 'parallel' | 'default')}>
               <option value="perpendicular">Perpendicular to Path</option>
               <option value="parallel">Parallel (Fixed)</option>
+              <option value="default">Default</option>
+            </select>
+          </div>
+          <div className="tp-row">
+            <span className="tp-label">Scaling</span>
+            <select className="tp-select" value={profileScaling}
+              onChange={(e) => setProfileScaling(e.target.value as 'none' | 'scale-to-path' | 'scale-to-rail')}>
+              <option value="none">No Scaling</option>
+              <option value="scale-to-path">Scale to Path</option>
+              <option value="scale-to-rail">Scale to Rail</option>
             </select>
           </div>
           <div className="tp-row">

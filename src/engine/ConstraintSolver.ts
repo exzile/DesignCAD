@@ -313,6 +313,32 @@ function computeResiduals(
         }
         break;
       }
+      case 'offset': {
+        // SK-A9: parametric offset — enforces two residuals on two lines:
+        //  1. Parallel: (a1-a0) × (b1-b0) = 0  (direction cross product)
+        //  2. Distance: |(b0-a0) × (a1-a0)| / |a1-a0| - value = 0
+        if (c.entityIds.length < 2) break;
+        const eA = entityMap.get(c.entityIds[0]);
+        const eB = entityMap.get(c.entityIds[1]);
+        if (!eA || !eB || eA.points.length < 2 || eB.points.length < 2) break;
+        const a0 = getPoint(eA.id, 0, pointMap);
+        const a1 = getPoint(eA.id, eA.points.length - 1, pointMap);
+        const b0 = getPoint(eB.id, 0, pointMap);
+        const b1 = getPoint(eB.id, eB.points.length - 1, pointMap);
+        const adx = a1.x - a0.x;
+        const ady = a1.y - a0.y;
+        const bdx = b1.x - b0.x;
+        const bdy = b1.y - b0.y;
+        // 1. Parallel residual
+        residuals.push(adx * bdy - ady * bdx);
+        // 2. Perpendicular distance residual: signed cross / |a| - value
+        const aLen = Math.sqrt(adx * adx + ady * ady);
+        if (aLen > 1e-10) {
+          const crossBA = (b0.x - a0.x) * ady - (b0.y - a0.y) * adx;
+          residuals.push(crossBA / aLen - (c.value ?? 10));
+        }
+        break;
+      }
       case 'curvature': {
         // G2 curvature continuity between two spline entities at their junction.
         // entityIds: [entityAId, entityBId]  (A's end meets B's start)

@@ -22,13 +22,14 @@ import {
   DrillAngledIcon,
 } from './HoleIcons';
 import '../common/ToolPanel.css';
+import { ParticipantBodyPicker } from '../../ui/ParticipantBodyPicker';
 import './HoleDialog.css';
 
 type HoleType = 'simple' | 'counterbore' | 'countersink';
 type TapType = 'simple' | 'clearance' | 'tapped' | 'taper-tapped';
 type DrillPoint = 'flat' | 'angled';
-type HoleTermination = 'blind' | 'through-all' | 'to-object';
-type Placement = 'single' | 'multiple';
+type HoleTermination = 'blind' | 'through-all' | 'to-object' | 'to-face';
+type Placement = 'single' | 'multiple' | 'plane-offsets' | 'on-edge';
 
 const HOLE_TYPE_OPTIONS = [
   { value: 'simple' as const, icon: <SimpleHoleIcon />, title: 'Simple' },
@@ -69,6 +70,30 @@ const PLACEMENT_OPTIONS = [
         <circle cx={12} cy={6} r={1.5} />
         <circle cx={6} cy={12} r={1.5} />
         <circle cx={12} cy={12} r={1.5} />
+      </svg>
+    ),
+  },
+  {
+    value: 'plane-offsets' as const,
+    title: 'By Plane Offsets',
+    icon: (
+      <svg width={14} height={14} viewBox="0 0 18 18" fill="none" stroke="currentColor" strokeWidth={1.2}>
+        <rect x={2} y={2} width={14} height={14} />
+        <line x1={7} y1={2} x2={7} y2={16} strokeDasharray="2,1.5" />
+        <line x1={2} y1={7} x2={16} y2={7} strokeDasharray="2,1.5" />
+        <circle cx={10} cy={10} r={2} />
+      </svg>
+    ),
+  },
+  {
+    value: 'on-edge' as const,
+    title: 'On Edge',
+    icon: (
+      <svg width={14} height={14} viewBox="0 0 18 18" fill="none" stroke="currentColor" strokeWidth={1.2}>
+        <line x1={2} y1={9} x2={16} y2={9} />
+        <circle cx={9} cy={9} r={2.5} />
+        <line x1={2} y1={6} x2={2} y2={12} />
+        <line x1={16} y1={6} x2={16} y2={12} />
       </svg>
     ),
   },
@@ -117,6 +142,16 @@ export function HoleDialog({ onClose }: { onClose: () => void }) {
   const [csAngle, setCsAngle] = useState(Number(p.csAngle ?? 90));
   const [csDiameter, setCsDiameter] = useState(Number(p.csDiameter ?? 9));
   const [headDepth, setHeadDepth] = useState(Number(p.headDepth ?? 17));
+  // SDK-1: plane-offsets placement
+  const [offsetDist1, setOffsetDist1] = useState(Number(p.offsetDist1 ?? 10));
+  const [offsetDist2, setOffsetDist2] = useState(Number(p.offsetDist2 ?? 10));
+  // SDK-1: on-edge placement
+  const [edgeParam, setEdgeParam] = useState(Number(p.edgeParam ?? 0.5));
+
+  // CORR-14: participant bodies (empty = cut all)
+  const [participantBodyIds, setParticipantBodyIds] = useState<string[]>(
+    (p.participantBodyIds as string[] | undefined) ?? []
+  );
 
   // Hydrate persistent draft values from the edited feature once on open.
   useEffect(() => {
@@ -131,7 +166,7 @@ export function HoleDialog({ onClose }: { onClose: () => void }) {
   const updateFeatureParams = useCADStore((s) => s.updateFeatureParams);
   const setStatusMessage = useCADStore((s) => s.setStatusMessage);
 
-  const through = termination === 'through-all' || termination === 'to-object';
+  const through = termination === 'through-all' || termination === 'to-object' || termination === 'to-face';
   const showCB = holeType === 'counterbore';
   const showCS = holeType === 'countersink';
 
@@ -153,6 +188,11 @@ export function HoleDialog({ onClose }: { onClose: () => void }) {
       faceId: holeFaceId ?? p.faceId ?? null,
       faceNormal: holeFaceNormal ?? p.faceNormal ?? null,
       faceCentroid: holeFaceCentroid ?? p.faceCentroid ?? null,
+      // SDK-1: plane-offsets / on-edge placement params
+      ...(placement === 'plane-offsets' ? { offsetDist1, offsetDist2 } : {}),
+      ...(placement === 'on-edge' ? { edgeParam } : {}),
+      // CORR-14: participant bodies
+      ...(participantBodyIds.length > 0 ? { participantBodyIds } : {}),
     };
     if (editing) {
       updateFeatureParams(editing.id, params);
@@ -204,14 +244,93 @@ export function HoleDialog({ onClose }: { onClose: () => void }) {
                 emptyLabel="Select"
               />
             </div>
-            <div className="tp-row">
-              <span className="tp-label">Reference</span>
-              <FaceSelector selected={false} pickActive={false} onClear={() => {}} emptyLabel="Select" />
-            </div>
-            <div className="tp-row">
-              <span className="tp-label">Reference</span>
-              <FaceSelector selected={false} pickActive={false} onClear={() => {}} emptyLabel="Select" />
-            </div>
+
+            {/* SDK-1: plane-offsets — two offset distances from reference planes */}
+            {placement === 'plane-offsets' && (
+              <>
+                <div className="tp-row">
+                  <span className="tp-label">Ref 1</span>
+                  <FaceSelector selected={false} pickActive={false} onClear={() => {}} emptyLabel="Select edge/face" />
+                </div>
+                <div className="tp-row">
+                  <span className="tp-label">Offset 1</span>
+                  <div className="tp-input-group">
+                    <input
+                      type="number"
+                      value={offsetDist1}
+                      step={0.5}
+                      min={0}
+                      onChange={(e) => setOffsetDist1(parseFloat(e.target.value) || 0)}
+                      aria-label="Offset from reference 1 (mm)"
+                    />
+                    <span className="tp-unit">mm</span>
+                  </div>
+                </div>
+                <div className="tp-row">
+                  <span className="tp-label">Ref 2</span>
+                  <FaceSelector selected={false} pickActive={false} onClear={() => {}} emptyLabel="Select edge/face" />
+                </div>
+                <div className="tp-row">
+                  <span className="tp-label">Offset 2</span>
+                  <div className="tp-input-group">
+                    <input
+                      type="number"
+                      value={offsetDist2}
+                      step={0.5}
+                      min={0}
+                      onChange={(e) => setOffsetDist2(parseFloat(e.target.value) || 0)}
+                      aria-label="Offset from reference 2 (mm)"
+                    />
+                    <span className="tp-unit">mm</span>
+                  </div>
+                </div>
+              </>
+            )}
+
+            {/* SDK-1: on-edge — edge reference + parameter distance along edge */}
+            {placement === 'on-edge' && (
+              <>
+                <div className="tp-row">
+                  <span className="tp-label">Edge</span>
+                  <FaceSelector selected={false} pickActive={false} onClear={() => {}} emptyLabel="Select edge" />
+                </div>
+                <div className="tp-row">
+                  <span className="tp-label">Position</span>
+                  <div className="tp-input-group">
+                    <input
+                      type="number"
+                      value={edgeParam}
+                      step={0.01}
+                      min={0}
+                      max={1}
+                      onChange={(e) => {
+                        const n = parseFloat(e.target.value);
+                        if (Number.isFinite(n)) setEdgeParam(Math.max(0, Math.min(1, n)));
+                      }}
+                      aria-label="Position along edge (0-1)"
+                    />
+                    <span className="tp-unit">t</span>
+                  </div>
+                </div>
+                <div style={{ fontSize: 10, color: '#888', padding: '0 6px 4px' }}>
+                  t = 0 → start of edge, t = 1 → end of edge
+                </div>
+              </>
+            )}
+
+            {/* Default reference rows for single / multiple placement */}
+            {(placement === 'single' || placement === 'multiple') && (
+              <>
+                <div className="tp-row">
+                  <span className="tp-label">Reference</span>
+                  <FaceSelector selected={false} pickActive={false} onClear={() => {}} emptyLabel="Select" />
+                </div>
+                <div className="tp-row">
+                  <span className="tp-label">Reference</span>
+                  <FaceSelector selected={false} pickActive={false} onClear={() => {}} emptyLabel="Select" />
+                </div>
+              </>
+            )}
           </CollapsibleSection>
 
           <div className="tp-divider" />
@@ -229,6 +348,7 @@ export function HoleDialog({ onClose }: { onClose: () => void }) {
                   <option value="blind">↔ Distance</option>
                   <option value="through-all">Through All</option>
                   <option value="to-object">To Object</option>
+                  <option value="to-face">To Face</option>
                 </select>
                 <button type="button" className="tp-icon-btn" title="Flip direction" aria-label="Flip direction">
                   <svg width={11} height={11} viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth={1.4}>
@@ -237,6 +357,13 @@ export function HoleDialog({ onClose }: { onClose: () => void }) {
                 </button>
               </div>
             </div>
+            {/* SDK-2: To-Face — face selector for termination face */}
+            {termination === 'to-face' && (
+              <div className="tp-row">
+                <span className="tp-label">To Face</span>
+                <FaceSelector selected={false} pickActive={false} onClear={() => {}} emptyLabel="Select face" />
+              </div>
+            )}
             <div className="tp-row">
               <span className="tp-label">Hole Type</span>
               <SegmentedIconGroup
@@ -445,11 +572,13 @@ export function HoleDialog({ onClose }: { onClose: () => void }) {
 
           <div className="tp-divider" />
 
-          {/* ── Objects To Cut ───────────────────────────────────────── */}
+          {/* ── Objects To Cut (CORR-14) ───────────────────────────────── */}
           <CollapsibleSection title="Objects To Cut" defaultOpen={false}>
-            <div className="tp-row">
-              <span className="tp-label tp-label--full">All visible bodies will be cut.</span>
-            </div>
+            <ParticipantBodyPicker
+              selectedIds={participantBodyIds}
+              onChange={setParticipantBodyIds}
+              label="Select bodies to cut (empty = all)"
+            />
           </CollapsibleSection>
         </div>
 

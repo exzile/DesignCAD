@@ -3,11 +3,12 @@ import * as THREE from 'three';
 import { useCADStore } from '../../../store/cadStore';
 import { useFacePicker, type FacePickResult } from '../../../hooks/useFacePicker';
 
-// Module-level scratch — no per-frame allocation
+// Module-level scratch — no per-click allocation
 const _mat = new THREE.Matrix4();
 const _up = new THREE.Vector3();
 const _dir = new THREE.Vector3();
 const _zero = new THREE.Vector3();
+const _q = new THREE.Quaternion();
 
 /**
  * NAV-6 / CTX-13: When cameraNavMode === 'look-at', the next face click
@@ -29,8 +30,8 @@ export default function LookAtInteraction() {
       if (Math.abs(_up.dot(_dir)) > 0.99) _up.set(1, 0, 0);
       // lookAt: -Z of matrix points toward target. Here target = origin + _dir.
       _mat.lookAt(_zero, _dir, _up);
-      const q = new THREE.Quaternion().setFromRotationMatrix(_mat);
-      setCameraTargetQuaternion(q);
+      _q.setFromRotationMatrix(_mat);
+      setCameraTargetQuaternion(_q.clone());
       setCameraNavMode(null);
     },
     [setCameraTargetQuaternion, setCameraNavMode],

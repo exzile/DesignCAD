@@ -42,20 +42,27 @@ export default function ExtrudeTool() {
   const setSelectedIds = useCADStore((s) => s.setExtrudeSelectedSketchIds);
   const setStatusMessage = useCADStore((s) => s.setStatusMessage);
   const startExtrudeFromFace = useCADStore((s) => s.startExtrudeFromFace);
+  const addFaceToExtrude = useCADStore((s) => s.addFaceToExtrude);
   const distance = useCADStore((s) => s.extrudeDistance);
   const direction = useCADStore((s) => s.extrudeDirection);
 
   const [hoveredId, setHoveredId] = useState<string | null>(null);
   const [faceHit, setFaceHit] = useState<FacePickResult | null>(null);
 
-  // Face picker for press-pull (solid body faces). Only active when no
-  // sketch profile has been selected yet. Profile meshes are excluded.
+  // Face picker for press-pull (EX-11: also active when sketch profiles are already selected).
+  //  - No profiles → startExtrudeFromFace (replaces selection, press-pull flow)
+  //  - Profiles already selected → addFaceToExtrude (appends coplanar face profile)
+  // Profile meshes are excluded so the face picker doesn't fight the profile picker.
   useFacePicker({
-    enabled: activeTool === 'extrude' && selectedIds.length === 0,
+    enabled: activeTool === 'extrude',
     filter: (mesh) => !mesh.userData?.profileKey,
     onHover: setFaceHit,
     onClick: (result) => {
-      startExtrudeFromFace(result.boundary, result.normal, result.centroid);
+      if (selectedIds.length === 0) {
+        startExtrudeFromFace(result.boundary, result.normal, result.centroid);
+      } else {
+        addFaceToExtrude(result.boundary, result.normal, result.centroid);
+      }
       setFaceHit(null);
     },
   });
@@ -217,8 +224,13 @@ export default function ExtrudeTool() {
 
   // Set hover status message whenever a face is being highlighted
   useEffect(() => {
-    if (faceHit) setStatusMessage('Click face to press-pull — extrude along its normal');
-  }, [faceHit, setStatusMessage]);
+    if (!faceHit) return;
+    setStatusMessage(
+      selectedIds.length === 0
+        ? 'Click face to press-pull — extrude along its normal'
+        : 'Click face to add as additional profile (EX-11)',
+    );
+  }, [faceHit, selectedIds.length, setStatusMessage]);
 
   const selectedSketches = useMemo(() =>
     selectedIds.map((id) => ({ id, sketch: getSketchForSelection(id) })).filter(

@@ -244,7 +244,7 @@ export default function Toolbar() {
     { icon: <Circle size={MI} />, label: 'Cylinder', onClick: () => setActiveDialog('primitive-cylinder') },
     { icon: <Globe size={MI} />, label: 'Sphere', onClick: () => setActiveDialog('primitive-sphere') },
     { icon: <CircleDot size={MI} />, label: 'Torus', onClick: () => setActiveDialog('primitive-torus') },
-    { icon: <Spline size={MI} />, label: 'Coil', onClick: () => setActiveDialog('primitive-coil') },
+    { icon: <Spline size={MI} />, label: 'Coil', onClick: () => setActiveDialog('coil') },
     { icon: <Minus size={MI} />, label: 'Pipe', onClick: () => setActiveDialog('pipe') },
     {
       separator: true,
@@ -501,6 +501,7 @@ export default function Toolbar() {
     { icon: <FlipHorizontal size={MI} />, label: 'Mirror', onClick: () => { setActiveTool('sketch-mirror' as Tool); setStatusMessage('Mirror: select axis direction, then click OK'); } },
     { separator: true, icon: <Repeat size={MI} />, label: 'Circular Pattern', onClick: () => { setActiveTool('sketch-circ-pattern' as Tool); setStatusMessage('Circular Pattern: set count and angle, then click OK'); } },
     { icon: <Repeat size={MI} />, label: 'Rectangular Pattern', onClick: () => { setActiveTool('sketch-rect-pattern' as Tool); setStatusMessage('Rectangular Pattern: set counts and spacing, then click OK'); } },
+    { icon: <Repeat size={MI} />, label: 'Pattern on Path', onClick: () => { setActiveTool('sketch-path-pattern' as Tool); setStatusMessage('Pattern on Path: select a path curve, set count, then click OK'); } },
     { separator: true, icon: <Move size={MI} />, label: 'Move', shortcut: 'M', onClick: () => { setActiveTool('sketch-move' as Tool); setStatusMessage('Move: set X/Y offset in plane-local coords, then click OK'); } },
     { icon: <Copy size={MI} />, label: 'Copy', onClick: () => { setActiveTool('sketch-copy' as Tool); setStatusMessage('Copy: set X/Y offset, then click OK to duplicate entities'); } },
     { icon: <Move size={MI} />, label: 'Scale', onClick: () => { setActiveTool('sketch-scale' as Tool); setStatusMessage('Scale: set factor about centroid, then click OK'); } },

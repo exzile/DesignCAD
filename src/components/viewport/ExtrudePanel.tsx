@@ -6,6 +6,7 @@ import {
   type ExtrudeOperation,
 } from '../../store/cadStore';
 import ExpressionInput from '../ui/ExpressionInput';
+import { ParticipantBodyPicker } from '../ui/ParticipantBodyPicker';
 import { GeometryEngine } from '../../engine/GeometryEngine';
 
 export default function ExtrudePanel() {
@@ -29,23 +30,52 @@ export default function ExtrudePanel() {
   const setThinThickness = useCADStore((s) => s.setExtrudeThinThickness);
   const thinSide = useCADStore((s) => s.extrudeThinSide);
   const setThinSide = useCADStore((s) => s.setExtrudeThinSide);
+  // EX-7/EX-8: per-side thin values
+  const thinSide2 = useCADStore((s) => s.extrudeThinSide2);
+  const setThinSide2 = useCADStore((s) => s.setExtrudeThinSide2);
+  const thinThickness2 = useCADStore((s) => s.extrudeThinThickness2);
+  const setThinThickness2 = useCADStore((s) => s.setExtrudeThinThickness2);
   const startType = useCADStore((s) => s.extrudeStartType);
   const setStartType = useCADStore((s) => s.setExtrudeStartType);
   const startOffset = useCADStore((s) => s.extrudeStartOffset);
   const setStartOffset = useCADStore((s) => s.setExtrudeStartOffset);
+  const startEntityId = useCADStore((s) => s.extrudeStartEntityId);
+  void startEntityId; // populated by face-picker interaction (CORR-8 / EX-4)
+  const participantBodyIds = useCADStore((s) => s.extrudeParticipantBodyIds);
+  const setParticipantBodyIds = useCADStore((s) => s.setExtrudeParticipantBodyIds);
+  const confinedFaceIds = useCADStore((s) => s.extrudeConfinedFaceIds);
+  const setConfinedFaceIds = useCADStore((s) => s.setExtrudeConfinedFaceIds);
   const extentType = useCADStore((s) => s.extrudeExtentType);
   const setExtentType = useCADStore((s) => s.setExtrudeExtentType);
+  const extentType2 = useCADStore((s) => s.extrudeExtentType2);
+  const setExtentType2 = useCADStore((s) => s.setExtrudeExtentType2);
+  // EX-3: to-object face data
+  const toEntityFaceId = useCADStore((s) => s.extrudeToEntityFaceId);
+  const clearToEntityFace = useCADStore((s) => s.clearExtrudeToEntityFace);
+  // EX-12: directionHint flip
+  const toObjectFlip = useCADStore((s) => s.extrudeToObjectFlipDirection);
+  const setToObjectFlip = useCADStore((s) => s.setExtrudeToObjectFlipDirection);
+  // EX-4: from-entity face data
+  const startFaceCentroid = useCADStore((s) => s.extrudeStartFaceCentroid);
+  const clearStartFace = useCADStore((s) => s.clearExtrudeStartFace);
   const taperAngle = useCADStore((s) => s.extrudeTaperAngle);
   const setTaperAngle = useCADStore((s) => s.setExtrudeTaperAngle);
+  const taperAngle2 = useCADStore((s) => s.extrudeTaperAngle2);
+  const setTaperAngle2 = useCADStore((s) => s.setExtrudeTaperAngle2);
   const extrudeSymmetricFullLength = useCADStore((s) => s.extrudeSymmetricFullLength);
   const setExtrudeSymmetricFullLength = useCADStore((s) => s.setExtrudeSymmetricFullLength);
   const bodyKind = useCADStore((s) => s.extrudeBodyKind);
   const setBodyKind = useCADStore((s) => s.setExtrudeBodyKind);
   const units = useCADStore((s) => s.units);
+  const editingFeatureId = useCADStore((s) => s.editingFeatureId);
 
   const features = useCADStore((s) => s.features);
+  // EX-13: in edit mode, exclude the editing feature from the "used" set so its
+  // sketch re-appears in the profile picker; still block other extrude sketches.
   const usedSketchIds = new Set(
-    features.filter((f) => f.type === 'extrude').map((f) => f.sketchId),
+    features
+      .filter((f) => f.type === 'extrude' && f.id !== editingFeatureId)
+      .map((f) => f.sketchId),
   );
   const extrudable = sketches.filter((s) =>
     s.entities.length > 0 &&
@@ -91,9 +121,14 @@ export default function ExtrudePanel() {
   const allClosedProfiles = selectedSketches.length > 0 && selectedSketches.every((s) => GeometryEngine.isSketchClosedProfile(s));
   const effectiveBodyKind: 'solid' | 'surface' = allClosedProfiles ? bodyKind : 'surface';
   const isCutMode = operation === 'cut';
-  const canCommit = selectedIds.length > 0 && (extentType === 'all' || Math.abs(distance) > 0.01);
+  const side2ok = direction !== 'two-sides' || extentType2 === 'all' || extentType2 === 'to-object' || Math.abs(distance2) > 0.01;
+  const extent1ok = extentType === 'all' || extentType === 'to-object' || Math.abs(distance) > 0.01;
+  const toObjectOk = extentType !== 'to-object' || toEntityFaceId !== null;
+  const canCommit = selectedIds.length > 0 && extent1ok && side2ok && toObjectOk;
 
-  if (activeTool !== 'extrude' || selectedIds.length === 0) return null;
+  if (activeTool !== 'extrude') return null;
+  // In edit mode show the panel even if profile selection is still loading
+  if (selectedIds.length === 0 && !editingFeatureId) return null;
 
   return (
     <div className="tool-panel">
@@ -102,7 +137,9 @@ export default function ExtrudePanel() {
         <div className={`tp-header-icon ${isCutMode ? 'cut' : 'extrude'}`}>
           {isCutMode ? <Scissors size={12} /> : <ArrowUpFromLine size={12} />}
         </div>
-        <span className="tp-header-title">{isCutMode ? 'Press-Pull Cut' : 'Extrude'}</span>
+        <span className="tp-header-title">
+          {editingFeatureId ? `Edit ${isCutMode ? 'Cut' : 'Extrude'}` : (isCutMode ? 'Press-Pull Cut' : 'Extrude')}
+        </span>
         <button className="tp-close" onClick={cancelExtrudeTool} title="Cancel (Esc)">
           <X size={14} />
         </button>
@@ -148,44 +185,154 @@ export default function ExtrudePanel() {
             </select>
           </div>
 
-          <div className="tp-row">
-            <span className="tp-label">Extent</span>
-            <select
-              className="tp-select"
-              value={extentType}
-              onChange={(e) => setExtentType(e.target.value as 'distance' | 'all')}
-            >
-              <option value="distance">Distance</option>
-              <option value="all">All</option>
-            </select>
-          </div>
-
-          {extentType === 'distance' && (
+          {/* EX-10: when two-sides, each side gets its own independent extent type */}
+          {direction !== 'two-sides' ? (
             <>
               <div className="tp-row">
-                <span className="tp-label">{direction === 'two-sides' ? 'Side 1' : 'Distance'}</span>
-                <div className="tp-input-group">
-                  <ExpressionInput value={distance} onChange={setDistance} step={0.1} />
-                  <span className="tp-unit">{units}</span>
-                </div>
+                <span className="tp-label">Extent</span>
+                <select
+                  className="tp-select"
+                  value={extentType}
+                  onChange={(e) => setExtentType(e.target.value as 'distance' | 'all' | 'to-object')}
+                >
+                  <option value="distance">Distance</option>
+                  <option value="all">All</option>
+                  <option value="to-object">To Object</option>
+                </select>
               </div>
-              {direction === 'symmetric' && (
+              {extentType === 'distance' && (
+                <>
+                  <div className="tp-row">
+                    <span className="tp-label">Distance</span>
+                    <div className="tp-input-group">
+                      <ExpressionInput value={distance} onChange={setDistance} step={0.1} />
+                      <span className="tp-unit">{units}</span>
+                    </div>
+                  </div>
+                  {direction === 'symmetric' && (
+                    <div className="tp-row">
+                      <span className="tp-label">Full Length</span>
+                      <label className="tp-toggle">
+                        <input type="checkbox" checked={extrudeSymmetricFullLength} onChange={() => setExtrudeSymmetricFullLength(!extrudeSymmetricFullLength)} />
+                        <span className="tp-toggle-track" />
+                      </label>
+                    </div>
+                  )}
+                </>
+              )}
+              {/* EX-3/EX-12: To Object — show picked face indicator + flip toggle */}
+              {extentType === 'to-object' && (
+                <>
+                  <div className="tp-row">
+                    {toEntityFaceId
+                      ? <>
+                          <span className="tp-label" style={{ color: '#55cc88' }}>✓ Face selected</span>
+                          <button style={{ fontSize: 10, background: 'none', border: 'none', color: '#5588ff', cursor: 'pointer', padding: 0 }} onClick={clearToEntityFace}>Clear</button>
+                        </>
+                      : <span className="tp-label" style={{ fontSize: 10, color: '#aaaacc' }}>Click a face in viewport to set terminus</span>
+                    }
+                  </div>
+                  {toEntityFaceId && (
+                    <div className="tp-row">
+                      <span className="tp-label">Flip Direction</span>
+                      <label className="tp-toggle">
+                        <input type="checkbox" checked={toObjectFlip} onChange={() => setToObjectFlip(!toObjectFlip)} />
+                        <span className="tp-toggle-track" />
+                      </label>
+                    </div>
+                  )}
+                </>
+              )}
+            </>
+          ) : (
+            <>
+              {/* Side 1 */}
+              <div className="tp-row">
+                <span className="tp-label">Side 1 Extent</span>
+                <select
+                  className="tp-select"
+                  value={extentType}
+                  onChange={(e) => setExtentType(e.target.value as 'distance' | 'all' | 'to-object')}
+                >
+                  <option value="distance">Distance</option>
+                  <option value="all">All</option>
+                  <option value="to-object">To Object</option>
+                </select>
+              </div>
+              {extentType === 'distance' && (
                 <div className="tp-row">
-                  <span className="tp-label">Full Length</span>
-                  <label className="tp-toggle">
-                    <input type="checkbox" checked={extrudeSymmetricFullLength} onChange={() => setExtrudeSymmetricFullLength(!extrudeSymmetricFullLength)} />
-                    <span className="tp-toggle-track" />
-                  </label>
+                  <span className="tp-label">Side 1 Dist</span>
+                  <div className="tp-input-group">
+                    <ExpressionInput value={distance} onChange={setDistance} step={0.1} />
+                    <span className="tp-unit">{units}</span>
+                  </div>
                 </div>
               )}
-              {direction === 'two-sides' && (
+              {extentType === 'to-object' && (
+                <>
+                  <div className="tp-row">
+                    {toEntityFaceId
+                      ? <>
+                          <span className="tp-label" style={{ color: '#55cc88' }}>✓ Face selected</span>
+                          <button style={{ fontSize: 10, background: 'none', border: 'none', color: '#5588ff', cursor: 'pointer', padding: 0 }} onClick={clearToEntityFace}>Clear</button>
+                        </>
+                      : <span className="tp-label" style={{ fontSize: 10, color: '#aaaacc' }}>Click a face in viewport</span>
+                    }
+                  </div>
+                  {toEntityFaceId && (
+                    <div className="tp-row">
+                      <span className="tp-label">Flip Dir</span>
+                      <label className="tp-toggle">
+                        <input type="checkbox" checked={toObjectFlip} onChange={() => setToObjectFlip(!toObjectFlip)} />
+                        <span className="tp-toggle-track" />
+                      </label>
+                    </div>
+                  )}
+                </>
+              )}
+              {/* Side 2 */}
+              <div className="tp-row">
+                <span className="tp-label">Side 2 Extent</span>
+                <select
+                  className="tp-select"
+                  value={extentType2}
+                  onChange={(e) => setExtentType2(e.target.value as 'distance' | 'all' | 'to-object')}
+                >
+                  <option value="distance">Distance</option>
+                  <option value="all">All</option>
+                  <option value="to-object">To Object</option>
+                </select>
+              </div>
+              {extentType2 === 'distance' && (
                 <div className="tp-row">
-                  <span className="tp-label">Side 2</span>
+                  <span className="tp-label">Side 2 Dist</span>
                   <div className="tp-input-group">
                     <ExpressionInput value={distance2} onChange={setDistance2} step={0.1} />
                     <span className="tp-unit">{units}</span>
                   </div>
                 </div>
+              )}
+              {extentType2 === 'to-object' && (
+                <>
+                <div className="tp-row">
+                  {toEntityFaceId
+                    ? <>
+                        <span className="tp-label" style={{ color: '#55cc88' }}>✓ Face selected</span>
+                        <button style={{ fontSize: 10, background: 'none', border: 'none', color: '#5588ff', cursor: 'pointer', padding: 0 }} onClick={clearToEntityFace}>Clear</button>
+                      </>
+                    : <span className="tp-label" style={{ fontSize: 10, color: '#aaaacc' }}>Click a face in viewport</span>
+                  }
+                </div>
+                {toEntityFaceId && (
+                  <div className="tp-row">
+                    <span className="tp-label">Flip Dir</span>
+                    <label className="tp-toggle">
+                      <input type="checkbox" checked={toObjectFlip} onChange={() => setToObjectFlip(!toObjectFlip)} />
+                      <span className="tp-toggle-track" />
+                    </label>
+                  </div>
+                )}
+                </>
               )}
             </>
           )}
@@ -195,10 +342,11 @@ export default function ExtrudePanel() {
             <select
               className="tp-select"
               value={startType}
-              onChange={(e) => setStartType(e.target.value as 'profile' | 'offset')}
+              onChange={(e) => setStartType(e.target.value as 'profile' | 'offset' | 'entity')}
             >
               <option value="profile">Profile Plane</option>
               <option value="offset">Offset</option>
+              <option value="entity">From Entity</option>
             </select>
           </div>
 
@@ -212,23 +360,54 @@ export default function ExtrudePanel() {
             </div>
           )}
 
-          {effectiveBodyKind === 'solid' && (
+          {startType === 'entity' && (
             <div className="tp-row">
-              <span className="tp-label">Taper</span>
-              <div className="tp-input-group">
-                <input
-                  type="number"
-                  step="0.5"
-                  min="-89"
-                  max="89"
-                  value={taperAngle}
-                  onChange={(e) => {
-                    const v = Number(e.target.value);
-                    if (!Number.isNaN(v)) setTaperAngle(Math.max(-89, Math.min(89, v)));
-                  }}
-                />
-                <span className="tp-unit">°</span>
+              {startFaceCentroid
+                ? <>
+                    <span className="tp-label" style={{ color: '#55cc88' }}>✓ Start face selected</span>
+                    <button style={{ fontSize: 10, background: 'none', border: 'none', color: '#5588ff', cursor: 'pointer', padding: 0 }} onClick={clearStartFace}>Clear</button>
+                  </>
+                : <span className="tp-label" style={{ fontSize: 10, color: '#aaaacc' }}>Click a face/plane in viewport to set start entity</span>
+              }
+            </div>
+          )}
+
+          {effectiveBodyKind === 'solid' && (
+            direction === 'two-sides' ? (
+              <>
+                <div className="tp-row">
+                  <span className="tp-label">Taper 1</span>
+                  <div className="tp-input-group">
+                    <input type="number" step="0.5" min="-89" max="89" value={taperAngle}
+                      onChange={(e) => { const v = Number(e.target.value); if (!Number.isNaN(v)) setTaperAngle(Math.max(-89, Math.min(89, v))); }} />
+                    <span className="tp-unit">°</span>
+                  </div>
+                </div>
+                <div className="tp-row">
+                  <span className="tp-label">Taper 2</span>
+                  <div className="tp-input-group">
+                    <input type="number" step="0.5" min="-89" max="89" value={taperAngle2}
+                      onChange={(e) => { const v = Number(e.target.value); if (!Number.isNaN(v)) setTaperAngle2(Math.max(-89, Math.min(89, v))); }} />
+                    <span className="tp-unit">°</span>
+                  </div>
+                </div>
+              </>
+            ) : (
+              <div className="tp-row">
+                <span className="tp-label">Taper</span>
+                <div className="tp-input-group">
+                  <input type="number" step="0.5" min="-89" max="89" value={taperAngle}
+                    onChange={(e) => { const v = Number(e.target.value); if (!Number.isNaN(v)) setTaperAngle(Math.max(-89, Math.min(89, v))); }} />
+                  <span className="tp-unit">°</span>
+                </div>
               </div>
+            )
+          )}
+
+          {/* EX-14: Taper angle geometric validation warning */}
+          {effectiveBodyKind === 'solid' && (Math.abs(taperAngle) >= 45 || (direction === 'two-sides' && Math.abs(taperAngle2) >= 45)) && (
+            <div className="tp-row" style={{ color: '#ffaa44', fontSize: 10, gap: 4 }}>
+              <span>⚠ Taper ≥ 45° may collapse the profile.</span>
             </div>
           )}
         </div>
@@ -271,7 +450,7 @@ export default function ExtrudePanel() {
               {thinEnabled && (
                 <>
                   <div className="tp-row">
-                    <span className="tp-label">Thickness</span>
+                    <span className="tp-label">{direction === 'two-sides' ? 'Thickness 1' : 'Thickness'}</span>
                     <div className="tp-input-group">
                       <input
                         type="number"
@@ -287,7 +466,7 @@ export default function ExtrudePanel() {
                     </div>
                   </div>
                   <div className="tp-row">
-                    <span className="tp-label">Side</span>
+                    <span className="tp-label">{direction === 'two-sides' ? 'Side 1 Loc' : 'Side'}</span>
                     <select
                       className="tp-select"
                       value={thinSide}
@@ -298,6 +477,38 @@ export default function ExtrudePanel() {
                       <option value="center">Center</option>
                     </select>
                   </div>
+                  {direction === 'two-sides' && (
+                    <>
+                      <div className="tp-row">
+                        <span className="tp-label">Thickness 2</span>
+                        <div className="tp-input-group">
+                          <input
+                            type="number"
+                            step="0.1"
+                            min="0.01"
+                            value={thinThickness2}
+                            onChange={(e) => {
+                              const v = Number(e.target.value);
+                              if (!Number.isNaN(v) && v > 0) setThinThickness2(v);
+                            }}
+                          />
+                          <span className="tp-unit">{units}</span>
+                        </div>
+                      </div>
+                      <div className="tp-row">
+                        <span className="tp-label">Side 2 Loc</span>
+                        <select
+                          className="tp-select"
+                          value={thinSide2}
+                          onChange={(e) => setThinSide2(e.target.value as 'side1' | 'side2' | 'center')}
+                        >
+                          <option value="side1">Side 1</option>
+                          <option value="side2">Side 2</option>
+                          <option value="center">Center</option>
+                        </select>
+                      </div>
+                    </>
+                  )}
                 </>
               )}
             </>
@@ -314,6 +525,45 @@ export default function ExtrudePanel() {
               <option value="surface">Surface Body</option>
             </select>
           </div>
+
+          {/* EX-9: Participant Bodies — only relevant for cut/intersect */}
+          {(operation === 'cut' || operation === 'intersect') && (
+            <div className="tp-row" style={{ flexDirection: 'column', alignItems: 'flex-start' }}>
+              <ParticipantBodyPicker
+                selectedIds={participantBodyIds}
+                onChange={setParticipantBodyIds}
+                label="Participant Bodies"
+              />
+            </div>
+          )}
+
+          {/* SDK-12: Confined Faces — restrict extrude to stay within bounding faces */}
+          <div className="tp-row">
+            <label className="tp-checkbox-label">
+              <input
+                type="checkbox"
+                checked={confinedFaceIds.length > 0}
+                onChange={(e) => { if (!e.target.checked) setConfinedFaceIds([]); }}
+              />
+              <span>Confined Faces</span>
+            </label>
+          </div>
+          {confinedFaceIds.length > 0 && (
+            <div style={{ fontSize: 10, color: '#888', padding: '0 6px 4px' }}>
+              {confinedFaceIds.length} bounding face{confinedFaceIds.length > 1 ? 's' : ''} selected
+              <button
+                style={{ marginLeft: 6, fontSize: 10, background: 'none', border: 'none', color: '#5588ff', cursor: 'pointer', padding: 0 }}
+                onClick={() => setConfinedFaceIds([])}
+              >
+                Clear
+              </button>
+            </div>
+          )}
+          {confinedFaceIds.length === 0 && (
+            <div style={{ fontSize: 10, color: '#666', padding: '0 6px 4px' }}>
+              Enable to limit extrude to selected bounding faces (face-pick via viewport)
+            </div>
+          )}
         </div>
 
         {/* ── Actions ── */}
@@ -326,7 +576,7 @@ export default function ExtrudePanel() {
             onClick={commitExtrude}
             disabled={!canCommit}
           >
-            <Check size={13} /> OK
+            <Check size={13} /> {editingFeatureId ? 'Update' : 'OK'}
           </button>
         </div>
       </div>

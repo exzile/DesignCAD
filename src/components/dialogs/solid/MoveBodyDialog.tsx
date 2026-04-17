@@ -7,6 +7,14 @@ export function MoveBodyDialog({ onClose }: { onClose: () => void }) {
   const features = useCADStore((s) => s.features);
   const addFeature = useCADStore((s) => s.addFeature);
   const setStatusMessage = useCADStore((s) => s.setStatusMessage);
+  // NAV-8/NAV-9: incremental move/rotate snapping
+  const incrementalMove = useCADStore((s) => s.incrementalMove);
+  const moveIncrement = useCADStore((s) => s.moveIncrement);
+  const rotateIncrement = useCADStore((s) => s.rotateIncrement);
+  const snapToStep = (v: number, step: number) =>
+    incrementalMove ? Math.round(v / step) * step : v;
+  const moveStep = incrementalMove ? moveIncrement : 1;
+  const rotStep = incrementalMove ? rotateIncrement : 1;
 
   const solidFeatures = features.filter((f) => f.type !== 'sketch' && f.type !== 'construction-plane' && f.type !== 'construction-axis');
 
@@ -63,30 +71,36 @@ export function MoveBodyDialog({ onClose }: { onClose: () => void }) {
           </div>
           <div className="settings-grid">
             <div className="form-group">
-              <label>X Offset (mm)</label>
-              <input type="number" value={dx} onChange={(e) => setDx(parseFloat(e.target.value) || 0)} step={1} />
+              <label>X Offset (mm){incrementalMove ? ` [snap: ${moveStep}]` : ''}</label>
+              <input type="number" value={dx} step={moveStep}
+                onChange={(e) => setDx(snapToStep(parseFloat(e.target.value) || 0, moveStep))} />
             </div>
             <div className="form-group">
               <label>Y Offset (mm)</label>
-              <input type="number" value={dy} onChange={(e) => setDy(parseFloat(e.target.value) || 0)} step={1} />
+              <input type="number" value={dy} step={moveStep}
+                onChange={(e) => setDy(snapToStep(parseFloat(e.target.value) || 0, moveStep))} />
             </div>
             <div className="form-group">
               <label>Z Offset (mm)</label>
-              <input type="number" value={dz} onChange={(e) => setDz(parseFloat(e.target.value) || 0)} step={1} />
+              <input type="number" value={dz} step={moveStep}
+                onChange={(e) => setDz(snapToStep(parseFloat(e.target.value) || 0, moveStep))} />
             </div>
           </div>
           <div className="settings-grid">
             <div className="form-group">
-              <label>X Rotation (°)</label>
-              <input type="number" value={rx} onChange={(e) => setRx(parseFloat(e.target.value) || 0)} step={1} />
+              <label>X Rotation (°){incrementalMove ? ` [snap: ${rotStep}°]` : ''}</label>
+              <input type="number" value={rx} step={rotStep}
+                onChange={(e) => setRx(snapToStep(parseFloat(e.target.value) || 0, rotStep))} />
             </div>
             <div className="form-group">
               <label>Y Rotation (°)</label>
-              <input type="number" value={ry} onChange={(e) => setRy(parseFloat(e.target.value) || 0)} step={1} />
+              <input type="number" value={ry} step={rotStep}
+                onChange={(e) => setRy(snapToStep(parseFloat(e.target.value) || 0, rotStep))} />
             </div>
             <div className="form-group">
               <label>Z Rotation (°)</label>
-              <input type="number" value={rz} onChange={(e) => setRz(parseFloat(e.target.value) || 0)} step={1} />
+              <input type="number" value={rz} step={rotStep}
+                onChange={(e) => setRz(snapToStep(parseFloat(e.target.value) || 0, rotStep))} />
             </div>
           </div>
           <label className="checkbox-label">

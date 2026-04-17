@@ -20,6 +20,14 @@ export default function SketchInteraction() {
   const setStatusMessage = useCADStore((s) => s.setStatusMessage);
   const snapEnabled = useCADStore((s) => s.snapEnabled);
   const sketchSnapEnabled = useCADStore((s) => s.sketchSnapEnabled);
+  // NAV-24: per-type object snap settings
+  const objectSnapEnabled = useCADStore((s) => s.objectSnapEnabled);
+  const snapToEndpoint = useCADStore((s) => s.snapToEndpoint);
+  const snapToMidpoint = useCADStore((s) => s.snapToMidpoint);
+  const snapToCenter = useCADStore((s) => s.snapToCenter);
+  const snapToIntersection = useCADStore((s) => s.snapToIntersection);
+  const snapToPerpendicular = useCADStore((s) => s.snapToPerpendicular);
+  const snapToTangent = useCADStore((s) => s.snapToTangent);
   const gridSize = useCADStore((s) => s.gridSize);
   const units = useCADStore((s) => s.units);
   const polygonSides = useCADStore((s) => s.sketchPolygonSides);
@@ -69,7 +77,7 @@ export default function SketchInteraction() {
   const [drawingPoints, setDrawingPoints] = useState<SketchPoint[]>([]);
   const [mousePos, setMousePos] = useState<THREE.Vector3 | null>(null);
   // D65: snap indicator target
-  const [snapTarget, setSnapTarget] = useState<{ worldPos: THREE.Vector3; type: 'endpoint' | 'midpoint' | 'center' | 'intersection' } | null>(null);
+  const [snapTarget, setSnapTarget] = useState<{ worldPos: THREE.Vector3; type: 'endpoint' | 'midpoint' | 'center' | 'intersection' | 'perpendicular' | 'tangent' } | null>(null);
   const previewRef = useRef<THREE.Group>(null);
   // Stable preview materials — created once, never recreated per frame
   const previewMaterial = useRef(new THREE.LineBasicMaterial({ color: 0xffaa00, linewidth: 2 }));
@@ -165,14 +173,18 @@ export default function SketchInteraction() {
     );
   }, [snapEnabled, sketchSnapEnabled, gridSize]);
 
-  // D65 / S8: find nearest snap candidate (endpoint / midpoint / center / intersection) within snap radius
+  // D65 / S8 / NAV-24: find nearest snap candidate within snap radius.
+  // Supports endpoint, midpoint, center, intersection (existing) +
+  // perpendicular and tangent (NAV-24).
   const SNAP_RADIUS = 4;
-  const findSnapCandidate = useCallback((worldPt: THREE.Vector3) => {
+  const findSnapCandidate = useCallback((worldPt: THREE.Vector3, drawStart?: THREE.Vector3 | null) => {
     if (!activeSketch || !snapEnabled) return null;
+    // NAV-24: master object-snap gate
+    if (!objectSnapEnabled) return null;
     let bestDist = SNAP_RADIUS;
-    let best: { worldPos: THREE.Vector3; type: 'endpoint' | 'midpoint' | 'center' | 'intersection' } | null = null;
+    let best: { worldPos: THREE.Vector3; type: 'endpoint' | 'midpoint' | 'center' | 'intersection' | 'perpendicular' | 'tangent' } | null = null;
 
-    // Collect line-like entities for intersection testing (S8)
+    // Collect line-like entities for intersection / perpendicular testing
     const lineEntities = activeSketch.entities.filter(
       (e) =>
         (e.type === 'line' || e.type === 'construction-line' || e.type === 'centerline') &&
@@ -181,81 +193,122 @@ export default function SketchInteraction() {
 
     for (const e of activeSketch.entities) {
       if ((e.type === 'line' || e.type === 'construction-line' || e.type === 'centerline') && e.points.length >= 2) {
-        for (const idx of [0, e.points.length - 1]) {
-          const p = e.points[idx];
-          const wp = new THREE.Vector3(p.x, p.y, p.z);
-          const d = worldPt.distanceTo(wp);
-          if (d < bestDist) { bestDist = d; best = { worldPos: wp, type: 'endpoint' }; }
+        // Endpoint snap
+        if (snapToEndpoint) {
+          for (const idx of [0, e.points.length - 1]) {
+            const p = e.points[idx];
+            const wp = new THREE.Vector3(p.x, p.y, p.z);
+            const d = worldPt.distanceTo(wp);
+            if (d < bestDist) { bestDist = d; best = { worldPos: wp, type: 'endpoint' }; }
+          }
         }
-        const p0 = e.points[0], p1 = e.points[e.points.length - 1];
-        const mid = new THREE.Vector3((p0.x + p1.x) / 2, (p0.y + p1.y) / 2, (p0.z + p1.z) / 2);
-        const dm = worldPt.distanceTo(mid);
-        if (dm < bestDist) { bestDist = dm; best = { worldPos: mid, type: 'midpoint' }; }
+        // Midpoint snap
+        if (snapToMidpoint) {
+          const p0 = e.points[0], p1 = e.points[e.points.length - 1];
+          const mid = new THREE.Vector3((p0.x + p1.x) / 2, (p0.y + p1.y) / 2, (p0.z + p1.z) / 2);
+          const dm = worldPt.distanceTo(mid);
+          if (dm < bestDist) { bestDist = dm; best = { worldPos: mid, type: 'midpoint' }; }
+        }
+        // Perpendicular snap: foot of perpendicular from worldPt to segment
+        if (snapToPerpendicular) {
+          const P0 = new THREE.Vector3(e.points[0].x, e.points[0].y, e.points[0].z);
+          const P1 = new THREE.Vector3(e.points[e.points.length - 1].x, e.points[e.points.length - 1].y, e.points[e.points.length - 1].z);
+          const seg = P1.clone().sub(P0);
+          const segLen2 = seg.lengthSq();
+          if (segLen2 > 1e-10) {
+            const t = worldPt.clone().sub(P0).dot(seg) / segLen2;
+            if (t >= 0 && t <= 1) {
+              const foot = P0.clone().addScaledVector(seg, t);
+              const df = worldPt.distanceTo(foot);
+              if (df < bestDist) { bestDist = df; best = { worldPos: foot, type: 'perpendicular' }; }
+            }
+          }
+        }
       } else if ((e.type === 'circle' || e.type === 'arc') && e.points.length >= 1) {
-        const center = new THREE.Vector3(e.points[0].x, e.points[0].y, e.points[0].z);
-        const d = worldPt.distanceTo(center);
-        if (d < bestDist) { bestDist = d; best = { worldPos: center, type: 'center' }; }
+        // Center snap
+        if (snapToCenter) {
+          const center = new THREE.Vector3(e.points[0].x, e.points[0].y, e.points[0].z);
+          const d = worldPt.distanceTo(center);
+          if (d < bestDist) { bestDist = d; best = { worldPos: center, type: 'center' }; }
+        }
+        // Tangent snap: when drawing a line (drawStart set), find tangent point on circle
+        // where the line from drawStart to that point is tangent to the circle.
+        // Simplified: snap to point on circle rim closest to the infinite tangent direction.
+        if (snapToTangent && drawStart && e.points.length >= 2) {
+          const center = new THREE.Vector3(e.points[0].x, e.points[0].y, e.points[0].z);
+          const radiusPt = new THREE.Vector3(e.points[1].x, e.points[1].y, e.points[1].z);
+          const r = center.distanceTo(radiusPt);
+          if (r > 1e-6) {
+            // Find the two tangent points from drawStart to the circle
+            const dVec = center.clone().sub(drawStart);
+            const dist = dVec.length();
+            if (dist > r) {
+              const alpha = Math.asin(r / dist);
+              const baseAngle = Math.atan2(dVec.y, dVec.x);
+              for (const sign of [-1, 1]) {
+                const angle = baseAngle + sign * (Math.PI / 2 - alpha);
+                const tp = center.clone().add(new THREE.Vector3(Math.cos(angle) * r, Math.sin(angle) * r, 0));
+                const dt = worldPt.distanceTo(tp);
+                if (dt < bestDist) { bestDist = dt; best = { worldPos: tp, type: 'tangent' }; }
+              }
+            }
+          }
+        }
       }
     }
 
-    // S8: brute-force line-line intersection snap. For each pair of line-like
-    // entities, compute the 3D closest-approach point on the first segment and
-    // check if it's near the cursor. Uses infinite-line equations so the result
-    // works even when the segments don't strictly overlap — matching Fusion 360.
-    for (let i = 0; i < lineEntities.length; i++) {
-      const a = lineEntities[i];
-      const A0 = new THREE.Vector3(a.points[0].x, a.points[0].y, a.points[0].z);
-      const Ad = new THREE.Vector3(
-        a.points[a.points.length - 1].x - a.points[0].x,
-        a.points[a.points.length - 1].y - a.points[0].y,
-        a.points[a.points.length - 1].z - a.points[0].z,
-      );
-      const aLen = Ad.length();
-      if (aLen < 1e-6) continue;
-      Ad.divideScalar(aLen);
-
-      for (let j = i + 1; j < lineEntities.length; j++) {
-        const b = lineEntities[j];
-        const B0 = new THREE.Vector3(b.points[0].x, b.points[0].y, b.points[0].z);
-        const Bd = new THREE.Vector3(
-          b.points[b.points.length - 1].x - b.points[0].x,
-          b.points[b.points.length - 1].y - b.points[0].y,
-          b.points[b.points.length - 1].z - b.points[0].z,
+    // S8 / NAV-24: brute-force line-line intersection snap
+    if (snapToIntersection) {
+      for (let i = 0; i < lineEntities.length; i++) {
+        const a = lineEntities[i];
+        const A0 = new THREE.Vector3(a.points[0].x, a.points[0].y, a.points[0].z);
+        const Ad = new THREE.Vector3(
+          a.points[a.points.length - 1].x - a.points[0].x,
+          a.points[a.points.length - 1].y - a.points[0].y,
+          a.points[a.points.length - 1].z - a.points[0].z,
         );
-        const bLen = Bd.length();
-        if (bLen < 1e-6) continue;
-        Bd.divideScalar(bLen);
+        const aLen = Ad.length();
+        if (aLen < 1e-6) continue;
+        Ad.divideScalar(aLen);
 
-        // Parametric closest-approach between infinite lines:
-        //   P1 = A0 + t*Ad    P2 = B0 + s*Bd
-        //   solve t, s = minimize |P1 - P2|
-        const w0 = new THREE.Vector3().subVectors(A0, B0);
-        const a11 = Ad.dot(Ad);
-        const a12 = -Ad.dot(Bd);
-        const a22 = Bd.dot(Bd);
-        const b1 = -Ad.dot(w0);
-        const b2 = Bd.dot(w0);
-        const det = a11 * a22 - a12 * a12;
-        if (Math.abs(det) < 1e-8) continue; // parallel — no unique intersection
-        const t = (a22 * b1 - a12 * b2) / det;
-        const s = (a11 * b2 - a12 * b1) / det;
-        // Keep snaps that lie on (or very near) both segments — within 10% tolerance
-        if (t < -0.1 * aLen || t > 1.1 * aLen) continue;
-        if (s < -0.1 * bLen || s > 1.1 * bLen) continue;
+        for (let j = i + 1; j < lineEntities.length; j++) {
+          const b = lineEntities[j];
+          const B0 = new THREE.Vector3(b.points[0].x, b.points[0].y, b.points[0].z);
+          const Bd = new THREE.Vector3(
+            b.points[b.points.length - 1].x - b.points[0].x,
+            b.points[b.points.length - 1].y - b.points[0].y,
+            b.points[b.points.length - 1].z - b.points[0].z,
+          );
+          const bLen = Bd.length();
+          if (bLen < 1e-6) continue;
+          Bd.divideScalar(bLen);
 
-        const P1 = A0.clone().add(Ad.clone().multiplyScalar(t));
-        const P2 = B0.clone().add(Bd.clone().multiplyScalar(s));
-        // Only accept if the closest-approach distance is small (i.e. actual intersection)
-        if (P1.distanceTo(P2) > 0.5) continue;
+          const w0 = new THREE.Vector3().subVectors(A0, B0);
+          const a11 = Ad.dot(Ad);
+          const a12 = -Ad.dot(Bd);
+          const a22 = Bd.dot(Bd);
+          const b1 = -Ad.dot(w0);
+          const b2 = Bd.dot(w0);
+          const det = a11 * a22 - a12 * a12;
+          if (Math.abs(det) < 1e-8) continue;
+          const t = (a22 * b1 - a12 * b2) / det;
+          const s = (a11 * b2 - a12 * b1) / det;
+          if (t < -0.1 * aLen || t > 1.1 * aLen) continue;
+          if (s < -0.1 * bLen || s > 1.1 * bLen) continue;
 
-        const mid = P1.clone().add(P2).multiplyScalar(0.5);
-        const d = worldPt.distanceTo(mid);
-        if (d < bestDist) { bestDist = d; best = { worldPos: mid, type: 'intersection' }; }
+          const P1 = A0.clone().add(Ad.clone().multiplyScalar(t));
+          const P2 = B0.clone().add(Bd.clone().multiplyScalar(s));
+          if (P1.distanceTo(P2) > 0.5) continue;
+
+          const mid = P1.clone().add(P2).multiplyScalar(0.5);
+          const d = worldPt.distanceTo(mid);
+          if (d < bestDist) { bestDist = d; best = { worldPos: mid, type: 'intersection' }; }
+        }
       }
     }
 
     return best;
-  }, [activeSketch, snapEnabled]);
+  }, [activeSketch, snapEnabled, objectSnapEnabled, snapToEndpoint, snapToMidpoint, snapToCenter, snapToIntersection, snapToPerpendicular, snapToTangent]);
 
   const getWorldPoint = useCallback((event: MouseEvent): THREE.Vector3 | null => {
     const rect = gl.domElement.getBoundingClientRect();
@@ -288,8 +341,11 @@ export default function SketchInteraction() {
     const handleMouseMove = (event: MouseEvent) => {
       const point = getWorldPoint(event);
       if (point) {
-        // D65: entity snap — snaps to endpoint/midpoint/center within SNAP_RADIUS
-        const snapCandidate = findSnapCandidate(point);
+        // D65 / NAV-24: entity snap — pass drawStart for tangent computation
+        const drawStart = drawingPoints.length > 0
+          ? new THREE.Vector3(drawingPoints[0].x, drawingPoints[0].y, drawingPoints[0].z)
+          : null;
+        const snapCandidate = findSnapCandidate(point, drawStart);
         if (snapCandidate) {
           setMousePos(snapCandidate.worldPos.clone());
           setSnapTarget(snapCandidate);
@@ -1314,6 +1370,8 @@ export default function SketchInteraction() {
         id: crypto.randomUUID(),
         type: constraintType,
         entityIds: newSelection,
+        // SK-A9: offset constraint stores the user-specified distance
+        ...(constraintType === 'offset' ? { value: useCADStore.getState().constraintOffsetValue } : {}),
       };
       addSketchConstraint(constraint);
       clearConstraintSelection();
@@ -1505,6 +1563,20 @@ export default function SketchInteraction() {
             <div style={{ width: 12, height: 12, position: 'relative', pointerEvents: 'none' }}>
               <div style={{ position: 'absolute', top: 5, left: 0, width: 12, height: 2, background: '#f97316', transform: 'rotate(45deg)', transformOrigin: 'center' }} />
               <div style={{ position: 'absolute', top: 5, left: 0, width: 12, height: 2, background: '#f97316', transform: 'rotate(-45deg)', transformOrigin: 'center' }} />
+            </div>
+          )}
+          {/* NAV-24: perpendicular snap — right-angle symbol */}
+          {snapTarget.type === 'perpendicular' && (
+            <div style={{ width: 12, height: 12, position: 'relative', pointerEvents: 'none' }}>
+              <div style={{ position: 'absolute', bottom: 0, left: 0, width: 6, height: 2, background: '#cc88ff' }} />
+              <div style={{ position: 'absolute', bottom: 0, left: 0, width: 2, height: 8, background: '#cc88ff' }} />
+            </div>
+          )}
+          {/* NAV-24: tangent snap — small circle with tangent line */}
+          {snapTarget.type === 'tangent' && (
+            <div style={{ width: 12, height: 12, position: 'relative', pointerEvents: 'none' }}>
+              <div style={{ position: 'absolute', top: 1, left: 1, width: 10, height: 10, borderRadius: '50%', border: '2px solid #ff88cc' }} />
+              <div style={{ position: 'absolute', top: -2, left: 5, width: 2, height: 16, background: '#ff88cc', transform: 'rotate(0deg)' }} />
             </div>
           )}
         </Html>

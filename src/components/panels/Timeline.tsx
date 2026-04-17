@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import './Timeline.css';
 import {
   Eye, EyeOff, Trash2, PenTool, ArrowUpFromLine,
@@ -18,6 +18,7 @@ function FeatureIcon({ type }: { type: Feature['type'] }) {
     case 'chamfer':       return <ChevronDown size={14} />;
     case 'emboss':               return <Stamp size={14} />;
     case 'pipe':                 return <GitBranch size={14} />;
+    case 'coil':                 return <RotateCcw size={14} />;
     case 'boundary-fill':        return <BoxSelect size={14} />;
     case 'linear-pattern':       return <Repeat size={14} />;
     case 'rectangular-pattern':  return <Grid size={14} />;
@@ -28,22 +29,29 @@ function FeatureIcon({ type }: { type: Feature['type'] }) {
   }
 }
 
-// MM4 — Group header row
-function GroupHeader({ group }: { group: FeatureGroup }) {
+// MM4 / CORR-17 — Group header row (depth drives left padding for nested groups)
+function GroupHeader({ group, depth = 0 }: { group: FeatureGroup; depth?: number }) {
   const toggleFeatureGroup = useCADStore((s) => s.toggleFeatureGroup);
   const renameFeatureGroup = useCADStore((s) => s.renameFeatureGroup);
   const deleteFeatureGroup = useCADStore((s) => s.deleteFeatureGroup);
+  const nestGroupInGroup = useCADStore((s) => s.nestGroupInGroup);
+  const featureGroups = useCADStore((s) => s.featureGroups);
   const [editing, setEditing] = useState(false);
   const [editName, setEditName] = useState(group.name);
+  const [nestMenuOpen, setNestMenuOpen] = useState(false);
 
   const commitRename = () => {
     if (editName.trim()) renameFeatureGroup(group.id, editName.trim());
     setEditing(false);
   };
 
+  // Candidate parent groups = all groups except self and descendants
+  const nestCandidates = featureGroups.filter((g) => g.id !== group.id && g.parentGroupId !== group.id);
+
   return (
     <div
       className="timeline-group-header"
+      style={depth > 0 ? { paddingLeft: depth * 12 } : undefined}
       onClick={() => toggleFeatureGroup(group.id)}
     >
       <span className="timeline-group-header__accent">
@@ -72,6 +80,33 @@ function GroupHeader({ group }: { group: FeatureGroup }) {
       >
         <Pencil size={11} />
       </button>
+      {/* CORR-17: Nest in another group */}
+      {nestCandidates.length > 0 && (
+        <div style={{ position: 'relative' }} onClick={(e) => e.stopPropagation()}>
+          <button
+            className="timeline-action-btn timeline-group-header__btn"
+            onClick={(e) => { e.stopPropagation(); setNestMenuOpen((v) => !v); }}
+            title="Nest in group"
+          >
+            <FolderOpen size={11} />
+          </button>
+          {nestMenuOpen && (
+            <div className="timeline-context-menu" style={{ top: '100%', right: 0, left: 'auto', minWidth: 140 }}>
+              {group.parentGroupId && (
+                <button className="timeline-context-menu__btn" onClick={() => { nestGroupInGroup(group.id, null); setNestMenuOpen(false); }}>
+                  <Folder size={12} /> Move to top level
+                </button>
+              )}
+              {nestCandidates.map((g) => (
+                <button key={g.id} className="timeline-context-menu__btn"
+                  onClick={() => { nestGroupInGroup(group.id, g.id); setNestMenuOpen(false); }}>
+                  <FolderOpen size={12} /> Nest in "{g.name}"
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
       <button
         className="timeline-action-btn danger timeline-group-header__btn"
         onClick={(e) => { e.stopPropagation(); deleteFeatureGroup(group.id); }}
@@ -108,6 +143,7 @@ function editDialogFor(feature: Feature): string | null {
       return 'split';
     case 'emboss':       return 'emboss';
     case 'pipe':         return 'pipe';
+    case 'coil':         return 'coil';
     case 'boundary-fill': return 'boundary-fill';
     case 'rib':
       if (p.webStyle === 'perpendicular') return 'web';
@@ -145,6 +181,7 @@ function FeatureItem({ feature, index, indented }: { feature: Feature; index: nu
   const selectedFeatureId = useCADStore((s) => s.selectedFeatureId);
   const setSelectedFeatureId = useCADStore((s) => s.setSelectedFeatureId);
   const setEditingFeatureId = useCADStore((s) => s.setEditingFeatureId);
+  const loadExtrudeForEdit = useCADStore((s) => s.loadExtrudeForEdit);
   const setActiveDialog = useCADStore((s) => s.setActiveDialog);
   const reorderFeature = useCADStore((s) => s.reorderFeature);
   const renameFeature = useCADStore((s) => s.renameFeature);
@@ -163,6 +200,11 @@ function FeatureItem({ feature, index, indented }: { feature: Feature; index: nu
 
   // D186: double-click to edit — open the dialog that committed this feature
   const handleDoubleClick = () => {
+    // EX-13: extrude has a panel-based edit flow, not a dialog
+    if (feature.type === 'extrude') {
+      loadExtrudeForEdit(feature.id);
+      return;
+    }
     const dialogId = editDialogFor(feature);
     if (!dialogId) {
       setStatusMessage(`${feature.name}: no editable parameters`);
@@ -433,6 +475,39 @@ export default function Timeline() {
   const [dragOverEnd, setDragOverEnd] = useState(false);
   const reorderFeature = useCADStore((s) => s.reorderFeature);
 
+  // TL-2: Play-from-beginning animation
+  const [isPlaying, setIsPlaying] = useState(false);
+  const playIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const playIndexRef = useRef(0);
+
+  const stopPlayback = () => {
+    if (playIntervalRef.current) {
+      clearInterval(playIntervalRef.current);
+      playIntervalRef.current = null;
+    }
+    setIsPlaying(false);
+  };
+
+  const startPlayback = () => {
+    if (features.length === 0) return;
+    stopPlayback();
+    playIndexRef.current = 0;
+    setRollbackIndex(0);
+    setIsPlaying(true);
+    playIntervalRef.current = setInterval(() => {
+      playIndexRef.current += 1;
+      if (playIndexRef.current >= features.length) {
+        setRollbackIndex(-1);
+        stopPlayback();
+      } else {
+        setRollbackIndex(playIndexRef.current);
+      }
+    }, 400);
+  };
+
+  // Clean up interval on unmount
+  useEffect(() => () => { if (playIntervalRef.current) clearInterval(playIntervalRef.current); }, []);
+
   // MM1: Only show features that were recorded while history was enabled
   const features = allFeatures.filter((f) => !f.suppressTimeline);
 
@@ -444,30 +519,57 @@ export default function Timeline() {
     setDragOverEnd(false);
   };
 
-  // MM4: Build grouped render list
-  // Collect groups that have at least one member feature
-  const activeGroupIds = new Set(features.map((f) => f.groupId).filter(Boolean) as string[]);
-  const relevantGroups = featureGroups.filter((g) => activeGroupIds.has(g.id));
-  const groupMap = new Map(relevantGroups.map((g) => [g.id, g]));
-  // Track which groupIds we've already rendered a header for
-  const renderedGroupHeaders = new Set<string>();
+  // MM4 / CORR-17: Build grouped render list with nested group support
+  const groupMap = new Map(featureGroups.map((g) => [g.id, g]));
+
+  /** Recursively render a group's header + its features + sub-groups, at a given depth. */
+  const renderGroup = (group: FeatureGroup, depth: number, collapsedAncestor: boolean): React.ReactNode[] => {
+    const rows: React.ReactNode[] = [];
+    // The group itself is collapsed if any ancestor is collapsed
+    const isVisible = !collapsedAncestor;
+    if (!isVisible) return rows;
+
+    rows.push(<GroupHeader key={`group-${group.id}`} group={group} depth={depth} />);
+    if (group.collapsed) return rows;
+
+    // Features that belong directly to this group
+    features.forEach((feature, i) => {
+      if (feature.groupId === group.id) {
+        rows.push(<FeatureItem key={feature.id} feature={feature} index={i} indented />);
+      }
+    });
+
+    // Sub-groups
+    featureGroups
+      .filter((g) => g.parentGroupId === group.id)
+      .forEach((subGroup) => {
+        rows.push(...renderGroup(subGroup, depth + 1, false));
+      });
+
+    return rows;
+  };
 
   const renderFeatureList = () => {
     const rows: React.ReactNode[] = [];
+
+    // Top-level groups first (groups without a parentGroupId, or parentGroupId not found)
+    featureGroups
+      .filter((g) => !g.parentGroupId || !groupMap.has(g.parentGroupId))
+      .forEach((group) => {
+        const hasMembers = features.some((f) => f.groupId === group.id) ||
+          featureGroups.some((g) => g.parentGroupId === group.id);
+        if (hasMembers) {
+          rows.push(...renderGroup(group, 0, false));
+        }
+      });
+
+    // Ungrouped features
     features.forEach((feature, i) => {
-      if (feature.groupId) {
-        const group = groupMap.get(feature.groupId);
-        if (group && !renderedGroupHeaders.has(group.id)) {
-          renderedGroupHeaders.add(group.id);
-          rows.push(<GroupHeader key={`group-${group.id}`} group={group} />);
-        }
-        if (!group || !group.collapsed) {
-          rows.push(<FeatureItem key={feature.id} feature={feature} index={i} indented={!!feature.groupId} />);
-        }
-      } else {
+      if (!feature.groupId) {
         rows.push(<FeatureItem key={feature.id} feature={feature} index={i} />);
       }
     });
+
     return rows;
   };
 
@@ -549,6 +651,16 @@ export default function Timeline() {
               @ {rollbackIndex + 1}/{features.length}
             </button>
           )}
+          {/* TL-2: Play from beginning animation */}
+          <button
+            className={`timeline-nav__btn${isPlaying ? ' active' : ''}`}
+            title={isPlaying ? 'Stop playback' : 'Play from beginning (400ms/step)'}
+            disabled={features.length === 0}
+            onClick={isPlaying ? stopPlayback : startPlayback}
+            style={{ marginLeft: 2 }}
+          >
+            {isPlaying ? <PauseCircle size={11} /> : <PlayCircle size={11} />}
+          </button>
           <span className="feature-count">{features.length} features</span>
         </div>
       </div>
