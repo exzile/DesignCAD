@@ -186,6 +186,16 @@ const rootId = crypto.randomUUID();
  */
 let _animationJointSnapshot: Record<string, { rotation?: number; translation?: number }> | null = null;
 
+/**
+ * Mutable per-frame joint rotation values — updated by tickAnimation WITHOUT
+ * triggering Zustand re-renders (60Hz). Scene consumers (JointAnimationPlayer)
+ * read this directly via getState() or this export and apply transforms to
+ * body meshes imperatively, bypassing React's render cycle entirely.
+ *
+ * Values are cleared when animation stops and Zustand joints are synced back.
+ */
+export const _liveJointValues: Record<string, { rotationValue: number; translationValue?: number }> = {};
+
 const defaultMaterial: MaterialAppearance = {
   id: 'aluminum',
   name: 'Aluminum',
@@ -906,10 +916,13 @@ export const useComponentStore = create<ComponentStore>()(persist((set, get) => 
       }
     }
 
-    // Batch all joint value updates into a single set() call to avoid
-    // N+1 separate state updates and re-renders per animation frame.
+    // Compute per-track values and write them into the module-level
+    // _liveJointValues map WITHOUT touching Zustand joints. This avoids
+    // triggering a React re-render on every frame (60Hz) for all components
+    // subscribed to `joints` — those components are only needed at rest pose,
+    // not during playback. JointAnimationPlayer reads _liveJointValues and
+    // applies transforms directly to body meshes each frame.
     const t = animationDuration > 0 ? newTime / animationDuration : 0;
-    const updatedJoints = { ...joints };
     for (const track of animationTracks) {
       let easedT: number;
       switch (track.easing) {
@@ -919,29 +932,33 @@ export const useComponentStore = create<ComponentStore>()(persist((set, get) => 
         default: easedT = t;
       }
       const value = track.startValue + (track.endValue - track.startValue) * easedT;
-      const joint = updatedJoints[track.jointId];
-      if (joint) {
-        updatedJoints[track.jointId] = { ...joint, rotationValue: value };
-      }
+      _liveJointValues[track.jointId] = { rotationValue: value };
     }
 
-    set({
-      animationTime: newTime,
-      animationPlaying: playing,
-      joints: updatedJoints,
-    });
-    // If playback ended naturally (loop=false reached duration), restore the
-    // captured snapshot so the model isn't left frozen at the last frame.
-    if (!playing && _animationJointSnapshot) {
-      const snap = _animationJointSnapshot;
-      const restored = { ...get().joints };
-      for (const id of Object.keys(snap)) {
-        const j = restored[id];
-        const s = snap[id];
-        if (j && s) restored[id] = { ...j, rotationValue: s.rotation ?? j.rotationValue, translationValue: s.translation ?? j.translationValue };
+    if (playing) {
+      // During playback only update time/playing — NOT joints — to avoid
+      // 60Hz Zustand re-renders across every joint subscriber.
+      set({ animationTime: newTime, animationPlaying: true });
+    } else {
+      // Playback ended naturally (loop=false reached duration).
+      // Restore the pre-animation snapshot so the model returns to its rest pose,
+      // clear _liveJointValues, and perform a single Zustand joints sync.
+      if (_animationJointSnapshot) {
+        const snap = _animationJointSnapshot;
+        const restored = { ...joints };
+        for (const id of Object.keys(snap)) {
+          const j = restored[id];
+          const s = snap[id];
+          if (j && s) restored[id] = { ...j, rotationValue: s.rotation ?? j.rotationValue, translationValue: s.translation ?? j.translationValue };
+        }
+        // Clear live values
+        for (const id of Object.keys(_liveJointValues)) delete _liveJointValues[id];
+        set({ joints: restored, animationTime: 0, animationPlaying: false });
+        _animationJointSnapshot = null;
+      } else {
+        for (const id of Object.keys(_liveJointValues)) delete _liveJointValues[id];
+        set({ animationTime: 0, animationPlaying: false });
       }
-      set({ joints: restored, animationTime: 0 });
-      _animationJointSnapshot = null;
     }
   },
 
