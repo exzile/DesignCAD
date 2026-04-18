@@ -4345,6 +4345,7 @@ export const useCADStore = create<CADState>()(persist((set, get) => ({
   setDirectEditFace: (id) => set({ directEditFaceId: id }),
   commitDirectEdit: (params) => {
     const { directEditFaceId, features, setActiveDialog } = get();
+    get().pushUndo();
     const n = features.filter((f) => f.type === 'direct-edit').length + 1;
     const feature: Feature = {
       id: crypto.randomUUID(),
@@ -4840,6 +4841,7 @@ export const useCADStore = create<CADState>()(persist((set, get) => ({
   }),
   closeFillDialog: () => set({ activeDialog: null, showFillDialog: false, fillBoundaryEdgeIds: [], fillBoundaryEdgeData: [] }),
   commitFill: (params) => {
+    get().pushUndo();
     const { features, fillBoundaryEdgeData } = get();
     const n = features.filter((f) => f.params?.featureKind === 'fill').length + 1;
 
@@ -5570,6 +5572,7 @@ export const useCADStore = create<CADState>()(persist((set, get) => ({
       get().setStatusMessage('Linear Pattern: no mesh found for selected feature');
       return;
     }
+    get().pushUndo();
     const copies = GeometryEngine.linearPattern(srcMesh, params);
     const newFeatures: Feature[] = copies.map((copy, idx) => ({
       id: crypto.randomUUID(),
@@ -5595,6 +5598,7 @@ export const useCADStore = create<CADState>()(persist((set, get) => ({
       get().setStatusMessage('Circular Pattern: no mesh found for selected feature');
       return;
     }
+    get().pushUndo();
     const copies = GeometryEngine.circularPattern(srcMesh, params);
     const newFeatures: Feature[] = copies.map((copy, idx) => ({
       id: crypto.randomUUID(),
@@ -5629,6 +5633,7 @@ export const useCADStore = create<CADState>()(persist((set, get) => ({
       get().setStatusMessage('Plane Cut: no mesh found for selected feature');
       return;
     }
+    get().pushUndo();
     const result = GeometryEngine.planeCutMesh(srcMesh, planeNormal, planeOffset, keepSide);
     const n = features.filter((f) => f.params?.featureKind === 'plane-cut').length + 1;
     const newFeature: Feature = {
@@ -5853,6 +5858,7 @@ export const useCADStore = create<CADState>()(persist((set, get) => ({
     const { features, sketches } = get();
     const sketch = sketches.find((s) => s.id === sketchId);
     if (!sketch) { get().setStatusMessage('Rib: sketch not found'); return; }
+    get().pushUndo();
     const pts: THREE.Vector3[] = [];
     for (const e of sketch.entities) {
       if (e.type === 'line' && e.points.length >= 2) {
@@ -5885,6 +5891,7 @@ export const useCADStore = create<CADState>()(persist((set, get) => ({
     const { features, sketches } = get();
     const sketch = sketches.find((s) => s.id === sketchId);
     if (!sketch) { get().setStatusMessage('Web: sketch not found'); return; }
+    get().pushUndo();
     const entityPoints: THREE.Vector3[][] = [];
     for (const e of sketch.entities) {
       if (e.type === 'line' && e.points.length >= 2) {
@@ -5948,6 +5955,7 @@ export const useCADStore = create<CADState>()(persist((set, get) => ({
       get().setStatusMessage(`Thread: radius / pitch / length must all be positive finite numbers`);
       return;
     }
+    get().pushUndo();
     const helixGeom = GeometryEngine.createCosmeticThread(radius, pitch, length);
     const lineMesh = new THREE.Line(helixGeom, new THREE.LineBasicMaterial({ color: 0x888888 }));
     // Find existing feature and attach helix as overlay (new feature referencing it)
