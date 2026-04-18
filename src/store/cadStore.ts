@@ -2075,8 +2075,12 @@ export const useCADStore = create<CADState>()(persist((set, get) => ({
       features: state.features.map((f) => f.id === featureId ? { ...f, mesh: newMesh } : f),
       statusMessage: 'Mesh transformed',
     }));
-    // Dispose the previous geometry — transformMesh returned a fresh mesh.
-    if (oldMesh instanceof THREE.Mesh) oldMesh.geometry.dispose();
+    // Defer disposal so undo can still reference the old geometry.
+    // setTimeout(0) ensures the set() completes and state is stable first.
+    if (oldMesh instanceof THREE.Mesh) {
+      const geo = oldMesh.geometry;
+      setTimeout(() => geo.dispose(), 0);
+    }
   },
 
   // SLD13 — commitScale: scale a feature mesh by sx/sy/sz

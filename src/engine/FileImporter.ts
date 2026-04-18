@@ -221,14 +221,16 @@ export class FileImporter {
       );
     }
 
+    const vertexCount = vertexEls.length;
     for (const t of triangleEls) {
-      indices.push(
-        parseInt(t.getAttribute('v1') ?? '0', 10),
-        parseInt(t.getAttribute('v2') ?? '0', 10),
-        parseInt(t.getAttribute('v3') ?? '0', 10),
-      );
+      const v1 = parseInt(t.getAttribute('v1') ?? '0', 10);
+      const v2 = parseInt(t.getAttribute('v2') ?? '0', 10);
+      const v3 = parseInt(t.getAttribute('v3') ?? '0', 10);
+      if (v1 < 0 || v1 >= vertexCount || v2 < 0 || v2 >= vertexCount || v3 < 0 || v3 >= vertexCount) continue;
+      indices.push(v1, v2, v3);
     }
 
+    if (indices.length === 0) return null;
     const geo = new THREE.BufferGeometry();
     geo.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
     geo.setIndex(indices);
@@ -255,16 +257,14 @@ export class FileImporter {
       );
     }
 
+    const vertexCount = vertexEls.length;
     for (const vol of volumeEls) {
       for (const tri of vol.querySelectorAll('triangle')) {
-        const v1 = tri.querySelector('v1');
-        const v2 = tri.querySelector('v2');
-        const v3 = tri.querySelector('v3');
-        indices.push(
-          parseInt(v1?.textContent ?? '0', 10),
-          parseInt(v2?.textContent ?? '0', 10),
-          parseInt(v3?.textContent ?? '0', 10),
-        );
+        const i1 = parseInt(tri.querySelector('v1')?.textContent ?? '0', 10);
+        const i2 = parseInt(tri.querySelector('v2')?.textContent ?? '0', 10);
+        const i3 = parseInt(tri.querySelector('v3')?.textContent ?? '0', 10);
+        if (i1 < 0 || i1 >= vertexCount || i2 < 0 || i2 >= vertexCount || i3 < 0 || i3 >= vertexCount) continue;
+        indices.push(i1, i2, i3);
       }
     }
 
