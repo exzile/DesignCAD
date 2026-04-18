@@ -1,8 +1,9 @@
-import { Fragment } from 'react';
+import { Fragment, useState, useCallback } from 'react';
 import {
   Activity, CircuitBoard, Crosshair, Cpu, Zap, Radar, Gauge, Network,
 } from 'lucide-react';
 import { usePrinterStore } from '../../store/printerStore';
+import { colors as COLORS } from '../../utils/theme';
 import {
   panelStyle,
   sectionTitleStyle as sectionTitle,
@@ -229,11 +230,40 @@ function GpioPanel() {
   const state = usePrinterStore((s) => s.model.state) as
     | { gpOut?: Array<{ pwm: number } | null> }
     | undefined;
+  const sendGCode = usePrinterStore((s) => s.sendGCode);
   const gpOut = state?.gpOut ?? [];
 
   const populated = gpOut
     .map((g, i) => ({ g, i }))
     .filter(({ g }) => g != null);
+
+  // Track local slider values during drag
+  const [localPwm, setLocalPwm] = useState<Record<number, number>>({});
+
+  const handleToggle = useCallback(
+    (pin: number, currentPwm: number) => {
+      const newValue = currentPwm > 0 ? 0 : 1;
+      sendGCode(`M42 P${pin} S${newValue}`);
+    },
+    [sendGCode],
+  );
+
+  const handleSliderCommit = useCallback(
+    (pin: number) => {
+      const value = localPwm[pin];
+      if (value !== undefined) {
+        // Convert 0-100 percent to 0-1 for M42
+        const s = Math.round(value) === 0 ? 0 : Math.round(value) === 100 ? 1 : (value / 100);
+        sendGCode(`M42 P${pin} S${s.toFixed(2)}`);
+        setLocalPwm((prev) => {
+          const next = { ...prev };
+          delete next[pin];
+          return next;
+        });
+      }
+    },
+    [localPwm, sendGCode],
+  );
 
   if (populated.length === 0) {
     return (
@@ -247,14 +277,90 @@ function GpioPanel() {
   return (
     <div style={panelStyle()}>
       <div style={sectionTitle()}><Zap size={14} /> General Purpose Outputs</div>
-      <div style={rowGrid()}>
-        {populated.map(({ g, i }) => (
-          <Fragment key={i}>
-            <span>GP{i}</span>
-            <span className="duet-status-mono">{((g?.pwm ?? 0) * 100).toFixed(0)}%</span>
-          </Fragment>
-        ))}
-      </div>
+      {populated.map(({ g, i }) => {
+        const pwm = g?.pwm ?? 0;
+        const pct = Math.round(pwm * 100);
+        const displayPct = localPwm[i] !== undefined ? Math.round(localPwm[i]) : pct;
+
+        return (
+          <div
+            key={i}
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: 8,
+              padding: '6px 0',
+              borderBottom: `1px solid ${COLORS.panelBorder}`,
+            }}
+          >
+            <span style={{ fontSize: 12, fontWeight: 600, minWidth: 36 }}>
+              GP{i}
+            </span>
+
+            {/* Toggle switch for digital on/off */}
+            <button
+              onClick={() => handleToggle(i, pwm)}
+              title={pwm > 0 ? `Turn off GP${i} (M42 P${i} S0)` : `Turn on GP${i} (M42 P${i} S1)`}
+              style={{
+                width: 36,
+                height: 20,
+                borderRadius: 10,
+                border: 'none',
+                cursor: 'pointer',
+                position: 'relative',
+                background: pwm > 0 ? COLORS.success : COLORS.surface,
+                transition: 'background 0.2s',
+                flexShrink: 0,
+              }}
+            >
+              <span
+                style={{
+                  display: 'block',
+                  width: 14,
+                  height: 14,
+                  borderRadius: '50%',
+                  background: '#fff',
+                  position: 'absolute',
+                  top: 3,
+                  left: pwm > 0 ? 19 : 3,
+                  transition: 'left 0.2s',
+                }}
+              />
+            </button>
+
+            {/* PWM slider — useful for non-digital control */}
+            {(
+              <div style={{ display: 'flex', alignItems: 'center', gap: 6, flex: 1 }}>
+                <input
+                  type="range"
+                  min={0}
+                  max={100}
+                  step={1}
+                  value={displayPct}
+                  onChange={(e) =>
+                    setLocalPwm((prev) => ({ ...prev, [i]: Number(e.target.value) }))
+                  }
+                  onMouseUp={() => handleSliderCommit(i)}
+                  onTouchEnd={() => handleSliderCommit(i)}
+                  style={{ flex: 1, accentColor: COLORS.accent }}
+                  title={`Set GP${i} PWM (0-100%)`}
+                />
+                <span
+                  style={{
+                    fontFamily: 'monospace',
+                    fontSize: 12,
+                    fontWeight: 600,
+                    minWidth: 36,
+                    textAlign: 'right',
+                  }}
+                >
+                  {displayPct}%
+                </span>
+              </div>
+            )}
+          </div>
+        );
+      })}
     </div>
   );
 }

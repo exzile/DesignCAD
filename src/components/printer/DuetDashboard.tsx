@@ -15,6 +15,8 @@ import ToolOffsetsPanel from './dashboard/ToolOffsetsPanel';
 import PressureAdvancePanel from './dashboard/PressureAdvancePanel';
 import InputShaperPanel from './dashboard/InputShaperPanel';
 import BabySteppingPanel from './dashboard/BabySteppingPanel';
+import WorkplaceCoordinatesPanel from './dashboard/WorkplaceCoordinatesPanel';
+import BedCompensationPanel from './dashboard/BedCompensationPanel';
 
 export default function DuetDashboard() {
   const error = usePrinterStore((s) => s.error);
@@ -46,6 +48,14 @@ export default function DuetDashboard() {
 
         <div className="duet-dash-span-full">
           <ToolOffsetsPanel />
+        </div>
+
+        <div className="duet-dash-span-full">
+          <WorkplaceCoordinatesPanel />
+        </div>
+
+        <div className="duet-dash-span-full">
+          <BedCompensationPanel />
         </div>
 
         <div className="duet-dash-col">
