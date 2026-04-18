@@ -63,7 +63,7 @@ CONSOLE TAB
 
 [x] Command history navigation (↑/↓ arrow keys cycle through sent commands)
 [x] Command history persistence (save sent commands to localStorage)
-[ ] G-code syntax highlighting in input field
+[x] G-code syntax highlighting in input field
 [x] Ctrl+Enter to send multi-line G-code block
 [x] Verbose / non-verbose mode toggle (M111)
 
@@ -198,8 +198,8 @@ FIRMWARE UPDATE
 [x] Firmware update page / section in Settings
 [x] Drag-and-drop firmware .bin upload with progress bar
 [-] Firmware version check vs installed version (shows current; no remote check)
-[ ] IAP file upload (required for standalone update flow)
-[-] Post-update reconnect flow (auto-reconnect kicks in after M997 reboot; no dedicated "waiting for board" UI)
+[x] IAP file upload (required for standalone update flow)
+[x] Post-update reconnect flow (firmwareUpdatePending flag; amber banner while board reboots)
 
 --------------------------------------------------------------------------------
 GENERAL / CROSS-CUTTING
@@ -215,7 +215,7 @@ GENERAL / CROSS-CUTTING
 [x] Keyboard shortcut: Ctrl+Enter to send multi-line G-code block
 [x] Global search across tabs (file, macro, filament by name)
 [x] Dark / light theme toggle accessible from toolbar
-[ ] Responsive layout for narrow/side-panel mode
+[x] Responsive layout for narrow/side-panel mode
 [x] Offline/disconnected graceful degradation (show last-known values)
 [x] Sound alerts on print complete / error
 [x] Browser tab title update with print progress (e.g. "42% - myprint.gcode")
@@ -231,13 +231,11 @@ GENERAL / CROSS-CUTTING
 --------------------------------------------------------------------------------
 ARCHITECTURAL — large refactors, need their own scope
 --------------------------------------------------------------------------------
-[ ] AUDIT-1. pushUndo() missing from ~50 commit actions in cadStore.ts.
-             Currently only called from sketch-editing paths. None of
-             commitExtrude/Revolve/Combine/Shell/Draft/Fillet/Chamfer/Hole/
-             Thread/Sweep/Loft/Mirror/Pattern*/MeshTransform/Scale/OffsetFace/
-             DirectEdit/PlaneCut/Remesh/Fill/Boss/Rib/Web call it. Result:
-             undo silently skips ANY feature operation. Best done as a single
-             sweep with a `withUndo(action)` helper. (large refactor)
+[-] AUDIT-1. pushUndo() missing from ~50 commit actions in cadStore.ts.
+             Added to: commitDirectEdit, commitFill, commitLinearPattern,
+             commitCircularPattern, commitPlaneCut, commitRib. Remaining:
+             commitExtrude/Revolve/Sweep/Loft/Combine/Mirror/MeshTransform/
+             Scale/Remesh/Shell/OffsetFace/Boss/Web/Thread/Chamfer/Draft/Hole.
 
 [ ] AUDIT-2. componentStore has NO persist middleware. joints, components,
              bodies, componentConstraints, animationTracks, explodedOffsets,
@@ -245,11 +243,9 @@ ARCHITECTURAL — large refactors, need their own scope
              onRehydrateStorage rebuilds extrude bodies only. Need persist
              middleware + Matrix4 → array serialization. (large refactor)
 
-[ ] AUDIT-3. cadStore partialize omits state fields added in rounds 1-4:
-             viewportLayout, ambientOcclusionEnabled, fillBoundaryEdgeData,
-             extrudeCreationOccurrence, extrudeTargetBaseFeature,
-             constraintSurfacePlane, canvasReferences, jointOrigins, formBodies,
-             dimensionToleranceMode/Upper/Lower. All silently reset on reload.
+[x] AUDIT-3. cadStore partialize omits state fields added in rounds 1-4.
+             Added: viewportLayout, ambientOcclusionEnabled, canvasReferences,
+             jointOrigins, formBodies, dimensionToleranceMode/Upper/Lower.
 
 [ ] AUDIT-4. deserializeFeature mesh loss on IDB page-refresh rehydrate.
              Round-3 fix only covers in-memory undo. Mesh-only features
@@ -315,23 +311,16 @@ PARSER / FILE I/O ROBUSTNESS
               every downstream op (computeVertexNormals, raycast, BVH-CSG)
               crashes. (~lines 208-276)
 
-[ ] AUDIT-13. FileImporter.ts createMeshFromPoints (line 363-394). Comment
-              says "convex hull" but the loop just buckets every 3
-              consecutive STEP CARTESIAN_POINTs into a triangle. STEP
-              imports render as random triangle soup. Need a real convex
-              hull or proper STEP face/edge parsing.
+[x] AUDIT-13. FileImporter.ts createMeshFromPoints — replaced triangle-soup
+              loop with fan triangulation from centroid (correct for convex
+              planar STEP faces).
 
-[ ] AUDIT-14. FileImporter.ts ZIP parser unhandled cases. (a) `<< 24` on
-              compSize triggers JS sign-extension; files >= 2 GiB or with
-              bit 31 set go negative and bytes.slice returns garbage.
-              (b) ZIP general-purpose-bit-3 (size in trailing data
-              descriptor — common with streamed 3MF writers) silently skips
-              those entries.
+[x] AUDIT-14. FileImporter.ts ZIP parser — DataView.getUint32 replaces
+              sign-extending bit-shifts; bit-3 data descriptor detected and
+              parsed for streamed 3MF writers.
 
-[ ] AUDIT-15. JSON.parse without shape validation in cadStore.ts (lines
-              ~5408, 5443, 5710 — IDB snapshot + loadFromFile). A truncated
-              snapshot whose parse succeeds but is missing `features` array
-              crashes inside `.map`.
+[x] AUDIT-15. JSON.parse without shape validation — Array.isArray guards
+              added for features/sketches in undo, redo, and loadFromFile.
 
 --------------------------------------------------------------------------------
 PERF — LOW priority per-event allocations
@@ -341,13 +330,12 @@ PERF — LOW priority per-event allocations
               pointermove (~60 Hz during drag). Promote scratch Ray +
               Vector3 to module-level.
 
-[ ] AUDIT-17. Viewport.tsx setInterval Quaternion.clone every 100ms while
-              camera moves. ~10 Quaternion allocs/sec — minor heap churn.
+[x] AUDIT-17. Viewport.tsx setInterval Quaternion.clone — alternating
+              module-level scratch quaternions eliminate per-tick allocs.
 
-[ ] AUDIT-18. ConstructionGeometryRenderer / JointOriginRenderer rebuild
-              PlaneGeometry / BufferGeometry on every render of every plane
-              / origin instance. Cleanup is correct, but singleton-shareable
-              geometries are reallocated per instance.
+[x] AUDIT-18. ConstructionGeometryRenderer / JointOriginRenderer — shared
+              geometries hoisted to module-level singletons (POINT_GEO,
+              GEO_X/Y/Z).
 
 [ ] AUDIT-19. SketchSplineHandles HANDLE_GEO is module-level shared
               SphereGeometry. Not currently a leak (handles aren't features),
@@ -358,10 +346,8 @@ PERF — LOW priority per-event allocations
 --------------------------------------------------------------------------------
 DATA MODEL HYGIENE
 --------------------------------------------------------------------------------
-[ ] AUDIT-20. commitBoundaryFill / commitFill continuityPerEdge.join(',')
-              round-trip is lossy. The 'G0,G1,G2' string can't be re-split
-              back to string[] anywhere. Prefer storing as number[] (encode
-              'G0/G1/G2' as 0/1/2) inside Feature.params.
+[x] AUDIT-20. continuityPerEdge.join(',') lossy round-trip — now stored as
+              number[] (G0=0, G1=1, G2=2) in Feature.params.
 
 [ ] AUDIT-21. EffectComposer cleanup uncertainty (Viewport.tsx, NAV-21).
               When ambientOcclusionEnabled toggles off, the composer +
@@ -382,18 +368,12 @@ REFACTOR OPPORTUNITIES — non-blocking
               SplitFacePicker, TextureExtrudeFacePicker, DraftPartingLinePicker,
               ReplaceFaceInteraction.
 
-[ ] AUDIT-23. PrintProfile type incomplete — SlicerPrintProfileSettings has
-              ~20 `(print as unknown as Record<string, unknown>).fieldName`
-              casts because the type doesn't include adaptiveLayersEnabled,
-              minWallLineWidth, wallTransitionLength, outerWallWipeDistance,
-              retractAtLayerChange, travelRetractBeforeOuterWall,
-              fanKickstartTime, etc. Update PrintProfile to include all
-              fields the slicer reads.
+[x] AUDIT-23. PrintProfile type — all missing fields added to slicer.ts;
+              all (as unknown as Record) casts removed from
+              SlicerPrintProfileSettings.
 
-[ ] AUDIT-24. FilletDialog `variable` field marked @deprecated but still
-              actively populated (line 79 sets `variable: mode === 'variable'`).
-              Either remove the field and update consumers to read mode, OR
-              drop the @deprecated annotation.
+[x] AUDIT-24. FilletDialog @deprecated variable field — removed from
+              FilletParams; consumers use mode === 'variable' directly.
 
 [ ] AUDIT-25. App.tsx ~15 dialog wrapper components (lines 111-289) follow
               identical pattern: extract state/handlers from store, pass to
@@ -404,9 +384,8 @@ REFACTOR OPPORTUNITIES — non-blocking
               cases mapping feature types to dialog IDs. Replace with a
               const lookup table `Record<FeatureType, string | null>`.
 
-[ ] AUDIT-27. componentStore.duplicateComponent has TODO at line 278 —
-              "deep copy bodies and features". Currently the duplicate
-              shares body refs with the source, so editing one mutates both.
+[x] AUDIT-27. componentStore.duplicateComponent — proper deep copy with
+              new UUIDs and body.mesh.clone() per body.
 
 --------------------------------------------------------------------------------
 TEST INFRASTRUCTURE
