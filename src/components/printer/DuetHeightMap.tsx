@@ -13,6 +13,8 @@ import {
   ToggleLeft,
   ToggleRight,
   FolderOpen,
+  GitCompareArrows,
+  X,
 } from 'lucide-react';
 import * as THREE from 'three';
 import { usePrinterStore } from '../../store/printerStore';
@@ -66,6 +68,77 @@ function deviationColorThree(value: number, minVal: number, maxVal: number): THR
 }
 
 // ---------------------------------------------------------------------------
+// Diverging color scale for comparison (blue = lower, red = higher)
+// ---------------------------------------------------------------------------
+
+function divergingColor(value: number, minVal: number, maxVal: number): string {
+  const range = Math.max(Math.abs(minVal), Math.abs(maxVal), 0.001);
+  const t = Math.max(-1, Math.min(1, value / range));
+
+  if (t < 0) {
+    // Negative: white (0) -> blue (low)
+    const f = -t; // 0..1
+    const r = Math.round(255 * (1 - f) + 59 * f);
+    const g = Math.round(255 * (1 - f) + 130 * f);
+    const b = Math.round(255 * (1 - f) + 246 * f);
+    return `rgb(${r},${g},${b})`;
+  } else {
+    // Positive: white (0) -> red (high)
+    const f = t; // 0..1
+    const r = Math.round(255 * (1 - f) + 239 * f);
+    const g = Math.round(255 * (1 - f) + 68 * f);
+    const b = Math.round(255 * (1 - f) + 68 * f);
+    return `rgb(${r},${g},${b})`;
+  }
+}
+
+function divergingColorThree(value: number, minVal: number, maxVal: number): THREE.Color {
+  const range = Math.max(Math.abs(minVal), Math.abs(maxVal), 0.001);
+  const t = Math.max(-1, Math.min(1, value / range));
+
+  if (t < 0) {
+    const f = -t;
+    return new THREE.Color(
+      (255 * (1 - f) + 59 * f) / 255,
+      (255 * (1 - f) + 130 * f) / 255,
+      (255 * (1 - f) + 246 * f) / 255,
+    );
+  } else {
+    const f = t;
+    return new THREE.Color(
+      (255 * (1 - f) + 239 * f) / 255,
+      (255 * (1 - f) + 68 * f) / 255,
+      (255 * (1 - f) + 68 * f) / 255,
+    );
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Height map differencing
+// ---------------------------------------------------------------------------
+
+function computeDiffMap(map1: HeightMapData, map2: HeightMapData): HeightMapData | null {
+  // Maps must have the same grid dimensions
+  if (map1.numX !== map2.numX || map1.numY !== map2.numY) return null;
+
+  const diffPoints: number[][] = [];
+  for (let y = 0; y < map1.numY; y++) {
+    const row: number[] = [];
+    for (let x = 0; x < map1.numX; x++) {
+      const v1 = map1.points[y]?.[x] ?? 0;
+      const v2 = map2.points[y]?.[x] ?? 0;
+      row.push(v2 - v1);
+    }
+    diffPoints.push(row);
+  }
+
+  return {
+    ...map1,
+    points: diffPoints,
+  };
+}
+
+// ---------------------------------------------------------------------------
 // Statistics computation
 // ---------------------------------------------------------------------------
 
@@ -113,7 +186,7 @@ function computeStats(hm: HeightMapData): HeightMapStats {
 // 3D Surface Mesh
 // ---------------------------------------------------------------------------
 
-function HeightMapMesh({ heightMap }: { heightMap: HeightMapData }) {
+function HeightMapMesh({ heightMap, diverging = false }: { heightMap: HeightMapData; diverging?: boolean }) {
   const { geometry } = useMemo(() => {
     const s = computeStats(heightMap);
     const geo = new THREE.BufferGeometry();
@@ -128,6 +201,8 @@ function HeightMapMesh({ heightMap }: { heightMap: HeightMapData }) {
     // Exaggerate Z for visibility (scale relative to XY range)
     const zScale = (1 / Math.max(Math.abs(s.max), Math.abs(s.min), 0.01)) * 0.3;
 
+    const colorFn = diverging ? divergingColorThree : deviationColorThree;
+
     for (let yi = 0; yi < heightMap.numY; yi++) {
       for (let xi = 0; xi < heightMap.numX; xi++) {
         const val = heightMap.points[yi]?.[xi] ?? 0;
@@ -137,7 +212,7 @@ function HeightMapMesh({ heightMap }: { heightMap: HeightMapData }) {
 
         vertices.push(x, z, -y); // Y-up coordinate system
 
-        const color = deviationColorThree(val, s.min, s.max);
+        const color = colorFn(val, s.min, s.max);
         colors.push(color.r, color.g, color.b);
       }
     }
@@ -159,7 +234,7 @@ function HeightMapMesh({ heightMap }: { heightMap: HeightMapData }) {
     geo.computeVertexNormals();
 
     return { geometry: geo, stats: s };
-  }, [heightMap]);
+  }, [heightMap, diverging]);
 
   // Dispose previous BufferGeometry when heightMap data changes (re-upload) or
   // when the component unmounts. Without this each re-bed-mesh leaks one geo.
@@ -235,7 +310,7 @@ function AxisLabels() {
   );
 }
 
-function Scene3D({ heightMap }: { heightMap: HeightMapData }) {
+function Scene3D({ heightMap, diverging = false }: { heightMap: HeightMapData; diverging?: boolean }) {
   return (
     <Canvas
       camera={{ position: [0.8, 0.6, 0.8], fov: 50 }}
@@ -244,7 +319,7 @@ function Scene3D({ heightMap }: { heightMap: HeightMapData }) {
       <ambientLight intensity={0.6} />
       <directionalLight position={[5, 5, 5]} intensity={0.8} />
       <directionalLight position={[-3, 2, -3]} intensity={0.3} />
-      <HeightMapMesh heightMap={heightMap} />
+      <HeightMapMesh heightMap={heightMap} diverging={diverging} />
       <GridOverlay heightMap={heightMap} />
       <AxisLabels />
       <OrbitControls enableDamping dampingFactor={0.1} />
@@ -256,7 +331,7 @@ function Scene3D({ heightMap }: { heightMap: HeightMapData }) {
 // 2D Heatmap View
 // ---------------------------------------------------------------------------
 
-function Heatmap2D({ heightMap }: { heightMap: HeightMapData }) {
+function Heatmap2D({ heightMap, diverging = false }: { heightMap: HeightMapData; diverging?: boolean }) {
   const [hoverInfo, setHoverInfo] = useState<{
     x: number;
     y: number;
@@ -304,7 +379,9 @@ function Heatmap2D({ heightMap }: { heightMap: HeightMapData }) {
         {Array.from({ length: heightMap.numY }, (_, yi) =>
           Array.from({ length: heightMap.numX }, (_, xi) => {
             const val = heightMap.points[yi]?.[xi] ?? 0;
-            const fill = deviationColor(val, stats.min, stats.max);
+            const fill = diverging
+              ? divergingColor(val, stats.min, stats.max)
+              : deviationColor(val, stats.min, stats.max);
             return (
               <rect
                 key={`${xi}-${yi}`}
@@ -404,13 +481,14 @@ function Heatmap2D({ heightMap }: { heightMap: HeightMapData }) {
 // Color Scale Legend
 // ---------------------------------------------------------------------------
 
-function ColorScaleLegend({ min, max }: { min: number; max: number }) {
+function ColorScaleLegend({ min, max, diverging = false }: { min: number; max: number; diverging?: boolean }) {
   const steps = 11;
+  const colorFn = diverging ? divergingColor : deviationColor;
   const labels: { value: number; color: string }[] = [];
   for (let i = 0; i < steps; i++) {
     const t = i / (steps - 1);
     const val = min + t * (max - min);
-    labels.push({ value: val, color: deviationColor(val, min, max) });
+    labels.push({ value: val, color: colorFn(val, min, max) });
   }
 
   return (
@@ -528,6 +606,12 @@ export default function DuetHeightMap() {
   const [selectedCsv, setSelectedCsv] = useState('0:/sys/heightmap.csv');
   const [loadingCsvList, setLoadingCsvList] = useState(false);
 
+  // Compare mode state
+  const [compareMode, setCompareMode] = useState(false);
+  const [compareCsv, setCompareCsv] = useState('');
+  const [compareMap, setCompareMap] = useState<HeightMapData | null>(null);
+  const [loadingCompare, setLoadingCompare] = useState(false);
+
   // Fetch CSV list from 0:/sys/
   const refreshCsvList = useCallback(async () => {
     if (!service) return;
@@ -556,7 +640,16 @@ export default function DuetHeightMap() {
   const isCompensationEnabled =
     !!compensationType && compensationType !== 'none';
 
-  const stats = useMemo(() => (heightMap ? computeStats(heightMap) : null), [heightMap]);
+  // Computed difference map
+  const diffMap = useMemo(() => {
+    if (!compareMode || !heightMap || !compareMap) return null;
+    return computeDiffMap(heightMap, compareMap);
+  }, [compareMode, heightMap, compareMap]);
+
+  // Which map to display: diffMap in compare mode, otherwise the raw heightMap
+  const displayMap = diffMap ?? heightMap;
+
+  const stats = useMemo(() => (displayMap ? computeStats(displayMap) : null), [displayMap]);
 
   const handleLoad = useCallback(async () => {
     setLoading(true);
@@ -588,7 +681,7 @@ export default function DuetHeightMap() {
   const handleSaveAs = useCallback(async () => {
     const filename = prompt('Save height map as (filename without path/extension):', 'heightmap_backup');
     if (!filename) return;
-    const sanitized = filename.replace(/[^a-zA-Z0-9_\-]/g, '_');
+    const sanitized = filename.replace(/[^a-zA-Z0-9_-]/g, '_');
     await sendGCode(`M374 P"0:/sys/${sanitized}.csv"`);
     void refreshCsvList();
   }, [sendGCode, refreshCsvList]);
@@ -596,6 +689,29 @@ export default function DuetHeightMap() {
   const handleToggleCompensation = useCallback(() => {
     sendGCode(isCompensationEnabled ? 'G29 S2' : 'G29 S1');
   }, [sendGCode, isCompensationEnabled]);
+
+  // Load second height map for comparison
+  const handleLoadCompare = useCallback(async (path: string) => {
+    if (!service || !path) return;
+    setCompareCsv(path);
+    setLoadingCompare(true);
+    try {
+      const hm = await service.getHeightMap(path);
+      setCompareMap(hm);
+      setCompareMode(true);
+    } catch {
+      setCompareMap(null);
+      setCompareMode(false);
+    } finally {
+      setLoadingCompare(false);
+    }
+  }, [service]);
+
+  const handleExitCompare = useCallback(() => {
+    setCompareMode(false);
+    setCompareMap(null);
+    setCompareCsv('');
+  }, []);
 
   return (
     <div className="duet-heightmap">
@@ -686,6 +802,45 @@ export default function DuetHeightMap() {
           <span>{isCompensationEnabled ? 'Disable Comp' : 'Enable Comp'}</span>
         </button>
 
+        {/* Compare mode controls */}
+        {!compareMode ? (
+          <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+            <GitCompareArrows size={14} style={{ color: 'var(--text-muted)', flexShrink: 0 }} />
+            <select
+              value=""
+              onChange={(e) => {
+                if (e.target.value) void handleLoadCompare(e.target.value);
+              }}
+              disabled={!heightMap || loadingCompare || csvFiles.length === 0}
+              style={{
+                fontSize: 12, padding: '3px 6px',
+                background: 'var(--bg-elevated)', color: 'var(--text-primary)',
+                border: '1px solid var(--border)', borderRadius: 4,
+                fontFamily: 'inherit', maxWidth: 160,
+              }}
+              title="Compare with another height map"
+            >
+              <option value="">Compare with...</option>
+              {csvFiles
+                .filter((f) => `0:/sys/${f}` !== selectedCsv)
+                .map((f) => (
+                  <option key={f} value={`0:/sys/${f}`}>{f}</option>
+                ))}
+            </select>
+            {loadingCompare && <Loader2 size={12} className="spin" />}
+          </div>
+        ) : (
+          <button
+            className="btn btn-sm"
+            onClick={handleExitCompare}
+            title="Exit compare mode"
+            style={{ borderColor: 'var(--warning)', color: 'var(--warning)' }}
+          >
+            <X size={14} />
+            <span>Exit Compare</span>
+          </button>
+        )}
+
         <div className="heightmap-view-toggle">
           <button
             className={`toggle-btn ${viewMode === '3d' ? 'active' : ''}`}
@@ -710,21 +865,42 @@ export default function DuetHeightMap() {
         <div className="duet-heightmap-empty">
           <p>No height map data. Click "Load Height Map" or "Probe Bed" to get started.</p>
         </div>
+      ) : compareMode && !diffMap ? (
+        <div className="duet-heightmap-empty">
+          <p>
+            {loadingCompare
+              ? 'Loading comparison map...'
+              : 'Grid dimensions do not match. Cannot compare these height maps.'}
+          </p>
+        </div>
       ) : (
         <div className="heightmap-content">
+          {/* Compare mode banner */}
+          {compareMode && (
+            <div style={{
+              padding: '6px 12px', fontSize: 12, fontWeight: 500,
+              background: 'rgba(59,130,246,0.08)',
+              borderBottom: '1px solid rgba(59,130,246,0.2)',
+              color: 'var(--accent)',
+            }}>
+              Showing difference: {compareCsv.split('/').pop()} minus {selectedCsv.split('/').pop()}
+              &nbsp;(red = higher, blue = lower)
+            </div>
+          )}
+
           {/* Visualization */}
           <div className="heightmap-viz">
             {viewMode === '3d' ? (
               <div className="heightmap-3d">
-                <Scene3D heightMap={heightMap} />
+                <Scene3D heightMap={displayMap!} diverging={compareMode} />
               </div>
             ) : (
-              <Heatmap2D heightMap={heightMap} />
+              <Heatmap2D heightMap={displayMap!} diverging={compareMode} />
             )}
           </div>
 
           {/* Color legend */}
-          {stats && <ColorScaleLegend min={stats.min} max={stats.max} />}
+          {stats && <ColorScaleLegend min={stats.min} max={stats.max} diverging={compareMode} />}
 
           {/* Stats panel */}
           {stats && <StatsPanel stats={stats} />}

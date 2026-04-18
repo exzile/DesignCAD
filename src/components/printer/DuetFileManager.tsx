@@ -20,10 +20,12 @@ import {
   Image,
   FileCode,
   Search,
+  ListPlus,
 } from 'lucide-react';
 import { usePrinterStore } from '../../store/printerStore';
 import type { DuetFileInfo, DuetGCodeFileInfo } from '../../types/duet';
 import DuetFileEditor from './DuetFileEditor';
+import { addToQueue } from './jobStatus/printQueueUtils';
 import { formatDurationWords, formatFileSize, formatFilamentLength } from '../../utils/printerFormat';
 
 // ---------------------------------------------------------------------------
@@ -557,6 +559,14 @@ export default function DuetFileManager() {
     [currentDirectory, startPrint],
   );
 
+  // Queue for printing
+  const handleQueue = useCallback(
+    (item: DuetFileInfo) => {
+      addToQueue(`${currentDirectory}/${item.name}`);
+    },
+    [currentDirectory],
+  );
+
   // Simulate
   const handleSimulate = useCallback(
     async (item: DuetFileInfo) => {
@@ -882,6 +892,13 @@ export default function DuetFileManager() {
                                 onClick={() => handlePrint(item)}
                               >
                                 <Play size={14} className="duet-file-mgr__icon--play" />
+                              </button>
+                              <button
+                                className="duet-file-mgr__action-btn"
+                                title="Add to print queue"
+                                onClick={() => handleQueue(item)}
+                              >
+                                <ListPlus size={14} className="duet-file-mgr__icon--simulate" />
                               </button>
                               <button
                                 className="duet-file-mgr__action-btn"

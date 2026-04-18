@@ -3,7 +3,7 @@ import './PrinterPanel.css';
 import {
   LayoutDashboard, Activity, Terminal, Play, FolderOpen, FileCode, Grid3x3,
   History, Braces, Settings, X, OctagonAlert, Wifi, WifiOff, FlaskConical,
-  Sun, Moon, Search,
+  Sun, Moon, Search, Loader2,
 } from 'lucide-react';
 import { usePrinterStore } from '../../store/printerStore';
 import { useThemeStore } from '../../store/themeStore';
@@ -244,6 +244,8 @@ export default function DuetPrinterPanel({ fullscreen = false }: { fullscreen?: 
   const setShowSettings = usePrinterStore((s) => s.setShowSettings);
   const emergencyStop = usePrinterStore((s) => s.emergencyStop);
   const error = usePrinterStore((s) => s.error);
+  const reconnecting = usePrinterStore((s) => s.reconnecting);
+  const lastModelUpdate = usePrinterStore((s) => s.lastModelUpdate);
   const files = usePrinterStore((s) => s.files);
   const macros = usePrinterStore((s) => s.macros);
   const filaments = usePrinterStore((s) => s.filaments);
@@ -291,6 +293,31 @@ export default function DuetPrinterPanel({ fullscreen = false }: { fullscreen?: 
     }
     return results.slice(0, 20);
   }, [globalSearch, files, macros, filaments, printHistory]);
+
+  // -----------------------------------------------------------------------
+  // "Last updated" ticker — re-render every 15s while disconnected so the
+  // relative timestamp stays fresh.
+  // -----------------------------------------------------------------------
+  const [now, setNow] = useState(Date.now);
+  const hasStaleModel = !connected && lastModelUpdate !== null && Object.keys(model).length > 0;
+
+  useEffect(() => {
+    if (!hasStaleModel) return;
+    const id = setInterval(() => setNow(Date.now()), 15_000);
+    return () => clearInterval(id);
+  }, [hasStaleModel]);
+
+  const lastUpdatedText = useMemo(() => {
+    if (!lastModelUpdate) return null;
+    const diffMs = now - lastModelUpdate;
+    const secs = Math.floor(diffMs / 1000);
+    if (secs < 10) return 'just now';
+    if (secs < 60) return `${secs}s ago`;
+    const mins = Math.floor(secs / 60);
+    if (mins < 60) return `${mins}m ago`;
+    const hrs = Math.floor(mins / 60);
+    return `${hrs}h ${mins % 60}m ago`;
+  }, [lastModelUpdate, now]);
 
   const handleEmergencyStop = useCallback(() => {
     if (confirm('Send emergency stop (M112)? This will immediately halt the machine.')) {
@@ -568,6 +595,26 @@ export default function DuetPrinterPanel({ fullscreen = false }: { fullscreen?: 
         </div>
       )}
 
+      {/* ---- Reconnecting banner ---- */}
+      {!connected && reconnecting && (
+        <div
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: 8,
+            padding: '6px 14px',
+            background: 'rgba(234,179,8,0.12)',
+            borderBottom: `1px solid ${COLORS.panelBorder}`,
+            color: COLORS.warning,
+            fontSize: 12,
+            flexShrink: 0,
+          }}
+        >
+          <Loader2 size={14} className="spin" />
+          <span>Reconnecting to printer...</span>
+        </div>
+      )}
+
       {/* ---- Disconnect banner (non-blocking — tabs still render) ---- */}
       {!connected && (
         <div
@@ -584,7 +631,11 @@ export default function DuetPrinterPanel({ fullscreen = false }: { fullscreen?: 
           }}
         >
           <WifiOff size={14} color={COLORS.danger} />
-          <span>Not connected to a Duet3D board — showing empty state.</span>
+          <span>
+            {hasStaleModel
+              ? `Disconnected — showing last known values (updated ${lastUpdatedText}).`
+              : 'Not connected to a Duet3D board.'}
+          </span>
           <div style={{ flex: 1 }} />
           <button
             style={{
@@ -608,7 +659,12 @@ export default function DuetPrinterPanel({ fullscreen = false }: { fullscreen?: 
       )}
 
       {/* ---- Content ---- */}
-      <div style={styles.content}><ActiveTabComponent /></div>
+      <div style={{
+        ...styles.content,
+        ...(hasStaleModel ? { opacity: 0.55, pointerEvents: 'none' as const } : {}),
+      }}>
+        <ActiveTabComponent />
+      </div>
 
       {/* ---- Status Footer ---- */}
       <div style={styles.footer}>

@@ -83,11 +83,15 @@ interface PrinterStore {
   // Connection
   connected: boolean;
   connecting: boolean;
+  reconnecting: boolean;
   config: DuetConfig;
   service: DuetService | null;
 
   // Object model (from Duet)
   model: Partial<DuetObjectModel>;
+
+  // Timestamp of last model update (epoch ms) — survives non-user disconnects
+  lastModelUpdate: number | null;
 
   // Temperature history for charts
   temperatureHistory: TemperatureSample[];
@@ -226,11 +230,15 @@ export const usePrinterStore = create<PrinterStore>((set, get) => ({
   // Connection
   connected: false,
   connecting: false,
+  reconnecting: false,
   config: loadSavedConfig(),
   service: null,
 
   // Object model
   model: {},
+
+  // Last model update timestamp
+  lastModelUpdate: null,
 
   // Temperature history
   temperatureHistory: [],
@@ -343,7 +351,7 @@ export const usePrinterStore = create<PrinterStore>((set, get) => ({
           history.splice(0, history.length - MAX_TEMPERATURE_HISTORY);
         }
 
-        set({ model, temperatureHistory: history });
+        set({ model, temperatureHistory: history, lastModelUpdate: now });
       });
 
       // Load initial file list
@@ -395,19 +403,32 @@ export const usePrinterStore = create<PrinterStore>((set, get) => ({
       try { await service.disconnect(); } catch { /* ignore */ }
     }
 
-    set({
-      connected: false,
-      connecting: false,
-      service: null,
-      model: {},
-      temperatureHistory: [],
-      files: [],
-      selectedFile: null,
-      macros: [],
-      filaments: [],
-      heightMap: null,
-      error: userInitiated ? null : 'Connection lost',
-    });
+    if (userInitiated) {
+      // User explicitly disconnected — clear everything
+      set({
+        connected: false,
+        connecting: false,
+        reconnecting: false,
+        service: null,
+        model: {},
+        lastModelUpdate: null,
+        temperatureHistory: [],
+        files: [],
+        selectedFile: null,
+        macros: [],
+        filaments: [],
+        heightMap: null,
+        error: null,
+      });
+    } else {
+      // Connection lost — preserve model / files for graceful degradation
+      set({
+        connected: false,
+        connecting: false,
+        service: null,
+        error: 'Connection lost',
+      });
+    }
 
     // If the disconnect was not user-initiated, try to auto-reconnect
     if (!userInitiated) {
@@ -913,6 +934,7 @@ export const usePrinterStore = create<PrinterStore>((set, get) => ({
     if (!config.hostname) return;
 
     autoReconnectAttempts = 0;
+    set({ reconnecting: true });
     const interval = prefs.reconnectInterval || 5000;
     const maxRetries = prefs.maxRetries || 10;
 
@@ -922,12 +944,13 @@ export const usePrinterStore = create<PrinterStore>((set, get) => ({
       if (state.connected || !state.config.hostname) {
         autoReconnectTimer = null;
         autoReconnectAttempts = 0;
+        set({ reconnecting: false });
         return;
       }
 
       autoReconnectAttempts++;
       if (autoReconnectAttempts > maxRetries) {
-        set({ error: `Auto-reconnect failed after ${maxRetries} attempts` });
+        set({ error: `Auto-reconnect failed after ${maxRetries} attempts`, reconnecting: false });
         autoReconnectTimer = null;
         autoReconnectAttempts = 0;
         return;
@@ -939,7 +962,7 @@ export const usePrinterStore = create<PrinterStore>((set, get) => ({
         if (get().connected) {
           autoReconnectTimer = null;
           autoReconnectAttempts = 0;
-          set({ error: null });
+          set({ error: null, reconnecting: false });
         } else {
           // Schedule next attempt
           autoReconnectTimer = setTimeout(attempt, interval);
@@ -959,6 +982,7 @@ export const usePrinterStore = create<PrinterStore>((set, get) => ({
       autoReconnectTimer = null;
     }
     autoReconnectAttempts = 0;
+    set({ reconnecting: false });
   },
 
   // --- UI ---
