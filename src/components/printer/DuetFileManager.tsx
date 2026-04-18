@@ -19,6 +19,7 @@ import {
   X,
   Image,
   FileCode,
+  Search,
 } from 'lucide-react';
 import { usePrinterStore } from '../../store/printerStore';
 import type { DuetFileInfo, DuetGCodeFileInfo } from '../../types/duet';
@@ -318,6 +319,7 @@ export default function DuetFileManager() {
   const [loading, setLoading] = useState(false);
   const [sortField, setSortField] = useState<SortField>('name');
   const [sortDir, setSortDir] = useState<SortDir>('asc');
+  const [searchQuery, setSearchQuery] = useState('');
   const [selectedName, setSelectedName] = useState<string | null>(null);
   const [dragOver, setDragOver] = useState(false);
 
@@ -331,8 +333,13 @@ export default function DuetFileManager() {
   const [renameTarget, setRenameTarget] = useState<DuetFileInfo | null>(null);
   const [showNewFolder, setShowNewFolder] = useState(false);
 
-  // Sorted file list
-  const sortedFiles = useMemo(() => sortFiles(files, sortField, sortDir), [files, sortField, sortDir]);
+  // Filtered and sorted file list
+  const sortedFiles = useMemo(() => {
+    const filtered = searchQuery
+      ? files.filter((f) => f.name.toLowerCase().includes(searchQuery.toLowerCase()))
+      : files;
+    return sortFiles(filtered, sortField, sortDir);
+  }, [files, sortField, sortDir, searchQuery]);
 
   // Current tab root directory
   const currentTabRoot = useMemo(
@@ -671,6 +678,27 @@ export default function DuetFileManager() {
         )}
       </div>
 
+      {/* Search / filter bar */}
+      <div className="duet-file-mgr__search-bar">
+        <Search size={14} className="duet-file-mgr__search-icon" />
+        <input
+          className="duet-file-mgr__search-input"
+          type="text"
+          placeholder="Filter files by name…"
+          value={searchQuery}
+          onChange={(e) => setSearchQuery(e.target.value)}
+        />
+        {searchQuery && (
+          <button
+            className="duet-file-mgr__search-clear"
+            onClick={() => setSearchQuery('')}
+            title="Clear filter"
+          >
+            <X size={14} />
+          </button>
+        )}
+      </div>
+
       {/* Body: file list + optional info panel */}
       <div className="duet-file-mgr__body">
         {/* File list with drag and drop */}
@@ -693,7 +721,9 @@ export default function DuetFileManager() {
               Loading...
             </div>
           ) : sortedFiles.length === 0 ? (
-            <div className="duet-file-mgr__empty">This folder is empty</div>
+            <div className="duet-file-mgr__empty">
+              {searchQuery ? `No files matching "${searchQuery}"` : 'This folder is empty'}
+            </div>
           ) : (
             <table className="duet-file-mgr__table">
               <thead>
