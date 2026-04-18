@@ -1,6 +1,6 @@
 import { Fragment } from 'react';
 import {
-  Activity, CircuitBoard, Crosshair, Cpu, Zap, Radar, Gauge,
+  Activity, CircuitBoard, Crosshair, Cpu, Zap, Radar, Gauge, Network,
 } from 'lucide-react';
 import { usePrinterStore } from '../../store/printerStore';
 import {
@@ -259,6 +259,76 @@ function GpioPanel() {
   );
 }
 
+function NetworkPanel() {
+  const interfaces = usePrinterStore(
+    (s) => s.model.network?.interfaces ?? EMPTY_ARRAY,
+  );
+
+  const populated = interfaces.filter(
+    (iface): iface is NonNullable<typeof iface> => iface != null,
+  );
+
+  if (populated.length === 0) {
+    return (
+      <div style={panelStyle()}>
+        <div style={sectionTitle()}><Network size={14} /> Network</div>
+        <div className="duet-status-dim">No network interfaces reported.</div>
+      </div>
+    );
+  }
+
+  return (
+    <div style={panelStyle()}>
+      <div style={sectionTitle()}><Network size={14} /> Network</div>
+      {populated.map((iface, i) => (
+        <div key={i} className={i < populated.length - 1 ? 'duet-status-block' : undefined}>
+          <div className="duet-status-board-title">
+            {iface.type}{iface.speed ? ` (${iface.speed} Mbps)` : ''}
+          </div>
+          <div style={rowGrid()}>
+            <span className="duet-status-dim">IP address</span>
+            <span className="duet-status-mono">{iface.actualIP || '—'}</span>
+            <span className="duet-status-dim">Subnet</span>
+            <span className="duet-status-mono">{iface.subnet || '—'}</span>
+            <span className="duet-status-dim">Gateway</span>
+            <span className="duet-status-mono">{iface.gateway || '—'}</span>
+            <span className="duet-status-dim">MAC address</span>
+            <span className="duet-status-mono">{iface.mac || '—'}</span>
+            {iface.dnsServer && (
+              <>
+                <span className="duet-status-dim">DNS server</span>
+                <span className="duet-status-mono">{iface.dnsServer}</span>
+              </>
+            )}
+            {iface.ssid && (
+              <>
+                <span className="duet-status-dim">WiFi SSID</span>
+                <span className="duet-status-mono">{iface.ssid}</span>
+              </>
+            )}
+            {iface.signal != null && (
+              <>
+                <span className="duet-status-dim">WiFi signal</span>
+                <span className="duet-status-mono">{iface.signal} dBm</span>
+              </>
+            )}
+            <span className="duet-status-dim">State</span>
+            <span className={`duet-status-flag ${iface.state === 'active' ? 'success' : ''}`}>
+              {iface.state || '—'}
+            </span>
+            {iface.activeProtocols.length > 0 && (
+              <>
+                <span className="duet-status-dim">Active protocols</span>
+                <span className="duet-status-mono">{iface.activeProtocols.join(', ')}</span>
+              </>
+            )}
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
 function MachineSummaryPanel() {
   const state = usePrinterStore((s) => s.model.state);
   const move = usePrinterStore((s) => s.model.move);
@@ -291,6 +361,7 @@ export default function DuetStatus() {
       <ProbesPanel />
       <AnalogSensorsPanel />
       <BoardsPanel />
+      <NetworkPanel />
       <DriversPanel />
       <GpioPanel />
     </div>
