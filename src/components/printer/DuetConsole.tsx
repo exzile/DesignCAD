@@ -14,6 +14,7 @@ import {
   ArrowDown,
   Filter,
   Search,
+  MessageSquare,
 } from 'lucide-react';
 import { usePrinterStore } from '../../store/printerStore';
 import { formatTimeOfDay } from '../../utils/printerFormat';
@@ -132,6 +133,9 @@ export default function DuetConsole() {
     return [];
   });
   const [historyIndex, setHistoryIndex] = useState(-1);
+
+  // Verbose mode toggle
+  const [verbose, setVerbose] = useState(false);
 
   // Holds the in-progress typed text so we can restore it after history navigation
   const draftInputRef = useRef('');
@@ -302,7 +306,7 @@ export default function DuetConsole() {
         }
       }
     },
-    [handleSend, commandHistory, historyIndex, showSuggestions, suggestions, selectedSuggestion, selectSuggestion],
+    [handleSend, commandHistory, historyIndex, showSuggestions, suggestions, selectedSuggestion, selectSuggestion, input],
   );
 
   const handleClear = useCallback(() => {
@@ -326,6 +330,12 @@ export default function DuetConsole() {
     [sendGCode],
   );
 
+  const handleToggleVerbose = useCallback(() => {
+    const nextVerbose = !verbose;
+    sendGCode(nextVerbose ? 'M111 S1' : 'M111 S0');
+    setVerbose(nextVerbose);
+  }, [verbose, sendGCode]);
+
   return (
     <div className="duet-console">
       {/* Quick command buttons */}
@@ -345,6 +355,15 @@ export default function DuetConsole() {
           ))}
         </div>
         <div className="duet-console__toolbar-right">
+          <button
+            className={`duet-console__filter-toggle${verbose ? ' is-active' : ''}`}
+            onClick={handleToggleVerbose}
+            disabled={!connected}
+            title={verbose ? 'Verbose mode ON — click to send M111 S0' : 'Verbose mode OFF — click to send M111 S1'}
+          >
+            <MessageSquare size={12} />
+            <span>{verbose ? 'Verbose' : 'Quiet'}</span>
+          </button>
           <button
             className="duet-console__clear-btn"
             onClick={handleCopyAll}

@@ -1,4 +1,4 @@
-import { useState, useCallback, useRef } from 'react';
+import { useState, useCallback, useRef, useMemo } from 'react';
 import './DuetMacros.css';
 import {
   Play,
@@ -12,6 +12,7 @@ import {
   Zap,
   FilePlus,
   Pencil,
+  Search,
 } from 'lucide-react';
 import { usePrinterStore } from '../../store/printerStore';
 import DuetFileEditor from './DuetFileEditor';
@@ -29,6 +30,7 @@ export default function DuetMacros() {
   const [deleting, setDeleting] = useState<string | null>(null);
   const [editingPath, setEditingPath] = useState<string | null>(null);
   const [creatingNew, setCreatingNew] = useState(false);
+  const [macroSearch, setMacroSearch] = useState('');
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const ROOT_PATH = '0:/macros';
@@ -55,8 +57,24 @@ export default function DuetMacros() {
     ? macros.filter((f) => f.type === 'f' && f.name.endsWith('.g')).slice(0, 6)
     : [];
 
-  const folders = macros.filter((f) => f.type === 'd');
-  const files = macros.filter((f) => f.type === 'f');
+  const folders = useMemo(
+    () =>
+      macros.filter(
+        (f) =>
+          f.type === 'd' &&
+          (!macroSearch || f.name.toLowerCase().includes(macroSearch.toLowerCase())),
+      ),
+    [macros, macroSearch],
+  );
+  const files = useMemo(
+    () =>
+      macros.filter(
+        (f) =>
+          f.type === 'f' &&
+          (!macroSearch || f.name.toLowerCase().includes(macroSearch.toLowerCase())),
+      ),
+    [macros, macroSearch],
+  );
 
   const handleRunMacro = useCallback(
     async (filename: string) => {
@@ -169,6 +187,26 @@ export default function DuetMacros() {
           style={{ display: 'none' }}
           onChange={handleUpload}
         />
+        <div className="duet-macros-search-wrap">
+          <Search size={12} className="duet-macros-search-icon" />
+          <input
+            type="text"
+            value={macroSearch}
+            onChange={(e) => setMacroSearch(e.target.value)}
+            placeholder="Filter macros..."
+            className="duet-macros-search-input"
+            spellCheck={false}
+          />
+          {macroSearch && (
+            <button
+              className="duet-macros-search-clear"
+              onClick={() => setMacroSearch('')}
+              title="Clear search"
+            >
+              x
+            </button>
+          )}
+        </div>
       </div>
 
       {/* Breadcrumb navigation */}
