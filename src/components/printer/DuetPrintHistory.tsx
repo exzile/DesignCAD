@@ -1,12 +1,14 @@
 import { useEffect, useState, useMemo, useCallback } from 'react';
 import {
   History, RefreshCw, Play, CheckCircle, XCircle, Loader2, FileText,
-  Search, X, Download,
+  Search, X, Download, ChevronDown, BarChart3, Clock, Trophy,
 } from 'lucide-react';
 import { usePrinterStore } from '../../store/printerStore';
 import { formatDurationWords } from '../../utils/printerFormat';
 
 const formatDuration = (sec?: number) => formatDurationWords(sec, '', false);
+
+const PAGE_SIZE = 20;
 
 // ---------------------------------------------------------------------------
 // CSV export helper
@@ -29,6 +31,7 @@ export default function DuetPrintHistory() {
   const startPrint = usePrinterStore((s) => s.startPrint);
 
   const [searchQuery, setSearchQuery] = useState('');
+  const [visibleCount, setVisibleCount] = useState(PAGE_SIZE);
 
   useEffect(() => {
     if (connected && history.length === 0 && !loading) {
@@ -37,6 +40,11 @@ export default function DuetPrintHistory() {
     // Intentionally only on connect — avoid refetching on every history update
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [connected]);
+
+  // Reset visible count when search query changes
+  useEffect(() => {
+    setVisibleCount(PAGE_SIZE);
+  }, [searchQuery]);
 
   // Filter history by filename or date (case-insensitive substring match)
   const filteredHistory = useMemo(() => {
@@ -48,6 +56,26 @@ export default function DuetPrintHistory() {
       return filename.includes(q) || date.includes(q);
     });
   }, [history, searchQuery]);
+
+  // Paginated slice of filtered history
+  const paginatedHistory = useMemo(
+    () => filteredHistory.slice(0, visibleCount),
+    [filteredHistory, visibleCount],
+  );
+  const hasMore = visibleCount < filteredHistory.length;
+
+  // Statistics computed from the full (unfiltered) history
+  const stats = useMemo(() => {
+    const total = history.filter((e) => e.kind !== 'event').length;
+    const successful = history.filter((e) => e.kind === 'finish').length;
+    const failed = history.filter((e) => e.kind === 'cancel').length;
+    const successRate = total > 0 ? Math.round((successful / total) * 100) : 0;
+    const totalPrintTimeSec = history.reduce(
+      (sum, e) => sum + (e.durationSec ?? 0),
+      0,
+    );
+    return { total, successful, failed, successRate, totalPrintTimeSec };
+  }, [history]);
 
   // Export filtered history as CSV
   const handleExportCSV = useCallback(() => {
@@ -73,6 +101,39 @@ export default function DuetPrintHistory() {
 
   return (
     <div className="duet-history-wrap">
+      {/* --- Stats summary --- */}
+      {history.length > 0 && (
+        <div className="duet-history-stats">
+          <div className="duet-history-stat">
+            <BarChart3 size={14} className="duet-history-stat-icon" />
+            <span className="duet-history-stat-value">{stats.total}</span>
+            <span className="duet-history-stat-label">Total Prints</span>
+          </div>
+          <div className="duet-history-stat duet-history-stat--success">
+            <CheckCircle size={14} className="duet-history-stat-icon" />
+            <span className="duet-history-stat-value">{stats.successful}</span>
+            <span className="duet-history-stat-label">Successful</span>
+          </div>
+          <div className="duet-history-stat duet-history-stat--fail">
+            <XCircle size={14} className="duet-history-stat-icon" />
+            <span className="duet-history-stat-value">{stats.failed}</span>
+            <span className="duet-history-stat-label">Failed</span>
+          </div>
+          <div className="duet-history-stat duet-history-stat--rate">
+            <Trophy size={14} className="duet-history-stat-icon" />
+            <span className="duet-history-stat-value">{stats.successRate}%</span>
+            <span className="duet-history-stat-label">Success Rate</span>
+          </div>
+          <div className="duet-history-stat">
+            <Clock size={14} className="duet-history-stat-icon" />
+            <span className="duet-history-stat-value">
+              {formatDuration(stats.totalPrintTimeSec) || '0s'}
+            </span>
+            <span className="duet-history-stat-label">Total Print Time</span>
+          </div>
+        </div>
+      )}
+
       <div className="duet-history-panel">
         <div className="duet-history-header">
           <div className="duet-history-title">
@@ -146,7 +207,7 @@ export default function DuetPrintHistory() {
           </div>
         )}
 
-        {filteredHistory.map((entry, i) => {
+        {paginatedHistory.map((entry, i) => {
           const Icon = entry.kind === 'finish'
             ? CheckCircle
             : entry.kind === 'cancel'
@@ -183,6 +244,19 @@ export default function DuetPrintHistory() {
             </div>
           );
         })}
+
+        {/* Load More pagination */}
+        {hasMore && (
+          <div className="duet-history-load-more-wrap">
+            <button
+              className="duet-history-load-more-btn"
+              onClick={() => setVisibleCount((c) => c + PAGE_SIZE)}
+            >
+              <ChevronDown size={14} />
+              Load More ({filteredHistory.length - visibleCount} remaining)
+            </button>
+          </div>
+        )}
       </div>
     </div>
   );
