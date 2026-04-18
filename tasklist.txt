@@ -111,9 +111,9 @@ FILES TAB
 [x] File sorting (by name / size / date modified)
 [x] File search / filter by name
 [ ] GCode file thumbnail preview (thumbnail embedded in file by slicer)
-[ ] File rename / move
+[x] File rename / move
 [ ] Multi-file select and batch delete
-[ ] Create directory
+[x] Create directory
 [ ] Drag-and-drop upload
 [ ] File info panel (layer count, print time estimate, filament from gcode header)
 

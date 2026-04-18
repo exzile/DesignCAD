@@ -36,6 +36,8 @@ export interface DuetAxis {
   visible: boolean;
   minEndstop?: number;
   maxEndstop?: number;
+  /** Workplace coordinate offsets (indexed 0-5 for G54-G59) */
+  workplaceOffsets?: number[];
 }
 
 // Extruder
