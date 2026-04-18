@@ -61,8 +61,8 @@ CONSOLE TAB
 [x] Clear log
 [x] Temperature report filtering (suppress noisy T: B: lines)
 
-[ ] Command history navigation (↑/↓ arrow keys cycle through sent commands)
-[ ] Command history persistence (save sent commands to localStorage)
+[x] Command history navigation (↑/↓ arrow keys cycle through sent commands)
+[x] Command history persistence (save sent commands to localStorage)
 [ ] G-code syntax highlighting in input field
 [ ] Verbose / non-verbose mode toggle (M111)
 
@@ -108,8 +108,8 @@ FILES TAB
 [x] Start print from file list
 [x] Directory navigation (0:/gcodes subdirectories)
 
-[ ] File sorting (by name / size / date modified)
-[ ] File search / filter by name
+[x] File sorting (by name / size / date modified)
+[x] File search / filter by name
 [ ] GCode file thumbnail preview (thumbnail embedded in file by slicer)
 [ ] File rename / move
 [ ] Multi-file select and batch delete
@@ -285,12 +285,12 @@ ARCHITECTURAL — large refactors, need their own scope
 --------------------------------------------------------------------------------
 COMMIT-PATH SAFETY — small validation gaps
 --------------------------------------------------------------------------------
-[ ] AUDIT-8. commitPlaneCut / commitRemesh missing input validation.
+[x] AUDIT-8. commitPlaneCut / commitRemesh missing input validation.
              commitPlaneCut: no Number.isFinite(planeOffset) check; NaN
              normal silently produces empty mesh. commitRemesh: no clamp on
              iterations — caller can pass 1000+ and lock the main thread.
 
-[ ] AUDIT-9. commitMeshSeparate empty result hides body. When unstitchSurface
+[x] AUDIT-9. commitMeshSeparate empty result hides body. When unstitchSurface
              returns 0 geometries, the source feature is filtered out at
              cadStore.ts ~5678 but no replacement exists; user just loses
              the body silently with status "split into 0 parts".
@@ -300,7 +300,7 @@ COMMIT-PATH SAFETY — small validation gaps
               would help: defer disposal until snapshot still valid AND
               keep original around for undo.
 
-[ ] AUDIT-11. componentConstraint compA existence not validated in
+[x] AUDIT-11. componentConstraint compA existence not validated in
               solveComponentConstraint (only compB checked at line 991).
               Round-5 added stale-pruning in solveAllComponentConstraints
               but the single-constraint path can still write garbage if
@@ -336,7 +336,7 @@ PARSER / FILE I/O ROBUSTNESS
 --------------------------------------------------------------------------------
 PERF — LOW priority per-event allocations
 --------------------------------------------------------------------------------
-[ ] AUDIT-16. ExtrudeGizmo.rayToAxisDistance per-drag-frame allocations.
+[x] AUDIT-16. ExtrudeGizmo.rayToAxisDistance per-drag-frame allocations.
               `new THREE.Ray()` + `ray.origin.clone().sub(...)` per
               pointermove (~60 Hz during drag). Promote scratch Ray +
               Vector3 to module-level.
