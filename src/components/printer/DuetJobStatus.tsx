@@ -14,6 +14,7 @@ import {
   ObjectCancellation,
   ThumbnailPreview,
   FirstLayerInspection,
+  PauseAtTrigger,
 } from './jobStatus';
 
 export default function DuetJobStatus() {
@@ -33,6 +34,7 @@ export default function DuetJobStatus() {
       <ThumbnailPreview />
       <ProgressSection />
       <FirstLayerInspection />
+      <PauseAtTrigger />
       <ObjectCancellation />
       <JobInfo />
       <TimeEstimates />

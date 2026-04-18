@@ -7,6 +7,26 @@ import DuetFileEditor from './DuetFileEditor';
 import './DuetFilamentManager.css';
 
 // ---------------------------------------------------------------------------
+// Filament color helpers (persisted in localStorage)
+// ---------------------------------------------------------------------------
+
+const FILAMENT_COLORS_KEY = 'dzign3d-filament-colors';
+
+function loadFilamentColors(): Record<string, string> {
+  try {
+    const raw = localStorage.getItem(FILAMENT_COLORS_KEY);
+    if (raw) return JSON.parse(raw);
+  } catch { /* ignore */ }
+  return {};
+}
+
+function saveFilamentColor(name: string, color: string) {
+  const colors = loadFilamentColors();
+  colors[name] = color;
+  try { localStorage.setItem(FILAMENT_COLORS_KEY, JSON.stringify(colors)); } catch { /* ignore */ }
+}
+
+// ---------------------------------------------------------------------------
 // Default macro templates
 // ---------------------------------------------------------------------------
 
@@ -79,6 +99,9 @@ export default function DuetFilamentManager() {
 
   // Deleting
   const [deletingName, setDeletingName] = useState<string | null>(null);
+
+  // Filament colors
+  const [filamentColors, setFilamentColors] = useState<Record<string, string>>(loadFilamentColors);
 
   // File editor
   const [editingPath, setEditingPath] = useState<string | null>(null);
@@ -212,6 +235,7 @@ export default function DuetFilamentManager() {
           <table className="duet-filament-mgr__table">
             <thead className="duet-filament-mgr__thead">
               <tr>
+                <th className="duet-filament-mgr__th duet-filament-mgr__th--center" style={{ width: 40 }}>Color</th>
                 <th className="duet-filament-mgr__th">Name</th>
                 <th className="duet-filament-mgr__th">Loaded In</th>
                 <th className="duet-filament-mgr__th duet-filament-mgr__th--center">Load Macro</th>
@@ -225,6 +249,31 @@ export default function DuetFilamentManager() {
                   key={name}
                   className="duet-filament-mgr__tr"
                 >
+                  <td className="duet-filament-mgr__td duet-filament-mgr__td--center">
+                    <label style={{ position: 'relative', display: 'inline-block', width: 20, height: 20, cursor: 'pointer' }}>
+                      <span style={{
+                        display: 'inline-block',
+                        width: 20,
+                        height: 20,
+                        borderRadius: '50%',
+                        background: filamentColors[name] ?? '#888888',
+                        border: '2px solid var(--border-strong)',
+                      }} />
+                      <input
+                        type="color"
+                        value={filamentColors[name] ?? '#888888'}
+                        onChange={(e) => {
+                          const c = e.target.value;
+                          saveFilamentColor(name, c);
+                          setFilamentColors((prev) => ({ ...prev, [name]: c }));
+                        }}
+                        style={{
+                          position: 'absolute', inset: 0, opacity: 0,
+                          width: '100%', height: '100%', cursor: 'pointer', padding: 0, border: 'none',
+                        }}
+                      />
+                    </label>
+                  </td>
                   <td className="duet-filament-mgr__td">
                     {renamingName === name ? (
                       <form

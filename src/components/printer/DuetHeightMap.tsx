@@ -11,6 +11,7 @@ import {
   Download,
   ToggleLeft,
   ToggleRight,
+  FolderOpen,
 } from 'lucide-react';
 import * as THREE from 'three';
 import { usePrinterStore } from '../../store/printerStore';
@@ -511,6 +512,8 @@ export default function DuetHeightMap() {
   const loadHeightMap = usePrinterStore((s) => s.loadHeightMap);
   const probeGrid = usePrinterStore((s) => s.probeGrid);
   const sendGCode = usePrinterStore((s) => s.sendGCode);
+  const service = usePrinterStore((s) => s.service);
+  const connected = usePrinterStore((s) => s.connected);
   const compensationType = usePrinterStore(
     (s) => s.model.move?.compensation?.type,
   );
@@ -518,6 +521,36 @@ export default function DuetHeightMap() {
   const [loading, setLoading] = useState(false);
   const [probing, setProbing] = useState(false);
   const [viewMode, setViewMode] = useState<'3d' | '2d'>('3d');
+
+  // CSV file selector state
+  const [csvFiles, setCsvFiles] = useState<string[]>([]);
+  const [selectedCsv, setSelectedCsv] = useState('0:/sys/heightmap.csv');
+  const [loadingCsvList, setLoadingCsvList] = useState(false);
+
+  // Fetch CSV list from 0:/sys/
+  const refreshCsvList = useCallback(async () => {
+    if (!service) return;
+    setLoadingCsvList(true);
+    try {
+      const entries = await service.listFiles('0:/sys');
+      const csvNames = entries
+        .filter((e) => e.type === 'f' && e.name.toLowerCase().endsWith('.csv'))
+        .map((e) => e.name)
+        .sort();
+      setCsvFiles(csvNames);
+    } catch {
+      setCsvFiles([]);
+    } finally {
+      setLoadingCsvList(false);
+    }
+  }, [service]);
+
+  // Load CSV file list when connected
+  useEffect(() => {
+    if (connected) {
+      void refreshCsvList();
+    }
+  }, [connected, refreshCsvList]);
 
   const isCompensationEnabled =
     !!compensationType && compensationType !== 'none';
@@ -527,11 +560,11 @@ export default function DuetHeightMap() {
   const handleLoad = useCallback(async () => {
     setLoading(true);
     try {
-      await loadHeightMap();
+      await loadHeightMap(selectedCsv);
     } finally {
       setLoading(false);
     }
-  }, [loadHeightMap]);
+  }, [loadHeightMap, selectedCsv]);
 
   const handleProbe = useCallback(async () => {
     if (!confirm('Run bed mesh probing (G29)? Make sure the bed is clear and the nozzle is clean.')) {
@@ -559,11 +592,43 @@ export default function DuetHeightMap() {
     <div className="duet-heightmap">
       {/* Controls bar */}
       <div className="heightmap-controls">
+        {/* CSV file selector */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+          <FolderOpen size={14} style={{ color: 'var(--text-muted)', flexShrink: 0 }} />
+          <select
+            value={selectedCsv}
+            onChange={(e) => setSelectedCsv(e.target.value)}
+            disabled={loadingCsvList || csvFiles.length === 0}
+            style={{
+              fontSize: 12, padding: '3px 6px',
+              background: 'var(--bg-elevated)', color: 'var(--text-primary)',
+              border: '1px solid var(--border)', borderRadius: 4,
+              fontFamily: 'inherit', maxWidth: 180,
+            }}
+            title="Select a CSV height map file from 0:/sys/"
+          >
+            {csvFiles.length === 0 && (
+              <option value="0:/sys/heightmap.csv">heightmap.csv</option>
+            )}
+            {csvFiles.map((f) => (
+              <option key={f} value={`0:/sys/${f}`}>{f}</option>
+            ))}
+          </select>
+          <button
+            className="btn btn-sm"
+            onClick={() => void refreshCsvList()}
+            disabled={loadingCsvList}
+            title="Refresh CSV file list"
+            style={{ padding: '3px 5px', minWidth: 0 }}
+          >
+            {loadingCsvList ? <Loader2 size={12} className="spin" /> : <RefreshCw size={12} />}
+          </button>
+        </div>
         <button
           className="btn btn-sm"
           onClick={handleLoad}
           disabled={loading || probing}
-          title="Load current height map from printer"
+          title="Load selected height map from printer"
         >
           {loading ? <Loader2 size={14} className="spin" /> : <RefreshCw size={14} />}
           <span>Load Height Map</span>

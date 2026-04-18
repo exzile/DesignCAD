@@ -187,7 +187,7 @@ interface PrinterStore {
   refreshPrintHistory: () => Promise<void>;
 
   // Height map
-  loadHeightMap: () => Promise<void>;
+  loadHeightMap: (path?: string) => Promise<void>;
   probeGrid: () => Promise<void>;
 
   // Auto-reconnect
@@ -878,11 +878,11 @@ export const usePrinterStore = create<PrinterStore>((set, get) => ({
 
   // --- Height map ---
 
-  loadHeightMap: async () => {
+  loadHeightMap: async (path?: string) => {
     const { service } = get();
     if (!service) return;
     try {
-      const heightMap = await service.getHeightMap();
+      const heightMap = await service.getHeightMap(path);
       set({ heightMap });
     } catch (err) {
       set({ error: `Failed to load height map: ${(err as Error).message}` });
