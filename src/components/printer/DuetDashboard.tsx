@@ -12,6 +12,9 @@ import AtxPowerPanel from './dashboard/AtxPowerPanel';
 import MacroPanel from './dashboard/MacroPanel';
 import ToolSelectorPanel from './dashboard/ToolSelectorPanel';
 import ToolOffsetsPanel from './dashboard/ToolOffsetsPanel';
+import PressureAdvancePanel from './dashboard/PressureAdvancePanel';
+import InputShaperPanel from './dashboard/InputShaperPanel';
+import BabySteppingPanel from './dashboard/BabySteppingPanel';
 
 export default function DuetDashboard() {
   const error = usePrinterStore((s) => s.error);
@@ -49,11 +52,14 @@ export default function DuetDashboard() {
           <TemperaturePanel />
           <SpeedFlowPanel />
           <FanControlPanel />
+          <PressureAdvancePanel />
+          <InputShaperPanel />
         </div>
 
         <div className="duet-dash-col">
           <AxisMovementPanel />
           <ExtruderControlPanel />
+          <BabySteppingPanel />
           <AtxPowerPanel />
           <MacroPanel />
         </div>
