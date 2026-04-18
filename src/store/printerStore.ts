@@ -1,5 +1,6 @@
 import { create } from 'zustand';
 import { DuetService } from '../services/DuetService';
+import { getDuetPrefs } from '../utils/duetPrefs';
 import type {
   DuetConfig,
   DuetObjectModel,
@@ -13,6 +14,10 @@ import type {
 const MAX_TEMPERATURE_HISTORY = 200;
 const MAX_CONSOLE_HISTORY = 500;
 const STORAGE_KEY = 'dzign3d-duet-config';
+
+// Auto-reconnect state (kept outside the store to avoid re-renders)
+let autoReconnectTimer: ReturnType<typeof setTimeout> | null = null;
+let autoReconnectAttempts = 0;
 
 export interface PrintHistoryEntry {
   timestamp: string;       // ISO-ish "YYYY-MM-DD HH:MM:SS" from eventlog
@@ -123,7 +128,7 @@ interface PrinterStore {
   // Actions
   setConfig: (config: Partial<DuetConfig>) => void;
   connect: () => Promise<void>;
-  disconnect: () => Promise<void>;
+  disconnect: (userInitiated?: boolean) => Promise<void>;
   testConnection: () => Promise<{ success: boolean; firmwareVersion?: string; error?: string }>;
 
   // G-code
@@ -184,6 +189,10 @@ interface PrinterStore {
   // Height map
   loadHeightMap: () => Promise<void>;
   probeGrid: () => Promise<void>;
+
+  // Auto-reconnect
+  startAutoReconnect: () => void;
+  stopAutoReconnect: () => void;
 
   // UI
   setShowPrinter: (show: boolean) => void;
@@ -296,6 +305,16 @@ export const usePrinterStore = create<PrinterStore>((set, get) => ({
         throw new Error('Connection refused');
       }
 
+      // Set up disconnection detection for auto-reconnect
+      service.on('disconnected', () => {
+        // Only trigger if the store still thinks it's connected (i.e., not
+        // a user-initiated disconnect which already cleared the state).
+        const state = get();
+        if (state.connected && state.service === service) {
+          get().disconnect(false);
+        }
+      });
+
       // Set up model update listener that records temperature samples
       service.onModelUpdate((model: Partial<DuetObjectModel>) => {
         // Drop callbacks from a stale service that was replaced/disconnected
@@ -360,7 +379,17 @@ export const usePrinterStore = create<PrinterStore>((set, get) => ({
     }
   },
 
-  disconnect: async () => {
+  /**
+   * Disconnect from the printer.
+   * @param userInitiated - When true (default), auto-reconnect is stopped.
+   *   Pass false when the disconnect is due to a detected connection loss
+   *   so that auto-reconnect can kick in.
+   */
+  disconnect: async (userInitiated = true) => {
+    if (userInitiated) {
+      get().stopAutoReconnect();
+    }
+
     const { service } = get();
     if (service) {
       try { await service.disconnect(); } catch { /* ignore */ }
@@ -377,8 +406,13 @@ export const usePrinterStore = create<PrinterStore>((set, get) => ({
       macros: [],
       filaments: [],
       heightMap: null,
-      error: null,
+      error: userInitiated ? null : 'Connection lost',
     });
+
+    // If the disconnect was not user-initiated, try to auto-reconnect
+    if (!userInitiated) {
+      get().startAutoReconnect();
+    }
   },
 
   testConnection: async () => {
@@ -866,6 +900,65 @@ export const usePrinterStore = create<PrinterStore>((set, get) => ({
     } catch (err) {
       set({ error: `Failed to probe grid: ${(err as Error).message}` });
     }
+  },
+
+  // --- Auto-reconnect ---
+
+  startAutoReconnect: () => {
+    const prefs = getDuetPrefs();
+    if (!prefs.autoReconnect) return;
+    if (autoReconnectTimer) return; // already running
+
+    const { config } = get();
+    if (!config.hostname) return;
+
+    autoReconnectAttempts = 0;
+    const interval = prefs.reconnectInterval || 5000;
+    const maxRetries = prefs.maxRetries || 10;
+
+    const attempt = () => {
+      const state = get();
+      // Stop if already connected or user cleared hostname
+      if (state.connected || !state.config.hostname) {
+        autoReconnectTimer = null;
+        autoReconnectAttempts = 0;
+        return;
+      }
+
+      autoReconnectAttempts++;
+      if (autoReconnectAttempts > maxRetries) {
+        set({ error: `Auto-reconnect failed after ${maxRetries} attempts` });
+        autoReconnectTimer = null;
+        autoReconnectAttempts = 0;
+        return;
+      }
+
+      set({ error: `Reconnecting... attempt ${autoReconnectAttempts}/${maxRetries}` });
+
+      state.connect().then(() => {
+        if (get().connected) {
+          autoReconnectTimer = null;
+          autoReconnectAttempts = 0;
+          set({ error: null });
+        } else {
+          // Schedule next attempt
+          autoReconnectTimer = setTimeout(attempt, interval);
+        }
+      }).catch(() => {
+        autoReconnectTimer = setTimeout(attempt, interval);
+      });
+    };
+
+    // Start with a delay
+    autoReconnectTimer = setTimeout(attempt, interval);
+  },
+
+  stopAutoReconnect: () => {
+    if (autoReconnectTimer) {
+      clearTimeout(autoReconnectTimer);
+      autoReconnectTimer = null;
+    }
+    autoReconnectAttempts = 0;
   },
 
   // --- UI ---

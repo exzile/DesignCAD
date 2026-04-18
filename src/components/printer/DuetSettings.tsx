@@ -306,6 +306,56 @@ export default function DuetSettings() {
           <AlertCircle size={16} /> {error}
         </div>
       )}
+
+      {/* Auto-reconnect settings */}
+      <div className="duet-settings__section" style={{ marginTop: 16 }}>
+        <div className="duet-settings__section-title">Auto-Reconnect</div>
+        <ToggleRow
+          id="auto-reconnect-conn"
+          checked={prefs.autoReconnect}
+          onChange={(v) => patchPrefs({ autoReconnect: v })}
+          label="Enable auto-reconnect"
+          hint="Automatically attempt to reconnect when the connection drops."
+        />
+        {prefs.autoReconnect && (
+          <>
+            <SettingRow
+              label="Reconnect Interval"
+              hint="Time between reconnect attempts."
+              control={
+                <select
+                  className="duet-settings__select"
+                  value={prefs.reconnectInterval}
+                  onChange={(e) => patchPrefs({ reconnectInterval: Number(e.target.value) })}
+                >
+                  <option value={2000}>2 seconds</option>
+                  <option value={5000}>5 seconds</option>
+                  <option value={10000}>10 seconds</option>
+                  <option value={30000}>30 seconds</option>
+                  <option value={60000}>60 seconds</option>
+                </select>
+              }
+            />
+            <SettingRow
+              label="Max Retries"
+              hint="Maximum number of reconnect attempts before giving up."
+              control={
+                <select
+                  className="duet-settings__select"
+                  value={prefs.maxRetries}
+                  onChange={(e) => patchPrefs({ maxRetries: Number(e.target.value) })}
+                >
+                  <option value={3}>3</option>
+                  <option value={5}>5</option>
+                  <option value={10}>10</option>
+                  <option value={20}>20</option>
+                  <option value={0}>Unlimited</option>
+                </select>
+              }
+            />
+          </>
+        )}
+      </div>
     </>
   );
 
@@ -396,8 +446,8 @@ export default function DuetSettings() {
         id="auto-reconnect"
         checked={prefs.autoReconnect}
         onChange={(v) => patchPrefs({ autoReconnect: v })}
-        label="Auto-reconnect on startup"
-        hint="Attempt to reconnect to the last-used Duet board when Dzign3D loads."
+        label="Auto-reconnect"
+        hint="Automatically reconnect on startup and when the connection drops. Configure interval and retries in the Connection tab."
       />
     </>
   );
@@ -427,6 +477,13 @@ export default function DuetSettings() {
         onChange={(v) => patchPrefs({ notificationsSound: v })}
         label="Play sound on beep events"
         hint="Trigger a short tone when the firmware emits an M300 beep."
+      />
+      <ToggleRow
+        id="sound-alert-complete"
+        checked={prefs.soundAlertOnComplete}
+        onChange={(v) => patchPrefs({ soundAlertOnComplete: v })}
+        label="Sound alert on print complete/error"
+        hint="Play a notification sound when a print finishes or encounters an error."
       />
       <SettingRow
         label="Minimum Severity"

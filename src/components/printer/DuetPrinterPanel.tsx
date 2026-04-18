@@ -1,10 +1,11 @@
-import React, { useCallback } from 'react';
+import React, { useCallback, useEffect, useRef } from 'react';
 import './PrinterPanel.css';
 import {
   LayoutDashboard, Activity, Terminal, Play, FolderOpen, FileCode, Grid3x3,
   History, Braces, Settings, X, OctagonAlert, Wifi, WifiOff, FlaskConical,
 } from 'lucide-react';
 import { usePrinterStore } from '../../store/printerStore';
+import { getDuetPrefs } from '../../utils/duetPrefs';
 import DuetDashboard from './DuetDashboard';
 import DuetStatus from './DuetStatus';
 import DuetConsole from './DuetConsole';
@@ -247,6 +248,92 @@ export default function DuetPrinterPanel({ fullscreen = false }: { fullscreen?: 
       emergencyStop();
     }
   }, [emergencyStop]);
+
+  // -----------------------------------------------------------------------
+  // Task 1: Update browser tab title with print progress
+  // -----------------------------------------------------------------------
+  const originalTitleRef = useRef(document.title);
+
+  useEffect(() => {
+    const status = model.state?.status;
+    const isPrinting = status === 'processing' || status === 'simulating';
+    if (!isPrinting) {
+      // Reset title when not printing
+      document.title = originalTitleRef.current;
+      return;
+    }
+    const fileName = model.job?.file?.fileName ?? 'print';
+    const fileSize = model.job?.file?.size ?? 0;
+    const filePos = model.job?.filePosition ?? 0;
+    const pct = fileSize > 0 ? Math.min(100, (filePos / fileSize) * 100) : 0;
+    document.title = `${Math.round(pct)}% - ${fileName}`;
+
+    return () => {
+      document.title = originalTitleRef.current;
+    };
+  }, [model.state?.status, model.job?.file?.fileName, model.job?.file?.size, model.job?.filePosition]);
+
+  // -----------------------------------------------------------------------
+  // Task 2: Sound alert when print completes or errors
+  // -----------------------------------------------------------------------
+  const prevStatusRef = useRef<string | undefined>(undefined);
+
+  useEffect(() => {
+    const status = model.state?.status;
+    const prev = prevStatusRef.current;
+    prevStatusRef.current = status;
+
+    // Only fire on transitions from an active print state to idle/halted
+    if (prev === undefined) return;
+    const wasActive = prev === 'processing' || prev === 'simulating'
+      || prev === 'pausing' || prev === 'paused' || prev === 'resuming'
+      || prev === 'cancelling';
+    if (!wasActive) return;
+
+    const isComplete = status === 'idle';
+    const isError = status === 'halted';
+    if (!isComplete && !isError) return;
+
+    const prefs = getDuetPrefs();
+    if (!prefs.soundAlertOnComplete) return;
+
+    // Play a short beep via the Web Audio API
+    try {
+      const ctx = new (window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext)();
+      const oscillator = ctx.createOscillator();
+      const gain = ctx.createGain();
+      oscillator.connect(gain);
+      gain.connect(ctx.destination);
+      oscillator.type = 'sine';
+      oscillator.frequency.value = isError ? 440 : 880;
+      gain.gain.value = 0.3;
+      oscillator.start();
+      // Play two short beeps for completion, one longer for error
+      if (isError) {
+        gain.gain.setValueAtTime(0.3, ctx.currentTime);
+        gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.6);
+        oscillator.stop(ctx.currentTime + 0.6);
+      } else {
+        gain.gain.setValueAtTime(0.3, ctx.currentTime);
+        gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.15);
+        // Second beep
+        const osc2 = ctx.createOscillator();
+        const gain2 = ctx.createGain();
+        osc2.connect(gain2);
+        gain2.connect(ctx.destination);
+        osc2.type = 'sine';
+        osc2.frequency.value = 1100;
+        gain2.gain.setValueAtTime(0.001, ctx.currentTime + 0.2);
+        gain2.gain.exponentialRampToValueAtTime(0.3, ctx.currentTime + 0.22);
+        gain2.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.4);
+        osc2.start(ctx.currentTime + 0.2);
+        osc2.stop(ctx.currentTime + 0.4);
+        oscillator.stop(ctx.currentTime + 0.15);
+      }
+    } catch {
+      // Audio not available — silently ignore
+    }
+  }, [model.state?.status]);
 
   if (!fullscreen && !showPrinter) return null;
 

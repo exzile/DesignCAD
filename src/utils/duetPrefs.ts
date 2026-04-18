@@ -25,10 +25,14 @@ export interface DuetPrefs {
   confirmToolChange: boolean;
   silentPrompts: boolean;
   autoReconnect: boolean;
+  reconnectInterval: number;
+  maxRetries: number;
   // Notifications
   toastDurationMs: number;
   notificationsSound: boolean;
   notifMinSeverity: NotifSeverity;
+  // Sound alerts
+  soundAlertOnComplete: boolean;
   // Custom dashboard buttons
   customButtons: CustomButton[];
 }
@@ -39,9 +43,12 @@ export const DEFAULT_PREFS: DuetPrefs = {
   confirmToolChange: true,
   silentPrompts: false,
   autoReconnect: false,
+  reconnectInterval: 5000,
+  maxRetries: 10,
   toastDurationMs: 5000,
   notificationsSound: true,
   notifMinSeverity: 'info',
+  soundAlertOnComplete: true,
   customButtons: [],
 };
 
