@@ -84,6 +84,7 @@ interface PrinterStore {
   connected: boolean;
   connecting: boolean;
   reconnecting: boolean;
+  firmwareUpdatePending: boolean;
   config: DuetConfig;
   service: DuetService | null;
 
@@ -231,6 +232,7 @@ export const usePrinterStore = create<PrinterStore>((set, get) => ({
   connected: false,
   connecting: false,
   reconnecting: false,
+  firmwareUpdatePending: false,
   config: loadSavedConfig(),
   service: null,
 
@@ -372,6 +374,7 @@ export const usePrinterStore = create<PrinterStore>((set, get) => ({
       set({
         connected: true,
         connecting: false,
+        firmwareUpdatePending: false,
         service,
         files,
         macros,
@@ -872,6 +875,7 @@ export const usePrinterStore = create<PrinterStore>((set, get) => ({
     if (!service) return;
     try {
       await service.sendGCode('M997');
+      set({ firmwareUpdatePending: true });
     } catch (err) {
       set({ error: `Failed to trigger firmware install: ${(err as Error).message}` });
     }

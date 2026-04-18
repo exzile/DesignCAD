@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect, useCallback, useMemo } from 'react';
+import { useState, useRef, useEffect, useCallback, useMemo, useLayoutEffect } from 'react';
 import './DuetConsole.css';
 import {
   Send,
@@ -114,6 +114,50 @@ function highlightText(text: string, search: string): React.ReactNode {
   );
 }
 
+/**
+ * Apply lightweight G-code syntax highlighting to a plain-text string.
+ * Returns an HTML string suitable for use as `innerHTML` in the backdrop div.
+ * Order matters: comments first (greedy), then G/M commands, then axis letters.
+ */
+function highlightGCode(text: string): string {
+  // Escape HTML entities to prevent XSS via arbitrary user input
+  const escaped = text
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;');
+
+  // We process line by line so comment highlighting stays correct
+  return escaped
+    .split('\n')
+    .map((line) => {
+      // Find the comment start (;)
+      const commentIdx = line.indexOf(';');
+      const codePart = commentIdx === -1 ? line : line.slice(0, commentIdx);
+      const commentPart = commentIdx === -1 ? '' : line.slice(commentIdx);
+
+      // Highlight G/M commands in the code portion
+      let highlighted = codePart
+        // G/M commands: bold cyan
+        .replace(
+          /\b([GM]\d+(?:\.\d+)?)\b/g,
+          '<span style="color:#7ec8e3;font-weight:bold">$1</span>',
+        )
+        // Axis letters + value: green
+        .replace(
+          /\b([XYZEFRSPT]-?\d+(?:\.\d+)?)\b/g,
+          '<span style="color:#c3e88d">$1</span>',
+        );
+
+      // Append comment in grey italic
+      if (commentPart) {
+        highlighted += `<span style="color:#555;font-style:italic">${commentPart}</span>`;
+      }
+
+      return highlighted;
+    })
+    .join('\n');
+}
+
 export default function DuetConsole() {
   const consoleHistory = usePrinterStore((s) => s.consoleHistory);
   const sendGCode = usePrinterStore((s) => s.sendGCode);
@@ -159,6 +203,7 @@ export default function DuetConsole() {
   const inputRef = useRef<HTMLInputElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const suggestionsRef = useRef<HTMLDivElement>(null);
+  const highlightBackdropRef = useRef<HTMLDivElement>(null);
 
   // Filtered console entries
   const filteredEntries = useMemo(() => {
@@ -199,6 +244,13 @@ export default function DuetConsole() {
   useEffect(() => {
     inputRef.current?.focus();
   }, []);
+
+  // Update highlight backdrop whenever the input text changes (multi-line mode)
+  useLayoutEffect(() => {
+    const backdrop = highlightBackdropRef.current;
+    if (!backdrop) return;
+    backdrop.innerHTML = highlightGCode(input) + '\n'; // trailing newline preserves last-line height
+  }, [input]);
 
   // Show/hide suggestions when input changes
   useEffect(() => {
@@ -525,24 +577,41 @@ export default function DuetConsole() {
 
         <div className="duet-console__input-row">
           {isMultiLine ? (
-            <textarea
-              ref={textareaRef}
-              value={input}
-              onChange={(e) => {
-                setInput(e.target.value);
-                setHistoryIndex(-1);
-              }}
-              onKeyDown={handleKeyDown}
-              onBlur={() => {
-                setTimeout(() => setShowSuggestions(false), 150);
-              }}
-              placeholder={connected ? 'Multi-line G-code (Ctrl+Enter to send)' : 'Not connected'}
-              disabled={!connected}
-              className="duet-console__input duet-console__input--multiline"
-              spellCheck={false}
-              autoComplete="off"
-              rows={3}
-            />
+            <div className="duet-console__input-highlight-wrap">
+              {/* Backdrop layer for syntax highlighting */}
+              <div
+                ref={highlightBackdropRef}
+                className="duet-console__input-highlight-backdrop"
+                aria-hidden="true"
+              />
+              <textarea
+                ref={textareaRef}
+                value={input}
+                onChange={(e) => {
+                  setInput(e.target.value);
+                  setHistoryIndex(-1);
+                }}
+                onKeyDown={handleKeyDown}
+                onBlur={() => {
+                  setTimeout(() => setShowSuggestions(false), 150);
+                }}
+                onScroll={() => {
+                  // Keep backdrop scroll in sync with textarea
+                  const ta = textareaRef.current;
+                  const bd = highlightBackdropRef.current;
+                  if (ta && bd) {
+                    bd.scrollTop = ta.scrollTop;
+                    bd.scrollLeft = ta.scrollLeft;
+                  }
+                }}
+                placeholder={connected ? 'Multi-line G-code (Ctrl+Enter to send)' : 'Not connected'}
+                disabled={!connected}
+                className="duet-console__input duet-console__input--multiline duet-console__input--highlighted"
+                spellCheck={false}
+                autoComplete="off"
+                rows={3}
+              />
+            </div>
           ) : (
             <input
               ref={inputRef}

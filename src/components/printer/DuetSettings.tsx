@@ -82,6 +82,7 @@ export default function DuetSettings() {
   const uploadProgress = usePrinterStore((s) => s.uploadProgress);
   const uploadFirmware = usePrinterStore((s) => s.uploadFirmware);
   const installFirmware = usePrinterStore((s) => s.installFirmware);
+  const firmwareUpdatePending = usePrinterStore((s) => s.firmwareUpdatePending);
 
   const theme = useThemeStore((s) => s.theme);
   const setTheme = useThemeStore((s) => s.setTheme);
@@ -100,6 +101,13 @@ export default function DuetSettings() {
     { type: 'success' | 'error'; message: string } | null
   >(null);
   const firmwareInputRef = React.useRef<HTMLInputElement | null>(null);
+
+  // IAP file state
+  const [iapFile, setIapFile] = useState<File | null>(null);
+  const [iapStatus, setIapStatus] = useState<
+    { type: 'success' | 'error'; message: string } | null
+  >(null);
+  const iapInputRef = React.useRef<HTMLInputElement | null>(null);
 
   const handleFirmwareSelect = useCallback((files: FileList | null) => {
     if (!files || files.length === 0) return;
@@ -129,6 +137,34 @@ export default function DuetSettings() {
       });
     }
   }, [firmwareFile, uploadFirmware]);
+
+  const handleIapSelect = useCallback((files: FileList | null) => {
+    if (!files || files.length === 0) return;
+    const file = files[0];
+    if (!file.name.toLowerCase().endsWith('.bin')) {
+      setIapStatus({ type: 'error', message: 'IAP file must be a .bin file.' });
+      return;
+    }
+    setIapStatus(null);
+    setIapFile(file);
+  }, []);
+
+  const handleIapUpload = useCallback(async () => {
+    if (!iapFile) return;
+    setIapStatus(null);
+    try {
+      await uploadFirmware(iapFile);
+      setIapStatus({
+        type: 'success',
+        message: `${iapFile.name} uploaded to 0:/firmware/`,
+      });
+    } catch (err) {
+      setIapStatus({
+        type: 'error',
+        message: (err as Error).message,
+      });
+    }
+  }, [iapFile, uploadFirmware]);
 
   const handleFirmwareInstall = useCallback(async () => {
     const ok = confirm(
@@ -707,6 +743,73 @@ export default function DuetSettings() {
             <span>{firmwareStatus.message}</span>
           </div>
         )}
+
+        {firmwareUpdatePending && (
+          <div className="duet-settings__banner duet-settings__banner--mt duet-settings__banner--warning">
+            <Loader2 size={16} className="spin" />
+            <span>Board is rebooting — waiting for reconnect...</span>
+          </div>
+        )}
+      </div>
+
+      <div className="duet-settings__section">
+        <div className="duet-settings__section-title">IAP File (standalone boards)</div>
+        <p className="duet-settings__about-text duet-settings__about-text--mb">
+          Select an IAP <code className="duet-settings__code-accent">.bin</code> file (e.g.{' '}
+          <code className="duet-settings__code-accent">IAP4E.bin</code> or{' '}
+          <code className="duet-settings__code-accent">Duet3_SBC.bin</code>). It will be uploaded to{' '}
+          <code className="duet-settings__code-accent">0:/firmware/</code> on the board.
+        </p>
+        <p className="duet-settings__hint">
+          Required for standalone (non-SBC) boards before firmware install.
+        </p>
+
+        <input
+          ref={iapInputRef}
+          type="file"
+          accept=".bin"
+          className="duet-settings__file-input-hidden"
+          onChange={(e) => handleIapSelect(e.target.files)}
+        />
+
+        <div className="duet-settings__btn-row">
+          <button
+            className={`duet-settings__btn duet-settings__btn--secondary${!connected || uploading ? ' duet-settings__btn--disabled' : ''}`}
+            onClick={() => iapInputRef.current?.click()}
+            disabled={!connected || uploading}
+          >
+            <UploadCloud size={14} /> Choose IAP File
+          </button>
+          <button
+            className={`duet-settings__btn duet-settings__btn--primary${!iapFile || uploading || !connected ? ' duet-settings__btn--disabled' : ''}`}
+            onClick={handleIapUpload}
+            disabled={!iapFile || uploading || !connected}
+          >
+            {uploading ? (
+              <><Loader2 size={14} className="spin" /> Uploading {uploadProgress}%</>
+            ) : (
+              'Upload IAP'
+            )}
+          </button>
+        </div>
+
+        {iapFile && !uploading && (
+          <div className="duet-settings__firmware-hint">
+            Selected: <span className="duet-settings__mono">{iapFile.name}</span>{' '}
+            ({(iapFile.size / 1024).toFixed(1)} KB)
+          </div>
+        )}
+
+        {iapStatus && (
+          <div className={`duet-settings__banner duet-settings__banner--mt ${iapStatus.type === 'success' ? 'duet-settings__banner--success' : 'duet-settings__banner--error'}`}>
+            {iapStatus.type === 'success' ? (
+              <CheckCircle size={16} />
+            ) : (
+              <AlertCircle size={16} />
+            )}
+            <span>{iapStatus.message}</span>
+          </div>
+        )}
       </div>
     </>
   );
@@ -758,7 +861,7 @@ export default function DuetSettings() {
       default:              return null;
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [tab, prefs, theme, hostname, password, mode, testing, testResult, error, connected, connecting, axes, board, firmwareFile, firmwareStatus, uploading, uploadProgress]);
+  }, [tab, prefs, theme, hostname, password, mode, testing, testResult, error, connected, connecting, axes, board, firmwareFile, firmwareStatus, uploading, uploadProgress, iapFile, iapStatus, firmwareUpdatePending]);
 
   if (!showSettings) return null;
 
