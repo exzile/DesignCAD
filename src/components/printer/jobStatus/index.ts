@@ -11,3 +11,5 @@ export { BabySteppingControls } from './BabySteppingControls';
 export { SpeedFlowOverride } from './SpeedFlowOverride';
 export { WebcamView } from './WebcamView';
 export { ObjectCancellation } from './ObjectCancellation';
+export { ThumbnailPreview } from './ThumbnailPreview';
+export { FirstLayerInspection } from './FirstLayerInspection';

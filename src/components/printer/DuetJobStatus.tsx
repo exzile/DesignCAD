@@ -12,6 +12,8 @@ import {
   SpeedFlowOverride,
   WebcamView,
   ObjectCancellation,
+  ThumbnailPreview,
+  FirstLayerInspection,
 } from './jobStatus';
 
 export default function DuetJobStatus() {
@@ -28,7 +30,9 @@ export default function DuetJobStatus() {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 0, padding: '12px 0' }}>
       <PrintStatusHeader />
+      <ThumbnailPreview />
       <ProgressSection />
+      <FirstLayerInspection />
       <ObjectCancellation />
       <JobInfo />
       <TimeEstimates />
