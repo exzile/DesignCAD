@@ -4878,7 +4878,7 @@ export const useCADStore = create<CADState>()(persist((set, get) => ({
       id: crypto.randomUUID(),
       name: `Fill ${n}`,
       type: 'thicken',
-      params: { featureKind: 'fill', boundaryEdgeCount: params.boundaryEdgeCount, continuityPerEdge: params.continuityPerEdge.join(','), operation: params.operation },
+      params: { featureKind: 'fill', boundaryEdgeCount: params.boundaryEdgeCount, continuityPerEdge: params.continuityPerEdge.map((s) => ({ G0: 0, G1: 1, G2: 2 }[s] ?? 0)), operation: params.operation },
       mesh,
       visible: true,
       suppressed: false,
@@ -5479,6 +5479,12 @@ export const useCADStore = create<CADState>()(persist((set, get) => ({
         sketches: Array<Sketch & { planeNormal: [number, number, number] | null; planeOrigin: [number, number, number] | null }>;
         featureGroups: FeatureGroup[];
       };
+      if (!parsed || !Array.isArray(parsed.features)) {
+        throw new Error('Invalid snapshot: missing features array');
+      }
+      if (!Array.isArray(parsed.sketches)) {
+        throw new Error('Invalid snapshot: missing sketches array');
+      }
       // Carry over the live mesh from the current state when the same feature
       // id is being restored. Parametric features (extrude/revolve) rebuild
       // from sketch+params downstream, but mesh-op / import features have NO
@@ -5519,6 +5525,12 @@ export const useCADStore = create<CADState>()(persist((set, get) => ({
         sketches: Array<Sketch & { planeNormal: [number, number, number] | null; planeOrigin: [number, number, number] | null }>;
         featureGroups: FeatureGroup[];
       };
+      if (!parsed || !Array.isArray(parsed.features)) {
+        throw new Error('Invalid snapshot: missing features array');
+      }
+      if (!Array.isArray(parsed.sketches)) {
+        throw new Error('Invalid snapshot: missing sketches array');
+      }
       const liveMeshById = new Map<string, Feature['mesh']>();
       for (const f of state.features) if (f.mesh) liveMeshById.set(f.id, f.mesh);
       set({
@@ -5808,6 +5820,12 @@ export const useCADStore = create<CADState>()(persist((set, get) => ({
         featureGroups: FeatureGroup[];
         historyEnabled?: boolean;
       };
+      if (!parsed || !Array.isArray(parsed.features)) {
+        throw new Error('Invalid snapshot: missing features array');
+      }
+      if (!Array.isArray(parsed.sketches)) {
+        throw new Error('Invalid snapshot: missing sketches array');
+      }
       set({
         features: (parsed.features ?? []).map((f) => deserializeFeature(f)),
         sketches: (parsed.sketches ?? []).map((s) => deserializeSketch(s as unknown as Sketch)),
