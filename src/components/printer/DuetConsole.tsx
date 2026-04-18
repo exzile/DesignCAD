@@ -77,6 +77,9 @@ const GCODE_SUGGESTIONS: { code: string; description: string }[] = [
   { code: 'M999', description: 'Reset controller' },
 ];
 
+const COMMAND_HISTORY_KEY = 'duet-console-command-history';
+const MAX_HISTORY = 100;
+
 type FilterType = 'all' | 'command' | 'response' | 'warning' | 'error';
 
 const TEMP_REPORT_PATTERN = /\b(ok\s+)?(T\d*:\s*[\d.]+|B:\s*[\d.]+)/i;
@@ -116,8 +119,22 @@ export default function DuetConsole() {
   const connected = usePrinterStore((s) => s.connected);
 
   const [input, setInput] = useState('');
-  const [commandHistory, setCommandHistory] = useState<string[]>([]);
+  const [commandHistory, setCommandHistory] = useState<string[]>(() => {
+    try {
+      const stored = localStorage.getItem(COMMAND_HISTORY_KEY);
+      if (stored) {
+        const parsed = JSON.parse(stored);
+        if (Array.isArray(parsed)) return parsed.slice(-MAX_HISTORY);
+      }
+    } catch {
+      // ignore corrupt data
+    }
+    return [];
+  });
   const [historyIndex, setHistoryIndex] = useState(-1);
+
+  // Holds the in-progress typed text so we can restore it after history navigation
+  const draftInputRef = useRef('');
 
   // Filter state
   const [hideTemps, setHideTemps] = useState(false);
@@ -201,9 +218,16 @@ export default function DuetConsole() {
     sendGCode(cmd);
     setCommandHistory((prev) => {
       const filtered = prev.filter((c) => c !== cmd);
-      return [...filtered, cmd];
+      const updated = [...filtered, cmd].slice(-MAX_HISTORY);
+      try {
+        localStorage.setItem(COMMAND_HISTORY_KEY, JSON.stringify(updated));
+      } catch {
+        // localStorage full or unavailable — ignore
+      }
+      return updated;
     });
     setHistoryIndex(-1);
+    draftInputRef.current = '';
     setInput('');
     setShowSuggestions(false);
   }, [input, sendGCode]);
@@ -252,6 +276,10 @@ export default function DuetConsole() {
       if (e.key === 'ArrowUp') {
         e.preventDefault();
         if (commandHistory.length === 0) return;
+        // Save current typed text when first entering history navigation
+        if (historyIndex === -1) {
+          draftInputRef.current = input;
+        }
         const nextIndex =
           historyIndex === -1
             ? commandHistory.length - 1
@@ -267,7 +295,7 @@ export default function DuetConsole() {
         const nextIndex = historyIndex + 1;
         if (nextIndex >= commandHistory.length) {
           setHistoryIndex(-1);
-          setInput('');
+          setInput(draftInputRef.current);
         } else {
           setHistoryIndex(nextIndex);
           setInput(commandHistory[nextIndex]);
