@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect } from 'react';
+import { useState, useCallback, useEffect, useMemo } from 'react';
 import {
   RefreshCw, Plus, Pencil, Trash2, FileCode, Loader2, FlaskConical, Check, X,
 } from 'lucide-react';
@@ -43,6 +43,26 @@ export default function DuetFilamentManager() {
   const connected = usePrinterStore((s) => s.connected);
   const filaments = usePrinterStore((s) => s.filaments);
   const refreshFilaments = usePrinterStore((s) => s.refreshFilaments);
+  const model = usePrinterStore((s) => s.model);
+
+  // Build a map: filament name -> tool(s) that have it loaded
+  // Duet stores loaded filament on move.extruders[n].filament; tools reference extruder indices.
+  const filamentToolMap = useMemo(() => {
+    const map: Record<string, string[]> = {};
+    const tools = model?.tools ?? [];
+    const extruders = model?.move?.extruders ?? [];
+    for (const tool of tools) {
+      for (const extIdx of tool.extruders ?? []) {
+        const ext = extruders[extIdx];
+        if (ext && typeof ext.filament === 'string' && ext.filament.length > 0) {
+          const key = ext.filament;
+          if (!map[key]) map[key] = [];
+          map[key].push(`T${tool.number}`);
+        }
+      }
+    }
+    return map;
+  }, [model?.tools, model?.move?.extruders]);
 
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -193,6 +213,7 @@ export default function DuetFilamentManager() {
             <thead className="duet-filament-mgr__thead">
               <tr>
                 <th className="duet-filament-mgr__th">Name</th>
+                <th className="duet-filament-mgr__th">Loaded In</th>
                 <th className="duet-filament-mgr__th duet-filament-mgr__th--center">Load Macro</th>
                 <th className="duet-filament-mgr__th duet-filament-mgr__th--center">Unload Macro</th>
                 <th className="duet-filament-mgr__th duet-filament-mgr__th--right">Actions</th>
@@ -229,6 +250,15 @@ export default function DuetFilamentManager() {
                         <FlaskConical size={14} color="var(--info)" />
                         {name}
                       </div>
+                    )}
+                  </td>
+                  <td className="duet-filament-mgr__td">
+                    {filamentToolMap[name] ? (
+                      <span className="duet-filament-mgr__loaded-badge">
+                        {filamentToolMap[name].join(', ')}
+                      </span>
+                    ) : (
+                      <span className="duet-filament-mgr__not-loaded">--</span>
                     )}
                   </td>
                   <td className="duet-filament-mgr__td duet-filament-mgr__td--center">

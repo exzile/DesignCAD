@@ -125,6 +125,21 @@
   font-family: inherit;
 }
 
+.duet-file-mgr__toolbar-btn--danger {
+  border-color: var(--error);
+  color: var(--error);
+}
+
+.duet-file-mgr__toolbar-btn--danger:hover:not(:disabled) {
+  background: var(--error);
+  color: #fff;
+}
+
+.duet-file-mgr__checkbox {
+  cursor: pointer;
+  accent-color: var(--accent);
+}
+
 /* ── Search / filter bar ─────────────────────────────────────────────────── */
 .duet-file-mgr__search-bar {
   display: flex;

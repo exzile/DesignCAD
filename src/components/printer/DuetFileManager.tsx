@@ -323,6 +323,10 @@ export default function DuetFileManager() {
   const [selectedName, setSelectedName] = useState<string | null>(null);
   const [dragOver, setDragOver] = useState(false);
 
+  // Batch-select state
+  const [checkedFiles, setCheckedFiles] = useState<Set<string>>(new Set());
+  const [batchDeleting, setBatchDeleting] = useState(false);
+
   // Tab bar state
   const [activeFileTab, setActiveFileTab] = useState<string>('gcodes');
 
@@ -587,6 +591,57 @@ export default function DuetFileManager() {
     [service, currentDirectory, setError],
   );
 
+  // Toggle a single file's checked state
+  const handleToggleCheck = useCallback((name: string) => {
+    setCheckedFiles((prev) => {
+      const next = new Set(prev);
+      if (next.has(name)) next.delete(name);
+      else next.add(name);
+      return next;
+    });
+  }, []);
+
+  // Select-all toggle (files only, not directories)
+  const fileOnlyItems = useMemo(() => sortedFiles.filter((f) => f.type !== 'd'), [sortedFiles]);
+  const allFilesChecked = fileOnlyItems.length > 0 && fileOnlyItems.every((f) => checkedFiles.has(f.name));
+
+  const handleToggleAll = useCallback(() => {
+    if (allFilesChecked) {
+      setCheckedFiles(new Set());
+    } else {
+      setCheckedFiles(new Set(fileOnlyItems.map((f) => f.name)));
+    }
+  }, [allFilesChecked, fileOnlyItems]);
+
+  // Batch delete all checked files sequentially
+  const handleBatchDelete = useCallback(async () => {
+    const names = Array.from(checkedFiles);
+    if (names.length === 0) return;
+    if (!confirm(`Delete ${names.length} selected file(s)?`)) return;
+    setBatchDeleting(true);
+    try {
+      for (const name of names) {
+        const path = `${currentDirectory}/${name}`;
+        try {
+          await deleteFile(path);
+        } catch (err) {
+          setError(`Delete failed for "${name}": ${(err as Error).message}`);
+        }
+      }
+      setCheckedFiles(new Set());
+      if (selectedName && names.includes(selectedName)) {
+        setSelectedName(null);
+      }
+    } finally {
+      setBatchDeleting(false);
+    }
+  }, [checkedFiles, currentDirectory, deleteFile, selectedName, setError]);
+
+  // Clear checked files when navigating away or changing tabs
+  useEffect(() => {
+    setCheckedFiles(new Set());
+  }, [currentDirectory, activeFileTab]);
+
   return (
     <div className="duet-file-mgr">
       {/* Tab bar */}
@@ -676,6 +731,18 @@ export default function DuetFileManager() {
             <span className="duet-file-mgr__progress-text">{uploadProgress}%</span>
           </div>
         )}
+
+        {checkedFiles.size > 0 && (
+          <button
+            className="duet-file-mgr__toolbar-btn duet-file-mgr__toolbar-btn--danger"
+            onClick={handleBatchDelete}
+            disabled={batchDeleting}
+            title="Delete all selected files"
+          >
+            {batchDeleting ? <Loader2 size={14} className="spin" /> : <Trash2 size={14} />}
+            Delete Selected ({checkedFiles.size})
+          </button>
+        )}
       </div>
 
       {/* Search / filter bar */}
@@ -728,6 +795,15 @@ export default function DuetFileManager() {
             <table className="duet-file-mgr__table">
               <thead>
                 <tr>
+                  <th className="duet-file-mgr__th" style={{ width: 30 }}>
+                    <input
+                      type="checkbox"
+                      className="duet-file-mgr__checkbox"
+                      checked={allFilesChecked}
+                      onChange={handleToggleAll}
+                      title="Select all files"
+                    />
+                  </th>
                   <th className="duet-file-mgr__th" style={{ width: 30 }}></th>
                   <th className="duet-file-mgr__th" onClick={() => handleSort('name')}>
                     <div className="duet-file-mgr__th-content">
@@ -759,6 +835,18 @@ export default function DuetFileManager() {
                       className={`duet-file-mgr__row${isSelected ? ' is-selected' : ''}`}
                       onClick={() => handleRowClick(item)}
                     >
+                      {/* Checkbox (files only) */}
+                      <td className="duet-file-mgr__td" onClick={(e) => e.stopPropagation()}>
+                        {!isDir && (
+                          <input
+                            type="checkbox"
+                            className="duet-file-mgr__checkbox"
+                            checked={checkedFiles.has(item.name)}
+                            onChange={() => handleToggleCheck(item.name)}
+                          />
+                        )}
+                      </td>
+
                       {/* Icon */}
                       <td className="duet-file-mgr__td">
                         {isDir ? (
