@@ -11,6 +11,7 @@ import SystemInfoPanel from './dashboard/SystemInfoPanel';
 import AtxPowerPanel from './dashboard/AtxPowerPanel';
 import MacroPanel from './dashboard/MacroPanel';
 import ToolSelectorPanel from './dashboard/ToolSelectorPanel';
+import ToolOffsetsPanel from './dashboard/ToolOffsetsPanel';
 
 export default function DuetDashboard() {
   const error = usePrinterStore((s) => s.error);
@@ -38,6 +39,10 @@ export default function DuetDashboard() {
 
         <div className="duet-dash-span-full">
           <ToolSelectorPanel />
+        </div>
+
+        <div className="duet-dash-span-full">
+          <ToolOffsetsPanel />
         </div>
 
         <div className="duet-dash-col">
