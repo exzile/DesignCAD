@@ -21,7 +21,7 @@ DASHBOARD TAB
 [x] Custom G-code buttons (user-defined, persisted to localStorage)
 [x] System info panel (board, firmware, network, MCU temp, VIN, storage)
 
-[ ] Tool offsets editor (G10 P{n} X Y Z — view and edit per-tool offsets)
+[x] Tool offsets editor (G10 P{n} X Y Z — view and edit per-tool offsets)
 [ ] Workplace coordinates selector / display (G54–G59)
 [ ] Restore points display (G60 saved positions)
 [ ] Pressure advance configuration per extruder (M572 D{n} S{val})
@@ -95,9 +95,9 @@ HISTORY TAB
 [x] Re-print from history
 
 [ ] History pagination / load more
-[ ] History search / filter by filename or date
+[x] History search / filter by filename or date
 [ ] History stats (total print time, success rate)
-[ ] Export history as CSV
+[x] Export history as CSV
 
 --------------------------------------------------------------------------------
 FILES TAB
@@ -295,7 +295,7 @@ COMMIT-PATH SAFETY — small validation gaps
              cadStore.ts ~5678 but no replacement exists; user just loses
              the body silently with status "split into 0 parts".
 
-[ ] AUDIT-10. commitMeshTransform rollback impossible. Disposes oldMesh
+[x] AUDIT-10. commitMeshTransform rollback impossible. Disposes oldMesh
               .geometry immediately after swap. Round-3 stillValid pattern
               would help: defer disposal until snapshot still valid AND
               keep original around for undo.
@@ -309,7 +309,7 @@ COMMIT-PATH SAFETY — small validation gaps
 --------------------------------------------------------------------------------
 PARSER / FILE I/O ROBUSTNESS
 --------------------------------------------------------------------------------
-[ ] AUDIT-12. FileImporter.ts 3MF/AMF parsers don't validate triangle
+[x] AUDIT-12. FileImporter.ts 3MF/AMF parsers don't validate triangle
               indices v1/v2/v3 within vertexEls.length. Malformed file
               produces out-of-range setIndex; BufferGeometry accepts but
               every downstream op (computeVertexNormals, raycast, BVH-CSG)
@@ -400,7 +400,7 @@ REFACTOR OPPORTUNITIES — non-blocking
               dialog. Could be a `useDialogProps(dialogId)` hook + a single
               <ConnectedDialog /> mapper.
 
-[ ] AUDIT-26. Timeline.tsx editDialogFor() switch (lines 123-175) — 25+
+[x] AUDIT-26. Timeline.tsx editDialogFor() switch (lines 123-175) — 25+
               cases mapping feature types to dialog IDs. Replace with a
               const lookup table `Record<FeatureType, string | null>`.
 
