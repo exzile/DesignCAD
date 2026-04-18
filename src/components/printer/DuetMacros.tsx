@@ -31,6 +31,7 @@ export default function DuetMacros() {
   const [editingPath, setEditingPath] = useState<string | null>(null);
   const [creatingNew, setCreatingNew] = useState(false);
   const [macroSearch, setMacroSearch] = useState('');
+  const [dragOver, setDragOver] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const ROOT_PATH = '0:/macros';
@@ -163,6 +164,39 @@ export default function DuetMacros() {
     refreshMacros();
   }, [refreshMacros]);
 
+  // Drag-and-drop handlers
+  const handleDragOver = useCallback((e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setDragOver(true);
+  }, []);
+
+  const handleDragLeave = useCallback((e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setDragOver(false);
+  }, []);
+
+  const handleDrop = useCallback(
+    async (e: React.DragEvent) => {
+      e.preventDefault();
+      e.stopPropagation();
+      setDragOver(false);
+      const droppedFiles = e.dataTransfer.files;
+      if (!droppedFiles || droppedFiles.length === 0 || !service) return;
+      for (let i = 0; i < droppedFiles.length; i++) {
+        try {
+          const uploadPath = `${macroPath}/${droppedFiles[i].name}`;
+          await service.uploadFile(uploadPath, droppedFiles[i]);
+        } catch (err) {
+          setError(`Macro upload failed: ${(err as Error).message}`);
+        }
+      }
+      refreshMacros();
+    },
+    [macroPath, service, refreshMacros, setError],
+  );
+
   return (
     <div className="duet-macros">
       {/* Toolbar */}
@@ -254,7 +288,19 @@ export default function DuetMacros() {
       )}
 
       {/* Macro list */}
-      <div className="duet-macros-list">
+      <div
+        className="duet-macros-list"
+        onDragOver={handleDragOver}
+        onDragLeave={handleDragLeave}
+        onDrop={handleDrop}
+      >
+        {dragOver && (
+          <div className="duet-macros-drop-overlay">
+            <Upload size={28} className="duet-macros-drop-icon" />
+            Drop files to upload macros
+          </div>
+        )}
+
         {folders.length === 0 && files.length === 0 && (
           <div className="duet-macros-empty">No macros in this directory.</div>
         )}

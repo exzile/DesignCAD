@@ -1,3 +1,4 @@
+import type { CSSProperties } from 'react';
 import { Fragment, useState, useCallback } from 'react';
 import {
   Activity, CircuitBoard, Crosshair, Cpu, Zap, Radar, Gauge, Network,
@@ -195,31 +196,92 @@ function BoardsPanel() {
   );
 }
 
+/**
+ * Resolve a status badge for a motor driver.
+ *
+ * The Duet object model may expose per-driver status flags on axes and
+ * extruders (e.g. `status` field with values like "ok", "stall",
+ * "standstill", "overTemperature", "openLoad", etc.). When those flags
+ * are not available we fall back to a neutral "OK" indicator.
+ */
+function driverBadge(status?: string): { text: string; color: string; bg: string } {
+  if (!status) {
+    return { text: 'OK', color: COLORS.success, bg: 'rgba(76,175,80,0.12)' };
+  }
+  const s = status.toLowerCase();
+  if (s === 'stall' || s === 'stalled' || s === 'standstill') {
+    return { text: 'STALL', color: COLORS.danger, bg: 'rgba(244,67,54,0.12)' };
+  }
+  if (s.includes('overtemp') || s.includes('over_temp') || s.includes('overtemperature')) {
+    return { text: 'OVER-TEMP', color: COLORS.warning, bg: 'rgba(255,152,0,0.12)' };
+  }
+  if (s.includes('openload') || s.includes('open_load') || s === 'openload') {
+    return { text: 'OPEN LOAD', color: COLORS.warning, bg: 'rgba(255,152,0,0.12)' };
+  }
+  if (s === 'ok' || s === 'good') {
+    return { text: 'OK', color: COLORS.success, bg: 'rgba(76,175,80,0.12)' };
+  }
+  // Unknown / other — show as warning-style with the raw text
+  return { text: status.toUpperCase(), color: COLORS.warning, bg: 'rgba(255,152,0,0.12)' };
+}
+
 function DriversPanel() {
   // Drivers info lives on each axis in move.axes[].drivers; show flagged status
   const axes = usePrinterStore((s) => s.model.move?.axes ?? EMPTY_ARRAY);
   const extruders = usePrinterStore((s) => s.model.move?.extruders ?? EMPTY_ARRAY);
 
-  const rows: { label: string; driver: string }[] = [];
+  const rows: { label: string; driver: string; status?: string }[] = [];
   for (const a of axes) {
-    if (a.letter) rows.push({ label: a.letter, driver: '' });
+    if (!a.letter) continue;
+    // Axis driver IDs come from the drives array; status may be present
+    // on the axis object itself (firmware-dependent).
+    const axisAny = a as Record<string, unknown>;
+    const driverIds = Array.isArray(a.drives) ? a.drives.map(String).join(', ') : '';
+    const status = typeof axisAny.status === 'string' ? axisAny.status : undefined;
+    rows.push({ label: a.letter, driver: driverIds, status });
   }
   for (let i = 0; i < extruders.length; i++) {
-    rows.push({ label: `E${i}`, driver: extruders[i]?.driver ?? '' });
+    const ext = extruders[i];
+    const extAny = ext as Record<string, unknown> | undefined;
+    const status = typeof extAny?.status === 'string' ? extAny.status : undefined;
+    rows.push({ label: `E${i}`, driver: ext?.driver ?? '', status });
   }
 
   if (rows.length === 0) return null;
 
+  const badgeStyle = (badge: ReturnType<typeof driverBadge>): CSSProperties => ({
+    display: 'inline-block',
+    padding: '1px 6px',
+    borderRadius: 4,
+    fontSize: 10,
+    fontWeight: 700,
+    letterSpacing: '0.03em',
+    color: badge.color,
+    background: badge.bg,
+    lineHeight: '16px',
+    whiteSpace: 'nowrap',
+  });
+
   return (
     <div style={panelStyle()}>
       <div style={sectionTitle()}><Cpu size={14} /> Motor Drivers</div>
-      <div style={rowGrid()}>
-        {rows.map((r, i) => (
-          <Fragment key={i}>
-            <span>{r.label}</span>
-            <span className="duet-status-mono">{r.driver || '—'}</span>
-          </Fragment>
-        ))}
+      <div style={{
+        display: 'grid',
+        gridTemplateColumns: '40px 1fr auto',
+        gap: '6px 12px',
+        fontSize: 12,
+        alignItems: 'center',
+      }}>
+        {rows.map((r, i) => {
+          const badge = driverBadge(r.status);
+          return (
+            <Fragment key={i}>
+              <span style={{ fontWeight: 600 }}>{r.label}</span>
+              <span className="duet-status-mono">{r.driver || '—'}</span>
+              <span style={badgeStyle(badge)}>{badge.text}</span>
+            </Fragment>
+          );
+        })}
       </div>
     </div>
   );

@@ -17,6 +17,7 @@ import InputShaperPanel from './dashboard/InputShaperPanel';
 import BabySteppingPanel from './dashboard/BabySteppingPanel';
 import WorkplaceCoordinatesPanel from './dashboard/WorkplaceCoordinatesPanel';
 import BedCompensationPanel from './dashboard/BedCompensationPanel';
+import RestorePointsPanel from './dashboard/RestorePointsPanel';
 
 export default function DuetDashboard() {
   const error = usePrinterStore((s) => s.error);
@@ -56,6 +57,10 @@ export default function DuetDashboard() {
 
         <div className="duet-dash-span-full">
           <BedCompensationPanel />
+        </div>
+
+        <div className="duet-dash-span-full">
+          <RestorePointsPanel />
         </div>
 
         <div className="duet-dash-col">
