@@ -8,6 +8,9 @@ import {
   Loader2,
   BarChart3,
   Grid3x3,
+  Download,
+  ToggleLeft,
+  ToggleRight,
 } from 'lucide-react';
 import * as THREE from 'three';
 import { usePrinterStore } from '../../store/printerStore';
@@ -463,6 +466,43 @@ function StatsPanel({ stats }: { stats: HeightMapStats }) {
 }
 
 // ---------------------------------------------------------------------------
+// CSV Export
+// ---------------------------------------------------------------------------
+
+function exportHeightMapCSV(hm: HeightMapData): void {
+  const lines: string[] = [];
+  // Header comment matching Duet heightmap.csv format
+  lines.push(
+    `RepRapFirmware height map file v2 generated at ${new Date().toISOString()}`,
+  );
+  lines.push(
+    `xmin,xmax,ymin,ymax,radius,xspacing,yspacing,num_x,num_y`,
+  );
+  lines.push(
+    `${hm.xMin},${hm.xMax},${hm.yMin},${hm.yMax},${hm.radius},${hm.xSpacing.toFixed(2)},${hm.ySpacing.toFixed(2)},${hm.numX},${hm.numY}`,
+  );
+
+  for (let yi = 0; yi < hm.numY; yi++) {
+    const row: string[] = [];
+    for (let xi = 0; xi < hm.numX; xi++) {
+      const val = hm.points[yi]?.[xi];
+      row.push(val !== undefined && !isNaN(val) ? val.toFixed(3) : '0');
+    }
+    lines.push(row.join(','));
+  }
+
+  const blob = new Blob([lines.join('\n')], { type: 'text/csv;charset=utf-8;' });
+  const url = URL.createObjectURL(blob);
+  const anchor = document.createElement('a');
+  anchor.href = url;
+  anchor.download = 'heightmap.csv';
+  document.body.appendChild(anchor);
+  anchor.click();
+  document.body.removeChild(anchor);
+  URL.revokeObjectURL(url);
+}
+
+// ---------------------------------------------------------------------------
 // Main Component
 // ---------------------------------------------------------------------------
 
@@ -470,10 +510,17 @@ export default function DuetHeightMap() {
   const heightMap = usePrinterStore((s) => s.heightMap);
   const loadHeightMap = usePrinterStore((s) => s.loadHeightMap);
   const probeGrid = usePrinterStore((s) => s.probeGrid);
+  const sendGCode = usePrinterStore((s) => s.sendGCode);
+  const compensationType = usePrinterStore(
+    (s) => s.model.move?.compensation?.type,
+  );
 
   const [loading, setLoading] = useState(false);
   const [probing, setProbing] = useState(false);
   const [viewMode, setViewMode] = useState<'3d' | '2d'>('3d');
+
+  const isCompensationEnabled =
+    !!compensationType && compensationType !== 'none';
 
   const stats = useMemo(() => (heightMap ? computeStats(heightMap) : null), [heightMap]);
 
@@ -498,6 +545,16 @@ export default function DuetHeightMap() {
     }
   }, [probeGrid]);
 
+  const handleExportCSV = useCallback(() => {
+    if (heightMap) {
+      exportHeightMapCSV(heightMap);
+    }
+  }, [heightMap]);
+
+  const handleToggleCompensation = useCallback(() => {
+    sendGCode(isCompensationEnabled ? 'G29 S2' : 'G29 S1');
+  }, [sendGCode, isCompensationEnabled]);
+
   return (
     <div className="duet-heightmap">
       {/* Controls bar */}
@@ -519,6 +576,31 @@ export default function DuetHeightMap() {
         >
           {probing ? <Loader2 size={14} className="spin" /> : <Crosshair size={14} />}
           <span>Probe Bed</span>
+        </button>
+        <button
+          className="btn btn-sm"
+          onClick={handleExportCSV}
+          disabled={!heightMap}
+          title="Export height map as CSV file"
+        >
+          <Download size={14} />
+          <span>Export CSV</span>
+        </button>
+        <button
+          className="btn btn-sm"
+          onClick={handleToggleCompensation}
+          title={
+            isCompensationEnabled
+              ? 'Disable bed compensation (G29 S2)'
+              : 'Enable bed compensation (G29 S1)'
+          }
+        >
+          {isCompensationEnabled ? (
+            <ToggleRight size={14} />
+          ) : (
+            <ToggleLeft size={14} />
+          )}
+          <span>{isCompensationEnabled ? 'Disable Comp' : 'Enable Comp'}</span>
         </button>
 
         <div className="heightmap-view-toggle">
