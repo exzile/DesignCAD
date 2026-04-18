@@ -13,7 +13,7 @@ DASHBOARD TAB
 [x] Axis movement panel (jog X/Y/Z, home buttons, step sizes)
 [x] Extruder control panel (extrude/retract, amount, feedrate)
 [x] Speed factor slider (M220)
-[x] Flow factor slider — global (M221 D-1)    ← added this session
+[x] Flow factor slider — global (M221 D-1)
 [x] Per-extruder flow factor sliders (M221 D{n})
 [x] Fan control panel (fan index, speed slider)
 [x] ATX power panel (M80/M81)
@@ -26,7 +26,7 @@ DASHBOARD TAB
 [x] Restore points display (G60 saved positions)
 [x] Pressure advance configuration per extruder (M572 D{n} S{val})
 [x] Input shaper settings (M593 — frequency, damping, type)
-[x] Baby stepping from dashboard (currently only on Job tab)
+[x] Baby stepping from dashboard
 [x] Bed compensation type indicator (mesh / tilt / none) with quick toggle
 
 --------------------------------------------------------------------------------
@@ -193,13 +193,13 @@ SETTINGS (MODAL DIALOG)
 --------------------------------------------------------------------------------
 FIRMWARE UPDATE
 --------------------------------------------------------------------------------
-[x] Store actions: uploadFirmware(), installFirmware()  ← no UI yet
+[x] Store actions: uploadFirmware(), installFirmware()
 
 [x] Firmware update page / section in Settings
 [x] Drag-and-drop firmware .bin upload with progress bar
 [-] Firmware version check vs installed version (shows current; no remote check)
 [ ] IAP file upload (required for standalone update flow)
-[ ] Post-update reconnect flow
+[-] Post-update reconnect flow (auto-reconnect kicks in after M997 reboot; no dedicated "waiting for board" UI)
 
 --------------------------------------------------------------------------------
 GENERAL / CROSS-CUTTING
@@ -214,8 +214,7 @@ GENERAL / CROSS-CUTTING
 
 [x] Keyboard shortcut: Ctrl+Enter to send multi-line G-code block
 [x] Global search across tabs (file, macro, filament by name)
-[x] Dark / light theme toggle accessible from toolbar (themeStore exists but
-    no toolbar button — only applies internally to DuetPrinterPanel)
+[x] Dark / light theme toggle accessible from toolbar
 [ ] Responsive layout for narrow/side-panel mode
 [x] Offline/disconnected graceful degradation (show last-known values)
 [x] Sound alerts on print complete / error
