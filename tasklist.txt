@@ -42,10 +42,10 @@ STATUS TAB
 
 [x] Network status panel (IP, subnet, gateway, MAC, DNS, WiFi SSID/signal)
 [x] GPIO interactive control (toggle on/off or set PWM slider for gpOut pins)
-[ ] CAN expansion boards (additional boards on CAN bus — multi-board setups)
+[x] CAN expansion boards (additional boards on CAN bus — multi-board setups)
 [x] Driver status flags (stall detection, over-temp warning per driver)
-[ ] Spindle status (speed, state — for CNC use)
-[ ] Laser status (PWM, power — for laser use)
+[x] Spindle status (speed, state — for CNC use)
+[x] Laser status (PWM, power — for laser use)
 
 --------------------------------------------------------------------------------
 CONSOLE TAB
@@ -84,7 +84,7 @@ JOB / PRINT TAB
 
 [x] Print thumbnail preview (embedded base64 thumbnail from slicer gcode)
 [ ] Simulated print time vs actual comparison
-[ ] Pause at layer / height trigger configuration
+[x] Pause at layer / height trigger configuration
 [x] First layer inspection mode (pause after layer 1)
 [ ] Print queue (queue multiple files for sequential printing)
 
@@ -130,7 +130,7 @@ FILAMENTS TAB
 [x] Change filament (unload then load)
 
 [x] Per-tool filament assignment display (show which filament is loaded per tool)
-[ ] Filament color swatch (store/display color with each filament)
+[x] Filament color swatch (store/display color with each filament)
 [ ] Filament diameter / material properties storage
 [ ] Spool weight / remaining filament tracking
 
@@ -160,7 +160,7 @@ HEIGHT MAP TAB
 [x] Statistics panel (min, max, mean, RMS, probe points, grid dimensions)
 [x] Probing indicator (in-progress banner)
 
-[ ] Multiple saved height map files (load from 0:/sys/*.csv, not just heightmap.csv)
+[x] Multiple saved height map files (load from 0:/sys/*.csv, not just heightmap.csv)
 [ ] Save height map to custom filename
 [x] Compensation type toggle (enable/disable mesh bed compensation via G29 S)
 [ ] Height map comparison (diff two maps)
@@ -185,9 +185,9 @@ SETTINGS (MODAL DIALOG)
 [x] Webcam URL configuration (used by Job tab WebcamView)
 [x] Auto-reconnect settings (interval, max retries)
 [x] Theme selector (light / dark) — themeStore exists, no UI in settings
-[ ] Notification sound toggle
-[ ] Temperature unit toggle (°C / °F)
-[ ] Date/time format preference
+[x] Notification sound toggle
+[x] Temperature unit toggle (°C / °F)
+[x] Date/time format preference
 
 --------------------------------------------------------------------------------
 FIRMWARE UPDATE
