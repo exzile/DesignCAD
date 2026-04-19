@@ -1,7 +1,15 @@
 import "./ViewportOverlay.css";
-import { useRef, useCallback, useState, useEffect } from 'react';
+import { useRef, useCallback, useState, useEffect, Component } from 'react';
+import type { ReactNode } from 'react';
 import { Canvas } from '@react-three/fiber';
 import { OrbitControls, Environment, ContactShadows } from '@react-three/drei';
+
+/** Silently catches HDR/network fetch failures so they don't crash the canvas. */
+class EnvErrorBoundary extends Component<{ children: ReactNode }, { failed: boolean }> {
+  state = { failed: false };
+  static getDerivedStateFromError() { return { failed: true }; }
+  render() { return this.state.failed ? null : this.props.children; }
+}
 import type { PresetsType } from '@react-three/drei/helpers/environment-assets';
 import * as THREE from 'three';
 import { useCADStore } from '../../store/cadStore';
@@ -27,6 +35,7 @@ import SketchPatternPanel from './SketchPatternPanel';
 import SketchTransformPanel from './SketchTransformPanel';
 import SketchMirrorPanel from './SketchMirrorPanel';
 import SceneTheme from './scene/SceneTheme';
+import SceneInvalidator from './scene/SceneInvalidator';
 import VisualStyleEffect from './scene/VisualStyleEffect';
 import SliceEffect from './scene/SliceEffect';
 import SketchRenderer from './scene/SketchRenderer';
@@ -92,6 +101,10 @@ import MultiViewCanvas from './MultiViewCanvas';
 /** Module-level singleton — passed to SSAO to avoid per-render Color allocation. */
 const SSAO_COLOR = new THREE.Color('black');
 
+/** Scratch objects for window/lasso selection — avoids per-feature allocations on pointer-up. */
+const _selBox3 = new THREE.Box3();
+const _selVec3 = new THREE.Vector3();
+
 /**
  * AUDIT-17: Module-level scratch quaternions — alternated each tick to avoid
  * allocating a new THREE.Quaternion on every camera-movement interval tick.
@@ -140,7 +153,6 @@ export default function Viewport() {
   const setLassoSelecting = useCADStore((s) => s.setLassoSelecting);
   const setLassoPoints = useCADStore((s) => s.setLassoPoints);
   const clearLasso = useCADStore((s) => s.clearLasso);
-  const features = useCADStore((s) => s.features);
   // D207
   const sketchGridEnabled = useCADStore((s) => s.sketchGridEnabled);
   // NAV-19 multi-viewport layout
@@ -243,24 +255,28 @@ export default function Viewport() {
       // Returns null if the camera isn't ready or the point sits behind it.
       const projectToScreen = (worldPos: THREE.Vector3): { x: number; y: number } | null => {
         if (!camera) return null;
-        const ndc = worldPos.clone().project(camera);
-        // Behind camera (z > 1 in NDC) → reject
-        if (ndc.z > 1 || ndc.z < -1) return null;
+        // Reuse scratch vec — project() mutates in place
+        _selVec3.copy(worldPos).project(camera);
+        if (_selVec3.z > 1 || _selVec3.z < -1) return null;
         return {
-          x: (ndc.x * 0.5 + 0.5) * rect.width,
-          y: (1 - (ndc.y * 0.5 + 0.5)) * rect.height,
+          x: (_selVec3.x * 0.5 + 0.5) * rect.width,
+          y: (1 - (_selVec3.y * 0.5 + 0.5)) * rect.height,
         };
       };
 
-      // Featrue → screen-projected centroid (or null if not selectable)
-      const projectedFeatureCentroid = (f: typeof features[number]): { x: number; y: number } | null => {
+      // Feature → screen-projected centroid (or null if not selectable).
+      // Uses module-level scratch Box3/Vector3 — no allocation per feature.
+      type AnyFeature = ReturnType<typeof useCADStore.getState>['features'][number];
+      const projectedFeatureCentroid = (f: AnyFeature): { x: number; y: number } | null => {
         if (!f.mesh || !f.visible) return null;
-        const box = new THREE.Box3().setFromObject(f.mesh);
-        if (box.isEmpty()) return null;
-        const centroid = new THREE.Vector3();
-        box.getCenter(centroid);
-        return projectToScreen(centroid);
+        _selBox3.setFromObject(f.mesh);
+        if (_selBox3.isEmpty()) return null;
+        _selBox3.getCenter(_selVec3);
+        return projectToScreen(_selVec3);
       };
+
+      // Read features directly from store — no React subscription needed here
+      const { features, windowSelectStart } = useCADStore.getState();
 
       if (isLassoRef.current) {
         // Lasso: point-in-polygon test on each feature's projected centroid
@@ -275,13 +291,11 @@ export default function Viewport() {
         clearLasso();
       } else {
         // Window select: select features whose centroids fall inside the drag rect
-        const store = useCADStore.getState();
-        const start = store.windowSelectStart;
-        if (start) {
-          const minX = Math.min(start.x, p.x);
-          const maxX = Math.max(start.x, p.x);
-          const minY = Math.min(start.y, p.y);
-          const maxY = Math.max(start.y, p.y);
+        if (windowSelectStart) {
+          const minX = Math.min(windowSelectStart.x, p.x);
+          const maxX = Math.max(windowSelectStart.x, p.x);
+          const minY = Math.min(windowSelectStart.y, p.y);
+          const maxY = Math.max(windowSelectStart.y, p.y);
           const matched = features.filter((f) => {
             const sp = projectedFeatureCentroid(f);
             return sp !== null && sp.x >= minX && sp.x <= maxX && sp.y >= minY && sp.y <= maxY;
@@ -295,7 +309,7 @@ export default function Viewport() {
     dragStartRef.current = null;
     isDraggingRef.current = false;
     lassoAccumRef.current = [];
-  }, [features, setSelectedEntityIds, clearWindowSelect, clearLasso]);
+  }, [setSelectedEntityIds, clearWindowSelect, clearLasso]);
 
   return (
     <div
@@ -307,6 +321,7 @@ export default function Viewport() {
     >
       <div style={{ width: '100%', height: '100%', display: viewportLayout === '1' ? 'block' : 'none' }}>
       <Canvas
+        frameloop="demand"
         shadows={{ type: THREE.PCFShadowMap }}
         camera={{
           position: [50, 50, 50],
@@ -329,6 +344,8 @@ export default function Viewport() {
       >
         {/* Sync scene background with theme */}
         <SceneTheme />
+        {/* Demand-mode invalidation — re-renders whenever scene content changes */}
+        <SceneInvalidator />
         {/* NAV-10: visual style rendering override */}
         <VisualStyleEffect />
         {/* D54 Slice clipping plane */}
@@ -340,7 +357,7 @@ export default function Viewport() {
           position={[50, 80, 50]}
           intensity={1.2}
           castShadow
-          shadow-mapSize={[2048, 2048]}
+          shadow-mapSize={[1024, 1024]}
         />
         <directionalLight position={[-30, 40, -20]} intensity={0.5} />
         <hemisphereLight
@@ -351,7 +368,9 @@ export default function Viewport() {
 
         {/* Environment — IBL/reflections only; background is always the solid canvasBg color */}
         {showReflections && (
-          <Environment preset={environmentPreset} background={false} />
+          <EnvErrorBoundary>
+            <Environment preset={environmentPreset as PresetsType} background={false} />
+          </EnvErrorBoundary>
         )}
         {showShadows && showGroundPlane && (
           <ContactShadows

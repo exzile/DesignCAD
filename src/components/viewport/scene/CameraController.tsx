@@ -130,10 +130,12 @@ export default function CameraController({ onQuaternionChange }: { onQuaternionC
     if (cameraTargetOrbit) setCameraTargetOrbit(null);
   }, [cameraTargetQuaternion, cameraTargetOrbit, camera, controls, setCameraTargetQuaternion, setCameraTargetOrbit]);
 
-  useFrame((_, delta) => {
+  useFrame(({ invalidate }, delta) => {
     onQuaternionChange(camera.quaternion);
 
     if (!animatingRef.current) return;
+    // In frameloop="demand" mode we must request the next frame ourselves while animating.
+    invalidate();
     animProgressRef.current = Math.min(animProgressRef.current + delta * 3.0, 1);
     const t = 1 - Math.pow(1 - animProgressRef.current, 3); // ease-out cubic
 

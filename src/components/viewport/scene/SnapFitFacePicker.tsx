@@ -58,12 +58,13 @@ export default function SnapFitFacePicker() {
 
   useFacePicker({ enabled: pickEnabled, onHover: handleHover, onClick: handleClick });
 
-  useFrame(({ scene }) => {
+  useFrame(({ scene, invalidate }) => {
     if (!overlayEnabled) {
       if (hoverMeshRef.current) { scene.remove(hoverMeshRef.current); hoverMeshRef.current.geometry.dispose(); hoverMeshRef.current = null; }
       if (selectedMeshRef.current) { scene.remove(selectedMeshRef.current); selectedMeshRef.current.geometry.dispose(); selectedMeshRef.current = null; }
       return;
     }
+    invalidate(); // keep rendering while picker is active
 
     if (pickEnabled) {
       const hr = hoverResultRef.current;

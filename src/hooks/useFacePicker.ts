@@ -21,6 +21,7 @@ import { GeometryEngine } from '../engine/GeometryEngine';
 // Module-level scratch — never allocated inside event handlers
 // ---------------------------------------------------------------------------
 const _mouse = new THREE.Vector2();
+const _checkedMeshes = new Set<THREE.Mesh>();
 
 // ---------------------------------------------------------------------------
 // Public types
@@ -102,12 +103,12 @@ export function useFacePicker(options: UseFacePickerOptions): void {
       // Stale/duplicate bodies with fewer verts are deprioritized.
       let bestResult: FacePickResult | null = null;
       let bestMeshVerts = 0;
-      const checkedMeshes = new Set<THREE.Mesh>();
+      _checkedMeshes.clear();
       for (const hit of hits) {
         if (hit.faceIndex === undefined || !hit.face) continue;
         const hitMesh = hit.object as THREE.Mesh;
-        if (checkedMeshes.has(hitMesh)) continue;
-        checkedMeshes.add(hitMesh);
+        if (_checkedMeshes.has(hitMesh)) continue;
+        _checkedMeshes.add(hitMesh);
         const meshVerts = hitMesh.geometry?.getAttribute('position')?.count ?? 0;
         // Skip if this mesh has fewer verts than one we already found
         if (bestResult && meshVerts <= bestMeshVerts) continue;

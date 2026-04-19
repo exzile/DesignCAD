@@ -65,7 +65,8 @@ export default function ExtrudeGizmo({ sketch }: { sketch: Sketch }) {
   const tipScratch = useRef(new THREE.Vector3());
   // Last applied isCut value so we only swap materials on transitions, not every frame.
   const lastIsCutRef = useRef<boolean | null>(null);
-  useFrame(() => {
+  useFrame(({ invalidate }) => {
+    invalidate(); // gizmo is only mounted during active extrude; keep rendering
     // During drag use liveDistRef; otherwise read fresh from store
     const dist = draggingRef.current && liveDistRef.current !== null
       ? liveDistRef.current

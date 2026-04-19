@@ -63,7 +63,9 @@
       "Bash(node -e \"const l = require\\('lucide-react'\\); console.log\\(['Stamp','Pipe','BoxSelect','Layers','Pentagon'].filter\\(n => !!l[n]\\)\\)\")",
       "Bash(node -e \"const p = require\\('@react-three/postprocessing'\\); console.log\\(Object.keys\\(p\\).filter\\(k => k.toLowerCase\\(\\).includes\\('ssao'\\) || k.toLowerCase\\(\\).includes\\('ao'\\) || k === 'EffectComposer'\\).join\\(', '\\)\\)\")",
       "Bash(node -e ' *)",
-      "Bash(kill 2720)"
+      "Bash(kill 2720)",
+      "Bash(dir \"C:\\\\Users\\\\joeyp\\\\source\\\\repos\\\\exzile\\\\DesignCAD\\\\public\")",
+      "Bash(findstr \":5173 :5174 :3000 :4173 LISTENING\")"
     ]
   }
 }

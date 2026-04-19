@@ -328,8 +328,27 @@ export class GeometryEngine {
     }
     if (loops.length === 0) return null;
 
-    // Pick the longest loop (outer boundary). Holes would be shorter.
-    loops.sort((a, b) => b.length - a.length);
+    // Pick the loop with the LARGEST AREA as the outer boundary. Point count is
+    // a bad proxy: a sampled circle hole (~64 pts) beats a rectangle (4 pts)
+    // even though the rectangle is the outer boundary. Using signed area (via
+    // 2D projection to the face plane) reliably picks the enclosing loop.
+    const _planeAxes = this.computePlaneAxesFromNormal(hitNormal);
+    const _pa = _planeAxes.t1;
+    const _pb = _planeAxes.t2;
+    const loopArea2D = (loopKeys: string[]): number => {
+      // Shoelace in plane-local 2D coords
+      let a = 0;
+      const n = loopKeys.length;
+      for (let i = 0, j = n - 1; i < n; j = i++) {
+        const pi = canonicalPos.get(loopKeys[i])!;
+        const pj = canonicalPos.get(loopKeys[j])!;
+        const xi = pi.dot(_pa), yi = pi.dot(_pb);
+        const xj = pj.dot(_pa), yj = pj.dot(_pb);
+        a += xi * yj - xj * yi;
+      }
+      return Math.abs(a) * 0.5;
+    };
+    loops.sort((a, b) => loopArea2D(b) - loopArea2D(a));
     const outer = loops[0];
     if (outer.length < 3) return null;
 
@@ -428,7 +447,11 @@ export class GeometryEngine {
       ? allShapes
       : (allShapes[profileIndex] ? [allShapes[profileIndex]] : []);
     if (shapes.length === 0) return null;
-    const geom = new THREE.ShapeGeometry(shapes);
+    const rawGeom = new THREE.ShapeGeometry(shapes);
+    const nonIndexed = rawGeom.toNonIndexed();
+    rawGeom.dispose();
+    const geom = this.removeDegenerateTriangles(nonIndexed);
+    nonIndexed.dispose();
     const mesh = new THREE.Mesh(geom, material);
     const m = new THREE.Matrix4().makeBasis(t1, t2, normal);
     mesh.quaternion.setFromRotationMatrix(m);
@@ -729,6 +752,79 @@ export class GeometryEngine {
         const s = this.entitiesToShape(chain, proj);
         if (s) shapes.push(s);
       }
+    }
+
+    // ── Hole detection ────────────────────────────────────────────────────────
+    // When a sketch has nested closed loops (e.g. two concentric circles), the
+    // inner loop must be assigned as a hole of the containing outer shape so
+    // THREE.ExtrudeGeometry produces a ring instead of two solid cylinders.
+    //
+    // Algorithm:
+    //   1. Compute area for each shape and sort largest→smallest.
+    //   2. For each smaller shape, ray-cast its centroid against every larger
+    //      shape to find the immediate parent.
+    //   3. Push it onto parent.holes and mark it as absorbed.
+    //   4. Return only top-level (non-hole) shapes — holes are embedded in their
+    //      parent and must NOT appear as independent shapes in the output array.
+    if (shapes.length >= 2) {
+      // Shoelace signed area (positive = CCW, negative = CW — sign not needed here)
+      const shapeArea = (pts: THREE.Vector2[]): number => {
+        let a = 0;
+        for (let i = 0, j = pts.length - 1; i < pts.length; j = i++) {
+          a += pts[i].x * pts[j].y - pts[j].x * pts[i].y;
+        }
+        return Math.abs(a) / 2;
+      };
+
+      // Ray-casting point-in-polygon (works for any convex/concave simple polygon)
+      const pointInPoly = (p: THREE.Vector2, poly: THREE.Vector2[]): boolean => {
+        let inside = false;
+        for (let i = 0, j = poly.length - 1; i < poly.length; j = i++) {
+          const xi = poly[i].x, yi = poly[i].y;
+          const xj = poly[j].x, yj = poly[j].y;
+          if (((yi > p.y) !== (yj > p.y)) &&
+              (p.x < ((xj - xi) * (p.y - yi)) / (yj - yi) + xi)) {
+            inside = !inside;
+          }
+        }
+        return inside;
+      };
+
+      const SD = 48; // sample density for getPoints
+      const data = shapes.map((shape) => {
+        const pts = shape.getPoints(SD);
+        const area = shapeArea(pts);
+        const cx = pts.reduce((s, p) => s + p.x, 0) / pts.length;
+        const cy = pts.reduce((s, p) => s + p.y, 0) / pts.length;
+        return { shape, area, pts, centroid: new THREE.Vector2(cx, cy) };
+      });
+
+      // Sort largest → smallest so outer shapes come first
+      data.sort((a, b) => b.area - a.area);
+
+      const absorbed = new Array(data.length).fill(false);
+
+      for (let i = 1; i < data.length; i++) {
+        if (absorbed[i]) continue;
+        const inner = data[i];
+        // Find smallest enclosing outer shape (iterate from smallest outer → largest)
+        // data is sorted largest→smallest, so we scan backwards from i-1 to 0
+        // and take the LAST (smallest area) one that still contains the centroid.
+        let parentIdx = -1;
+        for (let j = i - 1; j >= 0; j--) {
+          if (absorbed[j]) continue;
+          if (pointInPoly(inner.centroid, data[j].pts)) {
+            parentIdx = j;
+            break; // first match scanning smallest-to-largest = tightest container
+          }
+        }
+        if (parentIdx >= 0) {
+          data[parentIdx].shape.holes.push(inner.shape);
+          absorbed[i] = true;
+        }
+      }
+
+      return data.filter((_, i) => !absorbed[i]).map((d) => d.shape);
     }
 
     return shapes;
@@ -1154,7 +1250,14 @@ export class GeometryEngine {
       bevelEnabled: false,
     };
 
-    const geometry = new THREE.ExtrudeGeometry(shapes, extrudeSettings);
+    const rawGeom = new THREE.ExtrudeGeometry(shapes, extrudeSettings);
+    // toNonIndexed → removeDegenerateTriangles strips the earcut keyhole-bridge
+    // triangles that would otherwise appear as a visible seam on transparent or
+    // CSG-processed geometry.
+    const nonIndexed = rawGeom.toNonIndexed();
+    rawGeom.dispose();
+    const geometry = this.removeDegenerateTriangles(nonIndexed);
+    nonIndexed.dispose();
     const mesh = new THREE.Mesh(geometry, EXTRUDE_MATERIAL);
     mesh.castShadow = true;
     mesh.receiveShadow = true;
@@ -1188,7 +1291,11 @@ export class GeometryEngine {
       : (allShapes[profileIndex] ? [allShapes[profileIndex]] : []);
     if (shapes.length === 0) return null;
 
-    const geometry = new THREE.ExtrudeGeometry(shapes, { depth: distance, bevelEnabled: false });
+    const rawGeom = new THREE.ExtrudeGeometry(shapes, { depth: distance, bevelEnabled: false });
+    const nonIndexed2 = rawGeom.toNonIndexed();
+    rawGeom.dispose();
+    const geometry = this.removeDegenerateTriangles(nonIndexed2);
+    nonIndexed2.dispose();
     const mesh = new THREE.Mesh(geometry, EXTRUDE_MATERIAL);
     mesh.castShadow = true;
     mesh.receiveShadow = true;
@@ -1376,6 +1483,64 @@ export class GeometryEngine {
   }
 
   /**
+   * Remove near-degenerate triangles from a non-indexed BufferGeometry.
+   *
+   * earcut's "keyhole bridge" — the corridor it cuts from the outer polygon
+   * boundary to each hole — produces one or two triangles whose area is many
+   * orders of magnitude smaller than any real face triangle. These degenerate
+   * triangles are invisible on an opaque mesh but become a visible seam on
+   * transparent preview geometry. Removing them eliminates the artifact without
+   * affecting any real geometry.
+   *
+   * Threshold: any triangle whose area < (relThreshold × median triangle area)
+   * is considered degenerate and is dropped.
+   */
+  private static removeDegenerateTriangles(
+    geom: THREE.BufferGeometry,
+    relThreshold = 0.01,
+  ): THREE.BufferGeometry {
+    const pos = geom.attributes.position as THREE.BufferAttribute;
+    const count = pos.count; // non-indexed: count is always divisible by 3
+    const _a = new THREE.Vector3();
+    const _b = new THREE.Vector3();
+    const _c = new THREE.Vector3();
+    const _ab = new THREE.Vector3();
+    const _ac = new THREE.Vector3();
+
+    // Pass 1: collect all triangle areas
+    const areas: number[] = [];
+    for (let i = 0; i < count; i += 3) {
+      _a.fromBufferAttribute(pos, i);
+      _b.fromBufferAttribute(pos, i + 1);
+      _c.fromBufferAttribute(pos, i + 2);
+      _ab.subVectors(_b, _a);
+      _ac.subVectors(_c, _a);
+      areas.push(_ab.cross(_ac).length() * 0.5);
+    }
+
+    // Median area (robust threshold anchor — avoids being fooled by a few huge triangles)
+    const sorted = [...areas].sort((a, b) => a - b);
+    const median = sorted[Math.floor(sorted.length / 2)] ?? 0;
+    const threshold = median * relThreshold;
+
+    // Pass 2: copy only non-degenerate triangles
+    const newPos: number[] = [];
+    for (let i = 0; i < count; i += 3) {
+      if (areas[i / 3] >= threshold) {
+        for (let k = 0; k < 3; k++) {
+          _a.fromBufferAttribute(pos, i + k);
+          newPos.push(_a.x, _a.y, _a.z);
+        }
+      }
+    }
+
+    const result = new THREE.BufferGeometry();
+    result.setAttribute('position', new THREE.Float32BufferAttribute(newPos, 3));
+    result.computeVertexNormals();
+    return result;
+  }
+
+  /**
    * three-bvh-csg requires a `uv` attribute on every geometry it processes.
    * Geometries built with manual vertex arrays (e.g. tapered extrusions) may
    * omit UVs. This pads a zero-filled uv attribute in-place when missing.
@@ -1398,6 +1563,7 @@ export class GeometryEngine {
     brushA.updateMatrixWorld();
     brushB.updateMatrixWorld();
     const result = _csgEvaluator.evaluate(brushA, brushB, SUBTRACTION);
+    result.geometry.computeVertexNormals();
     return result.geometry;
   }
 
@@ -1412,6 +1578,7 @@ export class GeometryEngine {
     brushA.updateMatrixWorld();
     brushB.updateMatrixWorld();
     const result = _csgEvaluator.evaluate(brushA, brushB, ADDITION);
+    result.geometry.computeVertexNormals();
     return result.geometry;
   }
 
@@ -1426,6 +1593,7 @@ export class GeometryEngine {
     brushA.updateMatrixWorld();
     brushB.updateMatrixWorld();
     const result = _csgEvaluator.evaluate(brushA, brushB, INTERSECTION);
+    result.geometry.computeVertexNormals();
     return result.geometry;
   }
 

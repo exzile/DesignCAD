@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import { ChevronRight, ChevronDown, Eye, EyeOff, FolderOpen, PenTool } from 'lucide-react';
 import { useCADStore } from '../../../store/cadStore';
 import { SketchContextMenu } from './SketchContextMenu';
@@ -14,7 +14,10 @@ export function SketchesFolder() {
   const [sketchVis, setSketchVis] = useState<Record<string, boolean>>({});
   const [ctxMenu, setCtxMenu] = useState<SketchCtxMenu | null>(null);
 
-  const visibleSketches = sketches.filter((s) => !s.name.startsWith('Press Pull Profile'));
+  const visibleSketches = useMemo(
+    () => sketches.filter((s) => !s.name.startsWith('Press Pull Profile')),
+    [sketches],
+  );
   const hasAny = visibleSketches.length > 0 || (!!activeSketch && !activeSketch.name.startsWith('Press Pull Profile'));
   if (!hasAny) return null;
 

@@ -86,7 +86,7 @@ export default function ReplaceFaceInteraction() {
 
   useFacePicker({ enabled, onHover: handleHover, onClick: handleClick });
 
-  useFrame(({ scene }) => {
+  useFrame(({ scene, invalidate }) => {
     if (!enabled) {
       // Clean up all overlays
       if (hoverMeshRef.current) { scene.remove(hoverMeshRef.current); hoverMeshRef.current.geometry.dispose(); hoverMeshRef.current = null; }
@@ -94,6 +94,7 @@ export default function ReplaceFaceInteraction() {
       if (targetMeshRef.current) { scene.remove(targetMeshRef.current); targetMeshRef.current.geometry.dispose(); targetMeshRef.current = null; }
       return;
     }
+    invalidate(); // keep rendering while picker is active
 
     // Hover overlay
     const hoverMat = replaceFaceSourceId === null ? HOVER_SOURCE_MAT : HOVER_TARGET_MAT;

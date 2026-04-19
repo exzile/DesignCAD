@@ -1075,6 +1075,7 @@ interface CADState {
   commitMeshSectionSketch(featureId: string, plane: THREE.Plane): void;
 
   // ── UTL2 — Save / Load ───────────────────────────────────────────────────
+  newDocument(): void;
   saveToFile(): void;
   loadFromFile(json: string): void;
 
@@ -5843,6 +5844,35 @@ export const useCADStore = create<CADState>()(persist((set, get) => ({
   },
 
   // ── UTL2 — Save / Load ───────────────────────────────────────────────────
+  newDocument: () => {
+    set({
+      // Geometry content
+      features: [],
+      sketches: [],
+      featureGroups: [],
+      constructionPlanes: [],
+      constructionAxes: [],
+      constructionPoints: [],
+      jointOrigins: [],
+      contactSets: [],
+      canvasReferences: [],
+      parameters: [],
+      // History
+      undoStack: [],
+      redoStack: [],
+      // Selection / active state
+      selectedEntityIds: [],
+      selectedFeatureId: null,
+      activeSketch: null,
+      activeTool: 'select',
+      activeDialog: null,
+      dialogPayload: null,
+      sketchPlaneSelecting: false,
+      rollbackIndex: -1,
+      statusMessage: 'New document',
+    });
+  },
+
   saveToFile: () => {
     const state = get();
     const saveObj = {

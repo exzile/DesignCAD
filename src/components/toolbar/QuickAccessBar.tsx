@@ -1,8 +1,11 @@
+import { useState, useRef, useEffect } from 'react';
 import {
-  Home, Save, FolderOpen, Undo2, Redo2, FileUp, Download,
+  Save, FolderOpen, Undo2, Redo2, FileUp, Download,
   Moon, Sun, Bell, HelpCircle, Printer, Settings, User,
+  FilePlus, ChevronRight,
 } from 'lucide-react';
 import { useCADStore } from '../../store/cadStore';
+import { useComponentStore } from '../../store/componentStore';
 import { usePrinterStore } from '../../store/printerStore';
 import { useThemeStore } from '../../store/themeStore';
 
@@ -26,25 +29,96 @@ export function QuickAccessBar({ fileInputRef, loadFileInputRef, onImport }: Qui
   const saveToFile = useCADStore((s) => s.saveToFile);
   const loadFromFile = useCADStore((s) => s.loadFromFile);
   const setShowExportDialog = useCADStore((s) => s.setShowExportDialog);
+  const cadNewDocument = useCADStore((s) => s.newDocument);
+  const featureCount = useCADStore((s) => s.features.length);
+  const sketchCount = useCADStore((s) => s.sketches.length);
+  const componentNewDocument = useComponentStore((s) => s.newDocument);
 
   const showPrinter = usePrinterStore((s) => s.showPrinter);
   const setShowPrinter = usePrinterStore((s) => s.setShowPrinter);
   const setActiveTab = usePrinterStore((s) => s.setActiveTab);
   const printerConnected = usePrinterStore((s) => s.connected);
 
+  const [fileMenuOpen, setFileMenuOpen] = useState(false);
+  const [newFileConfirm, setNewFileConfirm] = useState(false);
+  const fileMenuRef = useRef<HTMLDivElement>(null);
+
+  // Close the file menu when clicking outside
+  useEffect(() => {
+    if (!fileMenuOpen) return;
+    const handler = (e: MouseEvent) => {
+      if (fileMenuRef.current && !fileMenuRef.current.contains(e.target as Node)) {
+        setFileMenuOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, [fileMenuOpen]);
+
+  const closeMenu = () => setFileMenuOpen(false);
+
+  const hasContent = featureCount > 0 || sketchCount > 0;
+
+  const doNewDocument = () => {
+    cadNewDocument();
+    componentNewDocument();
+    setNewFileConfirm(false);
+  };
+
+  const handleNew = () => {
+    closeMenu();
+    if (hasContent) {
+      setNewFileConfirm(true);
+    } else {
+      doNewDocument();
+    }
+  };
+
   return (
     <div className="ribbon-quick-access">
       <div className="ribbon-quick-left">
-        <button className="ribbon-quick-btn" title="Home" onClick={() => setStatusMessage('Dzign3D Home')}>
-          <Home size={14} />
-        </button>
+        {/* ── File menu ── */}
+        <div className="file-menu-root" ref={fileMenuRef}>
+          <button
+            className={`file-menu-btn${fileMenuOpen ? ' open' : ''}`}
+            onClick={() => setFileMenuOpen((v) => !v)}
+          >
+            File
+          </button>
+          {fileMenuOpen && (
+            <div className="file-menu-dropdown">
+              <button className="file-menu-item" onClick={handleNew}>
+                <FilePlus size={15} />
+                <span>New</span>
+                <span className="file-menu-shortcut">Ctrl+N</span>
+              </button>
+              <div className="file-menu-separator" />
+              <button className="file-menu-item" onClick={() => { loadFileInputRef.current?.click(); closeMenu(); }}>
+                <FolderOpen size={15} />
+                <span>Open…</span>
+                <span className="file-menu-shortcut">Ctrl+O</span>
+              </button>
+              <button className="file-menu-item" onClick={() => { saveToFile(); closeMenu(); }}>
+                <Save size={15} />
+                <span>Save</span>
+                <span className="file-menu-shortcut">Ctrl+S</span>
+              </button>
+              <div className="file-menu-separator" />
+              <button className="file-menu-item" onClick={() => { fileInputRef.current?.click(); closeMenu(); }}>
+                <FileUp size={15} />
+                <span>Import…</span>
+              </button>
+              <button className="file-menu-item" onClick={() => { setShowExportDialog(true); closeMenu(); }}>
+                <Download size={15} />
+                <span>Export…</span>
+                <ChevronRight size={13} style={{ marginLeft: 'auto' }} />
+              </button>
+            </div>
+          )}
+        </div>
+
         <div className="ribbon-quick-divider" />
-        <button className="ribbon-quick-btn" title="Save (.dzn)" onClick={saveToFile}>
-          <Save size={14} />
-        </button>
-        <button className="ribbon-quick-btn" title="Open (.dzn)" onClick={() => loadFileInputRef.current?.click()}>
-          <FolderOpen size={14} />
-        </button>
+
         <button
           className={`ribbon-quick-btn${undoStackLength === 0 ? ' ribbon-quick-btn-disabled' : ''}`}
           title="Undo (Ctrl+Z)"
@@ -61,13 +135,7 @@ export function QuickAccessBar({ fileInputRef, loadFileInputRef, onImport }: Qui
         >
           <Redo2 size={14} />
         </button>
-        <div className="ribbon-quick-divider" />
-        <button className="ribbon-quick-btn" title="Import" onClick={() => fileInputRef.current?.click()}>
-          <FileUp size={14} />
-        </button>
-        <button className="ribbon-quick-btn" title="Export" onClick={() => setShowExportDialog(true)}>
-          <Download size={14} />
-        </button>
+
         <input ref={fileInputRef} type="file" accept=".step,.stp,.f3d,.stl,.obj" hidden onChange={onImport} />
         <input
           ref={loadFileInputRef}
@@ -115,6 +183,38 @@ export function QuickAccessBar({ fileInputRef, loadFileInputRef, onImport }: Qui
           <User size={14} />
         </button>
       </div>
+
+      {/* ── New-document confirmation modal ── */}
+      {newFileConfirm && (
+        <div className="new-doc-overlay" onClick={() => setNewFileConfirm(false)}>
+          <div className="new-doc-modal" onClick={(e) => e.stopPropagation()}>
+            <div className="new-doc-title">Start a new document?</div>
+            <div className="new-doc-body">
+              You have unsaved work. Would you like to save before starting a new document?
+            </div>
+            <div className="new-doc-actions">
+              <button
+                className="new-doc-btn new-doc-btn-save"
+                onClick={() => { saveToFile(); doNewDocument(); }}
+              >
+                Save &amp; New
+              </button>
+              <button
+                className="new-doc-btn new-doc-btn-discard"
+                onClick={doNewDocument}
+              >
+                Discard &amp; New
+              </button>
+              <button
+                className="new-doc-btn new-doc-btn-cancel"
+                onClick={() => setNewFileConfirm(false)}
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

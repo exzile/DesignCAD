@@ -69,7 +69,7 @@ export default function RemoveFacePicker() {
 
   useFacePicker({ enabled: pickEnabled, onHover: handleHover, onClick: handleClick });
 
-  useFrame(({ scene }) => {
+  useFrame(({ scene, invalidate }) => {
     if (!overlayEnabled) {
       if (hoverMeshRef.current) {
         scene.remove(hoverMeshRef.current);
@@ -84,6 +84,7 @@ export default function RemoveFacePicker() {
       selectedBoundaryRef.current = null;
       return;
     }
+    invalidate(); // keep rendering while picker is active
 
     // ── Hover overlay (only while picking) ────────────────────────────────
     if (pickEnabled) {

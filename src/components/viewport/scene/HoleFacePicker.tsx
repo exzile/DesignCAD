@@ -92,7 +92,7 @@ export default function HoleFacePicker() {
 
   useFacePicker({ enabled: pickEnabled, onHover: handleHover, onClick: handleClick });
 
-  useFrame(({ scene }) => {
+  useFrame(({ scene, invalidate }) => {
     // Tear everything down when the dialog is not open.
     if (!overlayEnabled) {
       if (hoverMeshRef.current) {
@@ -112,6 +112,7 @@ export default function HoleFacePicker() {
       }
       return;
     }
+    invalidate(); // keep rendering while picker is active
 
     // ── Hover overlay (only while picking) ─────────────────────────────────
     if (pickEnabled) {

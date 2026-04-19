@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect } from 'react';
+import { useState, useRef, useEffect, useMemo } from 'react';
 import './Timeline.css';
 import {
   Eye, EyeOff, Trash2, PenTool, ArrowUpFromLine,
@@ -46,7 +46,10 @@ function GroupHeader({ group, depth = 0 }: { group: FeatureGroup; depth?: number
   };
 
   // Candidate parent groups = all groups except self and descendants
-  const nestCandidates = featureGroups.filter((g) => g.id !== group.id && g.parentGroupId !== group.id);
+  const nestCandidates = useMemo(
+    () => featureGroups.filter((g) => g.id !== group.id && g.parentGroupId !== group.id),
+    [featureGroups, group.id],
+  );
 
   return (
     <div
@@ -498,15 +501,26 @@ export default function Timeline() {
     setIsPlaying(false);
   };
 
+  // MM1: Only show features that were recorded while history was enabled
+  // Moved ABOVE startPlayback so the interval callback always reads the live filtered list
+  // via useCADStore.getState() — not a stale closure from an earlier render.
+  const features = useMemo(
+    () => allFeatures.filter((f) => !f.suppressTimeline),
+    [allFeatures],
+  );
+
   const startPlayback = () => {
-    if (features.length === 0) return;
+    const currentFeatures = useCADStore.getState().features.filter((f) => !f.suppressTimeline);
+    if (currentFeatures.length === 0) return;
     stopPlayback();
     playIndexRef.current = 0;
     setRollbackIndex(0);
     setIsPlaying(true);
     playIntervalRef.current = setInterval(() => {
+      // Read fresh from store so late-added features don't cause early stop
+      const liveFeatures = useCADStore.getState().features.filter((f) => !f.suppressTimeline);
       playIndexRef.current += 1;
-      if (playIndexRef.current >= features.length) {
+      if (playIndexRef.current >= liveFeatures.length) {
         setRollbackIndex(-1);
         stopPlayback();
       } else {
@@ -518,9 +532,6 @@ export default function Timeline() {
   // Clean up interval on unmount
   useEffect(() => () => { if (playIntervalRef.current) clearInterval(playIntervalRef.current); }, []);
 
-  // MM1: Only show features that were recorded while history was enabled
-  const features = allFeatures.filter((f) => !f.suppressTimeline);
-
   const handleEndDrop = (e: React.DragEvent) => {
     const id = e.dataTransfer.getData('text/feature-id');
     if (!id) return;
@@ -530,7 +541,10 @@ export default function Timeline() {
   };
 
   // MM4 / CORR-17: Build grouped render list with nested group support
-  const groupMap = new Map(featureGroups.map((g) => [g.id, g]));
+  const groupMap = useMemo(
+    () => new Map(featureGroups.map((g) => [g.id, g])),
+    [featureGroups],
+  );
 
   /** Recursively render a group's header + its features + sub-groups, at a given depth. */
   const renderGroup = (group: FeatureGroup, depth: number, collapsedAncestor: boolean): React.ReactNode[] => {

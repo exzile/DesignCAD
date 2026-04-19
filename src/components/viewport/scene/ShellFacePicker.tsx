@@ -86,7 +86,7 @@ export default function ShellFacePicker() {
 
   useFacePicker({ enabled: active, onHover: handleHover, onClick: handleClick });
 
-  useFrame(({ scene }) => {
+  useFrame(({ scene, invalidate }) => {
     if (!active) {
       // Clean up all overlays when dialog is closed
       if (hoverMeshRef.current) {
@@ -102,6 +102,7 @@ export default function ShellFacePicker() {
       selectedBoundariesRef.current.clear();
       return;
     }
+    invalidate(); // keep rendering while picker is active
 
     // ── Hover overlay ────────────────────────────────────────────────────────
     const hr = hoverResultRef.current;

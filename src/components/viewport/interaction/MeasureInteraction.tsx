@@ -159,8 +159,9 @@ export default function MeasureInteraction() {
 
   // Draw measurement line / preview in the scene.
   // All objects (dots, line) are stable refs — no per-frame allocation.
-  useFrame(() => {
+  useFrame(({ invalidate }) => {
     if (!previewRef.current) return;
+    if (activeTool === 'measure') invalidate(); // keep updating while measure tool is active
     previewRef.current.userData.measurePreview = true;
 
     const group = previewRef.current;

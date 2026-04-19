@@ -21,9 +21,10 @@ export default function JointAnimationPlayer() {
   const animationPlaying = useComponentStore((s) => s.animationPlaying);
   const tickAnimation = useComponentStore((s) => s.tickAnimation);
 
-  useFrame((_, delta) => {
+  useFrame(({ invalidate }, delta) => {
     if (!animationPlaying) return;
     tickAnimation(delta);
+    invalidate(); // keep advancing frames while animation is running (frameloop="demand")
     // _liveJointValues is now populated by tickAnimation above.
     // Direct mesh mutation (bypassing React) would go here once the
     // body-transform logic is implemented.

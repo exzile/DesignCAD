@@ -1,5 +1,9 @@
 import { useCallback, useEffect, useMemo, useRef } from 'react';
 import * as THREE from 'three';
+
+// Module-level scratch objects — avoids per-feature heap allocations in the CSG loop.
+const _boxCurrent = new THREE.Box3();
+const _boxTool = new THREE.Box3();
 import { useCADStore } from '../../../store/cadStore';
 import { useComponentStore } from '../../../store/componentStore';
 import { GeometryEngine } from '../../../engine/GeometryEngine';
@@ -217,13 +221,9 @@ export default function ExtrudedBodies() {
         // Fusion 360 parity: only merge bodies that actually overlap.
         // If the join geometry doesn't intersect the current body (e.g. an
         // offset extrusion floating in space), start a new separate body.
-        const boxCurrent = new THREE.Box3().setFromBufferAttribute(
-          currentGeom.attributes.position as THREE.BufferAttribute,
-        );
-        const boxTool = new THREE.Box3().setFromBufferAttribute(
-          toolGeom.attributes.position as THREE.BufferAttribute,
-        );
-        if (!boxCurrent.intersectsBox(boxTool)) {
+        _boxCurrent.setFromBufferAttribute(currentGeom.attributes.position as THREE.BufferAttribute);
+        _boxTool.setFromBufferAttribute(toolGeom.attributes.position as THREE.BufferAttribute);
+        if (!_boxCurrent.intersectsBox(_boxTool)) {
           commitCurrent();
           currentGeom = toolGeom;
           currentFeatureId = feature.id;

@@ -80,13 +80,14 @@ export default function ExtrudeToEntityPicker() {
 
   useFacePicker({ enabled: pickEnabled, onHover: handleHover, onClick: handleClick });
 
-  useFrame(({ scene }) => {
+  useFrame(({ scene, invalidate }) => {
     // Tear down when not relevant
     if (!overlayEnabled) {
       if (hoverMeshRef.current) { scene.remove(hoverMeshRef.current); hoverMeshRef.current.geometry.dispose(); hoverMeshRef.current = null; }
       if (selMeshRef.current)   { scene.remove(selMeshRef.current);   selMeshRef.current.geometry.dispose();   selMeshRef.current   = null; }
       return;
     }
+    invalidate(); // keep rendering while picker is active
 
     // Hover overlay (only while picking)
     if (pickEnabled) {

@@ -1,3 +1,4 @@
+import { useMemo } from 'react';
 import { useCADStore } from '../../store/cadStore';
 import './StatusBar.css';
 
@@ -11,6 +12,11 @@ export default function StatusBar() {
   const activeSketch = useCADStore((s) => s.activeSketch);
   const selectionFilter = useCADStore((s) => s.selectionFilter);
   const historyEnabled = useCADStore((s) => s.historyEnabled);
+
+  const selectionFilterLabel = useMemo(
+    () => Object.entries(selectionFilter).filter(([, v]) => v).map(([k]) => k).join(', ') || 'none',
+    [selectionFilter],
+  );
 
   return (
     <div className="status-bar">
@@ -38,7 +44,7 @@ export default function StatusBar() {
           Snap: {snapEnabled ? 'ON' : 'OFF'}
         </span>
         <span className="status-badge" title="Selection filter">
-          Filter: {Object.entries(selectionFilter).filter(([, v]) => v).map(([k]) => k).join(', ') || 'none'}
+          Filter: {selectionFilterLabel}
         </span>
         <select
           className="status-units"

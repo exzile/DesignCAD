@@ -39,12 +39,13 @@ export default function SketchProfile({
     return created;
   }, [sketch, animatedMaterial, profileIndex]);
 
-  useFrame((clock) => {
+  useFrame(({ clock, invalidate }) => {
     const m = meshRef.current?.material;
     if (!(m instanceof THREE.MeshBasicMaterial)) return;
     if (state === 'hover') {
-      const pulse = 0.5 + 0.5 * Math.sin(clock.clock.elapsedTime * 6);
+      const pulse = 0.5 + 0.5 * Math.sin(clock.elapsedTime * 6);
       m.opacity = 0.24 + pulse * 0.22;
+      invalidate(); // keep pulsing in frameloop="demand" mode
     } else if (state === 'selected') {
       m.opacity = 0.48;
     } else {

@@ -84,7 +84,7 @@ export default function FilletEdgeHighlight() {
 
   useEdgePicker({ enabled, onHover: handleHover, onClick: handleClick });
 
-  useFrame(({ scene }) => {
+  useFrame(({ scene, invalidate }) => {
     if (!enabled) {
       // Tear down BOTH the hover preview AND every selected-edge highlight when
       // the dialog closes. Previous code only disposed hoverLineRef, leaving the
@@ -104,6 +104,7 @@ export default function FilletEdgeHighlight() {
       }
       return;
     }
+    invalidate(); // keep rendering while picker is active
 
     // Update hover line
     const hr = hoverResultRef.current;

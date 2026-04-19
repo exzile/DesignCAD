@@ -58,12 +58,13 @@ export default function LipGrooveEdgePicker() {
 
   useEdgePicker({ enabled: pickEnabled, onHover: handleHover, onClick: handleClick });
 
-  useFrame(({ scene }) => {
+  useFrame(({ scene, invalidate }) => {
     if (!overlayEnabled) {
       if (hoverLineRef.current) { scene.remove(hoverLineRef.current); hoverLineRef.current.geometry.dispose(); hoverLineRef.current = null; }
       if (selectedLineRef.current) { scene.remove(selectedLineRef.current); selectedLineRef.current.geometry.dispose(); selectedLineRef.current = null; }
       return;
     }
+    invalidate(); // keep rendering while picker is active
 
     // Hover line
     if (pickEnabled) {

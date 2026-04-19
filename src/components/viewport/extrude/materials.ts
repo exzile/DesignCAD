@@ -31,6 +31,7 @@ export const PREVIEW_MATERIAL = new THREE.MeshPhysicalMaterial({
   transparent: true,
   opacity: 0.55,
   side: THREE.DoubleSide,
+  depthWrite: false,
 });
 // Red preview used when press-pulling INTO a body (cut mode)
 export const PREVIEW_MATERIAL_CUT = new THREE.MeshPhysicalMaterial({
@@ -40,6 +41,7 @@ export const PREVIEW_MATERIAL_CUT = new THREE.MeshPhysicalMaterial({
   transparent: true,
   opacity: 0.55,
   side: THREE.DoubleSide,
+  depthWrite: false,
 });
 
 export const ARROW_MATERIAL = new THREE.MeshBasicMaterial({ color: 0xffaa00 });

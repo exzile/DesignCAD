@@ -12,15 +12,44 @@ export default function FaceHighlight({ boundary }: { boundary: THREE.Vector3[] 
   const { fillGeom, outlineGeom } = useMemo(() => {
     if (boundary.length < 3) return { fillGeom: null, outlineGeom: null };
 
-    // Triangulate the boundary as a fan (works for convex faces — cube faces
-    // are always convex). For non-convex faces this would fail, but they're
-    // out of scope for v1.
-    const positions: number[] = [];
-    const indices: number[] = [];
-    for (const p of boundary) positions.push(p.x, p.y, p.z);
-    for (let i = 1; i < boundary.length - 1; i++) {
-      indices.push(0, i, i + 1);
+    // Triangulate the boundary correctly — works for convex AND for faces
+    // with holes that come back as a single closed loop with zero-width
+    // bridges (e.g. a rectangular face with circular holes). A fan from
+    // vertex 0 produced a huge visible triangle radiating from one corner
+    // out to the hole boundaries; ear-clipping (via THREE.ShapeUtils) gives
+    // a clean triangulation that respects the bridged polygon.
+    //
+    // Step 1: build an orthonormal 2D basis on the face plane using the
+    // first three points. `boundary` is known coplanar so any two non-collinear
+    // edges work.
+    const p0 = boundary[0];
+    const ab = boundary[1].clone().sub(p0);
+    // Find a third point not collinear with p0→p1 (rare edge case if the
+    // first three are collinear).
+    let ac: THREE.Vector3 | null = null;
+    for (let i = 2; i < boundary.length; i++) {
+      const cand = boundary[i].clone().sub(p0);
+      if (cand.clone().cross(ab).lengthSq() > 1e-10) { ac = cand; break; }
     }
+    const t1 = ab.clone().normalize();
+    const n = (ac ?? new THREE.Vector3(1, 0, 0)).clone().cross(t1).normalize();
+    const t2 = n.clone().cross(t1).normalize();
+
+    // Step 2: project the boundary to 2D (u, v) on the face plane.
+    const pts2D = boundary.map((p) => {
+      const d = p.clone().sub(p0);
+      return new THREE.Vector2(d.dot(t1), d.dot(t2));
+    });
+
+    // Step 3: ear-clip. THREE.ShapeUtils.triangulateShape returns triangles
+    // as index triples into the input contour array.
+    const triIndices = THREE.ShapeUtils.triangulateShape(pts2D, []);
+
+    const positions: number[] = [];
+    for (const p of boundary) positions.push(p.x, p.y, p.z);
+    const indices: number[] = [];
+    for (const [i, j, k] of triIndices) indices.push(i, j, k);
+
     const fillGeom = new THREE.BufferGeometry();
     fillGeom.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
     fillGeom.setIndex(indices);

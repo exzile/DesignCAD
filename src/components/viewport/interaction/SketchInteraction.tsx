@@ -1427,8 +1427,9 @@ export default function SketchInteraction() {
   }, [activeTool, activeSketch, constraintSelection, addToConstraintSelection, clearConstraintSelection, addSketchConstraint, setActiveTool, getWorldPoint, setStatusMessage, gl]);
 
   // Preview of current drawing operation
-  useFrame(() => {
+  useFrame(({ invalidate }) => {
     if (!previewRef.current) return;
+    invalidate(); // keep sketch preview updating in frameloop="demand" mode
     // S10: when construction-mode toggle is active, use cyan dashed material for preview
     const activeLine = drawingConstructionRef.current
       ? constructionModePreviewMaterial.current
@@ -1560,22 +1561,22 @@ export default function SketchInteraction() {
       {/* Live dimension overlays (D64) — outside previewRef so useFrame doesn't strip them */}
       {showLineDims && lineMidpoint && lineAnglePos && (
         <>
-          <Html position={lineMidpoint} center zIndexRange={[100, 0]}>
+          <Html position={lineMidpoint} center zIndexRange={[100, 0]} style={{ pointerEvents: 'none' }}>
             <div style={lengthLabelStyle}>{lineLengthText}</div>
           </Html>
-          <Html position={lineAnglePos} center zIndexRange={[100, 0]}>
+          <Html position={lineAnglePos} center zIndexRange={[100, 0]} style={{ pointerEvents: 'none' }}>
             <div style={baseLabelStyle}>{lineAngleText}</div>
           </Html>
-          <Html position={mousePos} zIndexRange={[100, 0]}>
+          <Html position={mousePos} zIndexRange={[100, 0]} style={{ pointerEvents: 'none' }}>
             <div style={cursorLabelStyle}>Specify next point</div>
           </Html>
-          <Html position={mousePos} zIndexRange={[100, 0]}>
+          <Html position={mousePos} zIndexRange={[100, 0]} style={{ pointerEvents: 'none' }}>
             <div style={deltaLabelStyle}>{lineDeltaText}</div>
           </Html>
         </>
       )}
       {showRadiusHUD && radiusHUDPos && (
-        <Html position={radiusHUDPos} center zIndexRange={[100, 0]}>
+        <Html position={radiusHUDPos} center zIndexRange={[100, 0]} style={{ pointerEvents: 'none' }}>
           <div style={lengthLabelStyle}>{radiusHUDText}</div>
         </Html>
       )}

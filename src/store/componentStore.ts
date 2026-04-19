@@ -78,6 +78,7 @@ interface ComponentStore {
   setActiveComponentId: (id: string | null) => void;
   selectedBodyId: string | null;
   setSelectedBodyId: (id: string | null) => void;
+  newDocument: () => void;
 
   // Component operations
   addComponent: (parentId: string, name?: string) => string;
@@ -240,6 +241,39 @@ export const useComponentStore = create<ComponentStore>()(persist((set, get) => 
 
   selectedBodyId: null,
   setSelectedBodyId: (id) => set({ selectedBodyId: id }),
+
+  newDocument: () => {
+    const newRootId = crypto.randomUUID();
+    set({
+      rootComponentId: newRootId,
+      activeComponentId: newRootId,
+      selectedBodyId: null,
+      components: {
+        [newRootId]: {
+          id: newRootId,
+          name: 'Assembly',
+          parentId: null,
+          childIds: [],
+          bodyIds: [],
+          sketchIds: [],
+          constructionIds: [],
+          constructionPlaneIds: [],
+          constructionAxisIds: [],
+          constructionPointIds: [],
+          jointIds: [],
+          transform: new THREE.Matrix4(),
+          visible: true,
+          grounded: true,
+          isLinked: false,
+          color: '#5B9BD5',
+        },
+      },
+      bodies: {},
+      constructions: {},
+      joints: {},
+      componentConstraints: [],
+    });
+  },
 
   // ===== Component Operations =====
   addComponent: (parentId, name) => {

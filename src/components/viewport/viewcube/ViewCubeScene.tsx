@@ -241,12 +241,13 @@ export default function ViewCubeScene({
   // Sync mini-camera to mirror main camera rotation.
   // Scratch vector — reused so we don't allocate a Vector3 every frame.
   const dirScratch = useRef(new THREE.Vector3());
-  useFrame(() => {
+  useFrame(({ invalidate }) => {
     // Position the mini camera to look at origin from the same orientation as the main camera
     const dir = dirScratch.current.set(0, 0, 1).applyQuaternion(mainCameraQuaternion);
     camera.position.copy(dir).multiplyScalar(5);
     camera.lookAt(0, 0, 0);
     camera.updateProjectionMatrix();
+    invalidate(); // keep view cube in sync with main camera in frameloop="demand" mode
   });
 
   const handleFaceClick = useCallback((face: FaceDef) => {
