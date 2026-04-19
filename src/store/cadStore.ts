@@ -3405,13 +3405,27 @@ export const useCADStore = create<CADState>()(persist((set, get) => ({
       // thin and surface extrudes need a stored mesh.
       const needsStoredMesh = resolvedBodyKind === 'surface' || extrudeThinEnabled;
 
+      // Multi-profile selection: when the user picks several profiles and
+      // chooses 'new-body', profiles that overlap each other should fuse into
+      // a single body (Fusion 360 parity — they are "connected" after extrude).
+      // We do this by routing the 2nd-onwards profile through the 'join' path,
+      // which already has the bbox-overlap check + auto-promote-to-new-body
+      // fallback for disconnected profiles. The 1st profile stays 'new-body'
+      // so disconnected selections still start with a fresh body.
+      let effectiveOperation = finalOperation;
+      const isMultiProfileSubsequent =
+        finalOperation === 'new-body' &&
+        selectedProfiles.length > 1 &&
+        createdCount > 0 &&
+        resolvedBodyKind === 'solid' &&
+        !extrudeThinEnabled;
+      if (isMultiProfileSubsequent) effectiveOperation = 'join';
       // ── Fusion 360 parity: auto-promote 'join' → 'new-body' when detached ──
       // If the user chose 'join' but the proposed geometry doesn't intersect any
       // existing solid body (e.g. an offset extrusion floating in space), Fusion
       // 360 automatically creates a new body. We replicate that here by doing a
       // cheap bounding-box check against all currently committed solid extrudes.
-      let effectiveOperation = finalOperation;
-      if (finalOperation === 'join' && resolvedBodyKind === 'solid' && !extrudeThinEnabled) {
+      if (effectiveOperation === 'join' && resolvedBodyKind === 'solid' && !extrudeThinEnabled) {
         const existingSolids = nextFeatures.filter(
           (f) => f.type === 'extrude' && !f.suppressed && f.visible &&
                  f.bodyKind !== 'surface' &&
@@ -3421,7 +3435,9 @@ export const useCADStore = create<CADState>()(persist((set, get) => ({
           // No solid bodies yet — this must be the first one
           effectiveOperation = 'new-body';
         } else {
-          // Build bounding box of the proposed new extrusion
+          // Build the proposed geometry once. We need its bbox for cheap
+          // pre-filtering AND the baked world-space geometry for the exact
+          // CSG-intersection test that determines real overlap.
           const proposedMesh = GeometryEngine.buildExtrudeFeatureMesh(
             sketchForOp, absDistance, finalDirection, extrudeTaperAngle,
             extrudeStartType === 'offset' ? extrudeStartOffset : 0,
@@ -3431,7 +3447,9 @@ export const useCADStore = create<CADState>()(persist((set, get) => ({
           if (proposedMesh) {
             proposedMesh.updateMatrixWorld(true);
             const proposedBox = new THREE.Box3().setFromObject(proposedMesh);
+            const proposedGeomW = GeometryEngine.bakeMeshWorldGeometry(proposedMesh);
             proposedMesh.geometry.dispose();
+
             let intersectsAny = false;
             for (const ef of existingSolids) {
               const efSk = sketches.find((s) => s.id === ef.sketchId);
@@ -3452,12 +3470,36 @@ export const useCADStore = create<CADState>()(persist((set, get) => ({
               if (!efMesh) continue;
               efMesh.updateMatrixWorld(true);
               const efBox = new THREE.Box3().setFromObject(efMesh);
+              // Cheap bbox pre-filter. If the boxes don't even touch we can
+              // skip the expensive CSG work entirely.
+              if (!proposedBox.intersectsBox(efBox)) {
+                efMesh.geometry.dispose();
+                continue;
+              }
+              // Accurate test: do the two solids truly overlap in volume,
+              // or do they just touch at a corner/edge? CSG intersection
+              // produces an empty (or near-empty) geometry for the latter.
+              // Threshold 6 = 2 triangles; anything less is degenerate
+              // coplanar contact (touching face), not volumetric overlap.
+              const efGeomW = GeometryEngine.bakeMeshWorldGeometry(efMesh);
               efMesh.geometry.dispose();
-              if (proposedBox.intersectsBox(efBox)) {
+              try {
+                const inter = GeometryEngine.csgIntersect(proposedGeomW, efGeomW);
+                const triVerts = (inter.attributes.position as THREE.BufferAttribute | undefined)?.count ?? 0;
+                inter.dispose();
+                if (triVerts > 6) {
+                  intersectsAny = true;
+                  efGeomW.dispose();
+                  break;
+                }
+              } catch { /* malformed geometry — fall back to bbox result */
                 intersectsAny = true;
+                efGeomW.dispose();
                 break;
               }
+              efGeomW.dispose();
             }
+            proposedGeomW.dispose();
             if (!intersectsAny) effectiveOperation = 'new-body';
           }
         }
@@ -3466,6 +3508,13 @@ export const useCADStore = create<CADState>()(persist((set, get) => ({
       const featureId = crypto.randomUUID();
       let componentId: string | undefined;
       let bodyId: string | undefined;
+      // When an extrude produces geometrically disconnected pieces (two
+      // disjoint profiles, or CSG cut that split a body) each piece should
+      // show up as its own entry in the Bodies browser. Build a preview
+      // mesh here solely to count connected components, and register one
+      // body per piece. The extra ids are stored on the feature so the
+      // renderer can match a split geometry → bodies by index.
+      let extraBodyIds: string[] = [];
       if (effectiveOperation === 'new-body') {
         const componentStore = useComponentStore.getState();
         componentId = componentStore.activeComponentId ?? componentStore.rootComponentId;
@@ -3478,6 +3527,37 @@ export const useCADStore = create<CADState>()(persist((set, get) => ({
           // Only store mesh on body for thin/taper/surface — standard solid
           // extrudes are rendered by the CSG pipeline in ExtrudedBodies.
           if (needsStoredMesh && featureMesh) componentStore.setBodyMesh(createdBodyId, featureMesh);
+        }
+        // Detect disconnected pieces — only for standard (CSG-pipeline) solids.
+        if (!needsStoredMesh && createdBodyId) {
+          try {
+            const probe = GeometryEngine.buildExtrudeFeatureMesh(
+              sketchForOp,
+              absDistance,
+              finalDirection,
+              extrudeTaperAngle,
+              extrudeStartType === 'offset' ? extrudeStartOffset : 0,
+              absDistance2,
+              extrudeTaperAngle2,
+            );
+            if (probe) {
+              const parts = GeometryEngine.splitByConnectedComponents(probe.geometry);
+              probe.geometry.dispose();
+              if (parts.length > 1) {
+                for (let i = 1; i < parts.length; i++) {
+                  const extraId = componentStore.addBody(
+                    componentId,
+                    `${bodyLabel}.${i + 1}`,
+                  );
+                  if (extraId) {
+                    componentStore.addFeatureToBody(extraId, featureId);
+                    extraBodyIds.push(extraId);
+                  }
+                }
+              }
+              for (const g of parts) g.dispose();
+            }
+          } catch { /* ignore — fall back to single body */ }
         }
       } else if (effectiveOperation === 'new-component') {
         const componentStore = useComponentStore.getState();
@@ -3505,6 +3585,10 @@ export const useCADStore = create<CADState>()(persist((set, get) => ({
             : absDistance,
           distanceExpr: String(absDistance),
           ...(finalDirection === 'two-sides' ? { distance2: absDistance2 } : {}),
+          // Extra body ids for disconnected pieces (2nd piece onwards). The
+          // renderer uses these to label each split component separately so
+          // every disconnected piece becomes its own row in the Bodies list.
+          ...(extraBodyIds.length > 0 ? { extraBodyIds } : {}),
           direction: finalDirection,
           operation: effectiveOperation,
           thin: extrudeThinEnabled,

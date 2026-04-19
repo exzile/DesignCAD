@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef } from 'react';
+import { useFrame } from '@react-three/fiber';
 import * as THREE from 'three';
 
 // Module-level scratch objects — avoids per-feature heap allocations in the CSG loop.
@@ -9,6 +10,68 @@ import { useComponentStore } from '../../../store/componentStore';
 import { GeometryEngine } from '../../../engine/GeometryEngine';
 import type { Feature, Sketch } from '../../../types/cad';
 import { BODY_MATERIAL, SURFACE_MATERIAL, DIM_MATERIAL } from './bodyMaterial';
+
+/**
+ * Wraps a single body mesh and pulses an emissive highlight when its bodyId
+ * matches the currently-selected body from the browser panel. Using a
+ * MeshStandardMaterial clone so the pulse doesn't mutate the shared body
+ * material. Cleanup disposes the clone on unmount/bodyId change.
+ */
+function BodyMesh({
+  geometry,
+  material,
+  featureId,
+  bodyId,
+  pickable,
+}: {
+  geometry: THREE.BufferGeometry;
+  material: THREE.Material;
+  featureId: string | undefined;
+  bodyId: string | undefined;
+  pickable: boolean;
+}) {
+  const selectedBodyId = useComponentStore((s) => s.selectedBodyId);
+  const isSelected = !!bodyId && bodyId === selectedBodyId;
+  const meshRef = useRef<THREE.Mesh | null>(null);
+
+  // Build a one-off material clone when this mesh is the selected one — keeps
+  // the shared body material pristine (no mutating emissive on everything).
+  const animatedMat = useMemo(() => {
+    if (!isSelected) return null;
+    const m = material as THREE.MeshStandardMaterial;
+    if (!(m instanceof THREE.MeshStandardMaterial)) return null;
+    const clone = m.clone();
+    clone.emissive = new THREE.Color(0x3b82f6);
+    return clone;
+  }, [isSelected, material]);
+
+  useEffect(() => {
+    return () => { animatedMat?.dispose(); };
+  }, [animatedMat]);
+
+  useFrame(({ clock, invalidate }) => {
+    if (!animatedMat) return;
+    // Pulse emissive intensity at 3 Hz so the selected body breathes visibly.
+    const pulse = 0.3 + 0.3 * Math.sin(clock.elapsedTime * 6);
+    animatedMat.emissiveIntensity = pulse;
+    invalidate();
+  });
+
+  return (
+    <mesh
+      ref={meshRef}
+      geometry={geometry}
+      material={animatedMat ?? material}
+      castShadow
+      receiveShadow
+      onUpdate={(m) => {
+        m.userData.pickable = pickable;
+        m.userData.featureId = featureId;
+        m.userData.bodyId = bodyId;
+      }}
+    />
+  );
+}
 
 /** Revolve geometry item — memoized, disposes geometry on change/unmount. */
 function RevolveItem({ feature, sketch }: { feature: Feature; sketch: Sketch | undefined }) {
@@ -169,18 +232,37 @@ export default function ExtrudedBodies() {
     let currentFeatureId: string | null = null;
     let currentComponentId: string | undefined;
     let currentBodyId: string | undefined;
+    let currentExtraBodyIds: string[] = [];
 
     const commitCurrent = () => {
       if (currentGeom && currentFeatureId) {
-        outBodies.push(currentGeom);
-        outIds.push(currentFeatureId);
-        outComponentIds.push(currentComponentId);
-        outBodyIds.push(currentBodyId);
+        // Split disconnected pieces: each connected component becomes its own
+        // body in the viewport (and, via commitExtrude, its own row in the
+        // Bodies browser). The split order is deterministic (sorted by
+        // centroid) so commit-time and render-time agree on which piece
+        // corresponds to which bodyId.
+        const parts = GeometryEngine.splitByConnectedComponents(currentGeom);
+        if (parts.length > 1 && parts[0] !== currentGeom) {
+          // Multi-part — the original currentGeom is safe to dispose because
+          // splitByConnectedComponents returned freshly-allocated buffers.
+          currentGeom.dispose();
+        }
+        const bodyIdsForParts = [currentBodyId, ...currentExtraBodyIds];
+        for (let i = 0; i < parts.length; i++) {
+          outBodies.push(parts[i]);
+          outIds.push(currentFeatureId);
+          outComponentIds.push(currentComponentId);
+          // When there are more parts than stored bodyIds (e.g. a CSG cut
+          // later split a single body) fall back to the primary bodyId so
+          // nothing becomes un-pickable.
+          outBodyIds.push(bodyIdsForParts[i] ?? currentBodyId);
+        }
       }
       currentGeom = null;
       currentFeatureId = null;
       currentComponentId = undefined;
       currentBodyId = undefined;
+      currentExtraBodyIds = [];
     };
 
     for (const feature of extrudeFeatures) {
@@ -200,6 +282,7 @@ export default function ExtrudedBodies() {
         currentFeatureId = feature.id;
         currentComponentId = feature.componentId;
         currentBodyId = feature.bodyId;
+        currentExtraBodyIds = (feature.params.extraBodyIds as string[] | undefined) ?? [];
         continue;
       }
 
@@ -229,6 +312,7 @@ export default function ExtrudedBodies() {
           currentFeatureId = feature.id;
           currentComponentId = feature.componentId;
           currentBodyId = feature.bodyId;
+          currentExtraBodyIds = (feature.params.extraBodyIds as string[] | undefined) ?? [];
         } else {
           const next = GeometryEngine.csgUnion(currentGeom, toolGeom);
           currentGeom.dispose();
@@ -269,20 +353,15 @@ export default function ExtrudedBodies() {
       {bodies.map((geom, i) => {
         const fId = featureIds[i];
         const bodyId = featureBodyIds[i];
+        const bodySelectable = bodyId ? (bodiesById[bodyId]?.selectable !== false) : true;
         return (
-          <mesh
-            key={fId ?? i}
+          <BodyMesh
+            key={`${fId}::${bodyId ?? i}`}
             geometry={geom}
             material={getMaterial(featureComponentIds[i], bodyId)}
-            castShadow
-            receiveShadow
-            onUpdate={(m) => {
-              // CTX-9: respect body.selectable flag
-              const bodySelectable = bodyId ? (bodiesById[bodyId]?.selectable !== false) : true;
-              m.userData.pickable = bodySelectable;
-              m.userData.featureId = fId;
-              m.userData.bodyId = bodyId;
-            }}
+            featureId={fId}
+            bodyId={bodyId}
+            pickable={bodySelectable}
           />
         );
       })}

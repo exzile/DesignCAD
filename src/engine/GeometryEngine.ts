@@ -164,6 +164,15 @@ export class GeometryEngine {
     }
     if (coplanarTris.length === 0) return null;
 
+    // Reject single-triangle "faces". A truly flat face on a CAD body is
+    // always at least 2 triangles (a quad is the minimum). A single isolated
+    // coplanar triangle on a curved surface (cylinder side, sphere, torus)
+    // would otherwise produce a valid 3-point boundary and let the user
+    // press-pull from a cylinder's side — which isn't a flat face at all.
+    // Single-triangle CAD faces (e.g. tetrahedron sides) are extremely rare
+    // in practice; rejecting them here is the correct trade-off.
+    if (coplanarTris.length < 2) return null;
+
     // Merge vertices at the same world position so CSG seam duplicates are
     // treated as the same vertex. Uses spatial hashing with a merge radius
     // that handles rounding-boundary ambiguity by checking distance to the
@@ -1838,6 +1847,126 @@ export class GeometryEngine {
     const geom = new THREE.BufferGeometry();
     geom.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
     return geom;
+  }
+
+  /**
+   * Split a BufferGeometry into separate BufferGeometries — one per connected
+   * component (flood-fill over the triangle adjacency graph). Returns the
+   * original geometry untouched inside a single-element array when the mesh
+   * is already one connected component.
+   *
+   * Uses a spatial hash for vertex de-duplication so CSG output (which has
+   * position-identical but index-distinct vertices on triangle seams) still
+   * gets its triangles correctly grouped into the same component.
+   *
+   * Input is treated as position-only; all per-vertex attributes (position,
+   * normal, uv when present) are carried through to each output component.
+   */
+  static splitByConnectedComponents(
+    geom: THREE.BufferGeometry,
+    tolerance = 1e-4,
+  ): THREE.BufferGeometry[] {
+    const pos = geom.attributes.position as THREE.BufferAttribute | undefined;
+    if (!pos || pos.count === 0) return [geom];
+    const idx = geom.index;
+    const triCount = idx ? idx.count / 3 : pos.count / 3;
+    if (triCount === 0) return [geom];
+
+    const nrm = geom.attributes.normal as THREE.BufferAttribute | undefined;
+    const uv  = geom.attributes.uv as THREE.BufferAttribute | undefined;
+
+    // Canonicalize vertices by quantized position so seam-duplicates unify.
+    const inv = 1 / tolerance;
+    const keyFor = (vi: number): string => {
+      const x = Math.round(pos.getX(vi) * inv);
+      const y = Math.round(pos.getY(vi) * inv);
+      const z = Math.round(pos.getZ(vi) * inv);
+      return `${x}|${y}|${z}`;
+    };
+    const canonicalOf: number[] = new Array(pos.count);
+    const keyToCanonical = new Map<string, number>();
+    for (let i = 0; i < pos.count; i++) {
+      const k = keyFor(i);
+      let c = keyToCanonical.get(k);
+      if (c === undefined) { c = keyToCanonical.size; keyToCanonical.set(k, c); }
+      canonicalOf[i] = c;
+    }
+
+    // Union-find over canonical vertices, linked via triangle edges.
+    const n = keyToCanonical.size;
+    const parent = new Int32Array(n);
+    for (let i = 0; i < n; i++) parent[i] = i;
+    const find = (x: number): number => {
+      let r = x;
+      while (parent[r] !== r) r = parent[r];
+      // Path compression
+      while (parent[x] !== r) { const p = parent[x]; parent[x] = r; x = p; }
+      return r;
+    };
+    const union = (a: number, b: number) => {
+      const ra = find(a), rb = find(b);
+      if (ra !== rb) parent[ra] = rb;
+    };
+
+    const getTri = (t: number): [number, number, number] => {
+      if (idx) return [idx.getX(t * 3), idx.getX(t * 3 + 1), idx.getX(t * 3 + 2)];
+      return [t * 3, t * 3 + 1, t * 3 + 2];
+    };
+    for (let t = 0; t < triCount; t++) {
+      const [a, b, c] = getTri(t);
+      union(canonicalOf[a], canonicalOf[b]);
+      union(canonicalOf[b], canonicalOf[c]);
+    }
+
+    // Group triangles by root canonical vertex.
+    const trisByComponent = new Map<number, number[]>();
+    for (let t = 0; t < triCount; t++) {
+      const [a] = getTri(t);
+      const root = find(canonicalOf[a]);
+      let arr = trisByComponent.get(root);
+      if (!arr) { arr = []; trisByComponent.set(root, arr); }
+      arr.push(t);
+    }
+    if (trisByComponent.size <= 1) return [geom];
+
+    // Build one new BufferGeometry per component.
+    const out: THREE.BufferGeometry[] = [];
+    for (const tris of trisByComponent.values()) {
+      const posArr: number[] = [];
+      const nrmArr: number[] = nrm ? [] : [];
+      const uvArr: number[] = uv ? [] : [];
+      for (const t of tris) {
+        const vs = getTri(t);
+        for (const vi of vs) {
+          posArr.push(pos.getX(vi), pos.getY(vi), pos.getZ(vi));
+          if (nrm) nrmArr.push(nrm.getX(vi), nrm.getY(vi), nrm.getZ(vi));
+          if (uv)  uvArr.push(uv.getX(vi), uv.getY(vi));
+        }
+      }
+      const g = new THREE.BufferGeometry();
+      g.setAttribute('position', new THREE.Float32BufferAttribute(posArr, 3));
+      if (nrm) g.setAttribute('normal', new THREE.Float32BufferAttribute(nrmArr, 3));
+      if (uv)  g.setAttribute('uv', new THREE.Float32BufferAttribute(uvArr, 2));
+      if (!nrm) g.computeVertexNormals();
+      out.push(g);
+    }
+
+    // Sort deterministically (by centroid x, then y, then z) so render-time
+    // splits match commit-time splits across re-renders.
+    const _bb = new THREE.Box3();
+    const _c = new THREE.Vector3();
+    const centroids = out.map((g) => {
+      _bb.setFromBufferAttribute(g.attributes.position as THREE.BufferAttribute);
+      _bb.getCenter(_c);
+      return { x: _c.x, y: _c.y, z: _c.z };
+    });
+    const order = out.map((_, i) => i).sort((a, b) => {
+      const ca = centroids[a], cb = centroids[b];
+      if (Math.abs(ca.x - cb.x) > 1e-4) return ca.x - cb.x;
+      if (Math.abs(ca.y - cb.y) > 1e-4) return ca.y - cb.y;
+      return ca.z - cb.z;
+    });
+    return order.map((i) => out[i]);
   }
 
   /**
