@@ -82,8 +82,11 @@ function githubProxyPlugin(): Plugin {
             'access-control-allow-origin': '*',
             'content-type': upstream.headers.get('content-type') ?? 'application/octet-stream',
           };
-          const len = upstream.headers.get('content-length');
-          if (len) hdrs['content-length'] = len;
+          // NOTE: do NOT forward content-length. undici's fetch transparently
+          // decompresses gzip/deflate responses (common on api.github.com),
+          // but the upstream content-length reflects the *compressed* size.
+          // If we copy it over, the browser reads only that many bytes of our
+          // decoded stream and truncates the JSON ("Unterminated string…").
           res.writeHead(upstream.status, hdrs);
 
           if (!upstream.body) { res.end(); return; }

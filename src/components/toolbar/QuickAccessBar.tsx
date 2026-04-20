@@ -1,13 +1,17 @@
-import { useState, useRef, useEffect } from 'react';
+import { useState, useRef, useEffect, useCallback } from 'react';
 import {
   Save, FolderOpen, Undo2, Redo2, FileUp, Download,
   Moon, Sun, Bell, HelpCircle, Printer, Settings, User,
-  FilePlus, FileX, ChevronRight,
+  FilePlus, FileX, ChevronRight, SlidersHorizontal,
 } from 'lucide-react';
 import { useCADStore } from '../../store/cadStore';
 import { useComponentStore } from '../../store/componentStore';
 import { usePrinterStore } from '../../store/printerStore';
 import { useThemeStore } from '../../store/themeStore';
+import {
+  openBundle, saveBundleAs, saveBundleSlice,
+  useProjectFileStore, type BundleSlice,
+} from '../../utils/projectIO';
 
 import type { RefObject, ChangeEvent } from 'react';
 
@@ -33,10 +37,49 @@ export function QuickAccessBar({ fileInputRef, loadFileInputRef, onImport }: Qui
   const featureCount = useCADStore((s) => s.features.length);
   const sketchCount = useCADStore((s) => s.sketches.length);
   const componentNewDocument = useComponentStore((s) => s.newDocument);
-  // File menu only makes sense in the design workspace — the slicer and
-  // printer workspaces have their own file/job concepts.
+  // The File menu is available on every workspace now — the design-specific
+  // items (New/Open/Save design, Import, Export) are still gated to design
+  // mode, but every workspace gets the settings-bundle items (Save Settings /
+  // Save Settings As / Load Settings).
   const workspaceMode = useCADStore((s) => s.workspaceMode);
-  const showFileMenu = workspaceMode === 'design';
+  const isDesign = workspaceMode === 'design';
+  const showFileMenu = isDesign; // for undo/redo + design menu gating below
+
+  const bundleFilename = useProjectFileStore((s) => s.filename);
+  const hasBundle = useProjectFileStore((s) => s.hasBundle);
+  const sliceForWorkspace: BundleSlice =
+    workspaceMode === 'design' ? 'cad'
+    : workspaceMode === 'prepare' ? 'slicer'
+    : 'printer';
+
+  const handleSaveSettings = useCallback(async () => {
+    const result = await saveBundleSlice(sliceForWorkspace);
+    setStatusMessage(
+      result.ok
+        ? `Settings saved: ${result.filename ?? ''}`
+        : `Save failed: ${result.error ?? 'unknown error'}`,
+    );
+  }, [sliceForWorkspace, setStatusMessage]);
+
+  const handleSaveSettingsAs = useCallback(async () => {
+    const result = await saveBundleAs('settings.dzn');
+    setStatusMessage(
+      result.ok
+        ? `Settings saved: ${result.filename ?? ''}`
+        : `Save failed: ${result.error ?? 'unknown error'}`,
+    );
+  }, [setStatusMessage]);
+
+  const handleLoadSettings = useCallback(async () => {
+    const result = await openBundle();
+    if (!result.ok) {
+      setStatusMessage(`Load failed: ${result.error ?? 'unknown error'}`);
+      return;
+    }
+    setStatusMessage(
+      `Settings loaded${result.filename ? ` from ${result.filename}` : ''}: ${result.appliedSections.join(', ')}`,
+    );
+  }, [setStatusMessage]);
 
   const showPrinter = usePrinterStore((s) => s.showPrinter);
   const setShowPrinter = usePrinterStore((s) => s.setShowPrinter);
@@ -88,8 +131,7 @@ export function QuickAccessBar({ fileInputRef, loadFileInputRef, onImport }: Qui
   return (
     <div className="ribbon-quick-access">
       <div className="ribbon-quick-left">
-        {/* ── File menu (design workspace only) ── */}
-        {showFileMenu && (
+        {/* ── File menu — available on every workspace ── */}
         <div className="file-menu-root" ref={fileMenuRef}>
           <button
             className={`file-menu-btn${fileMenuOpen ? ' open' : ''}`}
@@ -99,41 +141,73 @@ export function QuickAccessBar({ fileInputRef, loadFileInputRef, onImport }: Qui
           </button>
           {fileMenuOpen && (
             <div className="file-menu-dropdown">
-              <button className="file-menu-item" onClick={handleNew}>
-                <FilePlus size={15} />
-                <span>New</span>
-                <span className="file-menu-shortcut">Ctrl+N</span>
-              </button>
-              <button className="file-menu-item" onClick={handleClose}>
-                <FileX size={15} />
-                <span>Close</span>
-                <span className="file-menu-shortcut">Ctrl+W</span>
-              </button>
-              <div className="file-menu-separator" />
-              <button className="file-menu-item" onClick={() => { loadFileInputRef.current?.click(); closeMenu(); }}>
+              {/* Design-only: document lifecycle + project (.dznd) file */}
+              {isDesign && (
+                <>
+                  <button className="file-menu-item" onClick={handleNew}>
+                    <FilePlus size={15} />
+                    <span>New</span>
+                    <span className="file-menu-shortcut">Ctrl+N</span>
+                  </button>
+                  <button className="file-menu-item" onClick={handleClose}>
+                    <FileX size={15} />
+                    <span>Close</span>
+                    <span className="file-menu-shortcut">Ctrl+W</span>
+                  </button>
+                  <div className="file-menu-separator" />
+                  <button className="file-menu-item" onClick={() => { loadFileInputRef.current?.click(); closeMenu(); }}>
+                    <FolderOpen size={15} />
+                    <span>Open Design…</span>
+                    <span className="file-menu-shortcut">Ctrl+O</span>
+                  </button>
+                  <button className="file-menu-item" onClick={() => { saveToFile(); closeMenu(); }}>
+                    <Save size={15} />
+                    <span>Save Design</span>
+                    <span className="file-menu-shortcut">Ctrl+S</span>
+                  </button>
+                  <div className="file-menu-separator" />
+                  <button className="file-menu-item" onClick={() => { fileInputRef.current?.click(); closeMenu(); }}>
+                    <FileUp size={15} />
+                    <span>Import…</span>
+                  </button>
+                  <button className="file-menu-item" onClick={() => { setShowExportDialog(true); closeMenu(); }}>
+                    <Download size={15} />
+                    <span>Export…</span>
+                    <ChevronRight size={13} style={{ marginLeft: 'auto' }} />
+                  </button>
+                  <div className="file-menu-separator" />
+                </>
+              )}
+
+              {/* Settings bundle (.dzn) — per-page save; available everywhere */}
+              <button className="file-menu-item" onClick={() => { handleLoadSettings(); closeMenu(); }}>
                 <FolderOpen size={15} />
-                <span>Open…</span>
-                <span className="file-menu-shortcut">Ctrl+O</span>
+                <span>Load Settings…</span>
               </button>
-              <button className="file-menu-item" onClick={() => { saveToFile(); closeMenu(); }}>
+              <button
+                className="file-menu-item"
+                onClick={() => { handleSaveSettings(); closeMenu(); }}
+                title={hasBundle && bundleFilename
+                  ? `Update ${bundleFilename} — writes only the ${sliceForWorkspace} section`
+                  : 'Choose a file to save settings into'}
+              >
+                <SlidersHorizontal size={15} />
+                <span>
+                  {hasBundle ? `Save ${sliceForWorkspace === 'cad' ? 'Design' : sliceForWorkspace === 'slicer' ? 'Slicer' : 'Printer'} Settings` : 'Save Settings'}
+                </span>
+                {bundleFilename && (
+                  <span className="file-menu-shortcut" style={{ maxWidth: 120, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                    {bundleFilename}
+                  </span>
+                )}
+              </button>
+              <button className="file-menu-item" onClick={() => { handleSaveSettingsAs(); closeMenu(); }}>
                 <Save size={15} />
-                <span>Save</span>
-                <span className="file-menu-shortcut">Ctrl+S</span>
-              </button>
-              <div className="file-menu-separator" />
-              <button className="file-menu-item" onClick={() => { fileInputRef.current?.click(); closeMenu(); }}>
-                <FileUp size={15} />
-                <span>Import…</span>
-              </button>
-              <button className="file-menu-item" onClick={() => { setShowExportDialog(true); closeMenu(); }}>
-                <Download size={15} />
-                <span>Export…</span>
-                <ChevronRight size={13} style={{ marginLeft: 'auto' }} />
+                <span>Save Settings As…</span>
               </button>
             </div>
           )}
         </div>
-        )}
 
         {/* File menu + undo/redo are design-workspace concepts; the slicer
             and printer workspaces have their own action history that would
@@ -165,7 +239,7 @@ export function QuickAccessBar({ fileInputRef, loadFileInputRef, onImport }: Qui
         <input
           ref={loadFileInputRef}
           type="file"
-          accept=".dzn,.json"
+          accept=".dznd,.dzn,.json"
           hidden
           onChange={(e) => {
             const file = e.target.files?.[0];
@@ -181,7 +255,12 @@ export function QuickAccessBar({ fileInputRef, loadFileInputRef, onImport }: Qui
         />
       </div>
       <div className="ribbon-quick-center">
-        <span className="ribbon-title">Untitled - Dzign3D</span>
+        {/* Only the design workspace shows the filename prefix — the slicer
+            and printer workspaces are not "file-backed" in the same sense. */}
+        <span className="ribbon-title">
+          {isDesign ? 'Untitled - Dzign3D' : 'Dzign3D'}
+          {bundleFilename && !isDesign ? ` — ${bundleFilename}` : ''}
+        </span>
       </div>
       <div className="ribbon-quick-right">
         <button className="ribbon-quick-btn" title="Toggle theme" onClick={toggleTheme}>

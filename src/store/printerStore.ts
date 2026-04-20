@@ -1,6 +1,13 @@
 import { create } from 'zustand';
 import { DuetService } from '../services/DuetService';
-import { getDuetPrefs } from '../utils/duetPrefs';
+import {
+  getDuetPrefs,
+  bindDuetPrefs,
+  readLegacyDuetPrefs,
+  clearLegacyDuetPrefs,
+  DEFAULT_PREFS,
+  type DuetPrefs,
+} from '../utils/duetPrefs';
 import type {
   DuetConfig,
   DuetObjectModel,
@@ -9,11 +16,28 @@ import type {
   DuetFileInfo,
   DuetGCodeFileInfo,
   DuetHeightMap,
+  SavedPrinter,
 } from '../types/duet';
 
 const MAX_TEMPERATURE_HISTORY = 200;
 const MAX_CONSOLE_HISTORY = 500;
-const STORAGE_KEY = 'dzign3d-duet-config';
+// Legacy single-printer key; migrated on first boot into PRINTERS_KEY.
+const LEGACY_CONFIG_KEY = 'dzign3d-duet-config';
+const PRINTERS_KEY = 'dzign3d-printers';
+const ACTIVE_PRINTER_KEY = 'dzign3d-active-printer';
+
+function genPrinterId(): string {
+  return `printer-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
+}
+
+function defaultPrinter(): SavedPrinter {
+  return {
+    id: genPrinterId(),
+    name: 'Printer 1',
+    config: { hostname: '', password: '', mode: 'standalone' },
+    prefs: { ...DEFAULT_PREFS },
+  };
+}
 
 // Auto-reconnect state (kept outside the store to avoid re-renders)
 let autoReconnectTimer: ReturnType<typeof setTimeout> | null = null;
@@ -80,7 +104,12 @@ function parseEventLog(text: string): PrintHistoryEntry[] {
 }
 
 interface PrinterStore {
-  // Connection
+  // Multi-printer registry
+  printers: SavedPrinter[];
+  activePrinterId: string;
+
+  // Connection — config is a derived view of the active printer's config
+  // and is kept in sync by setActivePrinter/setConfig.
   connected: boolean;
   connecting: boolean;
   reconnecting: boolean;
@@ -124,11 +153,18 @@ interface PrinterStore {
   // UI state
   showPrinter: boolean;
   showSettings: boolean;
-  activeTab: 'dashboard' | 'status' | 'console' | 'job' | 'history' | 'files' | 'filaments' | 'macros' | 'settings' | 'heightmap' | 'model';
+  activeTab: 'dashboard' | 'status' | 'console' | 'job' | 'history' | 'files' | 'filaments' | 'macros' | 'settings' | 'heightmap' | 'model' | 'config';
   error: string | null;
   jogDistance: number;
   extrudeAmount: number;
   extrudeFeedrate: number;
+
+  // Multi-printer actions
+  addPrinter: (name?: string) => string; // returns new id
+  removePrinter: (id: string) => void;
+  renamePrinter: (id: string, name: string) => void;
+  selectPrinter: (id: string) => Promise<void>;
+  updatePrinterPrefs: (id: string, patch: Partial<DuetPrefs>) => void;
 
   // Actions
   setConfig: (config: Partial<DuetConfig>) => void;
@@ -209,33 +245,84 @@ interface PrinterStore {
   setError: (error: string | null) => void;
 }
 
-function loadSavedConfig(): DuetConfig {
+interface LoadedState {
+  printers: SavedPrinter[];
+  activePrinterId: string;
+}
+
+function loadPrinters(): LoadedState {
+  // Primary path: migrated multi-printer list.
   try {
-    const saved = localStorage.getItem(STORAGE_KEY);
-    if (saved) {
-      return JSON.parse(saved);
+    const raw = localStorage.getItem(PRINTERS_KEY);
+    if (raw) {
+      const printers = JSON.parse(raw) as SavedPrinter[];
+      if (Array.isArray(printers) && printers.length > 0) {
+        const storedActive = localStorage.getItem(ACTIVE_PRINTER_KEY) ?? '';
+        const active = printers.some((p) => p.id === storedActive) ? storedActive : printers[0].id;
+        return { printers, activePrinterId: active };
+      }
     }
   } catch {
-    // Invalid saved config, use defaults
+    /* fall through to migration */
   }
-  return { hostname: '', password: '', mode: 'standalone' };
+
+  // Migration: older builds saved a single DuetConfig + DuetPrefs under
+  // separate keys. Roll them into one printer record so the user keeps
+  // their hostname, password, webcam URL, custom buttons, etc.
+  let legacyConfig: DuetConfig | null = null;
+  try {
+    const saved = localStorage.getItem(LEGACY_CONFIG_KEY);
+    if (saved) legacyConfig = JSON.parse(saved) as DuetConfig;
+  } catch {
+    /* ignore */
+  }
+  const legacyPrefs = readLegacyDuetPrefs();
+
+  if (legacyConfig || legacyPrefs) {
+    const first: SavedPrinter = {
+      id: genPrinterId(),
+      name: 'Printer 1',
+      config: legacyConfig ?? { hostname: '', password: '', mode: 'standalone' },
+      prefs: legacyPrefs ?? { ...DEFAULT_PREFS },
+    };
+    savePrintersList([first], first.id);
+    try { localStorage.removeItem(LEGACY_CONFIG_KEY); } catch { /* ignore */ }
+    clearLegacyDuetPrefs();
+    return { printers: [first], activePrinterId: first.id };
+  }
+
+  // Fresh install.
+  const first = defaultPrinter();
+  savePrintersList([first], first.id);
+  return { printers: [first], activePrinterId: first.id };
 }
 
-function saveConfig(config: DuetConfig): void {
+function savePrintersList(printers: SavedPrinter[], activeId: string): void {
   try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(config));
+    localStorage.setItem(PRINTERS_KEY, JSON.stringify(printers));
+    localStorage.setItem(ACTIVE_PRINTER_KEY, activeId);
   } catch {
-    // Storage unavailable
+    /* storage unavailable */
   }
 }
+
+function getActivePrinter(printers: SavedPrinter[], id: string): SavedPrinter {
+  return printers.find((p) => p.id === id) ?? printers[0];
+}
+
+const INITIAL = loadPrinters();
 
 export const usePrinterStore = create<PrinterStore>((set, get) => ({
+  // Multi-printer
+  printers: INITIAL.printers,
+  activePrinterId: INITIAL.activePrinterId,
+
   // Connection
   connected: false,
   connecting: false,
   reconnecting: false,
   firmwareUpdatePending: false,
-  config: loadSavedConfig(),
+  config: getActivePrinter(INITIAL.printers, INITIAL.activePrinterId).config,
   service: null,
 
   // Object model
@@ -283,10 +370,82 @@ export const usePrinterStore = create<PrinterStore>((set, get) => ({
   // --- Actions ---
 
   setConfig: (partial) => {
-    const current = get().config;
-    const updated = { ...current, ...partial };
-    saveConfig(updated);
-    set({ config: updated });
+    const { printers, activePrinterId } = get();
+    const updated = printers.map((p) =>
+      p.id === activePrinterId ? { ...p, config: { ...p.config, ...partial } } : p,
+    );
+    const active = getActivePrinter(updated, activePrinterId);
+    savePrintersList(updated, activePrinterId);
+    set({ printers: updated, config: active.config });
+  },
+
+  // --- Multi-printer management ---
+
+  addPrinter: (name) => {
+    const { printers } = get();
+    const id = genPrinterId();
+    const nextName = name && name.trim().length > 0
+      ? name.trim()
+      : `Printer ${printers.length + 1}`;
+    const fresh: SavedPrinter = {
+      id,
+      name: nextName,
+      config: { hostname: '', password: '', mode: 'standalone' },
+      prefs: { ...DEFAULT_PREFS },
+    };
+    const next = [...printers, fresh];
+    savePrintersList(next, get().activePrinterId);
+    set({ printers: next });
+    return id;
+  },
+
+  removePrinter: (id) => {
+    const state = get();
+    if (state.printers.length <= 1) return; // keep at least one
+    const next = state.printers.filter((p) => p.id !== id);
+    let activeId = state.activePrinterId;
+    if (activeId === id) {
+      // If removing the active printer, disconnect first then switch.
+      if (state.connected || state.service) {
+        state.disconnect(true).catch(() => {});
+      }
+      activeId = next[0].id;
+    }
+    const active = getActivePrinter(next, activeId);
+    savePrintersList(next, activeId);
+    set({ printers: next, activePrinterId: activeId, config: active.config });
+  },
+
+  renamePrinter: (id, name) => {
+    const trimmed = name.trim();
+    if (!trimmed) return;
+    const next = get().printers.map((p) => (p.id === id ? { ...p, name: trimmed } : p));
+    savePrintersList(next, get().activePrinterId);
+    set({ printers: next });
+  },
+
+  selectPrinter: async (id) => {
+    const state = get();
+    if (id === state.activePrinterId) return;
+    const target = state.printers.find((p) => p.id === id);
+    if (!target) return;
+    // Disconnect from current printer before switching so model/files/temps
+    // don't bleed across unrelated machines.
+    if (state.connected || state.service) {
+      try { await state.disconnect(true); } catch { /* ignore */ }
+    }
+    savePrintersList(state.printers, id);
+    set({ activePrinterId: id, config: target.config });
+  },
+
+  updatePrinterPrefs: (id, patch) => {
+    const next = get().printers.map((p) => {
+      if (p.id !== id) return p;
+      const cur = (p.prefs as DuetPrefs | undefined) ?? { ...DEFAULT_PREFS };
+      return { ...p, prefs: { ...cur, ...patch } };
+    });
+    savePrintersList(next, get().activePrinterId);
+    set({ printers: next });
   },
 
   connect: async () => {
@@ -373,7 +532,9 @@ export const usePrinterStore = create<PrinterStore>((set, get) => ({
         return;
       }
 
-      saveConfig(config);
+      // Persist the active printer's config (hostname/password may have
+      // just been edited on the Connection tab).
+      savePrintersList(get().printers, get().activePrinterId);
 
       set({
         connected: true,
@@ -1028,8 +1189,26 @@ export const usePrinterStore = create<PrinterStore>((set, get) => ({
   setError: (error) => set({ error }),
 }));
 
-// Auto-reconnect from saved config on load
-const savedConfig = loadSavedConfig();
-if (savedConfig.hostname) {
-  usePrinterStore.getState().connect().catch(() => {});
+// Bind the duetPrefs utility to the active printer's prefs so all existing
+// getDuetPrefs()/setDuetPrefs() call sites keep working — they just read and
+// write through the active printer now.
+bindDuetPrefs({
+  get: (): DuetPrefs => {
+    const state = usePrinterStore.getState();
+    const active = getActivePrinter(state.printers, state.activePrinterId);
+    const p = active.prefs as DuetPrefs | undefined;
+    return p ? { ...DEFAULT_PREFS, ...p } : { ...DEFAULT_PREFS };
+  },
+  set: (prefs: DuetPrefs): void => {
+    const state = usePrinterStore.getState();
+    state.updatePrinterPrefs(state.activePrinterId, prefs);
+  },
+});
+
+// Auto-reconnect from the active printer's saved config on load.
+{
+  const initial = usePrinterStore.getState();
+  if (initial.config.hostname) {
+    initial.connect().catch(() => {});
+  }
 }

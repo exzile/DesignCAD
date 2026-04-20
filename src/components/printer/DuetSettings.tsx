@@ -5,7 +5,7 @@ import {
   Sun, Moon, UploadCloud, Zap, Download, FolderOpen, X,
   Thermometer, Activity, Ruler, Home, Gauge,
   RefreshCw, Sparkles, ArrowUpCircle, Package, ExternalLink, Calendar,
-  Monitor,
+  Monitor, Plus, Trash2, Pencil,
 } from 'lucide-react';
 import { downloadSettings, importSettingsFromFile, type ImportResult } from '../../utils/settingsExport';
 import { usePrinterStore } from '../../store/printerStore';
@@ -131,6 +131,28 @@ function panelDueVariantLabel(name: string): string {
   // Strip leading "v1.2.3" version if present.
   const withoutVer = stripped.replace(/^v?\d+(?:[._-]\d+){0,3}[._-]?/i, '');
   return withoutVer || stripped || 'firmware';
+}
+
+/** Sort PanelDue .bin assets into a predictable order:
+ *  1. Ascending by screen size (4.3 → 5.0 → 7.0)
+ *  2. Standalone variants before 'i' (integrated) variants of the same size
+ *  3. Stable alphabetic fallback when we can't parse a size
+ *  so users see "4.3, 5.0, 5.0i, 7.0, 7.0i" instead of GitHub's release order. */
+function sortPanelDueAssets(assets: GitHubAsset[]): GitHubAsset[] {
+  return [...assets].sort((a, b) => {
+    const la = panelDueVariantLabel(a.name);
+    const lb = panelDueVariantLabel(b.name);
+    const sizeA = parseFloat(la.match(/(\d+(?:\.\d+)?)/)?.[1] ?? 'NaN');
+    const sizeB = parseFloat(lb.match(/(\d+(?:\.\d+)?)/)?.[1] ?? 'NaN');
+    const aHasSize = !Number.isNaN(sizeA);
+    const bHasSize = !Number.isNaN(sizeB);
+    if (aHasSize && bHasSize && sizeA !== sizeB) return sizeA - sizeB;
+    if (aHasSize !== bHasSize) return aHasSize ? -1 : 1; // sized variants first
+    const aIntegrated = /i\b/i.test(la) ? 1 : 0;
+    const bIntegrated = /i\b/i.test(lb) ? 1 : 0;
+    if (aIntegrated !== bIntegrated) return aIntegrated - bIntegrated;
+    return la.localeCompare(lb);
+  });
 }
 
 /** Compare semver-ish strings. Returns -1 if a<b, 0 if equal, 1 if a>b. */
@@ -351,6 +373,12 @@ export default function DuetSettings() {
   const connect = usePrinterStore((s) => s.connect);
   const disconnect = usePrinterStore((s) => s.disconnect);
   const testConnection = usePrinterStore((s) => s.testConnection);
+  const printers = usePrinterStore((s) => s.printers);
+  const activePrinterId = usePrinterStore((s) => s.activePrinterId);
+  const addPrinter = usePrinterStore((s) => s.addPrinter);
+  const removePrinter = usePrinterStore((s) => s.removePrinter);
+  const renamePrinter = usePrinterStore((s) => s.renamePrinter);
+  const selectPrinter = usePrinterStore((s) => s.selectPrinter);
   const error = usePrinterStore((s) => s.error);
   const model = usePrinterStore((s) => s.model);
   const uploading = usePrinterStore((s) => s.uploading);
@@ -398,6 +426,7 @@ export default function DuetSettings() {
     checkedAt?: number;
   }>({ loading: false });
   const [showReleaseNotes, setShowReleaseNotes] = useState(false);
+  const [showPanelDueNotes, setShowPanelDueNotes] = useState(false);
 
   // Auto-update (download + upload + install) state
   type AutoStep = 'idle' | 'downloading' | 'uploading' | 'installing' | 'done' | 'reconnected' | 'error';
@@ -475,6 +504,295 @@ export default function DuetSettings() {
       if (timer) clearTimeout(timer);
     };
   }, [autoUpdate.step, connected, firmwareUpdatePending, config.hostname, config.mode, config.password]);
+
+  // ---------------------------------------------------------------------------
+  // PanelDue state
+  // ---------------------------------------------------------------------------
+  const [panelDueInfo, setPanelDueInfo] = useState<{
+    loading: boolean;
+    loaded: boolean;
+    configs: PanelDueConfig[];
+    error?: string;
+  }>({ loading: false, loaded: false, configs: [] });
+
+  const [panelDueCheck, setPanelDueCheck] = useState<{
+    loading: boolean;
+    release?: GitHubRelease;
+    error?: string;
+    checkedAt?: number;
+  }>({ loading: false });
+
+  // Keep a live ref so handlePanelDueInstall (useCallback with [] deps) can
+  // read the currently-checked release to stamp the marker file.
+  const panelDueCheckRef = useRef(panelDueCheck);
+  useEffect(() => { panelDueCheckRef.current = panelDueCheck; }, [panelDueCheck]);
+
+  // Auto-scroll the PanelDue reply log to the bottom every time a new line
+  // arrives so the user always sees the latest firmware output.
+  const panelDueLogRef = useRef<HTMLPreElement | null>(null);
+
+  type PanelDueStep = 'idle' | 'downloading' | 'uploading' | 'installing' | 'done' | 'error';
+  const [panelDueUpdate, setPanelDueUpdate] = useState<{
+    step: PanelDueStep;
+    progress: number;
+    assetName?: string;
+    error?: string;
+    /** Firmware reply lines captured during M997 S4 — empty until install runs. */
+    messages?: string[];
+    /** True when we gave up waiting for a success/error line before it appeared. */
+    timedOut?: boolean;
+  }>({ step: 'idle', progress: 0 });
+
+  // Selected asset (user picks their screen variant — we can't auto-detect it).
+  const [panelDueAsset, setPanelDueAsset] = useState<GitHubAsset | null>(null);
+
+  // PanelDue's own firmware version is not exposed in the RRF object model, so
+  // we record what DesignCAD flashed to a marker file on the board's SD card.
+  // It's advisory only (user may flash via DWC / USB without updating us), but
+  // it lets us show "Last flashed v3.6.0 on DATE" when they did use us.
+  interface PanelDueFlashed {
+    tag: string;
+    assetName: string;
+    variant: string;
+    flashedAt: string; // ISO-8601
+  }
+  const PANELDUE_MARKER_PATH = '0:/sys/paneldue-flashed.json';
+  const [panelDueFlashed, setPanelDueFlashed] = useState<{
+    loaded: boolean;
+    data?: PanelDueFlashed;
+  }>({ loaded: false });
+
+  // Load config.g once when the PanelDue tab opens (or the connection changes).
+  // Also reads the DesignCAD-written marker file that records what we last
+  // flashed (missing is the common case — simply means "never flashed via us").
+  const loadPanelDueInfo = useCallback(async () => {
+    const service = usePrinterStore.getState().service;
+    if (!service) {
+      setPanelDueInfo({ loading: false, loaded: true, configs: [], error: 'Not connected.' });
+      setPanelDueFlashed({ loaded: true });
+      return;
+    }
+    setPanelDueInfo((s) => ({ ...s, loading: true, error: undefined }));
+    try {
+      const blob = await service.downloadFile('0:/sys/config.g');
+      const text = await blob.text();
+      const configs = parseM575(text);
+      setPanelDueInfo({ loading: false, loaded: true, configs });
+    } catch (err) {
+      setPanelDueInfo({
+        loading: false,
+        loaded: true,
+        configs: [],
+        error: `Couldn't read 0:/sys/config.g — ${(err as Error).message}`,
+      });
+    }
+
+    try {
+      const markerBlob = await service.downloadFile(PANELDUE_MARKER_PATH);
+      const parsed = JSON.parse(await markerBlob.text()) as Partial<PanelDueFlashed>;
+      if (parsed && typeof parsed.tag === 'string' && typeof parsed.assetName === 'string') {
+        setPanelDueFlashed({
+          loaded: true,
+          data: {
+            tag: parsed.tag,
+            assetName: parsed.assetName,
+            variant: parsed.variant ?? '',
+            flashedAt: parsed.flashedAt ?? '',
+          },
+        });
+      } else {
+        setPanelDueFlashed({ loaded: true });
+      }
+    } catch {
+      // Missing marker is normal — swallow silently.
+      setPanelDueFlashed({ loaded: true });
+    }
+  }, []);
+
+  const handleCheckPanelDueUpdate = useCallback(async () => {
+    setPanelDueCheck({ loading: true });
+    try {
+      const release = await fetchLatestPanelDue();
+      setPanelDueCheck({ loading: false, release, checkedAt: Date.now() });
+      // Auto-pick a sensible default: smallest screen-size variant — user can
+      // override. Sorting here matches what the table below will display.
+      const bins = sortPanelDueAssets(panelDueBinAssets(release.assets));
+      if (bins.length > 0) setPanelDueAsset(bins[0]);
+    } catch (err) {
+      setPanelDueCheck({
+        loading: false,
+        error: (err as Error).message,
+        checkedAt: Date.now(),
+      });
+    }
+  }, []);
+
+  // Download + upload + M997 S4. Board does NOT reboot — it stays connected
+  // while flashing the PanelDue over UART (~30–60s).
+  const handlePanelDueInstall = useCallback(async (asset: GitHubAsset) => {
+    const ok = confirm(
+      `Flash ${asset.name} to the connected PanelDue? The Duet will stream the firmware to the display over UART — this takes about a minute. Don't power off during install.`,
+    );
+    if (!ok) return;
+
+    setPanelDueUpdate({ step: 'downloading', progress: 0, assetName: asset.name });
+    let binFile: Blob;
+    try {
+      const res = await fetch(proxiedGithubUrl(asset.browser_download_url), { mode: 'cors' });
+      if (!res.ok) throw new Error(`GitHub returned ${res.status}`);
+      const total = Number(res.headers.get('content-length') || asset.size || 0);
+      const reader = res.body?.getReader();
+      if (!reader) throw new Error('Streaming not supported in this browser.');
+      const chunks: Uint8Array[] = [];
+      let received = 0;
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        if (value) {
+          chunks.push(value);
+          received += value.length;
+          if (total > 0) {
+            setPanelDueUpdate((s) => ({ ...s, progress: Math.round((received / total) * 100) }));
+          }
+        }
+      }
+      binFile = new Blob(chunks, { type: 'application/octet-stream' });
+    } catch (err) {
+      setPanelDueUpdate({ step: 'error', progress: 0, assetName: asset.name, error: `Download failed: ${(err as Error).message}` });
+      return;
+    }
+
+    // M997 S4 expects the file at exactly 0:/firmware/PanelDueFirmware.bin.
+    const canonicalName = 'PanelDueFirmware.bin';
+    const canonicalFile = new File([binFile], canonicalName, { type: 'application/octet-stream' });
+
+    setPanelDueUpdate({ step: 'uploading', progress: 0, assetName: canonicalName });
+    try {
+      const service = usePrinterStore.getState().service;
+      if (!service) throw new Error('Not connected to a printer.');
+      await service.uploadFile(`0:/firmware/${canonicalName}`, canonicalFile, (p) => {
+        setPanelDueUpdate((s) => ({ ...s, progress: p }));
+      });
+    } catch (err) {
+      setPanelDueUpdate({ step: 'error', progress: 0, assetName: canonicalName, error: `Upload failed: ${(err as Error).message}` });
+      return;
+    }
+
+    setPanelDueUpdate({ step: 'installing', progress: 100, assetName: canonicalName, messages: [] });
+
+    // RRF (PanelDueUpdater.cpp) emits messages like "Flashing PanelDue...",
+    // "Panel update successful", "Panel update failed: <reason>", etc.
+    // M997 S4 does NOT reboot the Duet, so we can tail rr_reply for output.
+    const SUCCESS_RE = /(?:success(?:ful)?|completed?\b|flashed\b|update\s+ok)/i;
+    const ERROR_RE   = /(?:failed\b|failure\b|error[:\s]|unable to|cannot\s+(?:open|read|write|flash)|aborted)/i;
+    const POLL_INTERVAL_MS = 1500;
+    const MAX_WAIT_MS = 150_000;
+
+    const collected: string[] = [];
+    const pushLine = (line: string) => {
+      const trimmed = line.trim();
+      if (!trimmed) return;
+      collected.push(trimmed);
+      setPanelDueUpdate((s) => ({ ...s, messages: [...collected] }));
+    };
+
+    let outcome: 'success' | 'error' | 'timeout' = 'timeout';
+    let errorMessage = '';
+
+    try {
+      const service = usePrinterStore.getState().service;
+      if (!service) throw new Error('Not connected to a printer.');
+      // M997 S4 — flash the PanelDue from 0:/firmware/PanelDueFirmware.bin.
+      // In SBC mode sendGCode blocks until the command completes and returns
+      // the full reply; in standalone mode it returns the first line only.
+      const firstReply = await service.sendGCode('M997 S4');
+      if (firstReply) pushLine(firstReply);
+
+      // Fast path for SBC (one atomic reply) — skip polling if we can already
+      // classify the result.
+      const firstClass =
+        ERROR_RE.test(firstReply) ? 'error' :
+        SUCCESS_RE.test(firstReply) ? 'success' : null;
+      if (firstClass) {
+        outcome = firstClass;
+      } else {
+        const started = Date.now();
+        while (Date.now() - started < MAX_WAIT_MS) {
+          await new Promise((r) => setTimeout(r, POLL_INTERVAL_MS));
+          const line = await service.pollReply();
+          if (!line) continue;
+          pushLine(line);
+          if (ERROR_RE.test(line))   { outcome = 'error';   errorMessage = line.trim(); break; }
+          if (SUCCESS_RE.test(line)) { outcome = 'success'; break; }
+        }
+      }
+    } catch (err) {
+      setPanelDueUpdate({
+        step: 'error',
+        progress: 100,
+        assetName: canonicalName,
+        error: `Install command (M997 S4) failed: ${(err as Error).message}`,
+        messages: collected,
+      });
+      return;
+    }
+
+    if (outcome === 'error') {
+      setPanelDueUpdate({
+        step: 'error',
+        progress: 100,
+        assetName: canonicalName,
+        error: errorMessage || 'PanelDue reported a flash failure — see messages below.',
+        messages: collected,
+      });
+      return;
+    }
+
+    setPanelDueUpdate({
+      step: 'done',
+      progress: 100,
+      assetName: canonicalName,
+      messages: collected,
+      timedOut: outcome === 'timeout',
+    });
+
+    // Record what we just flashed so we can show it on the next load. The
+    // PanelDue doesn't report its version anywhere in the RRF object model.
+    // Skip the marker on timeout — we can't be certain the flash succeeded.
+    if (outcome === 'success') {
+      const release = panelDueCheckRef.current.release;
+      const marker: PanelDueFlashed = {
+        tag: release?.tag_name?.replace(/^v/i, '') ?? '',
+        assetName: asset.name,
+        variant: panelDueVariantLabel(asset.name),
+        flashedAt: new Date().toISOString(),
+      };
+      try {
+        const service = usePrinterStore.getState().service;
+        if (!service) return;
+        const markerFile = new File(
+          [JSON.stringify(marker, null, 2)],
+          'paneldue-flashed.json',
+          { type: 'application/json' },
+        );
+        await service.uploadFile(PANELDUE_MARKER_PATH, markerFile);
+        setPanelDueFlashed({ loaded: true, data: marker });
+      } catch {
+        // Marker write is advisory — swallow failures.
+      }
+    }
+  }, []);
+
+  // Lazy-load config.g the first time the user opens the PanelDue tab (and
+  // refresh whenever the connection state changes — a new board can have a
+  // completely different config.g).
+  useEffect(() => {
+    if (tab !== 'paneldue') return;
+    if (!connected) return;
+    if (panelDueInfo.loading) return;
+    if (panelDueInfo.loaded && !panelDueInfo.error) return;
+    loadPanelDueInfo();
+  }, [tab, connected, panelDueInfo.loading, panelDueInfo.loaded, panelDueInfo.error, loadPanelDueInfo]);
 
   const handleImport = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -712,6 +1030,15 @@ export default function DuetSettings() {
   const [mode, setMode] = useState<'standalone' | 'sbc'>(
     (config as { mode?: 'standalone' | 'sbc' }).mode ?? 'standalone',
   );
+  // When the user switches active printer, reload the form fields from the
+  // newly-active config. Without this, hostname/password/mode would still
+  // show the previous printer's values even though `config` has updated.
+  useEffect(() => {
+    setHostname(config.hostname || '');
+    setPassword(config.password || '');
+    setMode(config.mode ?? 'standalone');
+  }, [activePrinterId, config.hostname, config.password, config.mode]);
+
   const [testing, setTesting] = useState(false);
   const [testResult, setTestResult] = useState<{
     success: boolean;
@@ -752,9 +1079,80 @@ export default function DuetSettings() {
   const board = model.boards?.[0];
   const canConnect = hostname.trim().length > 0 && !connecting;
 
+  const handleAddPrinter = useCallback(() => {
+    const name = window.prompt('Name for new printer:', `Printer ${printers.length + 1}`);
+    if (!name) return;
+    const id = addPrinter(name);
+    selectPrinter(id).catch(() => {});
+  }, [addPrinter, selectPrinter, printers.length]);
+
+  const handleRenamePrinter = useCallback(() => {
+    const current = printers.find((p) => p.id === activePrinterId);
+    if (!current) return;
+    const name = window.prompt('Rename printer:', current.name);
+    if (!name || name === current.name) return;
+    renamePrinter(activePrinterId, name);
+  }, [activePrinterId, printers, renamePrinter]);
+
+  const handleRemovePrinter = useCallback(() => {
+    const current = printers.find((p) => p.id === activePrinterId);
+    if (!current) return;
+    if (printers.length <= 1) {
+      window.alert('At least one printer must remain.');
+      return;
+    }
+    if (!window.confirm(`Remove "${current.name}"? Its saved connection and preferences will be deleted.`)) return;
+    removePrinter(activePrinterId);
+  }, [activePrinterId, printers, removePrinter]);
+
   const renderConnection = () => (
     <>
       <div className="duet-settings__page-title">Connection</div>
+
+      <SettingRow
+        label="Printer"
+        hint="Select which printer this workspace connects to. Each printer keeps its own connection info and preferences."
+        control={
+          <div className="duet-settings__btn-row" style={{ gap: 6, marginTop: 0 }}>
+            <select
+              className="duet-settings__input"
+              style={{ minWidth: 180 }}
+              value={activePrinterId}
+              onChange={(e) => { selectPrinter(e.target.value).catch(() => {}); }}
+              disabled={connecting}
+            >
+              {printers.map((p) => (
+                <option key={p.id} value={p.id}>{p.name}</option>
+              ))}
+            </select>
+            <button
+              className="duet-settings__btn duet-settings__btn--secondary"
+              onClick={handleAddPrinter}
+              title="Add printer"
+              disabled={connecting}
+            >
+              <Plus size={14} /> Add
+            </button>
+            <button
+              className="duet-settings__btn duet-settings__btn--secondary"
+              onClick={handleRenamePrinter}
+              title="Rename printer"
+              disabled={connecting}
+            >
+              <Pencil size={14} /> Rename
+            </button>
+            <button
+              className="duet-settings__btn duet-settings__btn--danger"
+              onClick={handleRemovePrinter}
+              title="Remove printer"
+              disabled={connecting || printers.length <= 1}
+            >
+              <Trash2 size={14} /> Remove
+            </button>
+          </div>
+        }
+      />
+
       {connected ? (
         <div className="duet-settings__banner duet-settings__banner--success">
           <Wifi size={16} /> Connected to Duet3D board at {config.hostname}
@@ -1731,6 +2129,291 @@ export default function DuetSettings() {
     );
   };
 
+  const renderPanelDue = () => {
+    const release = panelDueCheck.release;
+    const bins = release ? sortPanelDueAssets(panelDueBinAssets(release.assets)) : [];
+    const latestTag = release?.tag_name?.replace(/^v/i, '') ?? '';
+    const pdStep = panelDueUpdate.step;
+    const busy = pdStep === 'downloading' || pdStep === 'uploading' || pdStep === 'installing';
+    const primaryCfg = panelDueInfo.configs.find(
+      (c) => c.checksum === 2 || c.checksum === 3,
+    ) ?? panelDueInfo.configs[0];
+    const publishedDate = release ? new Date(release.published_at).toLocaleDateString() : '';
+    const checksumLabel =
+      primaryCfg?.checksum === 2 ? 'CRC (PanelDue)' :
+      primaryCfg?.checksum === 3 ? 'CRC + checksum' :
+      primaryCfg?.checksum === 1 ? 'Checksum only' :
+      primaryCfg?.checksum === 0 ? 'None' : undefined;
+
+    return (
+      <>
+        <div className="duet-settings__page-title">PanelDue</div>
+
+        {!connected && (
+          <div className="duet-settings__banner duet-settings__banner--info">
+            <Info size={16} /> Connect to a Duet board to detect and update a PanelDue.
+          </div>
+        )}
+
+        {/* ── Detected PanelDue hero ─────────────────────────────────── */}
+        <div className="ds-fw-hero">
+          <div className="ds-fw-hero-head">
+            <div className="ds-fw-hero-icon"><Monitor size={22} /></div>
+            <div className="ds-fw-hero-title">
+              <div className="ds-fw-hero-label">Detected PanelDue</div>
+              <div className="ds-fw-hero-version">
+                {!connected ? (
+                  <span className="duet-settings__dim-text">Not connected</span>
+                ) : panelDueInfo.loading ? (
+                  <span className="duet-settings__dim-text">
+                    <Loader2 size={12} className="spin" /> Reading config.g…
+                  </span>
+                ) : primaryCfg ? (
+                  <>
+                    UART <strong>{primaryCfg.channel ?? '?'}</strong>
+                    {primaryCfg.baud ? <> @ <strong>{primaryCfg.baud.toLocaleString()}</strong> bps</> : null}
+                  </>
+                ) : panelDueInfo.loaded ? (
+                  <span className="duet-settings__dim-text">No M575 in config.g</span>
+                ) : (
+                  <span className="duet-settings__dim-text">—</span>
+                )}
+              </div>
+              {primaryCfg && checksumLabel && (
+                <div className="ds-fw-hero-date">
+                  <Info size={10} /> {checksumLabel}
+                </div>
+              )}
+              {panelDueFlashed.data && (
+                <div className="ds-fw-hero-date" title={`Flashed ${panelDueFlashed.data.assetName}`}>
+                  <Zap size={10} /> Last flashed
+                  {panelDueFlashed.data.tag ? <> v<strong>{panelDueFlashed.data.tag}</strong></> : null}
+                  {panelDueFlashed.data.variant ? <> ({panelDueFlashed.data.variant})</> : null}
+                  {panelDueFlashed.data.flashedAt
+                    ? <> on {new Date(panelDueFlashed.data.flashedAt).toLocaleDateString()}</>
+                    : null}
+                </div>
+              )}
+              {connected && (
+                <button
+                  className="ds-fw-hero-rescan"
+                  onClick={loadPanelDueInfo}
+                  disabled={panelDueInfo.loading}
+                  title="Re-read 0:/sys/config.g"
+                >
+                  {panelDueInfo.loading ? <Loader2 size={11} className="spin" /> : <RefreshCw size={11} />}
+                  {panelDueInfo.loading ? 'Re-scanning…' : 'Re-scan config.g'}
+                </button>
+              )}
+            </div>
+            <button
+              className={`ds-check-btn${panelDueCheck.loading ? ' is-loading' : ''}`}
+              onClick={handleCheckPanelDueUpdate}
+              disabled={!connected || panelDueCheck.loading}
+              title="Check GitHub for the latest PanelDue firmware"
+            >
+              <RefreshCw size={13} className={panelDueCheck.loading ? 'spin' : undefined} />
+              {panelDueCheck.loading ? 'Checking...' : 'Check for updates'}
+            </button>
+          </div>
+
+          {panelDueInfo.error && (
+            <div className="ds-fw-update-card ds-fw-update-card--error">
+              <AlertCircle size={16} />
+              <div>
+                <div className="ds-fw-update-title">Could not read config.g</div>
+                <div className="ds-fw-update-detail">{panelDueInfo.error}</div>
+              </div>
+            </div>
+          )}
+
+          {panelDueCheck.error && (
+            <div className="ds-fw-update-card ds-fw-update-card--error">
+              <AlertCircle size={16} />
+              <div>
+                <div className="ds-fw-update-title">Update check failed</div>
+                <div className="ds-fw-update-detail">{panelDueCheck.error}</div>
+              </div>
+            </div>
+          )}
+
+          {release && !panelDueCheck.error && (
+            <div className="ds-fw-update-card ds-fw-update-card--unknown">
+              <div className="ds-fw-update-head">
+                <div className="ds-fw-update-icon"><Sparkles size={18} /></div>
+                <div className="ds-fw-update-info">
+                  <div className="ds-fw-update-title">
+                    Latest release: v{latestTag}
+                  </div>
+                  <div className="ds-fw-update-detail">
+                    {release.name || `v${latestTag}`}
+                    {publishedDate && <span className="ds-fw-update-date"> · Published {publishedDate}</span>}
+                  </div>
+                </div>
+                <a
+                  href={release.html_url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="ds-fw-external-btn"
+                  title="View release on GitHub"
+                >
+                  <ExternalLink size={12} /> GitHub
+                </a>
+              </div>
+
+              {bins.length === 0 ? (
+                <div className="ds-fw-auto-update-row ds-fw-auto-update-row--warn">
+                  <div className="ds-fw-auto-update-hint">
+                    <AlertCircle size={11} /> This release doesn't include a PanelDue <code>.bin</code> — visit the release page directly.
+                  </div>
+                </div>
+              ) : (
+                <div className="ds-fw-assets">
+                  <div className="ds-fw-assets-label">
+                    <Info size={10} /> Pick the variant that matches your PanelDue's screen size
+                  </div>
+
+                  <div className="ds-fw-auto-update-row">
+                    <button
+                      className="ds-fw-update-action-btn"
+                      onClick={() => panelDueAsset && handlePanelDueInstall(panelDueAsset)}
+                      disabled={!connected || !panelDueAsset || busy}
+                    >
+                      {pdStep === 'downloading' ? (
+                        <><Loader2 size={14} className="spin" /> Downloading {panelDueUpdate.progress}%</>
+                      ) : pdStep === 'uploading' ? (
+                        <><Loader2 size={14} className="spin" /> Uploading {panelDueUpdate.progress}%</>
+                      ) : pdStep === 'installing' ? (
+                        <><Loader2 size={14} className="spin" /> Flashing PanelDue…</>
+                      ) : (
+                        <><ArrowUpCircle size={14} /> Flash PanelDue{latestTag ? ` v${latestTag}` : ''}</>
+                      )}
+                    </button>
+                    <div className="ds-fw-auto-update-hint">
+                      Will upload{panelDueAsset ? <> <span className="duet-settings__mono">{panelDueAsset.name}</span> ({formatBytes(panelDueAsset.size)})</> : ' the selected variant'}
+                      {' '}as <span className="duet-settings__mono">0:/firmware/PanelDueFirmware.bin</span> and run{' '}
+                      <span className="duet-settings__mono">M997 S4</span> · The Duet stays running; flashing takes ~30–60s and the PanelDue restarts on its own.
+                    </div>
+                  </div>
+
+                  {pdStep !== 'idle' && (
+                    <div className={`ds-fw-auto-status ds-fw-auto-status--${pdStep === 'done' ? 'reconnected' : pdStep}`}>
+                      <div className="ds-fw-auto-status-head">
+                        <div className="ds-fw-auto-status-msg">
+                          {pdStep === 'downloading' && (
+                            <><Download size={13} /> Downloading <span className="duet-settings__mono">{panelDueUpdate.assetName}</span></>
+                          )}
+                          {pdStep === 'uploading' && (
+                            <><UploadCloud size={13} /> Uploading to board</>
+                          )}
+                          {pdStep === 'installing' && (
+                            <><Zap size={13} /> Flashing PanelDue — waiting for the board to confirm</>
+                          )}
+                          {pdStep === 'done' && !panelDueUpdate.timedOut && (
+                            <><CheckCircle size={13} /> PanelDue firmware flashed successfully</>
+                          )}
+                          {pdStep === 'done' && panelDueUpdate.timedOut && (
+                            <><AlertCircle size={13} /> Flash finished without a confirmation — check the display</>
+                          )}
+                          {pdStep === 'error' && (
+                            <><AlertCircle size={13} /> Update failed</>
+                          )}
+                        </div>
+                        {(pdStep === 'done' || pdStep === 'error') && (
+                          <button
+                            className="ds-fw-auto-status-dismiss"
+                            onClick={() => setPanelDueUpdate({ step: 'idle', progress: 0 })}
+                            title="Dismiss"
+                          >
+                            <X size={12} />
+                          </button>
+                        )}
+                      </div>
+                      {pdStep === 'downloading' && (
+                        <div className="ds-fw-auto-progress-bar">
+                          <div className="ds-fw-auto-progress-fill" style={{ width: `${panelDueUpdate.progress}%` }} />
+                        </div>
+                      )}
+                      {pdStep === 'uploading' && (
+                        <div className="ds-fw-auto-progress-bar">
+                          <div className="ds-fw-auto-progress-fill" style={{ width: `${panelDueUpdate.progress}%` }} />
+                        </div>
+                      )}
+                      {pdStep === 'error' && panelDueUpdate.error && (
+                        <div className="ds-fw-auto-error">{panelDueUpdate.error}</div>
+                      )}
+                      {(pdStep === 'installing' || pdStep === 'done' || pdStep === 'error') &&
+                       panelDueUpdate.messages && panelDueUpdate.messages.length > 0 && (
+                        <pre
+                          ref={(node) => {
+                            panelDueLogRef.current = node;
+                            if (node) node.scrollTop = node.scrollHeight;
+                          }}
+                          className="ds-pd-reply-log"
+                        >
+                          {panelDueUpdate.messages.join('\n')}
+                        </pre>
+                      )}
+                    </div>
+                  )}
+
+                  <div className="ds-pd-table" role="table" aria-label="PanelDue firmware variants">
+                    <div className="ds-pd-table-head" role="row">
+                      <span role="columnheader">Variant</span>
+                      <span role="columnheader">File</span>
+                      <span role="columnheader" className="ds-pd-col-size">Size</span>
+                    </div>
+                    {bins.map((asset) => {
+                      const isPick = asset === panelDueAsset;
+                      return (
+                        <button
+                          key={asset.name}
+                          type="button"
+                          role="row"
+                          className={`ds-pd-row${isPick ? ' is-pick' : ''}`}
+                          onClick={() => setPanelDueAsset(asset)}
+                          disabled={busy}
+                          title={asset.name}
+                        >
+                          <span role="cell" className="ds-pd-cell-variant">
+                            {isPick
+                              ? <CheckCircle size={11} className="ds-pd-row-check" />
+                              : <span className="ds-pd-row-bullet" aria-hidden />}
+                            <span className="ds-pd-variant-label">{panelDueVariantLabel(asset.name)}</span>
+                          </span>
+                          <span role="cell" className="ds-pd-cell-name">{asset.name}</span>
+                          <span role="cell" className="ds-pd-cell-size">{formatBytes(asset.size)}</span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                  <div className="ds-fw-asset-hint">
+                    Click a row to select it, then press <strong>Flash PanelDue</strong>.
+                  </div>
+                </div>
+              )}
+
+              {release.body && (
+                <div className="ds-fw-notes-wrap">
+                  <button
+                    className="ds-fw-notes-toggle"
+                    onClick={() => setShowPanelDueNotes((v) => !v)}
+                  >
+                    {showPanelDueNotes ? 'Hide' : 'Show'} release notes
+                  </button>
+                  {showPanelDueNotes && (
+                    <pre className="ds-fw-notes">{release.body}</pre>
+                  )}
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+
+      </>
+    );
+  };
+
   const renderBackup = () => (
     <>
       <div className="duet-settings__page-title">Backup &amp; Restore</div>
@@ -1854,12 +2537,13 @@ export default function DuetSettings() {
       case 'notifications': return renderNotifications();
       case 'machine':       return renderMachine();
       case 'firmware':      return renderFirmware();
+      case 'paneldue':      return renderPanelDue();
       case 'backup':        return renderBackup();
       case 'about':         return renderAbout();
       default:              return null;
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [tab, prefs, theme, hostname, password, mode, testing, testResult, error, connected, connecting, axes, board, firmwareFile, firmwareStatus, uploading, uploadProgress, iapFile, iapStatus, firmwareUpdatePending, importing, importResult, updateCheck, showReleaseNotes, autoUpdate]);
+  }, [tab, prefs, theme, hostname, password, mode, testing, testResult, error, connected, connecting, axes, board, firmwareFile, firmwareStatus, uploading, uploadProgress, iapFile, iapStatus, firmwareUpdatePending, importing, importResult, updateCheck, showReleaseNotes, autoUpdate, panelDueInfo, panelDueCheck, panelDueUpdate, panelDueAsset, showPanelDueNotes]);
 
   return (
     <div className="duet-settings__page">

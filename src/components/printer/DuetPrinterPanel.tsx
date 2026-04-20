@@ -22,6 +22,7 @@ import DuetObjectModelBrowser from './DuetObjectModelBrowser';
 import DuetMessageBox from './DuetMessageBox';
 import DuetNotifications from './DuetNotifications';
 import DuetSettings from './DuetSettings';
+import DuetConfigEditor from './DuetConfigEditor';
 
 // ---------------------------------------------------------------------------
 // Theme — shared CSS-var tokens so all pages follow the active theme
@@ -42,6 +43,7 @@ const TABS = [
   { key: 'macros' as const, label: 'Macros', Icon: FileCode },
   { key: 'heightmap' as const, label: 'Height Map', Icon: Grid3x3 },
   { key: 'model' as const, label: 'Model', Icon: Braces },
+  { key: 'config' as const, label: 'Config', Icon: FileCode },
   { key: 'settings' as const, label: 'Settings', Icon: Settings },
 ];
 
@@ -58,6 +60,7 @@ const TAB_COMPONENTS: Record<TabKey, React.ComponentType> = {
   macros: DuetMacros,
   heightmap: DuetHeightMap,
   model: DuetObjectModelBrowser,
+  config: DuetConfigEditor,
   settings: DuetSettings,
 };
 

@@ -6020,7 +6020,7 @@ export const useCADStore = create<CADState>()(persist((set, get) => ({
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = 'design.dzn';
+    a.download = 'design.dznd';
     a.click();
     URL.revokeObjectURL(url);
     get().setStatusMessage('Design saved to file');

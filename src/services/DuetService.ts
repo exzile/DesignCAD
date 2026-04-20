@@ -461,6 +461,25 @@ export class DuetService {
     return typeof reply === 'string' ? reply : JSON.stringify(reply);
   }
 
+  /** Drain the next pending G-code reply without sending anything. Used to
+   *  tail asynchronous firmware output (e.g. M997 S4 progress messages that
+   *  arrive seconds after the command returns). Returns '' when nothing is
+   *  pending or when the request fails.
+   *
+   *  SBC mode has no equivalent pull endpoint — `/machine/code` already blocks
+   *  until the command finishes and returns its full output, so callers don't
+   *  need to drain a buffer separately. */
+  async pollReply(): Promise<string> {
+    if (this.config.mode === 'sbc') return '';
+    try {
+      const url = `${this.baseUrl}/rr_reply`;
+      const reply = await this.request<string>(url);
+      return typeof reply === 'string' ? reply : '';
+    } catch {
+      return '';
+    }
+  }
+
   // ---------------------------------------------------------------------------
   // Temperature Control
   // ---------------------------------------------------------------------------

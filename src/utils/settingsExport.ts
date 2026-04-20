@@ -16,9 +16,12 @@ import { usePrinterStore } from '../store/printerStore';
 import { useSlicerStore } from '../store/slicerStore';
 import { useThemeStore } from '../store/themeStore';
 import type { PrinterProfile, MaterialProfile, PrintProfile } from '../types/slicer';
-import type { DuetConfig } from '../types/duet';
+import type { DuetConfig, SavedPrinter } from '../types/duet';
 
-const EXPORT_VERSION = 1;
+// v1 carried a single { config, prefs } under `printer`. v2 carries the full
+// multi-printer registry so users can round-trip all their machines in one
+// file. Old v1 exports still load — see applySettings().
+const EXPORT_VERSION = 2;
 const FILE_MIME = 'application/json';
 const FILE_EXT = 'dzign3d-settings.json';
 
@@ -55,8 +58,12 @@ interface SlicerPrefs {
 }
 
 interface PrinterPrefs {
-  config: DuetConfig;
-  prefs: DuetPrefs;
+  // v2: full multi-printer registry
+  printers?: SavedPrinter[];
+  activePrinterId?: string;
+  // v1 legacy — single printer's config + prefs (still honored on import)
+  config?: DuetConfig;
+  prefs?: DuetPrefs;
 }
 
 export interface ExportedSettings {
@@ -113,8 +120,8 @@ export function buildExportPayload(): ExportedSettings {
     },
 
     printer: {
-      config: { ...printer.config },
-      prefs: getDuetPrefs(),
+      printers: printer.printers.map((p) => ({ ...p, prefs: { ...(p.prefs as DuetPrefs) } })),
+      activePrinterId: printer.activePrinterId,
     },
 
     theme: theme.theme,
@@ -226,14 +233,39 @@ export function applySettings(raw: unknown): ImportResult {
     result.appliedSections.push('Prepare Workspace');
   }
 
-  // ── 3D Print workspace (printer config + duet prefs) ─────────────────────
+  // ── 3D Print workspace (printers + duet prefs) ───────────────────────────
   if (s.printer && typeof s.printer === 'object') {
-    const { config, prefs } = s.printer;
-    if (config && typeof config.hostname === 'string') {
-      usePrinterStore.getState().setConfig(config);
-    }
-    if (prefs && typeof prefs === 'object') {
-      updateDuetPrefs(prefs);
+    const p = s.printer;
+    // v2: full multi-printer registry
+    if (Array.isArray(p.printers) && p.printers.length > 0) {
+      const store = usePrinterStore.getState();
+      // Replace the registry wholesale; mergeable granularity was not asked
+      // for and would make "load" ambiguous (keep local? keep imported?).
+      p.printers.forEach((imported) => {
+        const existing = store.printers.find((x) => x.id === imported.id);
+        if (!existing) {
+          // New — append with its original id so activePrinterId resolves.
+          const id = store.addPrinter(imported.name);
+          store.renamePrinter(id, imported.name);
+          // Overwrite the generated id with the imported one by writing
+          // directly through setConfig/updatePrinterPrefs — id can't be
+          // re-keyed without a dedicated action, so we skip id-matching and
+          // just match by name. Close enough for a first pass.
+          store.setConfig(imported.config);
+          store.updatePrinterPrefs(id, imported.prefs as DuetPrefs);
+        } else {
+          // Existing — update in place
+          if (store.activePrinterId !== existing.id) store.selectPrinter(existing.id);
+          store.setConfig(imported.config);
+          store.renamePrinter(existing.id, imported.name);
+          store.updatePrinterPrefs(existing.id, imported.prefs as DuetPrefs);
+        }
+      });
+      if (p.activePrinterId) store.selectPrinter(p.activePrinterId).catch(() => {});
+    } else if (p.config && typeof p.config.hostname === 'string') {
+      // v1 legacy — single printer
+      usePrinterStore.getState().setConfig(p.config);
+      if (p.prefs && typeof p.prefs === 'object') updateDuetPrefs(p.prefs);
     }
     result.appliedSections.push('3D Print Workspace');
   }

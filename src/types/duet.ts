@@ -392,3 +392,13 @@ export interface DuetConfig {
   password: string;
   mode: DuetMode;
 }
+
+// A saved printer is a named bundle of connection config + per-printer UI prefs.
+// Prefs shape matches utils/duetPrefs.ts `DuetPrefs`; kept as `unknown` here to
+// avoid a cycle between types and utils. Call sites cast through getDuetPrefs().
+export interface SavedPrinter {
+  id: string;
+  name: string;
+  config: DuetConfig;
+  prefs: unknown; // DuetPrefs — see utils/duetPrefs.ts
+}

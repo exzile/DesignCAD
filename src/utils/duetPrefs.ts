@@ -1,11 +1,17 @@
 // =============================================================================
-// Duet UI preferences — persisted to localStorage as a single JSON blob.
+// Duet UI preferences — per-printer, stored inside each SavedPrinter in the
+// printers list (see store/printerStore.ts).
 //
 // The DuetSettings dialog is the primary editor; other Duet panels may read
 // values lazily via getDuetPrefs() when they want to change behaviour.
+//
+// Legacy path: the previous single-printer build persisted prefs under
+// 'dzign3d-duet-prefs'. The printerStore migrates that into printer #1 on
+// first boot. If migration hasn't run yet, we still fall back to the legacy
+// key so early callers don't see defaults during the brief startup window.
 // =============================================================================
 
-const PREFS_KEY = 'dzign3d-duet-prefs';
+const LEGACY_PREFS_KEY = 'dzign3d-duet-prefs';
 const LEGACY_AUTO_RECONNECT_KEY = 'dzign3d-duet-autoreconnect';
 
 export type Units = 'metric' | 'imperial';
@@ -60,32 +66,58 @@ export const DEFAULT_PREFS: DuetPrefs = {
   customButtons: [],
 };
 
-export function getDuetPrefs(): DuetPrefs {
+// ---------------------------------------------------------------------------
+// Printer-store binding
+// The store is injected after it constructs itself (to break the circular
+// import between printerStore.ts and this module).
+// ---------------------------------------------------------------------------
+
+type PrefsBinding = {
+  get: () => DuetPrefs;
+  set: (prefs: DuetPrefs) => void;
+};
+
+let binding: PrefsBinding | null = null;
+
+export function bindDuetPrefs(b: PrefsBinding): void {
+  binding = b;
+}
+
+// Legacy fallback — used once, at first boot, before the store has migrated
+// the old keys into a printer record. Also keeps test environments working
+// without spinning the whole store.
+function readLegacyPrefs(): DuetPrefs {
   try {
-    const raw = localStorage.getItem(PREFS_KEY);
+    const raw = localStorage.getItem(LEGACY_PREFS_KEY);
     if (raw) {
       const parsed = JSON.parse(raw) as Partial<DuetPrefs>;
       return { ...DEFAULT_PREFS, ...parsed };
     }
-    // Migrate legacy auto-reconnect flag so existing users keep their setting
-    const legacy = localStorage.getItem(LEGACY_AUTO_RECONNECT_KEY);
-    if (legacy !== null) {
-      const migrated = { ...DEFAULT_PREFS, autoReconnect: legacy === 'true' };
-      setDuetPrefs(migrated);
-      localStorage.removeItem(LEGACY_AUTO_RECONNECT_KEY);
-      return migrated;
+    const legacyAuto = localStorage.getItem(LEGACY_AUTO_RECONNECT_KEY);
+    if (legacyAuto !== null) {
+      return { ...DEFAULT_PREFS, autoReconnect: legacyAuto === 'true' };
     }
   } catch {
-    // storage unavailable or corrupt
+    /* storage unavailable */
   }
   return { ...DEFAULT_PREFS };
 }
 
+export function getDuetPrefs(): DuetPrefs {
+  if (binding) return binding.get();
+  return readLegacyPrefs();
+}
+
 export function setDuetPrefs(prefs: DuetPrefs): void {
+  if (binding) {
+    binding.set(prefs);
+    return;
+  }
+  // Pre-bind writes fall through to legacy key so nothing is lost.
   try {
-    localStorage.setItem(PREFS_KEY, JSON.stringify(prefs));
+    localStorage.setItem(LEGACY_PREFS_KEY, JSON.stringify(prefs));
   } catch {
-    // storage unavailable
+    /* storage unavailable */
   }
 }
 
@@ -93,4 +125,31 @@ export function updateDuetPrefs(patch: Partial<DuetPrefs>): DuetPrefs {
   const next = { ...getDuetPrefs(), ...patch };
   setDuetPrefs(next);
   return next;
+}
+
+// Expose legacy reader for the store's one-time migration.
+export function readLegacyDuetPrefs(): DuetPrefs | null {
+  try {
+    const raw = localStorage.getItem(LEGACY_PREFS_KEY);
+    if (raw) {
+      const parsed = JSON.parse(raw) as Partial<DuetPrefs>;
+      return { ...DEFAULT_PREFS, ...parsed };
+    }
+    const legacyAuto = localStorage.getItem(LEGACY_AUTO_RECONNECT_KEY);
+    if (legacyAuto !== null) {
+      return { ...DEFAULT_PREFS, autoReconnect: legacyAuto === 'true' };
+    }
+  } catch {
+    /* storage unavailable */
+  }
+  return null;
+}
+
+export function clearLegacyDuetPrefs(): void {
+  try {
+    localStorage.removeItem(LEGACY_PREFS_KEY);
+    localStorage.removeItem(LEGACY_AUTO_RECONNECT_KEY);
+  } catch {
+    /* storage unavailable */
+  }
 }
