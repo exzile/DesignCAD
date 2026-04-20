@@ -74,6 +74,10 @@ interface SlicerStore {
   previewSimSpeed: number;         // multiplier (1x, 2x, 5x, 10x, 25x)
   previewSimTime: number;          // seconds advanced through the toolpath
 
+  // Printability analysis
+  printabilityReport: import('../engine/PrintabilityCheck').PrintabilityReport | null;
+  printabilityHighlight: boolean;
+
   // UI state
   settingsPanel: 'printer' | 'material' | 'print' | null;
   transformMode: 'move' | 'scale' | 'rotate' | 'mirror' | 'settings';
@@ -127,6 +131,11 @@ interface SlicerStore {
   setPreviewSimTime: (t: number) => void;
   advancePreviewSimTime: (deltaSeconds: number) => void;
   resetPreviewSim: () => void;
+
+  // Printability
+  runPrintabilityCheck: () => void;
+  clearPrintabilityReport: () => void;
+  setPrintabilityHighlight: (on: boolean) => void;
 
   // Export
   downloadGCode: () => void;
@@ -291,6 +300,10 @@ export const useSlicerStore = create<SlicerStore>()(persist((set, get) => ({
   previewSimPlaying: false,
   previewSimSpeed: 5,
   previewSimTime: 0,
+
+  // Printability
+  printabilityReport: null,
+  printabilityHighlight: true,
 
   // UI state
   settingsPanel: null,
@@ -609,10 +622,14 @@ export const useSlicerStore = create<SlicerStore>()(persist((set, get) => ({
     // Serialize geometry data on the main thread (THREE.BufferGeometry can't
     // cross the worker boundary directly). Typed arrays are copied, not
     // transferred, so the original geometries remain intact for rendering.
+    // Per-object overrides ride alongside each geometry so the worker can
+    // partition the plate into groups that share an effective profile.
     const geometryData: {
       positions: Float32Array;
       index: Uint32Array | null;
       transformElements: Float32Array;
+      overrides?: Record<string, unknown>;
+      objectName?: string;
     }[] = [];
 
     for (const obj of state.plateObjects) {
@@ -631,10 +648,18 @@ export const useSlicerStore = create<SlicerStore>()(persist((set, get) => ({
       );
 
       const indexAttr = geo.getIndex();
+      const per = (obj as { perObjectSettings?: Record<string, unknown> }).perObjectSettings;
+      const filteredOverrides = per && Object.keys(per).length > 0
+        // Drop undefined entries — those represent "inherit global" and should
+        // not override the profile.
+        ? Object.fromEntries(Object.entries(per).filter(([, v]) => v !== undefined))
+        : undefined;
       geometryData.push({
         positions: new Float32Array(posAttr.array),
         index: indexAttr ? new Uint32Array(indexAttr.array) : null,
         transformElements: new Float32Array(transform.elements),
+        overrides: filteredOverrides && Object.keys(filteredOverrides).length > 0 ? filteredOverrides : undefined,
+        objectName: obj.name,
       });
     }
 
@@ -756,6 +781,21 @@ export const useSlicerStore = create<SlicerStore>()(persist((set, get) => ({
     return { previewSimTime: next, previewSimPlaying: playing };
   }),
   resetPreviewSim: () => set({ previewSimTime: 0, previewSimPlaying: false }),
+
+  // --- Printability ---
+
+  runPrintabilityCheck: async () => {
+    const { checkPrintability } = await import('../engine/PrintabilityCheck');
+    const s = get();
+    const printer = s.getActivePrinterProfile();
+    const print = s.getActivePrintProfile();
+    if (!printer || !print) return;
+    const report = checkPrintability(s.plateObjects, printer, print);
+    set({ printabilityReport: report });
+  },
+
+  clearPrintabilityReport: () => set({ printabilityReport: null }),
+  setPrintabilityHighlight: (on) => set({ printabilityHighlight: on }),
 
   // --- Export ---
 

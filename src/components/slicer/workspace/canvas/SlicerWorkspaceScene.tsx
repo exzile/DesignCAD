@@ -86,6 +86,7 @@ function PlateObjectMesh({
   onClick,
   transformMode,
   onTransformCommit,
+  highlightedTriangles,
 }: {
   obj: PlateObject;
   isSelected: boolean;
@@ -93,6 +94,7 @@ function PlateObjectMesh({
   onClick: () => void;
   transformMode: 'move' | 'scale' | 'rotate' | 'mirror' | 'settings';
   onTransformCommit: (id: string, pos: { x: number; y: number; z: number }, rot: { x: number; y: number; z: number }, scl: { x: number; y: number; z: number }) => void;
+  highlightedTriangles?: Set<number>;
 }) {
   const meshRef = useRef<THREE.Mesh>(null);
   const [meshInstance, setMeshInstance] = useState<THREE.Mesh | null>(null);
@@ -150,6 +152,37 @@ function PlateObjectMesh({
   );
   useEffect(() => () => { placeholderBoxGeo?.dispose(); }, [placeholderBoxGeo]);
 
+  // Build a secondary geometry containing ONLY the overhang-problem triangles
+  // so we can render them in red on top of the main mesh. This is built
+  // lazily from the highlight set so we pay for it only when the check runs.
+  const overhangGeom = useMemo(() => {
+    if (!highlightedTriangles || highlightedTriangles.size === 0 || !hasGeometry) return null;
+    const src = obj.geometry as THREE.BufferGeometry;
+    const posAttr = src.getAttribute('position');
+    const indexAttr = src.getIndex();
+    if (!posAttr) return null;
+    const triCount = indexAttr ? indexAttr.count / 3 : posAttr.count / 3;
+    const out = new Float32Array(highlightedTriangles.size * 9);
+    let w = 0;
+    for (let t = 0; t < triCount; t++) {
+      if (!highlightedTriangles.has(t)) continue;
+      const i0 = indexAttr ? indexAttr.getX(t * 3) : t * 3;
+      const i1 = indexAttr ? indexAttr.getX(t * 3 + 1) : t * 3 + 1;
+      const i2 = indexAttr ? indexAttr.getX(t * 3 + 2) : t * 3 + 2;
+      const ids = [i0, i1, i2];
+      for (const i of ids) {
+        out[w++] = posAttr.getX(i);
+        out[w++] = posAttr.getY(i);
+        out[w++] = posAttr.getZ(i);
+      }
+    }
+    const geo = new THREE.BufferGeometry();
+    geo.setAttribute('position', new THREE.BufferAttribute(out, 3));
+    geo.computeVertexNormals();
+    return geo;
+  }, [highlightedTriangles, hasGeometry, obj.geometry]);
+  useEffect(() => () => { overhangGeom?.dispose(); }, [overhangGeom]);
+
   return (
     <>
       <mesh
@@ -173,6 +206,26 @@ function PlateObjectMesh({
           </lineSegments>
         )}
       </mesh>
+
+      {overhangGeom && (
+        <mesh
+          position={[pos.x, pos.y, pos.z ?? 0]}
+          rotation={[rot.x, rot.y, rot.z]}
+          scale={[scl.x, scl.y, scl.z]}
+          geometry={overhangGeom}
+          renderOrder={5}
+        >
+          <meshBasicMaterial
+            color="#ff3344"
+            transparent
+            opacity={0.75}
+            depthWrite={false}
+            polygonOffset
+            polygonOffsetFactor={-1}
+            polygonOffsetUnits={-1}
+          />
+        </mesh>
+      )}
 
       {showGizmo && meshInstance && (
         <TransformControls
@@ -388,6 +441,17 @@ export function SlicerWorkspaceScene() {
   const previewSimSpeed = useSlicerStore((s) => s.previewSimSpeed);
   const previewSimTime = useSlicerStore((s) => s.previewSimTime);
   const advancePreviewSimTime = useSlicerStore((s) => s.advancePreviewSimTime);
+  const printabilityReport = useSlicerStore((s) => s.printabilityReport);
+  const printabilityHighlight = useSlicerStore((s) => s.printabilityHighlight);
+
+  const highlightByObject = useMemo(() => {
+    const map = new Map<string, Set<number>>();
+    if (!printabilityReport || !printabilityHighlight) return map;
+    for (const o of printabilityReport.objects) {
+      if (o.highlightedTriangles.size > 0) map.set(o.objectId, o.highlightedTriangles);
+    }
+    return map;
+  }, [printabilityReport, printabilityHighlight]);
 
   // When any visible state changes, ask R3F to render one new frame.
   // Without this, frameloop="demand" would never repaint after store updates.
@@ -395,6 +459,7 @@ export function SlicerWorkspaceScene() {
     invalidate, plateObjects, selectedId, previewMode, sliceResult,
     previewLayer, previewLayerStart, previewShowTravel, previewColorMode,
     transformMode, previewSimEnabled, previewSimPlaying, previewSimTime,
+    printabilityReport, printabilityHighlight,
   ]);
 
   const bv = printerProfile?.buildVolume ?? { x: 220, y: 220, z: 250 };
@@ -428,6 +493,7 @@ export function SlicerWorkspaceScene() {
           obj={obj}
           isSelected={obj.id === selectedId}
           materialColor={materialProfile?.color ?? '#4fc3f7'}
+          highlightedTriangles={highlightByObject.get(obj.id)}
           onClick={() => selectPlateObject(obj.id)}
           transformMode={transformMode}
           onTransformCommit={handleTransformCommit}
