@@ -16,6 +16,7 @@ import type {
   DuetFileInfo,
   DuetGCodeFileInfo,
   DuetHeightMap,
+  DuetPluginInfo,
   SavedPrinter,
 } from '../types/duet';
 
@@ -153,7 +154,11 @@ interface PrinterStore {
   // UI state
   showPrinter: boolean;
   showSettings: boolean;
-  activeTab: 'dashboard' | 'status' | 'console' | 'job' | 'history' | 'files' | 'filaments' | 'macros' | 'settings' | 'heightmap' | 'model' | 'config' | 'analytics' | 'network';
+  activeTab: 'dashboard' | 'status' | 'console' | 'job' | 'history' | 'files' | 'filaments' | 'macros' | 'settings' | 'heightmap' | 'model' | 'config' | 'analytics' | 'network' | 'plugins';
+
+  // Plugins (DSF) — list + install/start/stop
+  plugins: DuetPluginInfo[];
+  pluginsLoading: boolean;
   error: string | null;
   jogDistance: number;
   extrudeAmount: number;
@@ -228,6 +233,13 @@ interface PrinterStore {
 
   // Print history
   refreshPrintHistory: () => Promise<void>;
+
+  // Plugins
+  refreshPlugins: () => Promise<void>;
+  installPlugin: (file: File) => Promise<void>;
+  startPlugin: (id: string) => Promise<void>;
+  stopPlugin: (id: string) => Promise<void>;
+  uninstallPlugin: (id: string) => Promise<void>;
 
   // Height map
   loadHeightMap: (path?: string) => Promise<void>;
@@ -357,6 +369,10 @@ export const usePrinterStore = create<PrinterStore>((set, get) => ({
 
   // Height map
   heightMap: null,
+
+  // Plugins
+  plugins: [],
+  pluginsLoading: false,
 
   // UI state
   showPrinter: false,
@@ -1088,6 +1104,96 @@ export const usePrinterStore = create<PrinterStore>((set, get) => ({
         printHistoryLoading: false,
         error: `Failed to load print history: ${(err as Error).message}`,
       });
+    }
+  },
+
+  // --- Plugins (DSF / DWC plugin registry) ---
+
+  refreshPlugins: async () => {
+    const { service } = get();
+    if (!service) return;
+    set({ pluginsLoading: true });
+    try {
+      // The object model exposes `plugins` as a dict keyed by plugin id.
+      // Flatten to an array so it renders as a table without losing the id.
+      const result = await service.getObjectModel('plugins');
+      const raw = (result as unknown as { plugins?: Record<string, Record<string, unknown>> }).plugins
+        ?? (result as unknown as Record<string, Record<string, unknown>>);
+      const arr: DuetPluginInfo[] = [];
+      if (raw && typeof raw === 'object') {
+        for (const [id, v] of Object.entries(raw)) {
+          if (!v || typeof v !== 'object') continue;
+          arr.push({
+            id,
+            name: (v.name as string) ?? id,
+            version: v.version as string | undefined,
+            author: v.author as string | undefined,
+            sbcRequired: v.sbcRequired as boolean | undefined,
+            rrfVersion: v.rrfVersion as string | undefined,
+            dwcVersion: v.dwcVersion as string | undefined,
+            pid: typeof v.pid === 'number' ? (v.pid as number) : undefined,
+            homepage: v.homepage as string | undefined,
+          });
+        }
+      }
+      arr.sort((a, b) => (a.name ?? a.id).localeCompare(b.name ?? b.id));
+      set({ plugins: arr, pluginsLoading: false });
+    } catch (err) {
+      set({
+        plugins: [],
+        pluginsLoading: false,
+        error: `Failed to load plugins: ${(err as Error).message}`,
+      });
+    }
+  },
+
+  installPlugin: async (file) => {
+    const { service } = get();
+    if (!service) return;
+    try {
+      // Upload the ZIP to 0:/sys, then M750 tells RRF/DSF to install it.
+      await service.uploadFile(`0:/sys/${file.name}`, file);
+      await service.sendGCode(`M750 P"${file.name}"`);
+      // Refresh so the new plugin shows up in the list.
+      await get().refreshPlugins();
+    } catch (err) {
+      set({ error: `Failed to install plugin: ${(err as Error).message}` });
+    }
+  },
+
+  startPlugin: async (id) => {
+    const { service } = get();
+    if (!service) return;
+    try {
+      await service.sendGCode(`M751 P"${id}"`);
+      await get().refreshPlugins();
+    } catch (err) {
+      set({ error: `Failed to start plugin: ${(err as Error).message}` });
+    }
+  },
+
+  stopPlugin: async (id) => {
+    const { service } = get();
+    if (!service) return;
+    try {
+      await service.sendGCode(`M752 P"${id}"`);
+      await get().refreshPlugins();
+    } catch (err) {
+      set({ error: `Failed to stop plugin: ${(err as Error).message}` });
+    }
+  },
+
+  uninstallPlugin: async (id) => {
+    const { service } = get();
+    if (!service) return;
+    try {
+      // M753 uninstalls a plugin on DSF; standalone firmware may not support
+      // it. Either way, bubble the firmware's error up to the user rather
+      // than silently succeeding.
+      await service.sendGCode(`M753 P"${id}"`);
+      await get().refreshPlugins();
+    } catch (err) {
+      set({ error: `Failed to uninstall plugin: ${(err as Error).message}` });
     }
   },
 

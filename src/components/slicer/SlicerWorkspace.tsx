@@ -12,7 +12,7 @@ import { SlicerWorkspacePluginsPage } from './workspace/plugins/SlicerWorkspaceP
 
 // =============================================================================
 // Main Export: SlicerWorkspace
-// ============================================================================= 
+// =============================================================================
 export default function SlicerWorkspace() {
   const [editingProfile, setEditingProfile] = useState<'printer' | 'material' | 'print' | null>(null);
   const [currentPage, setCurrentPage] = useState<SlicerPage>('prepare');

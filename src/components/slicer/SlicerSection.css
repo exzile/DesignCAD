@@ -1,19 +1,69 @@
 .slicer-section {
+  --sc: var(--accent);
   border-bottom: 1px solid var(--border);
 }
 
 .slicer-section__header {
   display: flex;
   align-items: center;
-  gap: 6px;
-  padding: 8px 10px;
+  gap: 7px;
+  padding: 7px 10px;
   cursor: pointer;
-  color: var(--text-primary);
-  font-size: 12px;
-  font-weight: 600;
+  color: color-mix(in srgb, var(--sc) 90%, var(--text-primary));
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
   user-select: none;
+  background: linear-gradient(
+    to right,
+    color-mix(in srgb, var(--sc) 14%, var(--bg-toolbar)),
+    color-mix(in srgb, var(--sc) 5%, var(--bg-toolbar)) 55%,
+    var(--bg-toolbar)
+  );
+  border-left: 3px solid color-mix(in srgb, var(--sc) 65%, transparent);
+  transition: background 0.12s ease, border-color 0.12s ease, color 0.12s ease;
+}
+
+.slicer-section__header:hover {
+  background: linear-gradient(
+    to right,
+    color-mix(in srgb, var(--sc) 24%, var(--bg-toolbar)),
+    color-mix(in srgb, var(--sc) 10%, var(--bg-toolbar)) 55%,
+    var(--bg-toolbar)
+  );
+  border-left-color: var(--sc);
+  color: var(--sc);
+}
+
+.slicer-section__header svg {
+  opacity: 0.7;
+  flex-shrink: 0;
+}
+
+/* Row hover tint inherits the section color */
+.slicer-section__body .slicer-settings-field:hover,
+.slicer-section__body .slicer-settings-field__check:hover {
+  background: color-mix(in srgb, var(--sc) 8%, transparent);
+}
+
+/* Input / select focus ring matches section color */
+.slicer-section__body .slicer-settings-field__input:focus,
+.slicer-section__body .slicer-settings-field__select:focus {
+  border-color: var(--sc);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--sc) 22%, transparent);
+}
+
+/* Range slider thumb color */
+.slicer-section__body .slicer-settings-field__range,
+.slicer-section__body .slicer-settings-field__check-input {
+  accent-color: var(--sc);
 }
 
 .slicer-section__body {
-  padding: 0 10px 10px;
+  padding: 3px 0 6px;
+  border-left: 3px solid color-mix(in srgb, var(--sc) 30%, transparent);
+  border-right: 1px solid color-mix(in srgb, var(--sc) 18%, transparent);
+  border-bottom: 1px solid color-mix(in srgb, var(--sc) 18%, transparent);
+  background: color-mix(in srgb, var(--sc) 3%, transparent);
 }

@@ -11,12 +11,8 @@ const designTabs: TabDef[] = [
   { id: 'utilities', label: 'UTILITIES', color: 'var(--tab-utilities)' },
 ];
 
-const prepareTabs: TabDef[] = [
-  { id: 'plate', label: 'PLATE', color: 'var(--tab-prepare)' },
-  { id: 'profiles', label: 'PROFILES', color: 'var(--tab-prepare)' },
-  { id: 'slice', label: 'SLICE', color: 'var(--tab-prepare)' },
-  { id: 'export', label: 'EXPORT', color: 'var(--tab-prepare)' },
-];
+// Prepare workspace no longer uses sub-tabs — PLATE / PROFILES / SLICE / EXPORT
+// all sit together on a single ribbon row now. See RibbonPrepareTab.tsx.
 
 interface WorkspaceTabBarProps {
   workspace: Workspace;
@@ -41,9 +37,7 @@ export function WorkspaceTabBar({
   sketchPlaneSelecting,
   onCancelPlaneSelect,
 }: WorkspaceTabBarProps) {
-  const currentTabs = workspace === 'design' ? designTabs
-    : workspace === 'prepare' ? prepareTabs
-    : [];
+  const currentTabs = workspace === 'design' ? designTabs : [];
 
   return (
     <div className="ribbon-tab-row">

@@ -18,6 +18,7 @@ export const PANEL_IDS = [
   'macros',
   'custom-buttons',
   'system-info',
+  'filament-sensors',
 ] as const;
 
 export type PanelId = (typeof PANEL_IDS)[number];
@@ -49,6 +50,8 @@ const DEFAULT_ORDER: PanelId[] = [
   'macros', 'custom-buttons',
   // ── Row 9: power & system info (4 + 8) ────────────────────────────────────
   'atx-power', 'system-info',
+  // ── Row 10: filament sensors (12) ─────────────────────────────────────────
+  'filament-sensors',
 ];
 
 export const DEFAULT_COLSPANS: Record<PanelId, ColSpan> = {
@@ -72,6 +75,7 @@ export const DEFAULT_COLSPANS: Record<PanelId, ColSpan> = {
   'pressure-advance':  4,
   'input-shaper':      4,
   'atx-power':         4,
+  'filament-sensors': 12,
 };
 
 // Single source of truth for the grid row unit (matches CSS grid-auto-rows)
@@ -94,6 +98,7 @@ export const DEFAULT_ROWSPANS: Record<PanelId, number> = {
   'restore-points':    4,
   'atx-power':         2,   // single toggle
   'system-info':       3,
+  'filament-sensors':  3,   // one row per monitor — grows via resize if needed
 };
 
 interface DashboardLayoutState {

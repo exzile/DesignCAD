@@ -71,7 +71,9 @@
       "mcp__Claude_in_Chrome__tabs_context_mcp",
       "mcp__Claude_in_Chrome__navigate",
       "Bash(ping *)",
-      "Bash(npx eslint *)"
+      "Bash(npx eslint *)",
+      "Read(//mnt/c/Program Files/**)",
+      "Read(//c/Program Files/UltiMaker Cura 5.12.0/**)"
     ]
   }
 }

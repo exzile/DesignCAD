@@ -13,6 +13,10 @@ export function SlicerWorkspaceViewport() {
   const [stage, setStage] = useState<Stage>('hydrate');
   const [hydrated, setHydrated] = useState(() => useSlicerStore.persist.hasHydrated());
   const [canvasReady, setCanvasReady] = useState(false);
+  // User- or timeout-forced dismissal. Wins over every other condition so the
+  // overlay can never trap the user even if the Canvas `onCreated` never fires
+  // (WebGL context failure, silent error inside the scene, etc.).
+  const [dismissed, setDismissed] = useState(false);
   const plateObjects = useSlicerStore((s) => s.plateObjects);
 
   // Listen for zustand persist finishing IDB rehydration.
@@ -22,13 +26,18 @@ export function SlicerWorkspaceViewport() {
     return unsub;
   }, []);
 
-  // Geometry readiness: count plateObjects with a valid BufferGeometry.
+  // Geometry readiness: count plateObjects that don't need any further work.
+  // An object is "ready" when its geometry is a live BufferGeometry OR when
+  // it's explicitly `null` — the latter can happen when the source CAD
+  // feature was deleted before the plate was serialized. We still keep the
+  // row so the user can re-add geometry, but we must not hang the loader
+  // waiting for a rehydration that will never come.
   // Memoised so we don't rescan every render — `filter().length` over the
   // plate list otherwise runs each time a parent rerenders.
   const total = plateObjects.length;
   const ready = useMemo(
     () => plateObjects.reduce(
-      (n, o) => n + (o.geometry instanceof THREE.BufferGeometry ? 1 : 0),
+      (n, o) => n + (o.geometry instanceof THREE.BufferGeometry || o.geometry == null ? 1 : 0),
       0,
     ),
     [plateObjects],
@@ -47,7 +56,20 @@ export function SlicerWorkspaceViewport() {
     requestAnimationFrame(() => setCanvasReady(true));
   }, []);
 
-  const showLoader = stage !== 'ready';
+  // Absolute safety net: no matter what stage we're on, force the loader to
+  // dismiss itself after 2 seconds. onCreated can silently never fire if the
+  // scene throws, if WebGL context creation fails, or if the canvas is
+  // mounted while the tab is backgrounded. The user should be able to see
+  // the workspace in all those cases — an error in the scene is far more
+  // diagnosable than a frozen spinner.
+  useEffect(() => {
+    const t = setTimeout(() => setDismissed(true), 2000);
+    return () => clearTimeout(t);
+  }, []);
+
+  const handleSkipLoader = useCallback(() => setDismissed(true), []);
+
+  const showLoader = !dismissed && stage !== 'ready';
   const geomPercent = total === 0 ? 100 : Math.round((ready / total) * 100);
 
   return (
@@ -81,6 +103,14 @@ export function SlicerWorkspaceViewport() {
                 state={stage === 'canvas' ? 'active' : (canvasReady ? 'done' : 'pending')}
               />
             </ul>
+            <button
+              type="button"
+              className="slicer-viewport-loading__skip"
+              onClick={handleSkipLoader}
+              title="Dismiss this overlay and enter the workspace"
+            >
+              Skip
+            </button>
           </div>
         </div>
       )}

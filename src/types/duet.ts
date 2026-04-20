@@ -278,6 +278,7 @@ export interface DuetObjectModel {
     analog: DuetSensor[];
     endstops: Array<{ triggered: boolean; type: string }>;
     probes: DuetProbe[];
+    filamentMonitors?: DuetFilamentMonitor[];
   };
   spindles: DuetSpindle[];
   state: DuetState;
@@ -391,6 +392,50 @@ export interface DuetConfig {
   hostname: string;
   password: string;
   mode: DuetMode;
+}
+
+// Filament monitor (RRF `sensors.filamentMonitors[]`)
+// Matches the fields RRF/DSF actually populates — many installs expose a
+// subset, so every field (including `status`) is optional.
+export type FilamentMonitorStatus =
+  | 'noMonitor' | 'ok' | 'noDataReceived' | 'noFilament'
+  | 'tooLittleMovement' | 'tooMuchMovement' | 'sensorError';
+
+export interface DuetFilamentMonitor {
+  enabled?: boolean;
+  status?: FilamentMonitorStatus;
+  type?: 'simple' | 'rotatingMagnet' | 'laser' | 'pulsed' | string;
+  filamentPresent?: boolean;
+  calibrated?: {
+    percentMin?: number;
+    percentMax?: number;
+    sensivity?: number; // RRF's spelling
+    totalDistance?: number;
+  };
+  configured?: {
+    sampleDistance?: number;
+    percentMin?: number;
+    percentMax?: number;
+    allMoves?: boolean;
+  };
+}
+
+// DSF plugin info — shape returned by `rr_model?key=plugins` (standalone) or
+// `/machine/model/plugins` (SBC). RRF returns a dict keyed by plugin id; we
+// normalize to a flat array with the id attached.
+export interface DuetPluginInfo {
+  id: string;
+  // All fields below are optional because the plugin manifest on disk can
+  // vary widely between authors. We only display what's there.
+  name?: string;
+  version?: string;
+  author?: string;
+  sbcRequired?: boolean;
+  rrfVersion?: string;
+  dwcVersion?: string;
+  pid?: number; // PID when running (DSF); -1 when stopped
+  homepage?: string;
+  data?: Record<string, unknown>;
 }
 
 // A saved printer is a named bundle of connection config + per-printer UI prefs.

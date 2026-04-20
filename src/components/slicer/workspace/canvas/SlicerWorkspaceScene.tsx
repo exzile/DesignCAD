@@ -105,7 +105,19 @@ function PlateObjectMesh({
 
   const pos = obj.position as { x: number; y: number; z?: number };
   const rot = normalizeRotationRadians((obj as { rotation?: unknown }).rotation);
-  const scl = normalizeScale((obj as { scale?: unknown }).scale);
+  const rawScl = normalizeScale((obj as { scale?: unknown }).scale);
+  // Fold mirror flags into the rendered scale so the mesh visually flips.
+  // Three.js handles negative scale correctly for transform math; it does
+  // invert face winding though, so we set `side = DoubleSide` when an odd
+  // number of axes are mirrored to keep both faces shaded.
+  const mir = obj as { mirrorX?: boolean; mirrorY?: boolean; mirrorZ?: boolean };
+  const mirrorCount = (mir.mirrorX ? 1 : 0) + (mir.mirrorY ? 1 : 0) + (mir.mirrorZ ? 1 : 0);
+  const windingFlipped = mirrorCount % 2 === 1;
+  const scl = {
+    x: rawScl.x * (mir.mirrorX ? -1 : 1),
+    y: rawScl.y * (mir.mirrorY ? -1 : 1),
+    z: rawScl.z * (mir.mirrorZ ? -1 : 1),
+  };
 
   const handleClick = useCallback((e: ThreeEvent<MouseEvent>) => {
     e.stopPropagation();
@@ -124,13 +136,21 @@ function PlateObjectMesh({
   const handleDragEnd = useCallback(() => {
     const m = meshRef.current;
     if (!m) return;
+    // The rendered mesh has mirror flags already folded into its scale
+    // (see `scl` above). Strip them back out before committing, otherwise
+    // the stored scale would drift every time the user dragged a mirrored
+    // object — on the next render we'd flip the already-flipped scale and
+    // the part would jump back to its un-mirrored orientation.
+    const sx = mir.mirrorX ? -1 : 1;
+    const sy = mir.mirrorY ? -1 : 1;
+    const sz = mir.mirrorZ ? -1 : 1;
     onTransformCommit(
       obj.id,
       { x: m.position.x, y: m.position.y, z: m.position.z },
       { x: m.rotation.x, y: m.rotation.y, z: m.rotation.z },
-      { x: m.scale.x, y: m.scale.y, z: m.scale.z },
+      { x: m.scale.x * sx, y: m.scale.y * sy, z: m.scale.z * sz },
     );
-  }, [obj.id, onTransformCommit]);
+  }, [obj.id, mir.mirrorX, mir.mirrorY, mir.mirrorZ, onTransformCommit]);
 
   const rawX = obj.boundingBox.max.x - obj.boundingBox.min.x;
   const rawY = obj.boundingBox.max.y - obj.boundingBox.min.y;
@@ -198,6 +218,9 @@ function PlateObjectMesh({
           color={materialColor}
           transparent={isSelected}
           opacity={isSelected ? 0.85 : 1}
+          // A single-axis mirror flips winding; DoubleSide keeps both sides
+          // shaded so the user still sees a solid part instead of gaps.
+          side={windingFlipped ? THREE.DoubleSide : THREE.FrontSide}
         />
         {isSelected && (
           <lineSegments>

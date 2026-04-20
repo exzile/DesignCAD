@@ -20,16 +20,19 @@ export function Num({
 }) {
   return (
     <div className="slicer-settings-field">
-      <div className="slicer-settings-field__label">{label}{unit ? ` (${unit})` : ''}</div>
-      <input
-        type="number"
-        className="slicer-settings-field__input"
-        value={value}
-        step={step}
-        min={min}
-        max={max}
-        onChange={(e) => onChange(clamp(parseNumberOr(e.target.value, min), min, max))}
-      />
+      <div className="slicer-settings-field__label">{label}</div>
+      <div className="slicer-settings-field__input-wrap">
+        <input
+          type="number"
+          className="slicer-settings-field__input"
+          value={value}
+          step={step}
+          min={min}
+          max={max}
+          onChange={(e) => onChange(clamp(parseNumberOr(e.target.value, min), min, max))}
+        />
+        <span className="slicer-settings-field__unit">{unit ?? ''}</span>
+      </div>
     </div>
   );
 }
@@ -67,7 +70,7 @@ export function Sel<T extends string>({
 export function Density({ value, onChange }: { value: number; onChange: (v: number) => void }) {
   return (
     <div className="slicer-settings-field">
-      <div className="slicer-settings-field__label">Density ({value}%)</div>
+      <div className="slicer-settings-field__label">Density</div>
       <div className="slicer-settings-field__density-row">
         <input
           className="slicer-settings-field__range"
@@ -85,6 +88,7 @@ export function Density({ value, onChange }: { value: number; onChange: (v: numb
           max={100}
           onChange={(e) => onChange(clamp(parseIntOr(e.target.value, 0), 0, 100))}
         />
+        <span className="slicer-settings-field__unit">%</span>
       </div>
     </div>
   );

@@ -4,7 +4,7 @@ export type Workspace = 'design' | 'prepare' | 'printer';
 
 export type DesignTab = 'solid' | 'surface' | 'mesh' | 'form' | 'manage' | 'utilities';
 export type PrepareTab = 'plate' | 'profiles' | 'slice' | 'export';
-export type PrinterTab = 'dashboard' | 'status' | 'console' | 'job' | 'history' | 'files' | 'filaments' | 'macros' | 'heightmap' | 'model' | 'config';
+export type PrinterTab = 'dashboard' | 'status' | 'console' | 'job' | 'history' | 'files' | 'filaments' | 'macros' | 'heightmap' | 'model' | 'config' | 'plugins';
 export type SketchTab = 'sketch';
 
 export type RibbonTab = DesignTab | PrepareTab | PrinterTab | SketchTab;

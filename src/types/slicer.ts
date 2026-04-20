@@ -285,6 +285,159 @@ export interface PrintProfile {
   flowRateCompensationMaxExtrusion: number; // mm — max extra extrusion for flow compensation
   smallHoleMaxSize: number;       // mm — holes smaller than this are considered small
   minimumPolygonCircumference: number; // mm — ignore polygons smaller than this
+
+  // ─── Dimensional Compensation (Cura: Shell) ─────────────────────────────
+  // Match Cura's horizontal expansion / elephant-foot controls so parts
+  // print dimensionally accurate without post-processing.
+  horizontalExpansion?: number;      // mm — shrink/expand XY contours (+ grows, - shrinks)
+  initialLayerHorizontalExpansion?: number; // mm — separate value for first layer
+  holeHorizontalExpansion?: number;  // mm — only applied to holes (negative tightens)
+  elephantFootCompensation?: number; // mm — shrink first few layers to undo squish
+
+  // ─── Per-feature Flow (Cura: Material) ──────────────────────────────────
+  // Each feature can override the global flow rate. `undefined` means "use
+  // material.flowRate". Values are % (100 = nominal).
+  wallFlow?: number;                 // % — outer + inner wall flow
+  outerWallFlow?: number;            // % — outer wall only (overrides wallFlow)
+  innerWallFlow?: number;            // % — inner walls only
+  topBottomFlow?: number;            // % — top/bottom skin flow
+  infillFlow?: number;               // % — sparse infill flow
+  supportFlow?: number;              // % — support structure flow
+  supportInterfaceFlow?: number;     // % — support interface flow
+  skirtBrimFlow?: number;            // % — skirt/brim flow
+  initialLayerFlow?: number;         // % — overrides flow on first layer
+  prideMaterialFlow?: number;        // % — flow during standby retract (spillover)
+
+  // ─── Advanced Bridging (Cura: Experimental) ─────────────────────────────
+  // Cura's Bridge settings are gated behind enable_bridge_settings. Users
+  // often want fine control over multiple bridge layers + second fan.
+  enableBridgeSettings?: boolean;    // master toggle for the settings below
+  bridgeEnableMoreLayers?: boolean;  // apply bridge settings to layers above the first bridge
+  bridgeFanSpeed2?: number;          // % — fan on 2nd bridge layer
+  bridgeFanSpeed3?: number;          // % — fan on 3rd bridge layer
+  bridgeMinWallLineWidth?: number;   // mm — minimum width below which bridge wall becomes a skin
+  bridgeSparseInfillMaxDensity?: number; // % — treat as bridge when infill below this density
+
+  // ─── Small Feature handling ─────────────────────────────────────────────
+  smallFeatureMaxLength?: number;    // mm — features shorter than this get smallFeatureSpeedFactor
+  smallFeatureSpeedFactor?: number;  // % — speed multiplier for small features (e.g. holes)
+  smallFeatureInitialLayerSpeedFactor?: number; // % — small feature speed on first layer
+
+  // ─── Prime Tower (Cura: Dual) ───────────────────────────────────────────
+  // Multi-extruder support is scaffolded — settings persist but aren't wired
+  // to the slicer worker yet. Keeping them here so the profile shape matches
+  // a real Cura profile export/import.
+  primeTowerEnable?: boolean;
+  primeTowerSize?: number;           // mm — diameter/side of prime tower
+  primeTowerPositionX?: number;      // mm — center X on build plate
+  primeTowerPositionY?: number;      // mm — center Y on build plate
+  primeTowerMinVolume?: number;      // mm³ — minimum purge volume per tool change
+  primeTowerWipeEnable?: boolean;    // wipe on tower after tool change
+
+  // =========================================================================
+  // Cura-parity extension (see TaskLists.txt for wiring status). Fields marked
+  // "wired" are honored by src/engine/Slicer.ts; fields marked "storage-only"
+  // round-trip through save/load but don't yet affect generated G-code.
+  // =========================================================================
+
+  // ─── Walls (Cura: Shell) ────────────────────────────────────────────────
+  wallLineCount?: number;              // wired — alias for wallCount
+  innerWallLineWidth?: number;         // wired — inner perimeter line width
+  groupOuterWalls?: boolean;           // wired — emit all outer walls together
+  alternateWallDirections?: boolean;   // storage-only — flip wall direction per layer
+  overhangingWallAngle?: number;       // storage-only — degrees
+  overhangingWallSpeed?: number;       // storage-only — % of wall speed
+  minOddWallLineWidth?: number;        // storage-only — mm
+  zSeamPosition?: 'shortest' | 'user_specified' | 'random' | 'sharpest_corner' | 'back'; // storage-only
+  zSeamRelative?: boolean;             // storage-only — z seam X/Y relative to model
+  zSeamOnVertex?: boolean;             // storage-only — snap seam to nearest vertex
+  seamCornerPreference?: 'none' | 'hide_seam' | 'expose_seam' | 'hide_or_expose' | 'smart_hide'; // storage-only
+
+  // ─── Top/Bottom (Cura: Top/Bottom) ──────────────────────────────────────
+  topThickness?: number;               // wired — mm; overrides topLayers when set
+  bottomThickness?: number;            // wired — mm; overrides bottomLayers when set
+  skinOverlapPercent?: number;         // wired — % overlap between skin and walls
+  topSkinExpandDistance?: number;      // wired — mm — grow top skin outward
+  bottomSkinExpandDistance?: number;   // wired — mm — grow bottom skin outward
+  skinRemovalWidth?: number;           // storage-only — mm — shrink skin then regrow (fills noise)
+  extraSkinWallCount?: number;         // wired — extra perimeter loops around skin
+  noSkinInZGaps?: boolean;             // storage-only — skip skin when model has z-gaps
+  bottomPatternInitialLayer?: 'lines' | 'concentric' | 'zigzag' | 'monotonic'; // storage-only
+  ironOnlyHighestLayer?: boolean;      // storage-only — only iron last top-surface layer
+
+  // ─── Infill ────────────────────────────────────────────────────────────
+  infillLineDistance?: number;         // wired — mm — when set, overrides density-derived spacing
+  infillLineDirections?: number[];     // storage-only — degrees; list cycled per layer
+  infillLayerThickness?: number;       // storage-only — print infill every N layers thick
+  connectInfillLines?: boolean;        // wired — chain infill polylines
+  connectInfillPolygons?: boolean;     // wired — chain infill polygons
+  infillWipeDistance?: number;         // storage-only — mm — wipe after infill pass
+  infillOverhangAngle?: number;        // storage-only — degrees
+  gradualInfillStepHeight?: number;    // storage-only — mm per gradual step
+  lightningPruneAngle?: number;        // storage-only — degrees
+  lightningStraighteningAngle?: number;// storage-only — degrees
+  infillXOffset?: number;              // wired — mm — shift infill pattern origin
+  infillYOffset?: number;              // wired — mm — shift infill pattern origin
+
+  // ─── Retraction & Z-Hop (Cura: Material/Travel) ─────────────────────────
+  zHopWhenRetracted?: boolean;         // wired — emit Z lift on retract
+  zHopHeight?: number;                 // wired — mm
+  zHopSpeed?: number;                  // wired — mm/s
+  zHopOnlyOverPrinted?: boolean;       // storage-only — only hop over printed parts
+  retractionExtraPrimeAmount?: number; // wired — mm³ extra extrusion after retract
+  wipeRetractionDistance?: number;     // storage-only — mm — wipe-while-retracting
+  wipeRetractionExtraPrime?: number;   // storage-only — mm³ prime after wipe retract
+
+  // ─── Cooling ───────────────────────────────────────────────────────────
+  initialFanSpeed?: number;            // wired — % — fan at layer 0
+  maximumFanSpeed?: number;            // wired — % — ramp ceiling
+  regularMaxFanThreshold?: number;     // wired — seconds/layer — below this, fan ramps toward max
+  minimumSpeed?: number;               // wired — mm/s — slowdown floor during min-layer-time
+  buildVolumeFanSpeed?: number;        // wired — % — auxiliary chamber/build-volume fan
+
+  // ─── Support advanced ──────────────────────────────────────────────────
+  supportHorizontalExpansion?: number; // wired — mm — inflate support regions
+  enableConicalSupport?: boolean;      // storage-only
+  conicalSupportAngle?: number;        // storage-only — degrees
+  connectSupportLines?: boolean;       // storage-only — chain support infill
+  connectSupportZigZags?: boolean;     // storage-only — chain zigzag support
+  supportInfillLayerThickness?: number;// storage-only — mm
+  supportJoinDistance?: number;        // wired — mm — merge support polygons closer than this
+  enableSupportBrim?: boolean;         // storage-only — emit brim around support on layer 0
+  supportBrimLineCount?: number;       // storage-only
+  supportBrimWidth?: number;           // storage-only — mm
+  supportStairStepHeight?: number;     // storage-only — mm
+  supportStairStepMinSlope?: number;   // storage-only — degrees
+  supportLineDistance?: number;        // wired — mm — overrides density-derived spacing
+  minimumSupportArea?: number;         // wired — mm² — drop support islands smaller than this
+
+  // ─── Travel ────────────────────────────────────────────────────────────
+  avoidPrintedParts?: boolean;         // wired — travel reroutes around printed regions
+  avoidSupports?: boolean;             // wired — travel reroutes around support regions
+  maxCombDistanceNoRetract?: number;   // wired — mm — comb up to this before forcing a retract
+  travelAvoidDistance?: number;        // storage-only — mm — buffer around parts
+  insideTravelAvoidDistance?: number;  // storage-only — mm — buffer for inside-part travel
+
+  // ─── Experimental ──────────────────────────────────────────────────────
+  fluidMotionEnable?: boolean;         // storage-only
+  fluidMotionAngle?: number;           // storage-only — degrees
+  fluidMotionSmallDistance?: number;   // storage-only — mm
+  coastingSpeed?: number;              // storage-only — % of wall speed during coasting
+  scarfSeamLength?: number;            // storage-only — mm
+  scarfSeamStepLength?: number;        // storage-only — mm
+  scarfSeamStartHeight?: number;       // storage-only — mm
+  enableOozeShield?: boolean;          // storage-only
+  oozeShieldAngle?: number;            // storage-only — degrees
+  oozeShieldDistance?: number;         // storage-only — mm
+
+  // ─── Raft advanced ─────────────────────────────────────────────────────
+  raftMiddleLayers?: number;           // storage-only — count of middle layers
+  raftMiddleThickness?: number;        // storage-only — mm per middle layer
+  raftMiddleLineWidth?: number;        // storage-only — mm
+  raftTopLayers?: number;              // storage-only — count of top surface layers
+  raftSmoothing?: number;              // storage-only — mm — outline smoothing radius
+  raftExtraMargin?: number;            // storage-only — mm — extra padding around model
+  raftWallCount?: number;              // storage-only
 }
 
 // -----------------------------------------------------------------------------

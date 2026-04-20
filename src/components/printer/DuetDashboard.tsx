@@ -18,6 +18,7 @@ import {
   Star,
   Eye,
   PencilRuler,
+  FlaskConical,
 } from 'lucide-react';
 import { usePrinterStore } from '../../store/printerStore';
 import {
@@ -52,6 +53,7 @@ import InputShaperPanel from './dashboard/InputShaperPanel';
 import WorkplaceCoordinatesPanel from './dashboard/WorkplaceCoordinatesPanel';
 import BedCompensationPanel from './dashboard/BedCompensationPanel';
 import RestorePointsPanel from './dashboard/RestorePointsPanel';
+import FilamentSensorPanel from './dashboard/FilamentSensorPanel';
 
 interface PanelDef {
   id: PanelId;
@@ -77,6 +79,7 @@ const PANEL_DEFS: PanelDef[] = [
   { id: 'macros',           title: 'Macros',                icon: <LayoutGrid size={12} />,  component: <MacroPanel /> },
   { id: 'custom-buttons',   title: 'Custom Buttons',        icon: <Star size={12} />,        component: <DuetCustomButtons /> },
   { id: 'system-info',      title: 'System Info',           icon: <Cpu size={12} />,         component: <SystemInfoPanel /> },
+  { id: 'filament-sensors', title: 'Filament Sensors',      icon: <FlaskConical size={12} />, component: <FilamentSensorPanel /> },
 ];
 
 const PANEL_MAP = Object.fromEntries(

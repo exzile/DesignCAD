@@ -118,9 +118,15 @@ export class Slicer {
       throw new Error('Model too thin to slice at the given layer height.');
     }
 
-    // Precompute which layers are top/bottom solid
-    const solidBottom = pp.bottomLayers;
-    const solidTop = pp.topLayers;
+    // Precompute which layers are top/bottom solid. Cura-parity:
+    // topThickness / bottomThickness (mm) override the layer counts if set —
+    // they're more intuitive than counts when layer height changes.
+    const solidBottom = pp.bottomThickness && pp.bottomThickness > 0
+      ? Math.max(1, Math.ceil(pp.bottomThickness / pp.layerHeight))
+      : pp.bottomLayers;
+    const solidTop = pp.topThickness && pp.topThickness > 0
+      ? Math.max(1, Math.ceil(pp.topThickness / pp.layerHeight))
+      : pp.topLayers;
 
     // ----- 4. Slice layer by layer -----
     const sliceLayers: SliceLayer[] = [];
@@ -150,13 +156,50 @@ export class Slicer {
     // broke on resumption (the un-retract's -Z move was relative to the hop
     // target, but a mid-print resume from `resurrect.g` starts in G90 with a
     // different Z). Absolute moves from a tracked Z are always correct.
+    // Effective Z-hop settings — the new `zHopWhenRetracted` (Cura-parity)
+    // flag lets users enable Z-hop with explicit height/speed even when the
+    // material profile's `retractionZHop` is zero. We fall back to the
+    // material value when the print-profile override is off.
+    const hopEnabled = pp.zHopWhenRetracted ?? (mat.retractionZHop > 0);
+    const hopHeight = pp.zHopWhenRetracted ? (pp.zHopHeight ?? 0.4) : mat.retractionZHop;
+    const hopFeedPerMin = ((pp.zHopSpeed ?? pp.travelSpeed) * 60);
+    // Extra prime after retract (Cura: retraction_extra_prime_amount).
+    // Interpreted as mm of filament added on the unretract leg.
+    const extraPrime = pp.retractionExtraPrimeAmount ?? 0;
+
+    // Cura-parity: wipe-on-retract. Before the retract G-code, move the
+    // nozzle a short distance along the last extrusion direction (or
+    // arbitrary if no direction is tracked) to smear any oozed filament
+    // against the print rather than leaving a blob. `wipeRetractionDistance`
+    // controls the wipe length; `wipeRetractionExtraPrime` adds a small
+    // priming amount on the un-retract to compensate for the wiped material.
+    let lastExtrudeDx = 0;
+    let lastExtrudeDy = 0;
+    const wipeDist = pp.wipeRetractionDistance ?? 0;
+    const wipeExtraPrime = pp.wipeRetractionExtraPrime ?? 0;
+
     const doRetract = (): void => {
       if (!isRetracted && mat.retractionDistance > 0) {
+        // Wipe pass — small G0 along the last extrusion direction. Skipped
+        // if no extrusion has happened yet on this print (no direction) or
+        // the wipe distance is zero.
+        if (wipeDist > 0) {
+          const dirLen = Math.sqrt(lastExtrudeDx * lastExtrudeDx + lastExtrudeDy * lastExtrudeDy);
+          if (dirLen > 1e-6) {
+            const ux = lastExtrudeDx / dirLen;
+            const uy = lastExtrudeDy / dirLen;
+            const wx = currentX + ux * wipeDist;
+            const wy = currentY + uy * wipeDist;
+            gcode.push(`G0 X${wx.toFixed(3)} Y${wy.toFixed(3)} F${(pp.travelSpeed * 60).toFixed(0)} ; Wipe`);
+            currentX = wx;
+            currentY = wy;
+          }
+        }
         currentE -= mat.retractionDistance;
         gcode.push(`G1 E${currentE.toFixed(5)} F${(mat.retractionSpeed * 60).toFixed(0)}`);
-        if (mat.retractionZHop > 0) {
-          const hopZ = currentZ + mat.retractionZHop;
-          gcode.push(`G1 Z${hopZ.toFixed(3)} F${(pp.travelSpeed * 60).toFixed(0)}`);
+        if (hopEnabled && hopHeight > 0) {
+          const hopZ = currentZ + hopHeight;
+          gcode.push(`G1 Z${hopZ.toFixed(3)} F${hopFeedPerMin.toFixed(0)}`);
           currentZ = hopZ;
         }
         isRetracted = true;
@@ -166,20 +209,35 @@ export class Slicer {
     // Helper: unretract
     const doUnretract = (): void => {
       if (isRetracted && mat.retractionDistance > 0) {
-        if (mat.retractionZHop > 0) {
-          const baseZ = currentZ - mat.retractionZHop;
-          gcode.push(`G1 Z${baseZ.toFixed(3)} F${(pp.travelSpeed * 60).toFixed(0)}`);
+        if (hopEnabled && hopHeight > 0) {
+          const baseZ = currentZ - hopHeight;
+          gcode.push(`G1 Z${baseZ.toFixed(3)} F${hopFeedPerMin.toFixed(0)}`);
           currentZ = baseZ;
         }
-        currentE += mat.retractionDistance;
+        // Include wipeExtraPrime to compensate for material lost during wipe.
+        currentE += mat.retractionDistance + extraPrime + (wipeDist > 0 ? wipeExtraPrime : 0);
         gcode.push(`G1 E${currentE.toFixed(5)} F${(mat.retractionSpeed * 60).toFixed(0)}`);
         isRetracted = false;
       }
     };
 
     // Helper: travel move (with retraction)
+    // Cura-parity: `maxCombDistanceNoRetract` (mm). When set and the travel
+    // is shorter than the threshold, we skip the retract/unretract pair and
+    // any Z-hop — approximating Cura's "combing" behavior (where short
+    // travels stay inside the print and don't retract). Also honors the
+    // existing `retractionMinTravel` (Material profile) if it's the more
+    // restrictive of the two.
     const travelTo = (x: number, y: number): void => {
-      doRetract();
+      const dx = x - currentX;
+      const dy = y - currentY;
+      const dist = Math.sqrt(dx * dx + dy * dy);
+      const maxComb = pp.maxCombDistanceNoRetract ?? 0;
+      const minTravel = pp.retractionMinTravel ?? 0;
+      const shortTravel =
+        (maxComb > 0 && dist < maxComb) ||
+        (minTravel > 0 && dist < minTravel);
+      if (!shortTravel) doRetract();
       gcode.push(`G0 X${x.toFixed(3)} Y${y.toFixed(3)} F${(pp.travelSpeed * 60).toFixed(0)}`);
       currentX = x;
       currentY = y;
@@ -203,6 +261,11 @@ export class Slicer {
       gcode.push(
         `G1 X${x.toFixed(3)} Y${y.toFixed(3)} E${currentE.toFixed(5)} F${(speed * 60).toFixed(0)}`,
       );
+      // Record direction so the next retract can wipe along this vector.
+      if (dist > 1e-6) {
+        lastExtrudeDx = dx;
+        lastExtrudeDy = dy;
+      }
       currentX = x;
       currentY = y;
       const time = dist / speed;
@@ -233,6 +296,15 @@ export class Slicer {
     gcode.push(`M104 S${mat.nozzleTempFirstLayer} ; Set nozzle temp`);
     if (printer.hasHeatedBed) {
       gcode.push(`M140 S${mat.bedTempFirstLayer} ; Set bed temp`);
+    }
+    // Build-volume / chamber fan (Cura: build_volume_fan_speed). Uses M106 P2
+    // by convention; printers that lack a second fan channel will simply
+    // ignore it. Emit only when the user has set a non-zero value.
+    if ((pp.buildVolumeFanSpeed ?? 0) > 0) {
+      const s = Math.round(((pp.buildVolumeFanSpeed ?? 0) / 100) * 255);
+      gcode.push(`M106 P2 S${s} ; Build volume fan`);
+    }
+    if (printer.hasHeatedBed) {
       gcode.push(`M190 S${mat.bedTempFirstLayer} ; Wait for bed temp`);
     }
     if (printer.hasHeatedChamber && mat.chamberTemp > 0) {
@@ -305,6 +377,22 @@ export class Slicer {
       }
 
       // ----- Fan control -----
+      // Cura-parity knobs (Phase A3):
+      //   initialFanSpeed        — fan value on layer 0 (before the material's
+      //                             fanDisableFirstLayers window ends)
+      //   maximumFanSpeed        — caps the ramp for any layer
+      //   regularMaxFanThreshold — if the previous layer printed faster than
+      //                             this many seconds, we pick the maximum
+      //                             fan speed instead of the ramped value
+      //                             (Cura's "fast-layer" shortcut)
+      //   buildVolumeFanSpeed    — auxiliary chamber fan, emitted once at
+      //                             print start below (not per-layer)
+      const maxFanPct = pp.maximumFanSpeed ?? mat.fanSpeedMax;
+      if (li === 0 && (pp.initialFanSpeed ?? 0) > 0) {
+        const initPct = Math.min(pp.initialFanSpeed ?? 0, maxFanPct);
+        const initS = Math.round((initPct / 100) * 255);
+        gcode.push(`M106 S${initS} ; Initial fan speed`);
+      }
       if (li === mat.fanDisableFirstLayers) {
         const fanS = Math.round((mat.fanSpeedMin / 100) * 255);
         gcode.push(`M106 S${fanS} ; Enable fan`);
@@ -312,7 +400,15 @@ export class Slicer {
       if (li > mat.fanDisableFirstLayers && li <= mat.fanDisableFirstLayers + 3) {
         // Ramp up fan
         const rampFraction = (li - mat.fanDisableFirstLayers) / 3;
-        const fanPct = mat.fanSpeedMin + (mat.fanSpeedMax - mat.fanSpeedMin) * Math.min(rampFraction, 1);
+        let fanPct = mat.fanSpeedMin + (mat.fanSpeedMax - mat.fanSpeedMin) * Math.min(rampFraction, 1);
+        // Fast-layer override: if the previous layer printed faster than the
+        // threshold, Cura jumps fan straight to max rather than respecting
+        // the ramp. This helps thin/narrow regions cool aggressively.
+        const thr = pp.regularMaxFanThreshold;
+        if (thr && sliceLayers.length > 0 && sliceLayers[sliceLayers.length - 1].layerTime < thr) {
+          fanPct = maxFanPct;
+        }
+        fanPct = Math.min(fanPct, maxFanPct);
         const fanS = Math.round((fanPct / 100) * 255);
         gcode.push(`M106 S${fanS} ; Ramp fan`);
       }
@@ -343,8 +439,12 @@ export class Slicer {
         if (wallSets.length > 0) {
           const outerWall = wallSets[0];
           if (outerWall.length >= 2) {
-            // Find seam position
-            const seamIdx = this.findSeamPosition(outerWall, pp.zSeamAlignment, li);
+            // Find seam position. The Cura-parity `zSeamPosition` field
+            // takes precedence over our legacy `zSeamAlignment` when set
+            // and unlocks 'user_specified' (X/Y) + 'back' which pp.zSeamX/Y
+            // can feed. The resolveSeamMode helper below maps between the
+            // two unions.
+            const seamIdx = this.findSeamPosition(outerWall, pp, li);
             const reordered = this.reorderFromIndex(outerWall, seamIdx);
 
             travelTo(reordered[0].x, reordered[0].y);
@@ -362,24 +462,63 @@ export class Slicer {
                 lineWidth: pp.wallLineWidth,
               });
             }
-            // Close the loop
+            // Close the loop.
+            //
+            // Cura-parity: coasting. When `coastingEnabled` is true, we stop
+            // extruding a short distance before reaching the seam point and
+            // let residual pressure push filament through the remaining
+            // travel, cutting seam blobs. The coast distance is derived from
+            // `coastingVolume` (mm³) at the current lineWidth × layerH.
+            // `coastingSpeed` (% of wall speed) slows the unextruded segment.
+            // We only coast when the close-loop segment is long enough to
+            // absorb the full coast distance; otherwise we print normally.
             if (reordered.length > 2) {
               const lastPt = reordered[reordered.length - 1];
               const firstPt = reordered[0];
-              layerTime += extrudeTo(firstPt.x, firstPt.y, outerWallSpeed, pp.wallLineWidth, layerH);
-              moves.push({
-                type: 'wall-outer',
-                from: { x: lastPt.x, y: lastPt.y },
-                to: { x: firstPt.x, y: firstPt.y },
-                speed: outerWallSpeed,
-                extrusion: calcExtrusion(lastPt.distanceTo(firstPt), pp.wallLineWidth, layerH),
-                lineWidth: pp.wallLineWidth,
-              });
+              const segLen = lastPt.distanceTo(firstPt);
+              const coastVol = pp.coastingEnabled ? (pp.coastingVolume ?? 0) : 0;
+              const coastDist = coastVol > 0
+                ? coastVol / (pp.wallLineWidth * layerH)
+                : 0;
+              if (coastDist > 0 && segLen > coastDist + 1e-3) {
+                // Extrude up to the coast-start point, then travel the rest.
+                const t = 1 - coastDist / segLen;
+                const midX = lastPt.x + (firstPt.x - lastPt.x) * t;
+                const midY = lastPt.y + (firstPt.y - lastPt.y) * t;
+                layerTime += extrudeTo(midX, midY, outerWallSpeed, pp.wallLineWidth, layerH);
+                moves.push({
+                  type: 'wall-outer',
+                  from: { x: lastPt.x, y: lastPt.y },
+                  to: { x: midX, y: midY },
+                  speed: outerWallSpeed,
+                  extrusion: calcExtrusion(segLen * t, pp.wallLineWidth, layerH),
+                  lineWidth: pp.wallLineWidth,
+                });
+                // Coast — unextruded travel at (optionally) reduced speed.
+                const coastSpeed = outerWallSpeed * ((pp.coastingSpeed ?? 90) / 100);
+                gcode.push(`G0 X${firstPt.x.toFixed(3)} Y${firstPt.y.toFixed(3)} F${(coastSpeed * 60).toFixed(0)} ; Coast`);
+                currentX = firstPt.x;
+                currentY = firstPt.y;
+              } else {
+                layerTime += extrudeTo(firstPt.x, firstPt.y, outerWallSpeed, pp.wallLineWidth, layerH);
+                moves.push({
+                  type: 'wall-outer',
+                  from: { x: lastPt.x, y: lastPt.y },
+                  to: { x: firstPt.x, y: firstPt.y },
+                  speed: outerWallSpeed,
+                  extrusion: calcExtrusion(segLen, pp.wallLineWidth, layerH),
+                  lineWidth: pp.wallLineWidth,
+                });
+              }
             }
           }
         }
 
-        // Inner walls
+        // Inner walls. Cura-parity: innerWallLineWidth lets users use a
+        // different extrusion width for inner loops than outer/default walls.
+        // Falls back to pp.wallLineWidth when unset so existing profiles
+        // behave identically.
+        const innerLW = pp.innerWallLineWidth ?? pp.wallLineWidth;
         for (let wi = 1; wi < wallSets.length; wi++) {
           const innerWall = wallSets[wi];
           if (innerWall.length < 2) continue;
@@ -388,28 +527,28 @@ export class Slicer {
           for (let pi = 1; pi < innerWall.length; pi++) {
             const from = innerWall[pi - 1];
             const to = innerWall[pi];
-            layerTime += extrudeTo(to.x, to.y, innerWallSpeed, pp.wallLineWidth, layerH);
+            layerTime += extrudeTo(to.x, to.y, innerWallSpeed, innerLW, layerH);
             moves.push({
               type: 'wall-inner',
               from: { x: from.x, y: from.y },
               to: { x: to.x, y: to.y },
               speed: innerWallSpeed,
-              extrusion: calcExtrusion(from.distanceTo(to), pp.wallLineWidth, layerH),
-              lineWidth: pp.wallLineWidth,
+              extrusion: calcExtrusion(from.distanceTo(to), innerLW, layerH),
+              lineWidth: innerLW,
             });
           }
           // Close loop
           if (innerWall.length > 2) {
             const lastPt = innerWall[innerWall.length - 1];
             const firstPt = innerWall[0];
-            layerTime += extrudeTo(firstPt.x, firstPt.y, innerWallSpeed, pp.wallLineWidth, layerH);
+            layerTime += extrudeTo(firstPt.x, firstPt.y, innerWallSpeed, innerLW, layerH);
             moves.push({
               type: 'wall-inner',
               from: { x: lastPt.x, y: lastPt.y },
               to: { x: firstPt.x, y: firstPt.y },
               speed: innerWallSpeed,
-              extrusion: calcExtrusion(lastPt.distanceTo(firstPt), pp.wallLineWidth, layerH),
-              lineWidth: pp.wallLineWidth,
+              extrusion: calcExtrusion(lastPt.distanceTo(firstPt), innerLW, layerH),
+              lineWidth: innerLW,
             });
           }
         }
@@ -423,13 +562,40 @@ export class Slicer {
           let lineWidth: number;
 
           if (isSolid) {
-            // Solid top/bottom fill at 100% density
-            infillLines = this.generateLinearInfill(innermostWall, 100, pp.infillLineWidth, li, pp.topBottomPattern === 'concentric' ? 'concentric' : 'lines');
+            // Solid top/bottom fill at 100% density.
+            // Cura-parity knobs in play here:
+            //   skinOverlapPercent           — overlap between skin and walls
+            //   topSkinExpandDistance (mm)   — push TOP skin further outward
+            //   bottomSkinExpandDistance (mm)— push BOTTOM skin further out
+            // All three additively widen the skin region via offsetContour.
+            // The extra top/bottom expansion helps the skin bridge over any
+            // last-wall irregularities ("zipper" top surface artifacts).
+            const skinOverlap = ((pp.skinOverlapPercent ?? 0) / 100) * pp.infillLineWidth;
+            const topExpand = isSolidTop    ? (pp.topSkinExpandDistance    ?? 0) : 0;
+            const botExpand = isSolidBottom ? (pp.bottomSkinExpandDistance ?? 0) : 0;
+            const totalExpand = skinOverlap + topExpand + botExpand;
+            // offsetContour convention: positive = inward for CCW polygon.
+            // We want the skin to grow OUTWARD into the wall band, so we
+            // pass a negative offset. The magnitude is the expansion distance.
+            const skinContour = totalExpand > 0
+              ? this.offsetContour(innermostWall, -totalExpand)
+              : innermostWall;
+            const skinInput = skinContour.length >= 3 ? skinContour : innermostWall;
+            infillLines = this.generateLinearInfill(skinInput, 100, pp.infillLineWidth, li, pp.topBottomPattern === 'concentric' ? 'concentric' : 'lines');
             infillMoveType = 'top-bottom';
             speed = topBottomSpeed;
             lineWidth = pp.infillLineWidth;
-          } else if (pp.infillDensity > 0) {
-            infillLines = this.generateLinearInfill(innermostWall, pp.infillDensity, pp.infillLineWidth, li, pp.infillPattern);
+          } else if (pp.infillDensity > 0 || (pp.infillLineDistance ?? 0) > 0) {
+            // Cura-parity: `infillLineDistance` (mm) is an absolute-spacing
+            // override that bypasses the density%→spacing calculation. When
+            // set, we translate it back to an equivalent density so the
+            // pattern generators (which key off density) produce the right
+            // line spacing:  spacing = lineWidth / (density/100)
+            // => density = lineWidth / spacing * 100
+            const effectiveDensity = (pp.infillLineDistance ?? 0) > 0
+              ? Math.min(100, Math.max(0.1, (pp.infillLineWidth / (pp.infillLineDistance ?? 1)) * 100))
+              : pp.infillDensity;
+            infillLines = this.generateLinearInfill(innermostWall, effectiveDensity, pp.infillLineWidth, li, pp.infillPattern);
             infillMoveType = 'infill';
             speed = infillSpeed;
             lineWidth = pp.infillLineWidth;
@@ -440,12 +606,77 @@ export class Slicer {
             lineWidth = pp.infillLineWidth;
           }
 
+          // Cura-parity: `extraSkinWallCount` emits additional perimeter
+          // loops around the solid-skin region before the scan-line fill.
+          // This buffers the skin so its outer edge has proper walls — helps
+          // with thin top surfaces where the fill lines would otherwise be
+          // unsupported.
+          if (isSolid && (pp.extraSkinWallCount ?? 0) > 0) {
+            const extraCount = pp.extraSkinWallCount ?? 0;
+            gcode.push(`; Extra skin walls (${extraCount})`);
+            for (let ew = 0; ew < extraCount; ew++) {
+              // Successive skin walls step inward (toward the center) from
+              // the innermost model wall. Positive offset = inward under
+              // offsetContour's convention. ew=0 sits at innermostWall.
+              const loop = ew === 0
+                ? (wallSets.length > 0 ? wallSets[wallSets.length - 1] : contour.points)
+                : this.offsetContour(
+                    wallSets.length > 0 ? wallSets[wallSets.length - 1] : contour.points,
+                    ew * pp.infillLineWidth,
+                  );
+              if (loop.length < 3) break;
+              travelTo(loop[0].x, loop[0].y);
+              for (let pi = 1; pi < loop.length; pi++) {
+                const from = loop[pi - 1];
+                const to = loop[pi];
+                layerTime += extrudeTo(to.x, to.y, topBottomSpeed, pp.infillLineWidth, layerH);
+                moves.push({
+                  type: 'top-bottom',
+                  from: { x: from.x, y: from.y },
+                  to: { x: to.x, y: to.y },
+                  speed: topBottomSpeed,
+                  extrusion: calcExtrusion(from.distanceTo(to), pp.infillLineWidth, layerH),
+                  lineWidth: pp.infillLineWidth,
+                });
+              }
+              // close loop
+              if (loop.length > 2) {
+                const last = loop[loop.length - 1];
+                const first = loop[0];
+                layerTime += extrudeTo(first.x, first.y, topBottomSpeed, pp.infillLineWidth, layerH);
+                moves.push({
+                  type: 'top-bottom',
+                  from: { x: last.x, y: last.y },
+                  to: { x: first.x, y: first.y },
+                  speed: topBottomSpeed,
+                  extrusion: calcExtrusion(last.distanceTo(first), pp.infillLineWidth, layerH),
+                  lineWidth: pp.infillLineWidth,
+                });
+              }
+            }
+          }
+
           if (infillLines.length > 0) {
             gcode.push(`; ${isSolid ? 'Solid fill' : 'Infill'}`);
             // Sort infill lines to minimize travel
             const sorted = this.sortInfillLines(infillLines);
-            for (const line of sorted) {
-              travelTo(line.from.x, line.from.y);
+            // Cura-parity: `connectInfillLines` bridges adjacent scan lines
+            // with an extrusion instead of a travel. When the snake-ordered
+            // lines share an endpoint within ~lineWidth, we emit a continuous
+            // zig-zag rather than a travel+extrude pair. This reduces stringing
+            // and gives cleaner infill at the cost of slightly more material.
+            const connect = pp.connectInfillLines ?? false;
+            const connectTol = lineWidth * 1.5;
+            for (let idx = 0; idx < sorted.length; idx++) {
+              const line = sorted[idx];
+              const fromDist = Math.hypot(line.from.x - currentX, line.from.y - currentY);
+              if (connect && idx > 0 && fromDist < connectTol) {
+                // Close enough to the previous segment's end — extrude the
+                // bridge instead of traveling.
+                layerTime += extrudeTo(line.from.x, line.from.y, speed, lineWidth, layerH);
+              } else {
+                travelTo(line.from.x, line.from.y);
+              }
               layerTime += extrudeTo(line.to.x, line.to.y, speed, lineWidth, layerH);
               moves.push({
                 type: infillMoveType,
@@ -487,7 +718,13 @@ export class Slicer {
       }
 
       // ----- Ironing -----
-      if (pp.ironingEnabled && isSolidTop) {
+      // Cura-parity: `ironOnlyHighestLayer` restricts ironing to the very
+      // final layer of the print (vs. every solid-top layer). This matches
+      // Cura's `iron_only_highest_layer` setting — users usually want the
+      // polish on the visible top only, not on internal top skins.
+      const isHighestLayer = li === totalLayers - 1;
+      const ironGate = pp.ironOnlyHighestLayer ? isHighestLayer : isSolidTop;
+      if (pp.ironingEnabled && ironGate) {
         gcode.push('; Ironing');
         // Hoist the flow-percentage division out of the per-segment hot loop.
         const ironingFlowFactor = pp.ironingFlow / 100;
@@ -927,19 +1164,41 @@ export class Slicer {
 
   private findSeamPosition(
     contour: THREE.Vector2[],
-    alignment: string,
+    pp: PrintProfile,
     // eslint-disable-next-line @typescript-eslint/no-unused-vars
     _layerIndex: number,
   ): number {
     if (contour.length === 0) return 0;
 
-    switch (alignment) {
+    // Cura-parity mapping: `zSeamPosition` (Cura's union) takes precedence
+    // over our legacy `zSeamAlignment` when set. Both feed this switch.
+    // User-specified / back / random / sharpest_corner / shortest all share
+    // handling here; aligned maps to 'back' semantics for backward compat.
+    const mode: string = pp.zSeamPosition ?? pp.zSeamAlignment ?? 'shortest';
+
+    switch (mode) {
       case 'random':
         return Math.floor(Math.random() * contour.length);
 
       case 'aligned':
-        // Always start from the point closest to (0, maxY) -- back-left
+      case 'back':
+        // Start from the point closest to (midX, maxY) — the back of the part.
         return this.closestPointIndex(contour, new THREE.Vector2(0, 1e6));
+
+      case 'user_specified': {
+        // zSeamX/Y define the target point. `zSeamRelative` means the
+        // coordinates are relative to the contour centroid; otherwise they're
+        // absolute (in the slicer's bed-centered coordinate space).
+        const tx = pp.zSeamX ?? 0;
+        const ty = pp.zSeamY ?? 0;
+        let cx = 0, cy = 0;
+        if (pp.zSeamRelative) {
+          for (const p of contour) { cx += p.x; cy += p.y; }
+          cx /= contour.length;
+          cy /= contour.length;
+        }
+        return this.closestPointIndex(contour, new THREE.Vector2(cx + tx, cy + ty));
+      }
 
       case 'sharpest_corner': {
         // Find the point with the sharpest angle
@@ -1057,8 +1316,13 @@ export class Slicer {
     const cos = Math.cos(angle);
     const sin = Math.sin(angle);
     const maxDim = Math.max(bbox.maxX - bbox.minX, bbox.maxY - bbox.minY) * 1.5;
-    const centerX = (bbox.minX + bbox.maxX) / 2;
-    const centerY = (bbox.minY + bbox.maxY) / 2;
+    // Cura-parity: infill X/Y offset shifts the entire pattern origin. This
+    // lets users align infill seams across adjacent parts or to a grid of
+    // their choosing. Zero offset is the default — original behavior unchanged.
+    const offX = this.printProfile.infillXOffset ?? 0;
+    const offY = this.printProfile.infillYOffset ?? 0;
+    const centerX = (bbox.minX + bbox.maxX) / 2 + offX;
+    const centerY = (bbox.minY + bbox.maxY) / 2 + offY;
 
     for (let d = -maxDim / 2; d <= maxDim / 2; d += spacing) {
       // Rotated scan line endpoints
@@ -1316,8 +1580,38 @@ export class Slicer {
     }
     if (allOverhangPts.length === 0) return moves;
 
-    const bbox = this.pointsBBox(allOverhangPts);
-    const spacing = pp.wallLineWidth / (pp.supportDensity / 100);
+    const rawBbox = this.pointsBBox(allOverhangPts);
+
+    // Cura-parity: minimumSupportArea drops tiny support islands so the user
+    // doesn't get pockmark-like supports from stray overhang triangles. We
+    // use the bounding-box area of the merged overhang region as a
+    // conservative approximation (the real support polygon area is ≤ bbox
+    // area, so anything below threshold by bbox is definitely below by
+    // polygon).
+    const minArea = pp.minimumSupportArea ?? 0;
+    if (minArea > 0) {
+      const bboxArea = (rawBbox.maxX - rawBbox.minX) * (rawBbox.maxY - rawBbox.minY);
+      if (bboxArea < minArea) return moves;
+    }
+
+    // Cura-parity: supportHorizontalExpansion inflates the support region
+    // outward (positive) or shrinks it inward (negative) before generating
+    // infill lines. Useful for supports that need a wider footprint to avoid
+    // slipping off the build plate, or tighter fit against the model.
+    const horizExp = pp.supportHorizontalExpansion ?? 0;
+    const bbox = {
+      minX: rawBbox.minX - horizExp,
+      maxX: rawBbox.maxX + horizExp,
+      minY: rawBbox.minY - horizExp,
+      maxY: rawBbox.maxY + horizExp,
+    };
+
+    // Cura-parity: supportLineDistance (mm) is an absolute-spacing override
+    // that bypasses the density-derived calculation. Useful for tuning
+    // support strength independent of print-profile density %.
+    const spacing = (pp.supportLineDistance ?? 0) > 0
+      ? (pp.supportLineDistance ?? 1)
+      : pp.wallLineWidth / (pp.supportDensity / 100);
     const supportSpeed = pp.printSpeed * 0.8; // slightly slower
 
     // Generate support pattern

@@ -640,7 +640,19 @@ export const useSlicerStore = create<SlicerStore>()(persist((set, get) => ({
 
       const pos = (obj.position as { x: number; y: number; z?: number });
       const rot = normalizeRotationDegreesToRadians((obj as { rotation?: unknown }).rotation);
-      const scl = normalizeScale((obj as { scale?: unknown }).scale);
+      const rawScl = normalizeScale((obj as { scale?: unknown }).scale);
+      // Mirror flags bake into the scale so the slicer worker receives the
+      // already-flipped geometry. An odd number of mirrors inverts the
+      // transform's determinant, which in turn inverts triangle winding —
+      // we fix that below so the slicer still sees outward-pointing normals.
+      const mir = obj as { mirrorX?: boolean; mirrorY?: boolean; mirrorZ?: boolean };
+      const mirrorCount = (mir.mirrorX ? 1 : 0) + (mir.mirrorY ? 1 : 0) + (mir.mirrorZ ? 1 : 0);
+      const windingFlipped = mirrorCount % 2 === 1;
+      const scl = {
+        x: rawScl.x * (mir.mirrorX ? -1 : 1),
+        y: rawScl.y * (mir.mirrorY ? -1 : 1),
+        z: rawScl.z * (mir.mirrorZ ? -1 : 1),
+      };
       const transform = new THREE.Matrix4().compose(
         new THREE.Vector3(pos.x, pos.y, pos.z ?? 0),
         new THREE.Quaternion().setFromEuler(new THREE.Euler(rot.x, rot.y, rot.z)),
@@ -648,6 +660,52 @@ export const useSlicerStore = create<SlicerStore>()(persist((set, get) => ({
       );
 
       const indexAttr = geo.getIndex();
+
+      // Triangle winding fix: swap every other pair of vertex indices so the
+      // triangle normal ends up pointing outward again after the mirror.
+      // For indexed geometry we rebuild the index buffer; for non-indexed
+      // geometry we swap positions (v1, v2) for each triangle directly.
+      let positionsForWorker: Float32Array;
+      let indexForWorker: Uint32Array | null;
+      if (windingFlipped) {
+        if (indexAttr) {
+          positionsForWorker = new Float32Array(posAttr.array);
+          const src = indexAttr.array as ArrayLike<number>;
+          const dst = new Uint32Array(indexAttr.count);
+          for (let t = 0; t < indexAttr.count; t += 3) {
+            dst[t]     = src[t];
+            dst[t + 1] = src[t + 2];
+            dst[t + 2] = src[t + 1];
+          }
+          indexForWorker = dst;
+        } else {
+          // Non-indexed: copy positions and swap the 2nd / 3rd vertex of
+          // every triangle in-place in the copy.
+          const src = posAttr.array as ArrayLike<number>;
+          const out = new Float32Array(src.length);
+          for (let t = 0; t < posAttr.count; t += 3) {
+            const base = t * 3;
+            // v0 unchanged
+            out[base + 0] = src[base + 0];
+            out[base + 1] = src[base + 1];
+            out[base + 2] = src[base + 2];
+            // v1 <- original v2
+            out[base + 3] = src[base + 6];
+            out[base + 4] = src[base + 7];
+            out[base + 5] = src[base + 8];
+            // v2 <- original v1
+            out[base + 6] = src[base + 3];
+            out[base + 7] = src[base + 4];
+            out[base + 8] = src[base + 5];
+          }
+          positionsForWorker = out;
+          indexForWorker = null;
+        }
+      } else {
+        positionsForWorker = new Float32Array(posAttr.array);
+        indexForWorker = indexAttr ? new Uint32Array(indexAttr.array) : null;
+      }
+
       const per = (obj as { perObjectSettings?: Record<string, unknown> }).perObjectSettings;
       const filteredOverrides = per && Object.keys(per).length > 0
         // Drop undefined entries — those represent "inherit global" and should
@@ -655,8 +713,8 @@ export const useSlicerStore = create<SlicerStore>()(persist((set, get) => ({
         ? Object.fromEntries(Object.entries(per).filter(([, v]) => v !== undefined))
         : undefined;
       geometryData.push({
-        positions: new Float32Array(posAttr.array),
-        index: indexAttr ? new Uint32Array(indexAttr.array) : null,
+        positions: positionsForWorker,
+        index: indexForWorker,
         transformElements: new Float32Array(transform.elements),
         overrides: filteredOverrides && Object.keys(filteredOverrides).length > 0 ? filteredOverrides : undefined,
         objectName: obj.name,

@@ -1,3 +1,153 @@
+/* =============================================================================
+ * Viewport overlay floats
+ *
+ * The toolbar and per-transform panels are siblings of the <Canvas> inside
+ * `.slicer-workspace__viewport`, which has `position: relative; overflow:
+ * hidden`. Without explicit absolute positioning they flow below the canvas
+ * and get clipped — i.e. clicking a plate object appears to do nothing because
+ * its editor card is sitting outside the visible area. Absolute positioning
+ * anchors them as floating overlays on top of the 3D scene.
+ * ============================================================================= */
+
+.slicer-overlay-toolbar {
+  position: absolute;
+  /* SlicerPrintabilityPanel sits at top: 12px; left: 12px with z-index 20.
+     Offset this toolbar vertically so it doesn't hide behind that button. */
+  top: 60px;
+  left: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 4px;
+  background: var(--bg-panel);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.18);
+  z-index: 5;
+}
+
+.slicer-overlay-toolbar-button {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  background: transparent;
+  color: var(--text-secondary);
+  border: 1px solid transparent;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: background 120ms, color 120ms, border-color 120ms;
+}
+.slicer-overlay-toolbar-button:hover {
+  background: var(--bg-hover);
+  color: var(--text-primary);
+}
+.slicer-overlay-toolbar-button.is-active {
+  background: var(--accent-muted, rgba(47, 128, 237, 0.15));
+  color: var(--accent, #2f80ed);
+  border-color: var(--accent, #2f80ed);
+}
+
+.slicer-overlay-panel {
+  position: absolute;
+  top: 16px;
+  right: 16px;
+  width: 280px;
+  max-height: calc(100% - 32px);
+  overflow: auto;
+  padding: 12px 14px;
+  background: var(--bg-panel);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.22);
+  z-index: 5;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  color: var(--text-primary);
+  font-size: 12px;
+}
+
+.slicer-overlay-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding-bottom: 6px;
+  border-bottom: 1px solid var(--border);
+}
+.slicer-overlay-header-name {
+  font-weight: 600;
+  font-size: 13px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.slicer-overlay-lock-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 4px;
+  color: var(--text-secondary);
+  cursor: pointer;
+}
+.slicer-overlay-lock-button:hover {
+  background: var(--bg-hover);
+  color: var(--text-primary);
+}
+
+.slicer-overlay-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.slicer-overlay-axis {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  font-weight: 700;
+  font-size: 11px;
+  border-radius: 4px;
+  color: #fff;
+}
+.slicer-overlay-axis--x { background: #ef4444; }
+.slicer-overlay-axis--y { background: #10b981; }
+.slicer-overlay-axis--z { background: #3b82f6; }
+.slicer-overlay-unit {
+  font-size: 11px;
+  color: var(--text-muted, #6b7280);
+}
+.slicer-overlay-divider {
+  height: 1px;
+  background: var(--border);
+  margin: 4px 0;
+}
+.slicer-overlay-check-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  cursor: pointer;
+  user-select: none;
+}
+.slicer-overlay-check-input { accent-color: var(--accent, #2f80ed); }
+
+.slicer-overlay-scale-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 11px;
+  color: var(--text-muted, #6b7280);
+}
+
+/* ------------------------------------------------------------------------- */
+
 .slicer-overlay-number-input {
   background: var(--bg-input);
   color: var(--text-primary);

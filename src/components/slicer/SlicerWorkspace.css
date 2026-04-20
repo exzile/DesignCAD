@@ -141,6 +141,28 @@
   gap: 8px;
 }
 
+/* Escape hatch — always visible so the user can never be trapped behind the
+   overlay if the canvas takes unusually long or the geometry count wedges.
+   Quiet link-button styling so it doesn't compete with the normal flow. */
+.slicer-viewport-loading__skip {
+  display: block;
+  margin: 14px auto 0;
+  padding: 4px 12px;
+  background: transparent;
+  color: var(--text-secondary, #6b7280);
+  border: 1px solid var(--border, rgba(0, 0, 0, 0.12));
+  border-radius: 6px;
+  font-size: 11px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: color 120ms, border-color 120ms, background 120ms;
+}
+.slicer-viewport-loading__skip:hover {
+  color: var(--text-primary, #111827);
+  border-color: var(--border-strong, rgba(0, 0, 0, 0.2));
+  background: var(--bg-hover, rgba(0, 0, 0, 0.04));
+}
+
 .slicer-viewport-loading__step {
   display: flex;
   align-items: center;

@@ -53,7 +53,6 @@ export default function Toolbar() {
   const loadFileInputRef = useRef<HTMLInputElement>(null);
   const [wsDropdownOpen, setWsDropdownOpen] = useState(false);
   const [designTab, setDesignTab] = useState<DesignTab>('solid');
-  const [prepareTab, setPrepareTab] = useState<PrepareTab>('plate');
 
   // CAD store
   const activeSketch = useCADStore((s) => s.activeSketch);
@@ -213,16 +212,18 @@ export default function Toolbar() {
     setWorkspaceMode(ws);
   };
 
+  // Prepare + Printer workspaces don't use sub-tabs anymore, so when the
+  // user is in them the "active tab" is irrelevant — we just pick a stable
+  // placeholder that WorkspaceTabBar ignores.
   const activeTab: RibbonTab = inSketch
     ? 'sketch'
     : workspace === 'design'
     ? designTab
-    : prepareTab;
+    : ('solid' as RibbonTab);
 
   const handleTabClick = (tabId: RibbonTab) => {
     if (inSketch) return;
     if (workspace === 'design') setDesignTab(tabId as DesignTab);
-    else setPrepareTab(tabId as PrepareTab);
   };
 
   const MI = 16; // menu item icon size
@@ -612,7 +613,7 @@ export default function Toolbar() {
 
         {/* ═══════════════ PREPARE WORKSPACE ═══════════════ */}
         {!inSketch && workspace === 'prepare' && (
-          <RibbonPrepareTab prepareTab={prepareTab} />
+          <RibbonPrepareTab />
         )}
 
         {/* ═══════════════ PRINTER WORKSPACE ═══════════════ */}

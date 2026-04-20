@@ -3,7 +3,7 @@ import './PrinterPanel.css';
 import {
   LayoutDashboard, Activity, Terminal, Play, FolderOpen, FileCode, Grid3x3,
   History, Braces, Settings, X, OctagonAlert, Wifi, WifiOff, FlaskConical,
-  TrendingUp, Router,
+  TrendingUp, Router, Plug,
   Sun, Moon, Search, Loader2, Clock, Cpu,
 } from 'lucide-react';
 import { formatUptime } from './dashboard/helpers';
@@ -26,6 +26,7 @@ import DuetSettings from './DuetSettings';
 import DuetConfigEditor from './DuetConfigEditor';
 import DuetAnalytics from './DuetAnalytics';
 import DuetNetworkAndFirmware from './DuetNetworkAndFirmware';
+import DuetPlugins from './DuetPlugins';
 import './DuetAnalytics.css';
 
 // ---------------------------------------------------------------------------
@@ -50,6 +51,7 @@ const TABS = [
   { key: 'model' as const, label: 'Model', Icon: Braces },
   { key: 'config' as const, label: 'Config', Icon: FileCode },
   { key: 'network' as const, label: 'Network', Icon: Router },
+  { key: 'plugins' as const, label: 'Plugins', Icon: Plug },
   { key: 'settings' as const, label: 'Settings', Icon: Settings },
 ];
 
@@ -69,6 +71,7 @@ const TAB_COMPONENTS: Record<TabKey, React.ComponentType> = {
   model: DuetObjectModelBrowser,
   config: DuetConfigEditor,
   network: DuetNetworkAndFirmware,
+  plugins: DuetPlugins,
   settings: DuetSettings,
 };
 

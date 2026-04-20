@@ -1,5 +1,5 @@
 import { useState, useCallback } from 'react';
-import { Edit3, Settings, Printer, Droplets, SlidersHorizontal, Search, Sliders } from 'lucide-react';
+import { Edit3, Settings, SlidersHorizontal, Search, Sliders } from 'lucide-react';
 import { useSlicerStore } from '../../../../store/slicerStore';
 import { useSlicerVisibilityStore } from '../../../../store/slicerVisibilityStore';
 import type { PrintProfile } from '../../../../types/slicer';
@@ -8,18 +8,14 @@ import { SlicerPrintProfileSettings } from '../../SlicerPrintProfileSettings';
 import { SlicerSettingsVisibilityModal } from '../modals/SlicerSettingsVisibilityModal';
 import './SlicerWorkspaceSettingsPanel.css';
 
+// The Printer and Material pickers used to live here but are now owned by
+// the ribbon (Prepare workspace → Plate tab). This panel keeps only the
+// Print Profile picker + its detailed settings so there's exactly one
+// editor for each profile kind.
 export function SlicerWorkspaceSettingsPanel({ onEditProfile }: { onEditProfile: (type: 'printer' | 'material' | 'print') => void }) {
-  const printerProfiles = useSlicerStore((s) => s.printerProfiles);
-  const materialProfiles = useSlicerStore((s) => s.materialProfiles);
   const printProfiles = useSlicerStore((s) => s.printProfiles);
-  const activePrinterId = useSlicerStore((s) => s.activePrinterProfileId);
-  const activeMaterialId = useSlicerStore((s) => s.activeMaterialProfileId);
   const activePrintId = useSlicerStore((s) => s.activePrintProfileId);
-  const setActivePrinter = useSlicerStore((s) => s.setActivePrinterProfile);
-  const setActiveMaterial = useSlicerStore((s) => s.setActiveMaterialProfile);
   const setActivePrint = useSlicerStore((s) => s.setActivePrintProfile);
-  const getActivePrinterProfile = useSlicerStore((s) => s.getActivePrinterProfile);
-  const getActiveMaterialProfile = useSlicerStore((s) => s.getActiveMaterialProfile);
   const getActivePrintProfile = useSlicerStore((s) => s.getActivePrintProfile);
   const updatePrintProfile = useSlicerStore((s) => s.updatePrintProfile);
 
@@ -27,8 +23,6 @@ export function SlicerWorkspaceSettingsPanel({ onEditProfile }: { onEditProfile:
   // Subscribe to the visible map itself so toggles in the modal re-render this panel.
   useSlicerVisibilityStore((s) => s.visible);
 
-  const printer = getActivePrinterProfile();
-  const material = getActiveMaterialProfile();
   const print = getActivePrintProfile();
 
   const [settingsSearch, setSettingsSearch] = useState('');
@@ -70,49 +64,10 @@ export function SlicerWorkspaceSettingsPanel({ onEditProfile }: { onEditProfile:
       </div>
 
       <div className="slicer-workspace-settings-panel__content">
-        {isVisible('printer') && (
-          <SlicerSection title="Printer" icon={<Printer size={14} />}>
-            <select className="slicer-workspace-settings-panel__select" value={activePrinterId} onChange={(e) => setActivePrinter(e.target.value)}>
-              {printerProfiles.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
-            </select>
-            {printer && (
-              <div className="slicer-workspace-settings-panel__meta">
-                <div>Build: {printer.buildVolume.x} × {printer.buildVolume.y} × {printer.buildVolume.z} mm</div>
-                <div>Nozzle: {printer.nozzleDiameter} mm · Filament: {printer.filamentDiameter} mm</div>
-                <div>Heated Bed: {printer.hasHeatedBed ? 'Yes' : 'No'}{printer.hasHeatedChamber ? ' · Chamber: Yes' : ''}</div>
-              </div>
-            )}
-            <button className="slicer-workspace-settings-panel__button" onClick={() => onEditProfile('printer')}>
-              <Edit3 size={12} /> Edit Printer
-            </button>
-          </SlicerSection>
-        )}
-
-        {isVisible('material') && (
-          <SlicerSection title="Material" icon={<Droplets size={14} />}>
-            <select className="slicer-workspace-settings-panel__select" value={activeMaterialId} onChange={(e) => setActiveMaterial(e.target.value)}>
-              {materialProfiles.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
-            </select>
-            {material && (
-              <div className="slicer-workspace-settings-panel__meta">
-                <div className="slicer-workspace-settings-panel__material-row">
-                  <div className="slicer-workspace-settings-panel__material-swatch" style={{ background: material.color }} />
-                  {material.type} · {material.name}
-                </div>
-                <div>Nozzle: {material.nozzleTemp}°C (FL {material.nozzleTempFirstLayer}°C)</div>
-                <div>Bed: {material.bedTemp}°C (FL {material.bedTempFirstLayer}°C)</div>
-                <div>Fan: {material.fanSpeedMin}–{material.fanSpeedMax}% (off {material.fanDisableFirstLayers} layers)</div>
-                <div>Retract: {material.retractionDistance}mm @ {material.retractionSpeed}mm/s · Z-hop: {material.retractionZHop}mm</div>
-              </div>
-            )}
-            <button className="slicer-workspace-settings-panel__button" onClick={() => onEditProfile('material')}>
-              <Edit3 size={12} /> Edit Material
-            </button>
-          </SlicerSection>
-        )}
-
+        {/* Printer + Material pickers moved to the ribbon — see
+            components/toolbar/RibbonPrepareTab.tsx. */}
         {isVisible('printProfile') && (
-          <SlicerSection title="Print Profile" icon={<SlidersHorizontal size={14} />}>
+          <SlicerSection title="Print Profile" color="#4a9eff" icon={<SlidersHorizontal size={14} />}>
             <div className="slicer-workspace-settings-panel__profile-row">
               <select className="slicer-workspace-settings-panel__profile-select" value={activePrintId} onChange={(e) => setActivePrint(e.target.value)}>
                 {printProfiles.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
