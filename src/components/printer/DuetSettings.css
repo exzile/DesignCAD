@@ -387,6 +387,989 @@
   margin-top: 8px;
 }
 
+/* =============================================================================
+   Machine page (ds-* namespace)
+   ============================================================================= */
+
+/* ── Board hero card ─────────────────────────────────────────────────────── */
+.ds-machine-hero {
+  position: relative;
+  border-radius: 10px;
+  padding: 16px 18px;
+  background:
+    linear-gradient(135deg, rgba(120,130,240,0.10), rgba(70,190,180,0.06) 65%),
+    var(--bg-elevated);
+  border: 1px solid var(--border);
+  overflow: hidden;
+}
+
+.ds-machine-hero::before {
+  content: '';
+  position: absolute;
+  top: -40%;
+  right: -10%;
+  width: 280px;
+  height: 280px;
+  background: radial-gradient(circle, rgba(120,140,240,0.10) 0%, transparent 60%);
+  pointer-events: none;
+}
+
+.ds-machine-hero-head {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding-bottom: 14px;
+  border-bottom: 1px solid var(--border);
+  margin-bottom: 14px;
+}
+
+.ds-machine-hero-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 42px;
+  height: 42px;
+  border-radius: 10px;
+  background: linear-gradient(135deg, rgba(120,130,240,0.25), rgba(120,130,240,0.08));
+  border: 1px solid rgba(120,130,240,0.3);
+  color: var(--accent);
+  flex-shrink: 0;
+}
+
+.ds-machine-hero-title {
+  flex: 1;
+  min-width: 0;
+}
+
+.ds-machine-hero-name {
+  font-size: 16px;
+  font-weight: 700;
+  color: var(--text-primary);
+  letter-spacing: 0.2px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.ds-machine-hero-fw {
+  margin-top: 2px;
+  font-size: 12px;
+  color: var(--text-muted);
+  font-family: 'JetBrains Mono', 'Consolas', monospace;
+}
+
+.ds-machine-hero-fw strong {
+  color: var(--text-primary);
+  font-weight: 600;
+}
+
+.ds-machine-hero-date {
+  opacity: 0.7;
+}
+
+/* ── Status pill (shared) ────────────────────────────────────────────────── */
+.ds-status-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 3px 9px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.3px;
+  text-transform: uppercase;
+  border: 1px solid transparent;
+  flex-shrink: 0;
+}
+
+.ds-status-pill--sm {
+  padding: 2px 7px;
+  font-size: 10px;
+  letter-spacing: 0.2px;
+}
+
+.ds-status-pill--ok {
+  color: rgb(110,220,150);
+  background: rgba(80,200,130,0.12);
+  border-color: rgba(80,200,130,0.35);
+}
+
+.ds-status-pill--warn {
+  color: rgb(240,190,100);
+  background: rgba(232,184,75,0.12);
+  border-color: rgba(232,184,75,0.35);
+}
+
+.ds-status-pill--off {
+  color: rgba(200,200,220,0.55);
+  background: rgba(255,255,255,0.04);
+  border-color: rgba(255,255,255,0.1);
+}
+
+.ds-status-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: currentColor;
+  box-shadow: 0 0 8px currentColor;
+}
+
+/* ── Metric grid inside hero ─────────────────────────────────────────────── */
+.ds-metric-grid {
+  position: relative;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(130px, 1fr));
+  gap: 8px;
+}
+
+.ds-metric {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 9px 12px;
+  border-radius: 8px;
+  background: rgba(255,255,255,0.03);
+  border: 1px solid rgba(255,255,255,0.06);
+  transition: background 0.15s, border-color 0.15s;
+}
+
+.ds-metric:hover {
+  background: rgba(255,255,255,0.06);
+  border-color: rgba(255,255,255,0.12);
+}
+
+.ds-metric--warn {
+  background: rgba(232,184,75,0.08);
+  border-color: rgba(232,184,75,0.35);
+}
+
+.ds-metric-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 6px;
+  background: rgba(120,130,240,0.12);
+  color: var(--accent);
+  flex-shrink: 0;
+}
+
+.ds-metric--warn .ds-metric-icon {
+  background: rgba(232,184,75,0.15);
+  color: rgb(240,200,110);
+}
+
+.ds-metric-body {
+  flex: 1;
+  min-width: 0;
+}
+
+.ds-metric-label {
+  font-size: 10px;
+  font-weight: 600;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.ds-metric-value {
+  margin-top: 2px;
+  font-size: 16px;
+  font-weight: 700;
+  color: var(--text-primary);
+  font-family: 'JetBrains Mono', 'Consolas', monospace;
+  line-height: 1.1;
+}
+
+.ds-metric-value small {
+  font-size: 11px;
+  opacity: 0.6;
+  margin-left: 2px;
+  font-weight: 600;
+}
+
+/* ── Section title row with count badge ──────────────────────────────────── */
+.ds-section-title-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.ds-section-count {
+  margin-left: auto;
+  padding: 1px 8px;
+  border-radius: 999px;
+  background: rgba(120,130,240,0.14);
+  border: 1px solid rgba(120,130,240,0.3);
+  color: var(--accent);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.3px;
+}
+
+.ds-empty-hint {
+  font-size: 12px;
+  color: var(--text-muted);
+  padding: 14px 8px;
+  text-align: center;
+  border: 1px dashed var(--border);
+  border-radius: 6px;
+}
+
+/* ── Axes grid ───────────────────────────────────────────────────────────── */
+.ds-axes-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+  gap: 10px;
+}
+
+.ds-axis-card {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 12px 14px;
+  border-radius: 8px;
+  background: var(--bg-input);
+  border: 1px solid var(--border);
+  transition: border-color 0.15s, transform 0.15s;
+}
+
+.ds-axis-card:hover {
+  border-color: rgba(120,130,240,0.35);
+  transform: translateY(-1px);
+}
+
+.ds-axis-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.ds-axis-letter {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 28px;
+  height: 28px;
+  padding: 0 9px;
+  border-radius: 7px;
+  background: linear-gradient(135deg, rgba(120,130,240,0.25), rgba(120,130,240,0.1));
+  color: var(--accent);
+  font-family: 'JetBrains Mono', 'Consolas', monospace;
+  font-size: 15px;
+  font-weight: 700;
+  border: 1px solid rgba(120,130,240,0.35);
+}
+
+/* ── Axis range bar ──────────────────────────────────────────────────────── */
+.ds-axis-range {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.ds-axis-range-bar {
+  position: relative;
+  width: 100%;
+  height: 6px;
+  border-radius: 3px;
+  background: rgba(255,255,255,0.05);
+  border: 1px solid rgba(255,255,255,0.04);
+}
+
+.ds-axis-range-fill {
+  position: absolute;
+  top: 0;
+  left: 0;
+  height: 100%;
+  border-radius: 3px;
+  background: linear-gradient(90deg, rgba(120,130,240,0.5), rgba(120,130,240,0.9));
+}
+
+.ds-axis-range-marker {
+  position: absolute;
+  top: 50%;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: var(--accent);
+  border: 2px solid var(--bg-panel);
+  transform: translate(-50%, -50%);
+  box-shadow: 0 0 10px rgba(120,130,240,0.6);
+}
+
+.ds-axis-range-labels {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 10px;
+  font-family: 'JetBrains Mono', 'Consolas', monospace;
+  color: var(--text-muted);
+}
+
+.ds-axis-range-current {
+  color: var(--text-primary);
+  font-weight: 600;
+}
+
+/* ── Axis stats row ──────────────────────────────────────────────────────── */
+.ds-axis-stats {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 6px;
+  padding-top: 8px;
+  border-top: 1px solid var(--border);
+}
+
+.ds-axis-stat {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 6px 8px;
+  border-radius: 6px;
+  background: rgba(255,255,255,0.02);
+  border: 1px solid rgba(255,255,255,0.04);
+  color: var(--text-muted);
+  min-width: 0;
+}
+
+.ds-axis-stat svg {
+  opacity: 0.55;
+}
+
+.ds-axis-stat-label {
+  font-size: 9px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: var(--text-muted);
+}
+
+.ds-axis-stat-value {
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--text-primary);
+  font-family: 'JetBrains Mono', 'Consolas', monospace;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.ds-axis-stat-value small {
+  font-size: 9px;
+  font-weight: 600;
+  opacity: 0.55;
+  margin-left: 2px;
+}
+
+/* =============================================================================
+   Firmware page (ds-fw-* namespace)
+   ============================================================================= */
+
+.ds-fw-hero {
+  position: relative;
+  border-radius: 10px;
+  padding: 16px 18px;
+  background:
+    linear-gradient(135deg, rgba(232,184,75,0.10), rgba(120,130,240,0.06) 65%),
+    var(--bg-elevated);
+  border: 1px solid var(--border);
+  overflow: hidden;
+}
+
+.ds-fw-hero::before {
+  content: '';
+  position: absolute;
+  top: -50%;
+  right: -15%;
+  width: 320px;
+  height: 320px;
+  background: radial-gradient(circle, rgba(232,184,75,0.12) 0%, transparent 65%);
+  pointer-events: none;
+}
+
+.ds-fw-hero-head {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding-bottom: 14px;
+  border-bottom: 1px solid var(--border);
+  margin-bottom: 14px;
+}
+
+.ds-fw-hero-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 42px;
+  height: 42px;
+  border-radius: 10px;
+  background: linear-gradient(135deg, rgba(232,184,75,0.25), rgba(232,184,75,0.08));
+  border: 1px solid rgba(232,184,75,0.35);
+  color: rgb(240,190,100);
+  flex-shrink: 0;
+}
+
+.ds-fw-hero-title {
+  flex: 1;
+  min-width: 0;
+}
+
+.ds-fw-hero-label {
+  font-size: 10px;
+  font-weight: 700;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.6px;
+}
+
+.ds-fw-hero-version {
+  margin-top: 2px;
+  font-size: 15px;
+  font-family: 'JetBrains Mono', 'Consolas', monospace;
+  color: var(--text-primary);
+}
+
+.ds-fw-hero-version strong {
+  color: var(--accent);
+  font-weight: 700;
+  font-size: 16px;
+}
+
+.ds-fw-hero-date {
+  margin-top: 4px;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 11px;
+  color: var(--text-muted);
+  font-family: 'JetBrains Mono', 'Consolas', monospace;
+}
+
+.ds-check-btn {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 14px;
+  border-radius: 7px;
+  border: 1px solid rgba(120,130,240,0.4);
+  background: linear-gradient(135deg, rgba(120,130,240,0.18), rgba(120,130,240,0.08));
+  color: var(--accent);
+  font-family: inherit;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.12s, border-color 0.12s, color 0.12s, transform 0.1s;
+  flex-shrink: 0;
+}
+
+.ds-check-btn:not(:disabled):hover {
+  background: linear-gradient(135deg, rgba(120,130,240,0.3), rgba(120,130,240,0.15));
+  border-color: rgba(120,130,240,0.7);
+  color: #fff;
+  transform: translateY(-1px);
+}
+
+.ds-check-btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.ds-check-btn .spin {
+  animation: spin 0.9s linear infinite;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+/* ── Update-status card ──────────────────────────────────────────────────── */
+.ds-fw-update-card {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 12px 14px;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: rgba(255,255,255,0.02);
+}
+
+.ds-fw-update-card--update-available {
+  border-color: rgba(232,184,75,0.5);
+  background: linear-gradient(135deg, rgba(232,184,75,0.08), rgba(232,184,75,0.02));
+}
+
+.ds-fw-update-card--up-to-date {
+  border-color: rgba(80,200,130,0.4);
+  background: linear-gradient(135deg, rgba(80,200,130,0.06), rgba(80,200,130,0.02));
+}
+
+.ds-fw-update-card--ahead {
+  border-color: rgba(120,130,240,0.35);
+  background: linear-gradient(135deg, rgba(120,130,240,0.06), rgba(120,130,240,0.02));
+}
+
+.ds-fw-update-card--error {
+  flex-direction: row;
+  align-items: flex-start;
+  gap: 10px;
+  border-color: rgba(240,100,100,0.4);
+  background: rgba(240,100,100,0.08);
+  color: rgb(255,160,160);
+}
+
+.ds-fw-update-head {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+}
+
+.ds-fw-update-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  border-radius: 8px;
+  flex-shrink: 0;
+}
+
+.ds-fw-update-card--update-available .ds-fw-update-icon {
+  background: rgba(232,184,75,0.18);
+  color: rgb(250,210,120);
+}
+
+.ds-fw-update-card--up-to-date .ds-fw-update-icon {
+  background: rgba(80,200,130,0.18);
+  color: rgb(130,230,170);
+}
+
+.ds-fw-update-card--ahead .ds-fw-update-icon {
+  background: rgba(120,130,240,0.18);
+  color: var(--accent);
+}
+
+.ds-fw-update-info {
+  flex: 1;
+  min-width: 0;
+}
+
+.ds-fw-update-title {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--text-primary);
+}
+
+.ds-fw-update-detail {
+  margin-top: 3px;
+  font-size: 11px;
+  color: var(--text-muted);
+  line-height: 1.4;
+}
+
+.ds-fw-update-date {
+  opacity: 0.75;
+}
+
+.ds-fw-external-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 10px;
+  border-radius: 5px;
+  border: 1px solid var(--border);
+  background: rgba(255,255,255,0.03);
+  color: var(--text-muted);
+  font-size: 10px;
+  font-weight: 600;
+  text-decoration: none;
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
+  transition: background 0.12s, color 0.12s, border-color 0.12s;
+  flex-shrink: 0;
+}
+
+.ds-fw-external-btn:hover {
+  background: rgba(120,130,240,0.15);
+  color: #fff;
+  border-color: rgba(120,130,240,0.5);
+}
+
+/* ── Firmware asset list ─────────────────────────────────────────────────── */
+.ds-fw-assets {
+  padding-top: 10px;
+  border-top: 1px solid var(--border);
+}
+
+.ds-fw-assets-label {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 10px;
+  font-weight: 700;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  margin-bottom: 6px;
+}
+
+.ds-fw-assets-label svg {
+  color: var(--accent);
+}
+
+.ds-fw-assets-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.ds-fw-asset {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px;
+  border-radius: 6px;
+  border: 1px solid var(--border);
+  background: rgba(255,255,255,0.03);
+  color: var(--text-primary);
+  font-size: 11px;
+  text-decoration: none;
+  transition: background 0.12s, border-color 0.12s, transform 0.08s;
+}
+
+.ds-fw-asset:hover {
+  background: rgba(120,130,240,0.1);
+  border-color: rgba(120,130,240,0.4);
+  transform: translateX(1px);
+}
+
+.ds-fw-asset.is-pick {
+  border-color: rgba(255,170,60,0.55);
+  background: rgba(255,170,60,0.08);
+}
+
+.ds-fw-asset.is-pick svg {
+  color: #ffb347;
+}
+
+.ds-fw-asset.is-iap {
+  opacity: 0.85;
+}
+
+.ds-fw-asset-tag {
+  padding: 1px 6px;
+  border-radius: 999px;
+  background: rgba(255,255,255,0.06);
+  color: var(--text-muted);
+  font-size: 9px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  flex-shrink: 0;
+}
+
+.ds-fw-asset-tag--pick {
+  background: rgba(255,170,60,0.18);
+  color: #ffb347;
+}
+
+.ds-fw-asset svg {
+  color: var(--accent);
+  flex-shrink: 0;
+}
+
+.ds-fw-asset-name {
+  flex: 1;
+  font-family: 'JetBrains Mono', 'Consolas', monospace;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
+}
+
+.ds-fw-asset-size {
+  color: var(--text-muted);
+  font-size: 10px;
+  font-family: 'JetBrains Mono', 'Consolas', monospace;
+  flex-shrink: 0;
+}
+
+.ds-fw-asset-hint {
+  margin-top: 8px;
+  font-size: 10px;
+  color: var(--text-muted);
+  line-height: 1.45;
+}
+
+/* ── Release notes ───────────────────────────────────────────────────────── */
+.ds-fw-notes-wrap {
+  padding-top: 8px;
+  border-top: 1px solid var(--border);
+}
+
+.ds-fw-notes-toggle {
+  background: none;
+  border: none;
+  color: var(--accent);
+  font-family: inherit;
+  font-size: 11px;
+  font-weight: 600;
+  cursor: pointer;
+  padding: 0;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+.ds-fw-notes-toggle:hover {
+  color: #fff;
+}
+
+.ds-fw-notes {
+  margin: 8px 0 0;
+  padding: 10px 12px;
+  max-height: 220px;
+  overflow-y: auto;
+  border-radius: 6px;
+  border: 1px solid var(--border);
+  background: rgba(0,0,0,0.25);
+  color: var(--text-muted);
+  font-family: 'JetBrains Mono', 'Consolas', monospace;
+  font-size: 11px;
+  line-height: 1.5;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+/* ── Selected-file chip (replaces firmware-hint) ─────────────────────────── */
+.ds-fw-file-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 10px;
+  padding: 5px 10px;
+  border-radius: 6px;
+  border: 1px solid var(--border);
+  background: rgba(255,255,255,0.03);
+  font-size: 11px;
+  color: var(--text-primary);
+}
+
+.ds-fw-file-chip svg {
+  color: var(--accent);
+}
+
+.ds-fw-file-chip-size {
+  color: var(--text-muted);
+  font-family: 'JetBrains Mono', 'Consolas', monospace;
+  font-size: 10px;
+}
+
+.ds-section-tag {
+  margin-left: 6px;
+  padding: 1px 8px;
+  border-radius: 999px;
+  background: rgba(255,255,255,0.04);
+  border: 1px solid var(--border);
+  color: var(--text-muted);
+  font-size: 9px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+/* ── Auto-update CTA + progress panel ────────────────────────────────────── */
+.ds-fw-auto-update-row {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-bottom: 10px;
+  padding: 12px;
+  border-radius: 8px;
+  border: 1px solid rgba(255,170,60,0.3);
+  background: linear-gradient(180deg, rgba(255,170,60,0.08), rgba(255,170,60,0.03));
+}
+
+.ds-fw-auto-update-row--warn {
+  border-color: rgba(239,83,80,0.4);
+  background: linear-gradient(180deg, rgba(239,83,80,0.1), rgba(239,83,80,0.03));
+}
+
+.ds-fw-auto-update-row--dwc {
+  border-color: rgba(120,130,240,0.3);
+  background: linear-gradient(180deg, rgba(120,130,240,0.08), rgba(120,130,240,0.03));
+}
+
+.ds-fw-update-action-btn--secondary {
+  background: linear-gradient(180deg, #6977f0, #4b5ad4);
+  border-color: rgba(120,130,240,0.5);
+  color: #fff;
+  box-shadow: 0 2px 8px rgba(120,130,240,0.22);
+}
+
+.ds-fw-update-action-btn--secondary:hover:not(:disabled) {
+  box-shadow: 0 4px 12px rgba(120,130,240,0.32);
+}
+
+.ds-fw-auto-update-row--warn .ds-fw-auto-update-hint {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+}
+
+.ds-fw-auto-update-row--warn .ds-fw-auto-update-hint svg {
+  color: #ef5350;
+  flex-shrink: 0;
+  margin-top: 2px;
+}
+
+.ds-fw-update-action-btn {
+  align-self: flex-start;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 18px;
+  border-radius: 6px;
+  border: 1px solid rgba(255,170,60,0.5);
+  background: linear-gradient(180deg, #ffb347, #ef8d1f);
+  color: #1b1200;
+  font-family: inherit;
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+  box-shadow: 0 2px 8px rgba(255,170,60,0.25);
+  transition: transform 0.08s ease, box-shadow 0.12s ease, filter 0.12s ease;
+}
+
+.ds-fw-update-action-btn:hover:not(:disabled) {
+  transform: translateY(-1px);
+  filter: brightness(1.06);
+  box-shadow: 0 4px 12px rgba(255,170,60,0.35);
+}
+
+.ds-fw-update-action-btn:active:not(:disabled) {
+  transform: translateY(0);
+}
+
+.ds-fw-update-action-btn:disabled {
+  cursor: not-allowed;
+  opacity: 0.7;
+  box-shadow: none;
+  filter: saturate(0.85);
+}
+
+.ds-fw-auto-update-hint {
+  font-size: 10.5px;
+  color: var(--text-muted);
+  line-height: 1.45;
+}
+
+.ds-fw-auto-status {
+  margin-bottom: 10px;
+  padding: 10px 12px;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: rgba(255,255,255,0.03);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.ds-fw-auto-status--downloading,
+.ds-fw-auto-status--uploading,
+.ds-fw-auto-status--installing {
+  border-color: rgba(120,130,240,0.35);
+  background: linear-gradient(180deg, rgba(120,130,240,0.1), rgba(120,130,240,0.03));
+}
+
+.ds-fw-auto-status--done {
+  border-color: rgba(120,130,240,0.35);
+  background: linear-gradient(180deg, rgba(120,130,240,0.1), rgba(120,130,240,0.03));
+}
+
+.ds-fw-auto-status--reconnected {
+  border-color: rgba(72,187,120,0.45);
+  background: linear-gradient(180deg, rgba(72,187,120,0.14), rgba(72,187,120,0.04));
+}
+
+.ds-fw-auto-status--error {
+  border-color: rgba(239,83,80,0.45);
+  background: linear-gradient(180deg, rgba(239,83,80,0.12), rgba(239,83,80,0.04));
+}
+
+.ds-fw-auto-status-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 11.5px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.ds-fw-auto-status-msg {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.ds-fw-auto-status-msg svg {
+  flex-shrink: 0;
+  color: var(--accent);
+}
+
+.ds-fw-auto-status--reconnected .ds-fw-auto-status-msg svg {
+  color: #48bb78;
+}
+
+.ds-fw-auto-status--error .ds-fw-auto-status-msg svg {
+  color: #ef5350;
+}
+
+.ds-fw-auto-status-dismiss {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 4px;
+  border-radius: 4px;
+  border: 1px solid var(--border);
+  background: rgba(255,255,255,0.04);
+  color: var(--text-muted);
+  cursor: pointer;
+  transition: background 0.12s, color 0.12s;
+}
+
+.ds-fw-auto-status-dismiss:hover {
+  background: rgba(255,255,255,0.08);
+  color: var(--text-primary);
+}
+
+.ds-fw-auto-progress-bar {
+  width: 100%;
+  height: 6px;
+  border-radius: 3px;
+  background: rgba(0,0,0,0.3);
+  overflow: hidden;
+}
+
+.ds-fw-auto-progress-fill {
+  height: 100%;
+  background: linear-gradient(90deg, var(--accent), #8aa0ff);
+  transition: width 0.18s ease;
+}
+
+.ds-fw-auto-error {
+  font-size: 10.5px;
+  color: var(--text-muted);
+  line-height: 1.5;
+}
+
 /* ── Upload progress bar ─────────────────────────────────────────────────── */
 .duet-settings__progress-wrapper {
   margin-top: 10px;

@@ -2,7 +2,7 @@ import { useState, useRef, useEffect } from 'react';
 import {
   Save, FolderOpen, Undo2, Redo2, FileUp, Download,
   Moon, Sun, Bell, HelpCircle, Printer, Settings, User,
-  FilePlus, ChevronRight,
+  FilePlus, FileX, ChevronRight,
 } from 'lucide-react';
 import { useCADStore } from '../../store/cadStore';
 import { useComponentStore } from '../../store/componentStore';
@@ -33,6 +33,10 @@ export function QuickAccessBar({ fileInputRef, loadFileInputRef, onImport }: Qui
   const featureCount = useCADStore((s) => s.features.length);
   const sketchCount = useCADStore((s) => s.sketches.length);
   const componentNewDocument = useComponentStore((s) => s.newDocument);
+  // File menu only makes sense in the design workspace — the slicer and
+  // printer workspaces have their own file/job concepts.
+  const workspaceMode = useCADStore((s) => s.workspaceMode);
+  const showFileMenu = workspaceMode === 'design';
 
   const showPrinter = usePrinterStore((s) => s.showPrinter);
   const setShowPrinter = usePrinterStore((s) => s.setShowPrinter);
@@ -40,7 +44,8 @@ export function QuickAccessBar({ fileInputRef, loadFileInputRef, onImport }: Qui
   const printerConnected = usePrinterStore((s) => s.connected);
 
   const [fileMenuOpen, setFileMenuOpen] = useState(false);
-  const [newFileConfirm, setNewFileConfirm] = useState(false);
+  // null = modal hidden; 'new' / 'close' = modal showing with action-specific copy
+  const [confirmMode, setConfirmMode] = useState<'new' | 'close' | null>(null);
   const fileMenuRef = useRef<HTMLDivElement>(null);
 
   // Close the file menu when clicking outside
@@ -62,22 +67,29 @@ export function QuickAccessBar({ fileInputRef, loadFileInputRef, onImport }: Qui
   const doNewDocument = () => {
     cadNewDocument();
     componentNewDocument();
-    setNewFileConfirm(false);
+    setConfirmMode(null);
   };
 
   const handleNew = () => {
     closeMenu();
-    if (hasContent) {
-      setNewFileConfirm(true);
-    } else {
-      doNewDocument();
-    }
+    if (hasContent) setConfirmMode('new');
+    else doNewDocument();
+  };
+
+  // Close = always prompts a save choice, even when the workspace already
+  // looks empty — the user explicitly chose to "close the current file" and
+  // should always get the save-or-discard modal. After the choice, the
+  // workspace is reset to an empty "Untitled" document.
+  const handleClose = () => {
+    closeMenu();
+    setConfirmMode('close');
   };
 
   return (
     <div className="ribbon-quick-access">
       <div className="ribbon-quick-left">
-        {/* ── File menu ── */}
+        {/* ── File menu (design workspace only) ── */}
+        {showFileMenu && (
         <div className="file-menu-root" ref={fileMenuRef}>
           <button
             className={`file-menu-btn${fileMenuOpen ? ' open' : ''}`}
@@ -91,6 +103,11 @@ export function QuickAccessBar({ fileInputRef, loadFileInputRef, onImport }: Qui
                 <FilePlus size={15} />
                 <span>New</span>
                 <span className="file-menu-shortcut">Ctrl+N</span>
+              </button>
+              <button className="file-menu-item" onClick={handleClose}>
+                <FileX size={15} />
+                <span>Close</span>
+                <span className="file-menu-shortcut">Ctrl+W</span>
               </button>
               <div className="file-menu-separator" />
               <button className="file-menu-item" onClick={() => { loadFileInputRef.current?.click(); closeMenu(); }}>
@@ -116,25 +133,33 @@ export function QuickAccessBar({ fileInputRef, loadFileInputRef, onImport }: Qui
             </div>
           )}
         </div>
+        )}
 
-        <div className="ribbon-quick-divider" />
+        {/* File menu + undo/redo are design-workspace concepts; the slicer
+            and printer workspaces have their own action history that would
+            be confused by a shared undo button. */}
+        {showFileMenu && (
+          <>
+            <div className="ribbon-quick-divider" />
 
-        <button
-          className={`ribbon-quick-btn${undoStackLength === 0 ? ' ribbon-quick-btn-disabled' : ''}`}
-          title="Undo (Ctrl+Z)"
-          onClick={undoAction}
-          disabled={undoStackLength === 0}
-        >
-          <Undo2 size={14} />
-        </button>
-        <button
-          className={`ribbon-quick-btn${redoStackLength === 0 ? ' ribbon-quick-btn-disabled' : ''}`}
-          title="Redo (Ctrl+Y)"
-          onClick={redoAction}
-          disabled={redoStackLength === 0}
-        >
-          <Redo2 size={14} />
-        </button>
+            <button
+              className={`ribbon-quick-btn${undoStackLength === 0 ? ' ribbon-quick-btn-disabled' : ''}`}
+              title="Undo (Ctrl+Z)"
+              onClick={undoAction}
+              disabled={undoStackLength === 0}
+            >
+              <Undo2 size={14} />
+            </button>
+            <button
+              className={`ribbon-quick-btn${redoStackLength === 0 ? ' ribbon-quick-btn-disabled' : ''}`}
+              title="Redo (Ctrl+Y)"
+              onClick={redoAction}
+              disabled={redoStackLength === 0}
+            >
+              <Redo2 size={14} />
+            </button>
+          </>
+        )}
 
         <input ref={fileInputRef} type="file" accept=".step,.stp,.f3d,.stl,.obj" hidden onChange={onImport} />
         <input
@@ -184,30 +209,38 @@ export function QuickAccessBar({ fileInputRef, loadFileInputRef, onImport }: Qui
         </button>
       </div>
 
-      {/* ── New-document confirmation modal ── */}
-      {newFileConfirm && (
-        <div className="new-doc-overlay" onClick={() => setNewFileConfirm(false)}>
+      {/* ── New / Close confirmation modal (shared flow with per-action copy) ── */}
+      {confirmMode && (
+        <div className="new-doc-overlay" onClick={() => setConfirmMode(null)}>
           <div className="new-doc-modal" onClick={(e) => e.stopPropagation()}>
-            <div className="new-doc-title">Start a new document?</div>
+            <div className="new-doc-title">
+              {confirmMode === 'new' ? 'Start a new document?' : 'Close the current file?'}
+            </div>
             <div className="new-doc-body">
-              You have unsaved work. Would you like to save before starting a new document?
+              {confirmMode === 'new'
+                ? (hasContent
+                  ? 'You have unsaved work. Would you like to save before starting a new document?'
+                  : 'Start with a fresh workspace?')
+                : (hasContent
+                  ? 'Would you like to save before closing? Closing will reset the workspace.'
+                  : 'This will reset the workspace to an empty document.')}
             </div>
             <div className="new-doc-actions">
               <button
                 className="new-doc-btn new-doc-btn-save"
                 onClick={() => { saveToFile(); doNewDocument(); }}
               >
-                Save &amp; New
+                {confirmMode === 'new' ? 'Save & New' : 'Save & Close'}
               </button>
               <button
                 className="new-doc-btn new-doc-btn-discard"
                 onClick={doNewDocument}
               >
-                Discard &amp; New
+                {confirmMode === 'new' ? 'Discard & New' : 'Discard & Close'}
               </button>
               <button
                 className="new-doc-btn new-doc-btn-cancel"
-                onClick={() => setNewFileConfirm(false)}
+                onClick={() => setConfirmMode(null)}
               >
                 Cancel
               </button>

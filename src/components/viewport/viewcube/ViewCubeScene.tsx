@@ -177,16 +177,27 @@ function AxisArrow({ dir, color, label }: { dir: [number, number, number]; color
     return q;
   }, [dir]);
 
+  // Build the shaft geometry ONCE per direction. The previous inline
+  // <bufferAttribute args={[new Float32Array(...)]}> pattern re-allocated the
+  // Float32Array on every render and R3F rebuilt the GPU buffer each time,
+  // leaving the old one orphaned without an explicit dispose. We key the memo
+  // on dir's components (not the `end` array, which is a fresh literal each
+  // render) so the geometry is stable across re-renders.
+  const [dx, dy, dz] = dir;
+  const shaftGeom = useMemo(() => {
+    const g = new THREE.BufferGeometry();
+    g.setAttribute(
+      'position',
+      new THREE.Float32BufferAttribute([0, 0, 0, dx * len, dy * len, dz * len], 3),
+    );
+    return g;
+  }, [dx, dy, dz, len]);
+  useEffect(() => () => { shaftGeom.dispose(); }, [shaftGeom]);
+
   return (
     <group>
       {/* Line shaft */}
-      <line>
-        <bufferGeometry>
-          <bufferAttribute
-            attach="attributes-position"
-            args={[new Float32Array([0, 0, 0, ...end]), 3]}
-          />
-        </bufferGeometry>
+      <line geometry={shaftGeom}>
         <lineBasicMaterial color={color} linewidth={2} />
       </line>
       {/* Cone arrowhead */}

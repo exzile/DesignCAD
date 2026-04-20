@@ -61,6 +61,10 @@ export default function ExtrudePreview({ sketch, distance, direction }: {
         edgeMesh.renderOrder = 1;
       }
     } else {
+      // Two-sides bakes a CSG union into world-space geometry and the returned
+      // mesh has identity position/quaternion/scale — so the edges LineSegments
+      // is also intentionally NOT transformed. Do not "fix" by copying m's
+      // transform; that would shift the edges to the wrong place.
       const edgeGeom = new THREE.EdgesGeometry(m.geometry, 30);
       edgeMesh = new THREE.LineSegments(
         edgeGeom,

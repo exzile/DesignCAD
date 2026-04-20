@@ -2,7 +2,6 @@
 import { persist } from 'zustand/middleware';
 
 export const PANEL_IDS = [
-  'status',
   'tools',
   'tool-offsets',
   'workplace',
@@ -34,9 +33,7 @@ export type ColSpan = 3 | 4 | 6 | 8 | 12;
 export const VALID_SPANS: ColSpan[] = [3, 4, 6, 8, 12];
 
 const DEFAULT_ORDER: PanelId[] = [
-  // ── Row 1: machine state (12) ─────────────────────────────────────────────
-  'status',
-  // ── Row 2: active tool selector (12) ──────────────────────────────────────
+  // ── Row 1: active tool selector (12) ──────────────────────────────────────
   'tools',
   // ── Row 3: thermal management (8 + 4) ─────────────────────────────────────
   'temperature', 'fans',
@@ -56,7 +53,6 @@ const DEFAULT_ORDER: PanelId[] = [
 
 export const DEFAULT_COLSPANS: Record<PanelId, ColSpan> = {
   // full-width headers / rich card lists
-  'status':           12,
   'tools':            12,
   // wide panels — charts, jog grid, system info
   'temperature':       8,
@@ -82,7 +78,6 @@ export const DEFAULT_COLSPANS: Record<PanelId, ColSpan> = {
 export const ROW_HEIGHT = 90; // px
 
 export const DEFAULT_ROWSPANS: Record<PanelId, number> = {
-  'status':            2,
   'tools':             5,
   'temperature':       5,   // heater rows + history chart
   'fans':              3,

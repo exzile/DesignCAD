@@ -1181,26 +1181,69 @@ interface SerializedFeature extends Omit<Feature, 'mesh'> {
   };
 }
 
-const serializeFeature = (feature: Feature): SerializedFeature => {
+// Per-geometry cache of the Array.from-ed buffer data. `persist.partialize`
+// runs this on every `set()`, and for large imported STLs a fresh
+// `Array.from(pos)` on a 100k-vertex geometry allocates ~1.2MB every time
+// — doing it per store write tanked frame rate during unrelated interactions.
+// Since BufferGeometries are immutable once built (new ones are created per
+// feature rebuild, old ones disposed), a WeakMap keyed on the geometry
+// identity caches the serialized form and is invalidated naturally when
+// the geometry is garbage-collected.
+type SerializedMeshData = {
+  position: number[] | null;
+  index: number[] | null;
+  normal: number[] | null;
+};
+const _serializedMeshDataCache = new WeakMap<THREE.BufferGeometry, SerializedMeshData>();
+// Higher-level cache: serialized snapshot per Feature object identity.
+// Zustand preserves feature references across unrelated state updates, so
+// most features are untouched between calls. Hitting this cache skips the
+// object spread AND the mesh-data copy in one shot.
+const _serializedFeatureCache = new WeakMap<Feature, SerializedFeature>();
+
+// Exported for testing the persist round-trip. Not part of the public API.
+export const serializeFeature = (feature: Feature): SerializedFeature => {
+  const topCached = _serializedFeatureCache.get(feature);
+  if (topCached) return topCached;
   const { mesh, ...rest } = feature;
   const serialized: SerializedFeature = { ...rest };
   if (MESH_ONLY_TYPES.has(feature.type) && mesh) {
     const geo = (mesh as THREE.Mesh).geometry;
     if (geo) {
-      const pos = geo.attributes.position?.array;
-      const idx = geo.index?.array;
-      const nor = geo.attributes.normal?.array;
-      serialized._meshData = {
-        position: pos ? Array.from(pos) : null,
-        index: idx ? Array.from(idx) : null,
-        normal: nor ? Array.from(nor) : null,
-      };
+      const cached = _serializedMeshDataCache.get(geo);
+      if (cached) {
+        serialized._meshData = cached;
+      } else {
+        const pos = geo.attributes.position?.array;
+        const idx = geo.index?.array;
+        const nor = geo.attributes.normal?.array;
+        const data: SerializedMeshData = {
+          position: pos ? Array.from(pos) : null,
+          index: idx ? Array.from(idx) : null,
+          normal: nor ? Array.from(nor) : null,
+        };
+        _serializedMeshDataCache.set(geo, data);
+        serialized._meshData = data;
+      }
     }
   }
+  _serializedFeatureCache.set(feature, serialized);
   return serialized;
 };
 
-const deserializeFeature = (feature: Feature): Feature => {
+// Module-level singleton used for every rehydrated feature. Rehydration
+// (undo/redo, page reload, load-from-file) previously allocated a fresh
+// MeshPhysicalMaterial per feature and never disposed the old one — a 50-
+// feature document with 50 undo slots leaked 2500 orphan materials.
+// Tagging as shared prevents removeFeature's disposer from touching it.
+const REHYDRATED_FEATURE_MATERIAL: THREE.MeshPhysicalMaterial = (() => {
+  const m = new THREE.MeshPhysicalMaterial({ color: 0x888888, roughness: 0.4, metalness: 0.2 });
+  m.userData.shared = true;
+  return m;
+})();
+
+// Exported for testing the persist round-trip. Not part of the public API.
+export const deserializeFeature = (feature: Feature): Feature => {
   const sf = feature as unknown as SerializedFeature;
   if (MESH_ONLY_TYPES.has(feature.type) && sf._meshData) {
     const { position, index, normal } = sf._meshData;
@@ -1209,8 +1252,7 @@ const deserializeFeature = (feature: Feature): Feature => {
     if (index) geo.setIndex(new THREE.BufferAttribute(new Uint32Array(index), 1));
     if (normal) geo.setAttribute('normal', new THREE.BufferAttribute(new Float32Array(normal), 3));
     else if (position) geo.computeVertexNormals();
-    const mat = new THREE.MeshPhysicalMaterial({ color: 0x888888, roughness: 0.4, metalness: 0.2 });
-    const mesh = new THREE.Mesh(geo, mat);
+    const mesh = new THREE.Mesh(geo, REHYDRATED_FEATURE_MATERIAL);
     const { _meshData: _md, ...rest } = sf;
     void _md;
     return { ...(rest as unknown as Feature), mesh };
@@ -3542,7 +3584,6 @@ export const useCADStore = create<CADState>()(persist((set, get) => ({
             );
             if (probe) {
               const parts = GeometryEngine.splitByConnectedComponents(probe.geometry);
-              probe.geometry.dispose();
               if (parts.length > 1) {
                 for (let i = 1; i < parts.length; i++) {
                   const extraId = componentStore.addBody(
@@ -3555,6 +3596,10 @@ export const useCADStore = create<CADState>()(persist((set, get) => ({
                   }
                 }
               }
+              // splitByConnectedComponents returns [probe.geometry] (same ref)
+              // when singly connected; otherwise fresh allocations. Dispose the
+              // parts list — which contains the original when singly connected —
+              // so we never double-dispose.
               for (const g of parts) g.dispose();
             }
           } catch { /* ignore — fall back to single body */ }
@@ -6531,23 +6576,49 @@ export const useCADStore = create<CADState>()(persist((set, get) => ({
   },
 
   // Rebuild componentStore bodies from rehydrated features so the Browser
-  // tree shows Bodies after a page refresh. componentStore is not persisted.
+  // tree shows Bodies after a page refresh. componentStore IS persisted,
+  // so if its bodies already cover the features we should leave them alone.
+  //
+  // Rehydration is ASYNC (IndexedDB read) and cadStore + componentStore
+  // rehydrate independently. Previously this callback snapshotted
+  // `componentStore.bodies` before componentStore's own rehydrate had
+  // necessarily finished, which caused it to double-add bodies for features
+  // whose bodies had already been persisted. We now defer the rebuild
+  // until componentStore has finished hydrating.
   onRehydrateStorage: () => (state) => {
     if (!state) return;
-    const componentStore = useComponentStore.getState();
-    const existingBodyIds = new Set(Object.keys(componentStore.bodies));
-    for (const feature of state.features) {
-      if (feature.type !== 'extrude') continue;
-      const op = (feature.params?.operation as string) ?? 'new-body';
-      if (op !== 'new-body') continue;
-      // Skip if a body already exists for this feature
-      if (feature.bodyId && existingBodyIds.has(feature.bodyId)) continue;
-      const parentId = componentStore.activeComponentId ?? componentStore.rootComponentId;
-      const bodyLabel = (feature.bodyKind === 'surface' ? 'Surface' : 'Body') + ' ' + (Object.keys(componentStore.bodies).length + 1);
-      const bodyId = componentStore.addBody(parentId, bodyLabel);
-      if (bodyId) {
-        componentStore.addFeatureToBody(bodyId, feature.id);
+    const rebuild = () => {
+      const componentStore = useComponentStore.getState();
+      const existingBodyIds = new Set(Object.keys(componentStore.bodies));
+      // Also avoid creating duplicates when two features share a body id —
+      // track already-processed body ids locally.
+      const createdThisRun = new Set<string>();
+      for (const feature of state.features) {
+        if (feature.type !== 'extrude') continue;
+        const op = (feature.params?.operation as string) ?? 'new-body';
+        if (op !== 'new-body') continue;
+        if (feature.bodyId && (existingBodyIds.has(feature.bodyId) || createdThisRun.has(feature.bodyId))) continue;
+        const parentId = componentStore.activeComponentId ?? componentStore.rootComponentId;
+        const bodyLabel = (feature.bodyKind === 'surface' ? 'Surface' : 'Body') + ' ' + (Object.keys(componentStore.bodies).length + 1);
+        const bodyId = componentStore.addBody(parentId, bodyLabel);
+        if (bodyId) {
+          componentStore.addFeatureToBody(bodyId, feature.id);
+          createdThisRun.add(bodyId);
+        }
       }
+    };
+    // Zustand persist exposes hasHydrated / onFinishHydration on the store
+    // instance. Wait for componentStore if it hasn't finished rehydrating.
+    const compPersist = (useComponentStore as unknown as {
+      persist?: {
+        hasHydrated: () => boolean;
+        onFinishHydration: (cb: () => void) => (() => void) | void;
+      };
+    }).persist;
+    if (compPersist && !compPersist.hasHydrated()) {
+      compPersist.onFinishHydration(rebuild);
+    } else {
+      rebuild();
     }
   },
 

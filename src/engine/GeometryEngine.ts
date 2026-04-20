@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { Brush, Evaluator, ADDITION, SUBTRACTION, INTERSECTION } from 'three-bvh-csg';
 import { toCreasedNormals, mergeVertices } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import polygonClipping, { type MultiPolygon as PCMultiPolygon, type Ring as PCRing } from 'polygon-clipping';
+import { SimplifyModifier } from 'three/examples/jsm/modifiers/SimplifyModifier.js';
 import type { Sketch, SketchEntity, SketchPoint, SketchPlane } from '../types/cad';
 import { BODY_MATERIAL, SURFACE_MATERIAL } from '../components/viewport/scene/bodyMaterial';
 
@@ -166,12 +167,34 @@ export class GeometryEngine {
 
     // Reject single-triangle "faces". A truly flat face on a CAD body is
     // always at least 2 triangles (a quad is the minimum). A single isolated
-    // coplanar triangle on a curved surface (cylinder side, sphere, torus)
-    // would otherwise produce a valid 3-point boundary and let the user
-    // press-pull from a cylinder's side — which isn't a flat face at all.
-    // Single-triangle CAD faces (e.g. tetrahedron sides) are extremely rare
-    // in practice; rejecting them here is the correct trade-off.
+    // coplanar triangle on a curved surface would otherwise produce a valid
+    // 3-point boundary.
     if (coplanarTris.length < 2) return null;
+
+    // Reject curved-surface fragments. On a tessellated cylinder the two
+    // triangles of a single side-quad are PERFECTLY coplanar with each other
+    // (same flat-shaded face normal) and pass the length >= 2 check — so we
+    // also count triangles in a WIDER cone (cos 45°). If the wider set is
+    // strictly larger than the tight set, the coplanar region has soft-angle
+    // neighbors (adjacent cylinder-side quads, 11.25° away for 32 segments),
+    // meaning the face is a strip of a curved surface rather than a real
+    // flat face. A genuine flat face's neighbors meet at a HARD edge (> 45°
+    // typically 90°), so the wider count equals the tight count.
+    const SOFT_COS = 0.707; // cos(45°)
+    let softCount = 0;
+    for (let t = 0; t < triCount; t++) {
+      const [a, b, c] = getTriIndices(t);
+      const va = getWorldVert(a), vb = getWorldVert(b), vc = getWorldVert(c);
+      const n = triNormal(va, vb, vc);
+      if (n.lengthSq() < 0.5) continue;
+      if (n.dot(hitNormal) < SOFT_COS) continue;
+      // Use a looser plane-distance bound too — adjacent quad triangles on a
+      // cylinder may sit slightly off the hit triangle's plane.
+      const off = n.dot(va);
+      if (Math.abs(off - hitOffset) > planeTol * 4) continue;
+      softCount++;
+    }
+    if (softCount > coplanarTris.length) return null;
 
     // Merge vertices at the same world position so CSG seam duplicates are
     // treated as the same vertex. Uses spatial hashing with a merge radius
@@ -721,6 +744,12 @@ export class GeometryEngine {
     if (polys.length <= 1) return shapes;
 
     let atoms: PCMultiPolygon[] = [polys[0]];
+    // Incrementally track the union of all input polygons seen so far.
+    // Previous implementation rebuilt this each iteration via
+    // `union(atoms[0], ...atoms.slice(1))` — O(N²) polygon-clipping work.
+    // Equivalent because the atoms partition the running union, and a union
+    // of polygons equals the union of their atomic partition.
+    let runningUnion: PCMultiPolygon = polys[0];
 
     for (let i = 1; i < polys.length; i++) {
       const P = polys[i];
@@ -737,12 +766,17 @@ export class GeometryEngine {
         } catch { /* skip */ }
       }
 
-      // Piece of P that's outside every previous atom
+      // Piece of P that's outside everything seen before — one difference call
+      // against the cumulative union instead of re-unioning all prior atoms.
       try {
-        const prevUnion = polygonClipping.union(atoms[0], ...atoms.slice(1));
-        const onlyP = polygonClipping.difference(P, prevUnion);
+        const onlyP = polygonClipping.difference(P, runningUnion);
         if (onlyP.length > 0) newAtoms.push(onlyP);
       } catch { /* skip */ }
+
+      // Extend the running union with this iteration's input polygon.
+      try {
+        runningUnion = polygonClipping.union(runningUnion, P);
+      } catch { /* skip — next iteration will use stale union, still correct-ish */ }
 
       if (newAtoms.length > 0) atoms = newAtoms;
     }
@@ -2287,7 +2321,20 @@ export class GeometryEngine {
     if (!shape) return null;
 
     const points = shape.getPoints(64);
-    const lathePoints = points.map(p => new THREE.Vector2(Math.abs(p.x), p.y));
+    // A revolve profile must live on ONE side of the axis of revolution — if
+    // it straddles the axis, the revolved surface self-intersects and the
+    // resulting solid is invalid. Previously this silently called
+    // `Math.abs(p.x)`, which mirrored the negative-x half onto the positive
+    // side and produced misleading geometry. Detect the invalid case, and
+    // only apply the abs() when every sample is already on the same side
+    // (tiny numerical drift across the axis).
+    const minX = points.reduce((m, p) => Math.min(m, p.x), Infinity);
+    const maxX = points.reduce((m, p) => Math.max(m, p.x), -Infinity);
+    if (minX < -1e-3 && maxX > 1e-3) {
+      // Profile genuinely crosses the axis — abort rather than silently distort.
+      return null;
+    }
+    const lathePoints = points.map((p) => new THREE.Vector2(Math.abs(p.x), p.y));
 
     // LatheGeometry always revolves around world +Y. To honor the caller's
     // axis (X/Z/centerline/arbitrary), build the lathe in its local frame and
@@ -3247,77 +3294,108 @@ export class GeometryEngine {
   ): THREE.Vector3[][] {
     if (segments.length === 0) return [];
 
-    const tolSq = tol * tol;
+    // Bucket every endpoint into a spatial grid so we can pair coincident
+    // points in O(n) rather than O(n²). The previous implementation used a
+    // "first match wins + break" pairing which silently orphaned the third
+    // endpoint at a T-junction (three edges meeting at one point), so
+    // section sketches / CSG intersection curves randomly split at shared
+    // vertices. The fix is to group ALL coincident endpoints at each
+    // location and walk via an adjacency list (any unused neighbor can
+    // continue the chain), rather than a unique-partner scheme.
 
-    // Build adjacency: for each segment endpoint, find adjacent segment indices
-    // We store: endpointList[i] = { pt, segIdx, endIdx (0 or 1) }
-    interface EP { pt: THREE.Vector3; segIdx: number; endIdx: 0 | 1 }
-    const endpoints: EP[] = [];
+    const cell = Math.max(tol * 2, 1e-6);
+    const keyFor = (p: THREE.Vector3): string => {
+      return `${Math.round(p.x / cell)}|${Math.round(p.y / cell)}|${Math.round(p.z / cell)}`;
+    };
+
+    // For each segment endpoint, the node id is a canonical bucket key.
+    // node[segIdx*2 + endIdx] = bucket key
+    const nodeOf: string[] = new Array(segments.length * 2);
+    // bucketToSegEnds[key] = list of {segIdx, endIdx} — every endpoint that
+    // lands in that bucket.
+    const bucketToSegEnds = new Map<string, Array<{ segIdx: number; endIdx: 0 | 1 }>>();
+
+    const addEndpoint = (p: THREE.Vector3, segIdx: number, endIdx: 0 | 1) => {
+      // Check the 3×3×3 neighborhood for an existing bucket close enough —
+      // handles the "vertex sits right on a grid boundary" case so two
+      // points within `tol` always map to the same node.
+      const cx = Math.round(p.x / cell), cy = Math.round(p.y / cell), cz = Math.round(p.z / cell);
+      for (let dx = -1; dx <= 1; dx++)
+        for (let dy = -1; dy <= 1; dy++)
+          for (let dz = -1; dz <= 1; dz++) {
+            const k = `${cx + dx}|${cy + dy}|${cz + dz}`;
+            const group = bucketToSegEnds.get(k);
+            if (!group) continue;
+            // Compare to any existing member — they all share a bucket so
+            // any is a representative.
+            const probe = segments[group[0].segIdx][group[0].endIdx];
+            if (probe.distanceToSquared(p) <= tol * tol) {
+              group.push({ segIdx, endIdx });
+              nodeOf[segIdx * 2 + endIdx] = k;
+              return;
+            }
+          }
+      const k = keyFor(p);
+      bucketToSegEnds.set(k, [{ segIdx, endIdx }]);
+      nodeOf[segIdx * 2 + endIdx] = k;
+    };
+
     for (let i = 0; i < segments.length; i++) {
-      endpoints.push({ pt: segments[i][0], segIdx: i, endIdx: 0 });
-      endpoints.push({ pt: segments[i][1], segIdx: i, endIdx: 1 });
-    }
-
-    // For each endpoint, find its "partner" (another endpoint of a *different* segment
-    // that is within tol). Store as adjacency[epIdx] = epIdx of partner | -1.
-    const partner = new Array<number>(endpoints.length).fill(-1);
-    for (let i = 0; i < endpoints.length; i++) {
-      if (partner[i] !== -1) continue;
-      for (let j = i + 1; j < endpoints.length; j++) {
-        if (partner[j] !== -1) continue;
-        if (endpoints[i].segIdx === endpoints[j].segIdx) continue;
-        if (endpoints[i].pt.distanceToSquared(endpoints[j].pt) < tolSq) {
-          partner[i] = j;
-          partner[j] = i;
-          break;
-        }
-      }
+      addEndpoint(segments[i][0], i, 0);
+      addEndpoint(segments[i][1], i, 1);
     }
 
     const usedSegs = new Set<number>();
     const polylines: THREE.Vector3[][] = [];
 
+    // Pick an unused edge at `endpointKey` that's not segIgnore.
+    const nextUnusedAt = (
+      endpointKey: string,
+      segIgnore: number,
+    ): { segIdx: number; endIdx: 0 | 1 } | null => {
+      const group = bucketToSegEnds.get(endpointKey);
+      if (!group) return null;
+      for (const g of group) {
+        if (g.segIdx === segIgnore) continue;
+        if (usedSegs.has(g.segIdx)) continue;
+        return g;
+      }
+      return null;
+    };
+
     for (let startSeg = 0; startSeg < segments.length; startSeg++) {
       if (usedSegs.has(startSeg)) continue;
 
-      // Walk the chain forward from endpoint 1 of startSeg
       const chain: THREE.Vector3[] = [segments[startSeg][0].clone(), segments[startSeg][1].clone()];
       usedSegs.add(startSeg);
 
-      // Try extending forward (from endpoint index 1 of current last segment)
-      let curSegIdx = startSeg;
-      let curEndIdx: 0 | 1 = 1;
+      // Extend forward from endpoint 1
+      let curSeg = startSeg;
+      let curEnd: 0 | 1 = 1;
       for (;;) {
-        const epIdx: number = curSegIdx * 2 + curEndIdx;
-        const partnerId: number = partner[epIdx];
-        if (partnerId === -1) break;
-        const nextSeg: number = endpoints[partnerId].segIdx;
-        if (usedSegs.has(nextSeg)) break;
-        usedSegs.add(nextSeg);
-        const nextEnd: 0 | 1 = endpoints[partnerId].endIdx;
-        // The "other" end of nextSeg is the new tip
-        const otherEnd: 0 | 1 = nextEnd === 0 ? 1 : 0;
-        chain.push(segments[nextSeg][otherEnd].clone());
-        curSegIdx = nextSeg;
-        curEndIdx = otherEnd;
+        const nodeKey = nodeOf[curSeg * 2 + curEnd];
+        const nxt = nextUnusedAt(nodeKey, curSeg);
+        if (!nxt) break;
+        usedSegs.add(nxt.segIdx);
+        const otherEnd: 0 | 1 = nxt.endIdx === 0 ? 1 : 0;
+        chain.push(segments[nxt.segIdx][otherEnd].clone());
+        curSeg = nxt.segIdx;
+        curEnd = otherEnd;
       }
 
-      // Try extending backward (from endpoint index 0 of startSeg)
-      curSegIdx = startSeg;
-      curEndIdx = 0;
+      // Extend backward from endpoint 0
+      curSeg = startSeg;
+      curEnd = 0;
       const prepend: THREE.Vector3[] = [];
       for (;;) {
-        const epIdx: number = curSegIdx * 2 + curEndIdx;
-        const partnerId: number = partner[epIdx];
-        if (partnerId === -1) break;
-        const nextSeg: number = endpoints[partnerId].segIdx;
-        if (usedSegs.has(nextSeg)) break;
-        usedSegs.add(nextSeg);
-        const nextEnd: 0 | 1 = endpoints[partnerId].endIdx;
-        const otherEnd: 0 | 1 = nextEnd === 0 ? 1 : 0;
-        prepend.unshift(segments[nextSeg][otherEnd].clone());
-        curSegIdx = nextSeg;
-        curEndIdx = otherEnd;
+        const nodeKey = nodeOf[curSeg * 2 + curEnd];
+        const nxt = nextUnusedAt(nodeKey, curSeg);
+        if (!nxt) break;
+        usedSegs.add(nxt.segIdx);
+        const otherEnd: 0 | 1 = nxt.endIdx === 0 ? 1 : 0;
+        prepend.unshift(segments[nxt.segIdx][otherEnd].clone());
+        curSeg = nxt.segIdx;
+        curEnd = otherEnd;
       }
 
       const full = [...prepend, ...chain];
@@ -5346,7 +5424,42 @@ export class GeometryEngine {
       result.userData = { ...mesh.userData };
       return result;
     } else {
-      return GeometryEngine.smoothMesh(mesh, iterations * 2, 0.3);
+      // Coarsen → decimate via quadric edge-collapse (three.js SimplifyModifier).
+      // Previous implementation called smoothMesh instead, which only perturbed
+      // vertex positions and never reduced triangle count — the feature
+      // silently did the wrong thing.
+      //
+      // Remove 20% of triangles per iteration, clamped to a minimum triangle
+      // count so we never collapse the mesh to nothing. SimplifyModifier
+      // requires a merged (indexed) geometry; non-indexed input has every
+      // vertex duplicated at triangle seams which blocks edge collapse.
+      const srcNI = mesh.geometry.clone();
+      const merged = srcNI.index ? srcNI : mergeVertices(srcNI, 1e-4);
+      if (!srcNI.index) srcNI.dispose();
+      const modifier = new SimplifyModifier();
+      let cur = merged;
+      for (let iter = 0; iter < iterations; iter++) {
+        const pos = cur.attributes.position as THREE.BufferAttribute;
+        const vertCount = pos.count;
+        // Target 20% reduction, but keep at least 60 vertices so we don't
+        // obliterate the mesh on a large iteration count.
+        const remove = Math.max(0, Math.min(vertCount - 60, Math.floor(vertCount * 0.2)));
+        if (remove < 3) break; // nothing meaningful left to simplify
+        const next = modifier.modify(cur, remove);
+        if (cur !== merged) cur.dispose();
+        cur = next;
+      }
+      cur.computeVertexNormals();
+      // `merged` and `cur` may be the same reference on iter-0 early-break.
+      if (cur === merged) {
+        const result = new THREE.Mesh(cur, mesh.material);
+        result.userData = { ...mesh.userData };
+        return result;
+      }
+      merged.dispose();
+      const result = new THREE.Mesh(cur, mesh.material);
+      result.userData = { ...mesh.userData };
+      return result;
     }
   }
 
@@ -5355,12 +5468,25 @@ export class GeometryEngine {
   static shellMesh(mesh: THREE.Mesh, thickness: number, direction: 'inward' | 'outward' | 'symmetric'): THREE.Mesh {
     const inwardDist = direction === 'outward' ? 0 : -thickness;
 
-    // Get outer geometry (clone of original)
-    const outerGeom = mesh.geometry.clone().toNonIndexed();
+    // Get outer geometry (clone of original) and weld coincident vertices.
+    // Shelling MUST use welded vertices so the offset is applied using each
+    // position's averaged normal, not a per-triangle face normal. The old
+    // implementation called `toNonIndexed()` first → every triangle kept its
+    // own copy of every shared corner vertex, and `computeVertexNormals`
+    // then gave each triangle its own face normal (not averaged). Offsetting
+    // along those opens seams between adjacent triangles — the classic
+    // "torn shell" failure mode. Merging vertices up front fixes it.
+    let outerGeom = mesh.geometry.clone();
     outerGeom.applyMatrix4(mesh.matrixWorld);
+    // Drop pre-existing normals so mergeVertices can unify by position alone.
+    outerGeom.deleteAttribute('normal');
+    outerGeom = mergeVertices(outerGeom, 1e-4);
     outerGeom.computeVertexNormals();
 
-    // Build inner shell: offset every vertex inward along its normal
+    // Build inner shell: offset every unique welded vertex along its
+    // averaged normal. Because the geometry is indexed with shared corner
+    // vertices, every triangle sharing a corner sees the same offset and
+    // the shell stays watertight.
     const innerGeom = outerGeom.clone();
     const innerPos = innerGeom.attributes.position as THREE.BufferAttribute;
     const innerNorm = innerGeom.attributes.normal as THREE.BufferAttribute;
@@ -5373,20 +5499,32 @@ export class GeometryEngine {
       );
     }
     innerPos.needsUpdate = true;
-    // Flip inner shell winding
-    const innerArr = innerPos.array as Float32Array;
-    for (let i = 0; i < innerArr.length; i += 9) {
-      for (let j = 0; j < 3; j++) {
-        const tmp = innerArr[i + 3 + j]; innerArr[i + 3 + j] = innerArr[i + 6 + j]; innerArr[i + 6 + j] = tmp;
+
+    // Flip inner shell winding — reverse each triangle's index order.
+    if (innerGeom.index) {
+      const idx = innerGeom.index;
+      for (let i = 0; i < idx.count; i += 3) {
+        const a = idx.getX(i + 1);
+        idx.setX(i + 1, idx.getX(i + 2));
+        idx.setX(i + 2, a);
       }
+      idx.needsUpdate = true;
     }
-    innerPos.needsUpdate = true;
     innerGeom.computeVertexNormals();
 
-    // Merge outer + inner into one geometry
-    const outerArr = Array.from(outerGeom.attributes.position.array as Float32Array);
-    const innerArrFull = Array.from(innerGeom.attributes.position.array as Float32Array);
-    const combined = new Float32Array([...outerArr, ...innerArrFull]);
+    // Merge outer + inner into one non-indexed geometry (simpler than
+    // concatenating two indexed geometries with offset indices).
+    const outerNI = outerGeom.toNonIndexed();
+    const innerNI = innerGeom.toNonIndexed();
+    outerGeom.dispose();
+    innerGeom.dispose();
+    const outerArr = outerNI.attributes.position.array as Float32Array;
+    const innerArr = innerNI.attributes.position.array as Float32Array;
+    const combined = new Float32Array(outerArr.length + innerArr.length);
+    combined.set(outerArr, 0);
+    combined.set(innerArr, outerArr.length);
+    outerNI.dispose();
+    innerNI.dispose();
     const geom = new THREE.BufferGeometry();
     geom.setAttribute('position', new THREE.BufferAttribute(combined, 3));
     geom.computeVertexNormals();
@@ -5429,11 +5567,32 @@ export class GeometryEngine {
   }
 
   // ── SLD16 — Remove Face and Heal ─────────────────────────────────────────
-  static removeFaceAndHeal(mesh: THREE.Mesh, faceNormal: THREE.Vector3, faceCentroid: THREE.Vector3, tol = 0.1): THREE.Mesh {
+  static removeFaceAndHeal(
+    mesh: THREE.Mesh,
+    faceNormal: THREE.Vector3,
+    faceCentroid: THREE.Vector3,
+    // `normalTolRad` is the maximum angular difference (in radians) between a
+    // triangle's normal and the target face normal for it to count as
+    // "coplanar". The previous default of 0.1 was applied as `dot > 1 - 0.1`,
+    // i.e. cos(θ) > 0.9 → any triangle within ~26° matched, which on a
+    // curved fillet collected every triangle of the fillet and deleted too
+    // much. 2° matches real flat faces without catching adjacent curvature.
+    normalTolRad: number = 2 * Math.PI / 180,
+  ): THREE.Mesh {
     const geom = mesh.geometry.clone().toNonIndexed();
     geom.applyMatrix4(mesh.matrixWorld);
     const pos = geom.attributes.position as THREE.BufferAttribute;
     const n = faceNormal.clone().normalize();
+    const cosMin = Math.cos(normalTolRad);
+    // Test "same plane" by comparing the plane-equation offset (n·p = d) of
+    // each triangle to the target face's offset. This is the correct planar-
+    // coplanarity test — previous centroid-distance check was scaled by the
+    // mesh bounding sphere and was too tight for geometries whose face spans
+    // most of the bounding box (a simple box's +Y face triangle centroids
+    // sit ~sqrt(2) from the face centroid, far beyond 5% of the radius).
+    if (!geom.boundingSphere) geom.computeBoundingSphere();
+    const planeTol = Math.max(0.01, (geom.boundingSphere?.radius ?? 1) * 0.02);
+    const planeOffset = n.dot(faceCentroid);
 
     const keptVerts: number[] = [];
     for (let i = 0; i < pos.count; i += 3) {
@@ -5442,7 +5601,9 @@ export class GeometryEngine {
       const c = new THREE.Vector3().fromBufferAttribute(pos, i + 2);
       const triN = new THREE.Vector3().crossVectors(b.clone().sub(a), c.clone().sub(a)).normalize();
       const triCen = a.clone().add(b).add(c).divideScalar(3);
-      if (triN.dot(n) > 1 - tol && triCen.distanceTo(faceCentroid) < tol * 10) continue;
+      const sameNormal = triN.dot(n) > cosMin;
+      const samePlane = Math.abs(n.dot(triCen) - planeOffset) < planeTol;
+      if (sameNormal && samePlane) continue;
       keptVerts.push(a.x, a.y, a.z, b.x, b.y, b.z, c.x, c.y, c.z);
     }
 

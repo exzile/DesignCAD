@@ -137,6 +137,7 @@ export interface DuetBoard {
   firmwareName: string;
   firmwareVersion: string;
   firmwareDate: string;
+  firmwareFileName?: string;
   iapFileNameSBC?: string;
   iapFileNameSD?: string;
   maxHeaters: number;

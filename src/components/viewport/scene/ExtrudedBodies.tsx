@@ -133,6 +133,37 @@ function RevolveItem({ feature, sketch }: { feature: Feature; sketch: Sketch | u
  * Each resulting body becomes a single pickable mesh. This keeps the scene
  * tree flat (one mesh per body) so press-pull face picking continues to work.
  */
+// Module-level WeakMap cache — per-sketch-object structural signature. Keyed
+// on the Sketch object identity; because Zustand sketches are immutable
+// (every edit produces a new Sketch object), a cached signature is
+// invalidated naturally by garbage collection when the old sketch is
+// replaced. Used by ExtrudedBodies to decide whether a sketch change is
+// relevant to any extrude feature before re-running the CSG pipeline.
+const _sketchSigCache = new WeakMap<Sketch, string>();
+function sketchStructuralSig(s: Sketch): string {
+  const cached = _sketchSigCache.get(s);
+  if (cached !== undefined) return cached;
+  const parts: string[] = [s.id];
+  const po = s.planeOrigin;
+  const pn = s.planeNormal;
+  parts.push(
+    String(po.x), String(po.y), String(po.z),
+    String(pn.x), String(pn.y), String(pn.z),
+  );
+  for (const e of s.entities) {
+    parts.push(e.id, e.type);
+    for (const p of e.points) {
+      parts.push(String(p.x), String(p.y), String(p.z));
+    }
+    if (e.radius != null) parts.push('r', String(e.radius));
+    if (e.startAngle != null) parts.push('sa', String(e.startAngle));
+    if (e.endAngle != null) parts.push('ea', String(e.endAngle));
+  }
+  const sig = parts.join('|');
+  _sketchSigCache.set(s, sig);
+  return sig;
+}
+
 export default function ExtrudedBodies() {
   const features = useCADStore((s) => s.features);
   const sketches = useCADStore((s) => s.sketches);
@@ -156,6 +187,18 @@ export default function ExtrudedBodies() {
       cache.clear();
     };
   }, []);
+  // Evict cache entries for bodies that have been removed from the store —
+  // otherwise their cloned MeshStandardMaterial would leak for the lifetime of
+  // ExtrudedBodies. Runs whenever the bodies map changes.
+  useEffect(() => {
+    const cache = materialCache.current;
+    for (const bodyId of Array.from(cache.keys())) {
+      if (!bodiesById[bodyId]) {
+        cache.get(bodyId)!.mat.dispose();
+        cache.delete(bodyId);
+      }
+    }
+  }, [bodiesById]);
 
   const getMaterial = useCallback(
     (featureComponentId: string | undefined, bodyId: string | undefined, isSurface = false): THREE.Material => {
@@ -217,6 +260,27 @@ export default function ExtrudedBodies() {
     const taperAngle2 = (feature.params.taperAngle2 as number) ?? taperAngle;
     return GeometryEngine.buildExtrudeFeatureMesh(sketchForOp, distance, direction, taperAngle, startOffset, distance2, taperAngle2);
   };
+
+  // Content-based signature of the sketches actually referenced by active
+  // extrude features. Editing an unrelated sketch (e.g. a sketch driving a
+  // different tool) leaves this string stable, so the expensive CSG
+  // pipeline below doesn't re-run. Uses a module-level WeakMap so the
+  // per-sketch part of the signature is computed ONCE per sketch object —
+  // subsequent re-renders just do N cheap Map lookups.
+  const relevantSketchesSig = useMemo(() => {
+    const usedIds = new Set<string>();
+    for (const f of features) {
+      if (f.type === 'extrude' && isActive(f) && !f.mesh && f.sketchId) usedIds.add(f.sketchId);
+    }
+    const parts: string[] = [];
+    for (const s of sketches) {
+      if (!usedIds.has(s.id)) continue;
+      parts.push(sketchStructuralSig(s));
+    }
+    return parts.join('~');
+    // isActive is stable over this effect scope; features is the real signal.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [features, sketches]);
 
   const { bodies, featureIds, featureComponentIds, featureBodyIds } = useMemo(() => {
     // Features with a stored mesh (thin/taper extrude) are rendered directly — skip CSG.
@@ -326,8 +390,12 @@ export default function ExtrudedBodies() {
     commitCurrent();
 
     return { bodies: outBodies, featureIds: outIds, featureComponentIds: outComponentIds, featureBodyIds: outBodyIds };
+  // `relevantSketchesSig` is the content signature of only the sketches
+  // referenced by active extrude features — so unrelated sketch edits
+  // (renaming a measurement sketch, drawing in a non-extrude sketch, etc.)
+  // leave this stable and do not rebuild every body.
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [features, sketches, rollbackIndex]);
+  }, [features, relevantSketchesSig, rollbackIndex]);
 
   useEffect(() => {
     return () => {
@@ -356,7 +424,11 @@ export default function ExtrudedBodies() {
         const bodySelectable = bodyId ? (bodiesById[bodyId]?.selectable !== false) : true;
         return (
           <BodyMesh
-            key={`${fId}::${bodyId ?? i}`}
+            // Always include the index — when a feature's split produces more
+            // parts than allocated extraBodyIds, the fallback reuses the primary
+            // bodyId for multiple entries and React would drop all but one
+            // sibling if they shared a key.
+            key={`${fId}::${bodyId ?? 'x'}::${i}`}
             geometry={geom}
             material={getMaterial(featureComponentIds[i], bodyId)}
             featureId={fId}

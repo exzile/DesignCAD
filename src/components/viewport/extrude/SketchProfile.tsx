@@ -26,14 +26,21 @@ export default function SketchProfile({
    */
   hidden?: boolean;
 }) {
-  const material =
-    state === 'selected' ? PROFILE_SELECTED_MATERIAL :
-    state === 'hover'    ? PROFILE_HOVER_MATERIAL    :
-                           PROFILE_MATERIAL;
+  // Single per-component animated material — not swapped when state changes.
+  // Color/opacity are mutated per-frame so we never re-trigger the mesh memo
+  // (which would re-triangulate the profile geometry on every hover tick).
+  // Cloned from PROFILE_MATERIAL so the shared singleton stays pristine.
+  const animatedMaterial = useMemo(() => {
+    const m = PROFILE_MATERIAL.clone();
+    m.transparent = true;
+    return m;
+  }, []);
 
-  const animatedMaterial = useMemo(() => material.clone(), [material]);
   const meshRef = useRef<THREE.Mesh | null>(null);
 
+  // Mesh (geometry) is keyed ONLY on sketch identity + profile index. State
+  // changes must not recreate the geometry — that was the source of the
+  // expensive re-triangulation on every hover.
   const mesh = useMemo(() => {
     const created = GeometryEngine.createSketchProfileMesh(sketch, animatedMaterial, profileIndex);
     if (created) {
@@ -48,27 +55,46 @@ export default function SketchProfile({
   useFrame(({ clock, invalidate }) => {
     const m = meshRef.current?.material;
     if (!(m instanceof THREE.MeshBasicMaterial)) return;
+    // Resolve target color/opacity from state + hidden. Color is mutated in
+    // place to avoid allocating a fresh THREE.Color each frame.
+    let targetColor: number;
+    let targetOpacity: number;
+    let pulsing = false;
     if (hidden) {
-      m.opacity = 0; // fully transparent but still pickable
-      return;
-    }
-    if (state === 'hover') {
-      const pulse = 0.5 + 0.5 * Math.sin(clock.elapsedTime * 6);
-      m.opacity = 0.24 + pulse * 0.22;
-      invalidate(); // keep pulsing in frameloop="demand" mode
+      // Invisible but still pickable by the raycaster
+      targetColor = PROFILE_MATERIAL.color.getHex();
+      targetOpacity = 0;
     } else if (state === 'selected') {
-      m.opacity = 0.48;
+      targetColor = PROFILE_SELECTED_MATERIAL.color.getHex();
+      targetOpacity = 0.48;
+    } else if (state === 'hover') {
+      targetColor = PROFILE_HOVER_MATERIAL.color.getHex();
+      const pulse = 0.5 + 0.5 * Math.sin(clock.elapsedTime * 6);
+      targetOpacity = 0.24 + pulse * 0.22;
+      pulsing = true;
     } else {
-      m.opacity = 0.18;
+      targetColor = PROFILE_MATERIAL.color.getHex();
+      targetOpacity = 0.18;
     }
+    // Only invalidate (request a re-render) when a value actually changed OR
+    // a pulse is active — keeps frameloop="demand" from running every frame.
+    const prevColor = m.color.getHex();
+    const prevOpacity = m.opacity;
+    const changed = pulsing || prevColor !== targetColor || Math.abs(prevOpacity - targetOpacity) > 1e-4;
+    if (prevColor !== targetColor) m.color.setHex(targetColor);
+    if (prevOpacity !== targetOpacity) m.opacity = targetOpacity;
+    if (changed) invalidate();
   });
 
   useEffect(() => {
     return () => {
       mesh?.geometry.dispose();
-      animatedMaterial.dispose();
     };
-  }, [mesh, animatedMaterial]);
+  }, [mesh]);
+
+  useEffect(() => {
+    return () => { animatedMaterial.dispose(); };
+  }, [animatedMaterial]);
 
   if (!mesh) return null;
 

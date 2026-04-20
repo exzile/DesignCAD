@@ -76,6 +76,17 @@ export default function SketchInteraction() {
 
   const [drawingPoints, setDrawingPoints] = useState<SketchPoint[]>([]);
   const [mousePos, setMousePos] = useState<THREE.Vector3 | null>(null);
+  // Refs mirror the same state so the master-effect's DOM handlers can read
+  // the latest value WITHOUT having `drawingPoints` / `mousePos` in the
+  // effect's dep list. Previously they were deps → every setMousePos call
+  // (i.e. every pointermove) tore down and re-attached all 6 DOM listeners,
+  // silently dropping pointer events that arrived mid-teardown.
+  // Refs are synced in a useEffect (not during render) so React's
+  // react-hooks/refs rule stays happy.
+  const drawingPointsRef = useRef<SketchPoint[]>(drawingPoints);
+  const mousePosRef = useRef<THREE.Vector3 | null>(mousePos);
+  useEffect(() => { drawingPointsRef.current = drawingPoints; }, [drawingPoints]);
+  useEffect(() => { mousePosRef.current = mousePos; }, [mousePos]);
   // D65: snap indicator target
   const [snapTarget, setSnapTarget] = useState<{ worldPos: THREE.Vector3; type: 'endpoint' | 'midpoint' | 'center' | 'intersection' | 'perpendicular' | 'tangent' } | null>(null);
   const previewRef = useRef<THREE.Group>(null);
@@ -346,6 +357,12 @@ export default function SketchInteraction() {
     };
 
     const handleMouseMove = (event: MouseEvent) => {
+      // Read the latest state via refs so this handler doesn't need to live in
+      // the master effect's dep list — see drawingPointsRef/mousePosRef note
+      // at the top of the component for why.
+      const drawingPoints = drawingPointsRef.current;
+      const mousePos = mousePosRef.current;
+      void mousePos; // consulted below by the shared helpers via closure
       const point = getWorldPoint(event);
       if (point) {
         // D65 / NAV-24: entity snap — pass drawStart for tangent computation
@@ -403,6 +420,10 @@ export default function SketchInteraction() {
     };
 
     const handleClick = (event: MouseEvent) => {
+      // Snapshot latest state via refs (see note at top of component).
+      const drawingPoints = drawingPointsRef.current;
+      const mousePos = mousePosRef.current;
+      void mousePos;
       if (event.button !== 0) return;
       // Suppress the click that follows a drag-arc completion
       if (dragJustFinishedRef.current) { dragJustFinishedRef.current = false; return; }
@@ -602,6 +623,9 @@ export default function SketchInteraction() {
     };
 
     const handleKeyDown = (event: KeyboardEvent) => {
+      // Snapshot latest state via refs (see note at top of component).
+      const drawingPoints = drawingPointsRef.current;
+      void drawingPoints;
       if (event.key === 'Escape') {
         // S7: if in plane-pick mode, cancel it first
         if (planePickPendingRef.current) {
@@ -646,6 +670,8 @@ export default function SketchInteraction() {
     // Right-click stops the current drawing operation at the last placed point;
     // for spline/spline-control tools it commits the curve if ≥2 points are placed.
     const handleContextMenu = (event: MouseEvent) => {
+      // Snapshot latest state via refs (see note at top of component).
+      const drawingPoints = drawingPointsRef.current;
       if (activeTool === 'spline' && drawingPoints.length >= 2) {
         event.preventDefault();
         event.stopPropagation();
@@ -699,6 +725,8 @@ export default function SketchInteraction() {
     };
 
     const handlePointerMove = (event: PointerEvent) => {
+      // Snapshot latest state via refs (see note at top of component).
+      const drawingPoints = drawingPointsRef.current;
       if (event.buttons !== 1) return; // only while left button held
       const start = dragScreenStartRef.current;
       if (!start) return;
@@ -714,6 +742,9 @@ export default function SketchInteraction() {
     };
 
     const handlePointerUp = (event: PointerEvent) => {
+      // Snapshot latest state via refs (see note at top of component).
+      const drawingPoints = drawingPointsRef.current;
+      const mousePos = mousePosRef.current;
       if (event.button !== 0) return;
       if (!isDraggingArcRef.current) return;
       isDraggingArcRef.current = false;
@@ -808,7 +839,14 @@ export default function SketchInteraction() {
       canvas.removeEventListener('contextmenu', handleContextMenu);
       window.removeEventListener('keydown', handleKeyDown);
     };
-  }, [activeSketch, activeTool, drawingPoints, mousePos, getWorldPoint, findSnapCandidate, addSketchEntity, replaceSketchEntities, cycleEntityLinetype, setStatusMessage, polygonSides, filletRadius, chamferDist1, chamferDist2, chamferAngle, tangentCircleRadius, conicRho, blendCurveMode, camera, gl, raycaster, sketch3DMode, setSketch3DActivePlane, scene]);
+    // NOTE: `drawingPoints` and `mousePos` are intentionally NOT in this dep
+    // list even though they're closed over. Handlers read them via the refs
+    // (`drawingPointsRef` / `mousePosRef`) declared at the top of the
+    // component, which are kept in sync every render. Including them in deps
+    // would re-attach all 6 DOM listeners on every single pointermove
+    // (setMousePos fires constantly) — the original pre-fix behaviour that
+    // burned CPU and silently dropped events arriving mid-teardown.
+  }, [activeSketch, activeTool, getWorldPoint, findSnapCandidate, addSketchEntity, replaceSketchEntities, cycleEntityLinetype, setStatusMessage, polygonSides, filletRadius, chamferDist1, chamferDist2, chamferAngle, tangentCircleRadius, conicRho, blendCurveMode, camera, gl, raycaster, sketch3DMode, setSketch3DActivePlane, scene]);
 
   // D14: Project / Include Geometry — pick a solid face, project its boundary onto the sketch plane
   useEffect(() => {

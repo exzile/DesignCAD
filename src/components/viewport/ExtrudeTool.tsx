@@ -162,13 +162,21 @@ export default function ExtrudeTool() {
       return;
     }
 
+    // Cache the profile-mesh list across pointermove events — scene.traverse
+    // on every move is the single most expensive part of hover handling on
+    // larger scenes. The effect is rerun (via the profileEntriesKey dep below)
+    // whenever the set of profiles actually changes, so each run starts with
+    // a fresh cache and holds it for the lifetime of that listener binding.
+    let cachedMeshes: THREE.Mesh[] | null = null;
     const collectProfileMeshes = (): THREE.Mesh[] => {
-      const out: THREE.Mesh[] = [];
+      if (cachedMeshes) return cachedMeshes;
+      const fresh: THREE.Mesh[] = [];
       scene.traverse((obj) => {
         const m = obj as THREE.Mesh;
-        if (m.isMesh && m.userData?.profileKey) out.push(m);
+        if (m.isMesh && m.userData?.profileKey) fresh.push(m);
       });
-      return out;
+      cachedMeshes = fresh;
+      return cachedMeshes;
     };
 
     const updateMouse = (event: { clientX: number; clientY: number }) => {
@@ -295,7 +303,10 @@ export default function ExtrudeTool() {
         setHoveredIdRef.current(null);
       }
     };
-  }, [profilePickEnabled, gl, camera, raycaster, scene]);
+    // `profileEntries` is included so the listener rebinds (and the cached
+    // mesh list above is rebuilt) when profiles are added/removed — e.g. a
+    // sketch edit changes the atomic-region count.
+  }, [profilePickEnabled, gl, camera, raycaster, scene, profileEntries]);
 
   // Set hover status message whenever a face is being highlighted
   useEffect(() => {

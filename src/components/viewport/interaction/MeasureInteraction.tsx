@@ -5,6 +5,13 @@ import * as THREE from 'three';
 import { useCADStore } from '../../../store/cadStore';
 import { clearGroupChildren } from '../../../utils/threeDisposal';
 
+// Module-level scratch — reused across every pointer move to avoid per-event
+// heap churn. Keep these strictly for MeasureInteraction's own handlers.
+const _mvMouse = new THREE.Vector2();
+const _mvPlane = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0);
+const _mvPoint = new THREE.Vector3();
+const _mvP1 = new THREE.Vector3();
+
 /** Measure tool — click two points to measure distance, shows line + label in 3D scene */
 export default function MeasureInteraction() {
   const { camera, gl, raycaster, scene } = useThree();
@@ -66,14 +73,16 @@ export default function MeasureInteraction() {
     return () => { m1.dispose(); m2.dispose(); g.dispose(); dm.dispose(); lg.dispose(); };
   }, []);
 
-  // Raycast against scene geometry + ground plane fallback
+  // Raycast against scene geometry + ground plane fallback. All scratch
+  // objects are module-level (_mvMouse/_mvPlane/_mvPoint) — only the returned
+  // Vector3 is freshly allocated because callers keep it for later ticks.
   const getWorldPoint = useCallback((event: MouseEvent): THREE.Vector3 | null => {
     const rect = gl.domElement.getBoundingClientRect();
-    const mouse = new THREE.Vector2(
+    _mvMouse.set(
       ((event.clientX - rect.left) / rect.width) * 2 - 1,
       -((event.clientY - rect.top) / rect.height) * 2 + 1,
     );
-    raycaster.setFromCamera(mouse, camera);
+    raycaster.setFromCamera(_mvMouse, camera);
 
     // Try to hit meshes in the scene first — skip our own measure preview
     // objects so the raycast can't hit the marker dots / preview line.
@@ -87,9 +96,7 @@ export default function MeasureInteraction() {
     if (hits.length > 0) return hits[0].point.clone();
 
     // Fallback: intersect the ground plane (Y=0)
-    const groundPlane = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0);
-    const pt = new THREE.Vector3();
-    if (raycaster.ray.intersectPlane(groundPlane, pt)) return pt;
+    if (raycaster.ray.intersectPlane(_mvPlane, _mvPoint)) return _mvPoint.clone();
     return null;
   }, [camera, gl, raycaster, scene]);
 
@@ -107,7 +114,8 @@ export default function MeasureInteraction() {
           setStatusMessage(`Measure: click first point — ${point.x.toFixed(2)}, ${point.y.toFixed(2)}, ${point.z.toFixed(2)}`);
         } else if (pts.length === 1) {
           const p1 = pts[0];
-          const dist = point.distanceTo(new THREE.Vector3(p1.x, p1.y, p1.z));
+          _mvP1.set(p1.x, p1.y, p1.z);
+          const dist = point.distanceTo(_mvP1);
           setStatusMessage(`Distance: ${dist.toFixed(3)} ${u} — click to confirm`);
         }
       }
@@ -206,7 +214,9 @@ export default function MeasureInteraction() {
   const p1 = measurePoints.length >= 1 ? new THREE.Vector3(measurePoints[0].x, measurePoints[0].y, measurePoints[0].z) : null;
   const p2 = measurePoints.length >= 2 ? new THREE.Vector3(measurePoints[1].x, measurePoints[1].y, measurePoints[1].z) : null;
 
-  // Compute midpoint for the distance label
+  // Compute midpoint for the distance label. The p1/p2/midpoint allocations
+  // here run on every render the measure tool is active — fine; they're
+  // bounded and only apply while the tool is in use.
   const showLabel = p1 && (p2 || mousePos);
   const labelEnd = p2 || mousePos;
   const midpoint = showLabel ? p1.clone().add(labelEnd!).multiplyScalar(0.5) : null;

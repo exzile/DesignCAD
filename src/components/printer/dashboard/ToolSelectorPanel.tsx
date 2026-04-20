@@ -1,13 +1,42 @@
 ﻿import { Fragment, useState, useCallback } from 'react';
 import type { CSSProperties } from 'react';
-import { Wrench, XCircle, Droplets, Fan, Package } from 'lucide-react';
+import { Wrench, XCircle, Droplets, Fan, Package, Snowflake, Flame } from 'lucide-react';
 import { usePrinterStore } from '../../../store/printerStore';
 import { panelStyle, sectionTitleStyle as labelStyle } from '../../../utils/printerPanelStyles';
 import { HEATER_CHART_COLORS, heaterStateColor, toolStateColor } from './helpers';
 
+const MATERIAL_PRESETS: { name: string; tool: number; bed: number; color: string }[] = [
+  { name: 'PLA',  tool: 200, bed: 60,  color: 'rgb(110,200,120)' },
+  { name: 'PETG', tool: 240, bed: 80,  color: 'rgb(80,170,230)'  },
+  { name: 'ABS',  tool: 245, bed: 100, color: 'rgb(230,140,80)'  },
+  { name: 'TPU',  tool: 225, bed: 50,  color: 'rgb(200,130,220)' },
+];
+
+function HeatProgress({ current, active, state }: { current: number; active: number; state: string }) {
+  if (active <= 0) {
+    return <div className="ts-heatbar ts-heatbar--off" />;
+  }
+  const pct = Math.min(100, Math.max(0, (current / active) * 100));
+  const delta = active - current;
+  const atTemp = Math.abs(delta) < 3;
+  const heating = state === 'active' && delta > 3;
+  const cooling = state !== 'active' && current > 40;
+  const cls =
+    atTemp ? 'ts-heatbar ts-heatbar--ready'
+    : heating ? 'ts-heatbar ts-heatbar--heating'
+    : cooling ? 'ts-heatbar ts-heatbar--cooling'
+    : 'ts-heatbar';
+  return (
+    <div className={cls}>
+      <div className="ts-heatbar-fill" style={{ width: `${pct}%` }} />
+    </div>
+  );
+}
+
 export default function ToolSelectorPanel() {
   const model          = usePrinterStore((s) => s.model);
   const sendGCode      = usePrinterStore((s) => s.sendGCode);
+  const setBedTemp     = usePrinterStore((s) => s.setBedTemp);
   const filaments      = usePrinterStore((s) => s.filaments);
   const loadFilament   = usePrinterStore((s) => s.loadFilament);
   const unloadFilament = usePrinterStore((s) => s.unloadFilament);
@@ -18,11 +47,28 @@ export default function ToolSelectorPanel() {
   const fans          = model.fans ?? [];
   const extrudersModel = model.move?.extruders ?? [];
   const currentTool   = model.state?.currentTool ?? -1;
+  const hasBed        = (model.heat?.bedHeaters ?? []).some((i) => i >= 0);
 
   const [editingTemps, setEditingTemps] = useState<Record<string, string>>({});
 
   const handleSelectTool   = useCallback((n: number) => sendGCode(`T${n}`),   [sendGCode]);
   const handleDeselectTool = useCallback(()            => sendGCode('T-1'),   [sendGCode]);
+
+  const applyPreset = useCallback((toolTemp: number, bedTemp: number) => {
+    tools.forEach((t) => {
+      const temps = t.heaters.map(() => toolTemp).join(':');
+      if (temps) sendGCode(`G10 P${t.number} S${temps}`);
+    });
+    if (hasBed) setBedTemp(bedTemp);
+  }, [tools, sendGCode, setBedTemp, hasBed]);
+
+  const coolAll = useCallback(() => {
+    tools.forEach((t) => {
+      const zeros = t.heaters.map(() => 0).join(':');
+      if (zeros) sendGCode(`G10 P${t.number} S${zeros} R${zeros}`);
+    });
+    if (hasBed) setBedTemp(0);
+  }, [tools, sendGCode, setBedTemp, hasBed]);
 
   const handleTempChange = useCallback((toolNumber: number, heaterIdx: number, value: number, standby: boolean) => {
     const tool = (usePrinterStore.getState().model.tools ?? []).find((t) => t.number === toolNumber);
@@ -60,6 +106,25 @@ export default function ToolSelectorPanel() {
             <XCircle size={11} /> Deselect
           </button>
         )}
+      </div>
+
+      <div className="ts-presets">
+        {MATERIAL_PRESETS.map((p) => (
+          <button
+            key={p.name}
+            className="ts-preset-btn"
+            style={{ '--ts-preset-color': p.color } as CSSProperties}
+            onClick={() => applyPreset(p.tool, p.bed)}
+            title={`Set all tools to ${p.tool}°${hasBed ? ` and bed to ${p.bed}°` : ''}`}
+          >
+            <Flame size={11} />
+            <span className="ts-preset-name">{p.name}</span>
+            <span className="ts-preset-temp">{p.tool}°{hasBed ? `/${p.bed}°` : ''}</span>
+          </button>
+        ))}
+        <button className="ts-preset-btn ts-preset-btn--cool" onClick={coolAll} title="Cool all heaters">
+          <Snowflake size={11} /> Cool
+        </button>
       </div>
 
       {tools.map((tool) => {
@@ -131,6 +196,7 @@ export default function ToolSelectorPanel() {
                           onKeyDown={(e) => { if (e.key === 'Enter') handleTempSubmit(standbyKey, tool.number, hi, true); }}
                           title="Standby Â°C"
                         />
+                        <HeatProgress current={h.current} active={tool.active[hi] ?? h.active} state={h.state} />
                       </Fragment>
                     );
                   })}

@@ -499,7 +499,7 @@ function App() {
       ) : (
         <DuetPrinterPanel fullscreen />
       )}
-      <StatusBar />
+      {workspaceMode === 'design' && <StatusBar />}
       <ExportDialog />
       <ActiveDialog />
     </div>

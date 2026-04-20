@@ -37,11 +37,11 @@ export class DuetService {
   // ---------------------------------------------------------------------------
 
   private get baseUrl(): string {
-    let url = this.config.hostname.replace(/\/+$/, '');
-    if (!url.startsWith('http://') && !url.startsWith('https://')) {
-      url = 'http://' + url;
+    let host = this.config.hostname.replace(/\/+$/, '').replace(/^https?:\/\//, '');
+    if (import.meta.env.DEV) {
+      return `/duet-proxy/${host}`;
     }
-    return url;
+    return `http://${host}`;
   }
 
   private get wsUrl(): string {
@@ -87,17 +87,24 @@ export class DuetService {
       this.connected = true;
       this.emit('connected', null);
 
-      // Fetch initial model snapshot
+      // Fetch runtime snapshot then static config (tool defs, fan names, etc.)
       try {
-        this.objectModel = await this.getObjectModel();
+        const runtime = await this.getObjectModel(undefined, 'd99fn');
+        this.applyModelPatch(runtime as Record<string, unknown>);
+        await this.fetchConfigSnapshot();
       } catch {
         // Non-fatal – polling will catch up
       }
 
-      // Try WebSocket first, fall back to polling
-      try {
-        this.connectWebSocket();
-      } catch {
+      // Standalone RRF boards don't expose a /machine WebSocket — poll HTTP.
+      // DSF/SBC mode supports WS, so try it there and fall back to polling.
+      if (this.config.mode === 'sbc') {
+        try {
+          this.connectWebSocket();
+        } catch {
+          this.startPolling();
+        }
+      } else {
         this.startPolling();
       }
 
@@ -173,8 +180,10 @@ export class DuetService {
       : this.wsUrl;
 
     this.ws = new WebSocket(url);
+    let wsOpened = false;
 
     this.ws.onopen = () => {
+      wsOpened = true;
       this.emit('ws:open', null);
     };
 
@@ -189,15 +198,19 @@ export class DuetService {
     };
 
     this.ws.onerror = () => {
-      // Fall back to polling if the WebSocket errors out
       this.closeWebSocket();
       this.startPolling();
     };
 
     this.ws.onclose = () => {
       this.ws = null;
-      if (this.connected) {
+      if (!this.connected) return;
+      if (wsOpened) {
+        // WS was working — try to reconnect it
         this.scheduleReconnect();
+      } else {
+        // Never successfully opened (board doesn't support it) — fall back to polling
+        this.startPolling();
       }
     };
   }
@@ -235,6 +248,7 @@ export class DuetService {
 
   private startPolling(): void {
     if (this.pollTimer) return;
+    console.log('[DuetService] startPolling()');
     this.pollTimer = setInterval(async () => {
       if (!this.connected) {
         this.stopPolling();
@@ -244,10 +258,11 @@ export class DuetService {
 
       this.pollInFlight = true;
       try {
-        const model = await this.getObjectModel();
-        this.objectModel = model;
+        const patch = await this.getObjectModel(undefined, 'd99fn');
+        this.applyModelPatch(patch as Record<string, unknown>);
         this.emit('modelUpdate', this.objectModel);
       } catch (err) {
+        console.error('[DuetService] poll error', err);
         this.emit('error', err);
       } finally {
         this.pollInFlight = false;
@@ -329,13 +344,19 @@ export class DuetService {
     for (const key of Object.keys(source)) {
       const srcVal = source[key];
       const tgtVal = target[key];
-      if (
-        srcVal &&
-        typeof srcVal === 'object' &&
-        !Array.isArray(srcVal) &&
-        tgtVal &&
-        typeof tgtVal === 'object' &&
-        !Array.isArray(tgtVal)
+      if (Array.isArray(srcVal) && Array.isArray(tgtVal)) {
+        // Merge by index so runtime patches don't wipe config fields on array elements
+        output[key] = srcVal.map((sv, i) => {
+          const tv = tgtVal[i];
+          if (sv && typeof sv === 'object' && !Array.isArray(sv) &&
+              tv && typeof tv === 'object' && !Array.isArray(tv)) {
+            return this.deepMerge(tv as Record<string, unknown>, sv as Record<string, unknown>);
+          }
+          return sv;
+        });
+      } else if (
+        srcVal && typeof srcVal === 'object' && !Array.isArray(srcVal) &&
+        tgtVal && typeof tgtVal === 'object' && !Array.isArray(tgtVal)
       ) {
         output[key] = this.deepMerge(
           tgtVal as Record<string, unknown>,
@@ -346,6 +367,20 @@ export class DuetService {
       }
     }
     return output;
+  }
+
+  /** Fetch static config sections (tool defs, fan names, etc.) and merge into objectModel. */
+  private async fetchConfigSnapshot(): Promise<void> {
+    const sections = ['tools', 'heat', 'fans', 'move', 'boards', 'sensors', 'state'] as const;
+    const results = await Promise.allSettled(
+      sections.map((k) => this.getObjectModel(k, 'd99vn'))
+    );
+    for (let i = 0; i < sections.length; i++) {
+      const r = results[i];
+      if (r.status === 'fulfilled') {
+        this.applyModelPatch({ [sections[i]]: r.value });
+      }
+    }
   }
 
   async getObjectModel(
@@ -359,12 +394,11 @@ export class DuetService {
       return this.request<Partial<DuetObjectModel>>(url);
     }
 
-    // Standalone – /rr_model
+    // Standalone – /rr_model; default to full depth so nested objects aren't empty
     const params = new URLSearchParams();
     if (key) params.set('key', key);
-    if (flags) params.set('flags', flags);
-    const qs = params.toString();
-    const url = `${this.baseUrl}/rr_model${qs ? '?' + qs : ''}`;
+    params.set('flags', flags ?? 'd99fn');
+    const url = `${this.baseUrl}/rr_model?${params.toString()}`;
     const res = await this.request<{ key: string; result: Partial<DuetObjectModel> }>(url);
     return res.result ?? res as unknown as Partial<DuetObjectModel>;
   }

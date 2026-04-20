@@ -1,7 +1,6 @@
 ﻿import { useState, useCallback, useRef, useEffect, useMemo } from 'react';
 import type { DragEvent, MouseEvent } from 'react';
 import {
-  Activity,
   Wrench,
   Thermometer,
   Move,
@@ -38,7 +37,6 @@ import { colors as COLORS } from '../../utils/theme';
 import DashboardCard from './dashboard/DashboardCard';
 import ViewSettingsPanel from './dashboard/ViewSettingsPanel';
 import DuetCustomButtons from './DuetCustomButtons';
-import MachineStatusHeader from './dashboard/MachineStatusHeader';
 import TemperaturePanel from './dashboard/TemperaturePanel';
 import AxisMovementPanel from './dashboard/AxisMovementPanel';
 import ExtruderControlPanel from './dashboard/ExtruderControlPanel';
@@ -63,7 +61,6 @@ interface PanelDef {
 }
 
 const PANEL_DEFS: PanelDef[] = [
-  { id: 'status',           title: 'Machine Status',        icon: <Activity size={12} />,    component: <MachineStatusHeader /> },
   { id: 'tools',            title: 'Tools',                 icon: <Wrench size={12} />,      component: <ToolSelectorPanel /> },
   { id: 'tool-offsets',     title: 'Tool Offsets',          icon: <Sliders size={12} />,     component: <ToolOffsetsPanel /> },
   { id: 'workplace',        title: 'Workplace Coordinates', icon: <MapPin size={12} />,      component: <WorkplaceCoordinatesPanel /> },

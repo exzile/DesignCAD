@@ -3,8 +3,9 @@ import './PrinterPanel.css';
 import {
   LayoutDashboard, Activity, Terminal, Play, FolderOpen, FileCode, Grid3x3,
   History, Braces, Settings, X, OctagonAlert, Wifi, WifiOff, FlaskConical,
-  Sun, Moon, Search, Loader2,
+  Sun, Moon, Search, Loader2, Clock, Cpu,
 } from 'lucide-react';
+import { formatUptime } from './dashboard/helpers';
 import { usePrinterStore } from '../../store/printerStore';
 import { useThemeStore } from '../../store/themeStore';
 import { getDuetPrefs } from '../../utils/duetPrefs';
@@ -433,6 +434,8 @@ export default function DuetPrinterPanel({ fullscreen = false }: { fullscreen?: 
 
   // Derive display values from model
   const machineStatus = model.state?.status ?? 'disconnected';
+  const upTime = model.state?.upTime ?? 0;
+  const board = model.boards?.[0];
   const currentTool = model.state?.currentTool !== undefined && model.state.currentTool >= 0
     ? `T${model.state.currentTool}`
     : 'None';
@@ -690,11 +693,34 @@ export default function DuetPrinterPanel({ fullscreen = false }: { fullscreen?: 
 
       {/* ---- Status Footer ---- */}
       <div style={styles.footer}>
-        <span style={{ ...styles.footerStatus, color: connected ? COLORS.success : COLORS.textDim }}>
-          {machineStatus}
+        <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+          <Activity size={11} style={{ color: connected ? COLORS.success : COLORS.textDim }} />
+          <span style={{ ...styles.footerStatus, color: connected ? COLORS.success : COLORS.textDim }}>
+            {machineStatus}
+          </span>
         </span>
-        <span style={{ color: COLORS.textDim }}>|</span>
+        <span style={{ color: COLORS.panelBorder }}>|</span>
         <span>Tool: {currentTool}</span>
+        {upTime > 0 && (
+          <>
+            <span style={{ color: COLORS.panelBorder }}>|</span>
+            <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+              <Clock size={10} /> {formatUptime(upTime)}
+            </span>
+          </>
+        )}
+        {board && (
+          <>
+            <span style={{ color: COLORS.panelBorder }}>|</span>
+            <span style={{ display: 'flex', alignItems: 'center', gap: 4 }} title={`${board.firmwareName ?? ''} ${board.firmwareVersion ?? ''}`.trim()}>
+              <Cpu size={10} />
+              <span>{board.name || board.shortName}</span>
+              {board.firmwareVersion && (
+                <span style={{ color: COLORS.textDim }}>· {board.firmwareVersion}</span>
+              )}
+            </span>
+          </>
+        )}
 
         {printProgress !== null && (
           <div style={styles.footerProgress}>

@@ -520,7 +520,7 @@
 }
 
 .fan-card {
-  background: rgba(0,0,0,0.2);
+  background: transparent;
   border-left: 3px solid rgba(56,189,210,0.75);
   border-radius: 0 7px 7px 0;
   padding: 9px 12px 9px 11px;
@@ -607,61 +607,388 @@
   font-weight: 700;
 }
 
+.fan-preset-btn:disabled { opacity: 0.35; cursor: not-allowed; }
+
+@keyframes fan-spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+.fan-icon-wrap {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  flex-shrink: 0;
+}
+
+.fan-icon-wrap--spin {
+  animation-name: fan-spin;
+  animation-timing-function: linear;
+  animation-iteration-count: infinite;
+}
+
+.fan-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  font-size: 9px;
+  font-weight: 700;
+  padding: 1px 6px;
+  border-radius: 4px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.fan-badge--thermo {
+  background: rgba(240,170,60,0.12);
+  border: 1px solid rgba(240,170,60,0.3);
+  color: #f0aa3c;
+}
+
 /* =================================================================
    Macro panel  (mc-* namespace)
    ================================================================= */
 
+.mc-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.mc-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.mc-count {
+  margin-left: 6px;
+  padding: 1px 7px;
+  border-radius: 999px;
+  background: rgba(155,143,232,0.15);
+  border: 1px solid rgba(155,143,232,0.3);
+  color: rgba(220,215,255,0.85);
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.3px;
+}
+
+.mc-new-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  height: 22px;
+  padding: 0 9px;
+  border-radius: 5px;
+  border: 1px solid rgba(155,143,232,0.35);
+  background: rgba(155,143,232,0.12);
+  color: rgba(220,215,255,0.9);
+  font-family: inherit;
+  font-size: 11px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.12s, border-color 0.12s, color 0.12s;
+}
+
+.mc-new-btn:not(:disabled):hover,
+.mc-new-btn.is-active {
+  background: rgba(155,143,232,0.25);
+  border-color: rgba(155,143,232,0.6);
+  color: #fff;
+}
+
+.mc-new-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.mc-icon-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  border-radius: 5px;
+  border: 1px solid rgba(255,255,255,0.08);
+  background: rgba(255,255,255,0.03);
+  color: rgba(200,200,220,0.65);
+  cursor: pointer;
+  transition: background 0.12s, border-color 0.12s, color 0.12s;
+}
+
+.mc-icon-btn:not(:disabled):hover {
+  background: rgba(155,143,232,0.15);
+  border-color: rgba(155,143,232,0.35);
+  color: #fff;
+}
+
+.mc-icon-btn:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+}
+
+.mc-icon-btn--danger {
+  color: rgb(240,130,130);
+  border-color: rgba(240,100,100,0.35);
+  background: rgba(240,100,100,0.12);
+}
+
+.mc-icon-btn--danger:not(:disabled):hover {
+  background: rgba(240,100,100,0.25);
+  border-color: rgba(240,100,100,0.65);
+  color: #fff;
+}
+
+.mc-create-form {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 10px;
+  margin-bottom: 10px;
+  border-radius: 6px;
+  border: 1px solid rgba(155,143,232,0.3);
+  background: rgba(155,143,232,0.06);
+}
+
+.mc-input {
+  width: 100%;
+  height: 26px;
+  padding: 0 9px;
+  border-radius: 5px;
+  border: 1px solid rgba(255,255,255,0.1);
+  background: rgba(0,0,0,0.25);
+  color: #e6e6f0;
+  font-family: inherit;
+  font-size: 12px;
+  outline: none;
+  transition: border-color 0.12s, background 0.12s;
+  box-sizing: border-box;
+}
+
+.mc-input:focus {
+  border-color: rgba(155,143,232,0.55);
+  background: rgba(0,0,0,0.4);
+}
+
+.mc-textarea {
+  width: 100%;
+  padding: 7px 9px;
+  border-radius: 5px;
+  border: 1px solid rgba(255,255,255,0.1);
+  background: rgba(0,0,0,0.3);
+  color: #d8d8e5;
+  font-family: 'JetBrains Mono', 'Fira Code', 'Consolas', monospace;
+  font-size: 11px;
+  line-height: 1.45;
+  outline: none;
+  resize: vertical;
+  min-height: 64px;
+  box-sizing: border-box;
+  transition: border-color 0.12s;
+}
+
+.mc-textarea:focus {
+  border-color: rgba(155,143,232,0.55);
+}
+
+.mc-create-actions {
+  display: flex;
+  gap: 6px;
+  justify-content: flex-end;
+}
+
+.mc-btn-action {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  height: 24px;
+  padding: 0 10px;
+  border-radius: 5px;
+  font-family: inherit;
+  font-size: 11px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.12s, border-color 0.12s, color 0.12s;
+  border: 1px solid transparent;
+}
+
+.mc-btn-action:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.mc-btn-action--cancel {
+  background: rgba(255,255,255,0.04);
+  border-color: rgba(255,255,255,0.12);
+  color: rgba(210,210,230,0.75);
+}
+
+.mc-btn-action--cancel:not(:disabled):hover {
+  background: rgba(255,255,255,0.08);
+  color: #fff;
+}
+
+.mc-btn-action--save {
+  background: rgba(100,200,140,0.18);
+  border-color: rgba(100,200,140,0.5);
+  color: rgb(160,240,180);
+}
+
+.mc-btn-action--save:not(:disabled):hover {
+  background: rgba(100,200,140,0.3);
+  border-color: rgba(100,200,140,0.8);
+  color: #fff;
+}
+
+.mc-search-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0 9px;
+  height: 26px;
+  margin-bottom: 8px;
+  border-radius: 5px;
+  border: 1px solid rgba(255,255,255,0.08);
+  background: rgba(0,0,0,0.2);
+  color: rgba(180,180,200,0.55);
+}
+
+.mc-input--search {
+  border: none;
+  background: transparent;
+  height: auto;
+  padding: 0;
+  font-size: 11px;
+}
+
+.mc-input--search:focus {
+  background: transparent;
+  border: none;
+}
+
 .mc-empty {
   text-align: center;
   font-size: 11px;
-  color: rgba(180,180,200,0.35);
-  padding: 8px 0;
+  color: rgba(180,180,200,0.45);
+  padding: 14px 8px;
+  border: 1px dashed rgba(255,255,255,0.08);
+  border-radius: 6px;
+  background: rgba(255,255,255,0.02);
 }
 
 .mc-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(110px, 1fr));
-  gap: 5px;
+  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+  gap: 6px;
+  margin-top: 6px;
 }
 
-.mc-btn {
+.mc-card {
   display: flex;
-  align-items: center;
-  gap: 5px;
-  padding: 7px 10px;
+  align-items: stretch;
+  gap: 0;
+  height: 32px;
   border-radius: 6px;
   border: 1px solid rgba(255,255,255,0.08);
-  background: rgba(255,255,255,0.04);
-  color: rgba(210,210,230,0.8);
-  font-size: 11px;
-  font-family: inherit;
-  font-weight: 500;
-  cursor: pointer;
-  transition: background 0.12s, border-color 0.12s, color 0.12s, transform 0.07s;
-  text-align: left;
+  background: rgba(255,255,255,0.03);
   overflow: hidden;
+  transition: background 0.12s, border-color 0.12s, transform 0.07s;
 }
 
-.mc-btn:not(:disabled):hover {
-  background: rgba(155,143,232,0.13);
-  border-color: rgba(155,143,232,0.35);
-  color: #ccc;
+.mc-card:hover {
+  background: rgba(155,143,232,0.08);
+  border-color: rgba(155,143,232,0.3);
 }
 
-.mc-btn:not(:disabled):active { transform: scale(0.96); }
+.mc-card.is-confirming {
+  border-color: rgba(240,100,100,0.5);
+  background: rgba(240,100,100,0.08);
+}
 
-.mc-btn--dir {
-  opacity: 0.55;
+.mc-card--dir {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0 10px;
+  color: rgba(200,200,220,0.55);
+  font-size: 11px;
+  font-weight: 500;
+  opacity: 0.75;
   cursor: default;
   border-style: dashed;
 }
 
-.mc-btn-name {
+.mc-card-run {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0 10px;
+  background: none;
+  border: none;
+  border-right: 1px solid rgba(255,255,255,0.06);
+  color: rgba(215,215,235,0.85);
+  font-family: inherit;
+  font-size: 11px;
+  font-weight: 500;
+  text-align: left;
+  cursor: pointer;
+  overflow: hidden;
+  min-width: 0;
+  transition: color 0.12s, background 0.12s;
+}
+
+.mc-card-run:not(:disabled):hover {
+  background: rgba(155,143,232,0.12);
+  color: #fff;
+}
+
+.mc-card-run:not(:disabled):active {
+  background: rgba(155,143,232,0.2);
+}
+
+.mc-card-run svg {
+  color: rgb(140,200,160);
+  flex-shrink: 0;
+}
+
+.mc-card-name {
   flex: 1;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
   min-width: 0;
+}
+
+.mc-card-delete {
+  width: 30px;
+  height: auto;
+  border: none;
+  border-radius: 0;
+  background: transparent;
+  color: rgba(200,200,220,0.35);
+}
+
+.mc-card-delete:not(:disabled):hover {
+  background: rgba(240,100,100,0.2);
+  color: rgb(255,160,160);
+}
+
+.mc-card-confirm {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding: 0 4px;
+}
+
+.mc-card-confirm .mc-icon-btn {
+  width: 24px;
+  height: 24px;
 }
 
 /* =================================================================
@@ -707,17 +1034,16 @@
 }
 
 .ts-tool-card {
-  background: rgba(0,0,0,0.2);
+  background: transparent;
   border-left: 3px solid rgba(155,155,200,0.3);
   border-radius: 0 7px 7px 0;
   padding: 9px 12px 9px 11px;
   margin-bottom: 8px;
-  transition: border-color 0.2s, background 0.2s;
+  transition: border-color 0.2s;
 }
 
 .ts-tool-card--active {
   border-left-color: rgba(100,160,255,0.85);
-  background: rgba(100,160,255,0.06);
 }
 
 .ts-card-header {
@@ -914,6 +1240,79 @@
 
 .ts-assigned-label { color: rgba(180,180,200,0.4); }
 .ts-assigned-val   { color: rgba(210,210,230,0.7); font-weight: 500; }
+
+/* ---- Material preset bar ---- */
+.ts-presets {
+  display: flex;
+  gap: 4px;
+  flex-wrap: wrap;
+  margin-bottom: 10px;
+  padding-bottom: 10px;
+  border-bottom: 1px solid rgba(255,255,255,0.05);
+}
+.ts-preset-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  height: 26px;
+  padding: 0 9px;
+  border-radius: 5px;
+  border: 1px solid var(--ts-preset-color, rgba(255,255,255,0.1));
+  background: color-mix(in srgb, var(--ts-preset-color, rgba(255,255,255,0.05)) 12%, transparent);
+  color: var(--ts-preset-color, rgba(210,210,230,0.8));
+  font-size: 10px;
+  font-weight: 700;
+  font-family: inherit;
+  cursor: pointer;
+  transition: background 0.12s, transform 0.07s;
+  letter-spacing: 0.03em;
+}
+.ts-preset-btn:hover {
+  background: color-mix(in srgb, var(--ts-preset-color, rgba(255,255,255,0.1)) 22%, transparent);
+}
+.ts-preset-btn:active { transform: scale(0.96); }
+.ts-preset-name { font-weight: 700; }
+.ts-preset-temp {
+  font-family: monospace;
+  font-weight: 500;
+  opacity: 0.7;
+  font-size: 9px;
+}
+.ts-preset-btn--cool {
+  --ts-preset-color: rgb(120,180,240);
+}
+
+/* ---- Heat progress bar (spans full heater-grid row) ---- */
+.ts-heatbar {
+  grid-column: 1 / -1;
+  height: 3px;
+  border-radius: 2px;
+  background: rgba(0,0,0,0.3);
+  overflow: hidden;
+  margin: 0 0 4px;
+}
+.ts-heatbar-fill {
+  height: 100%;
+  background: linear-gradient(90deg, rgb(59,130,246), rgb(239,68,68));
+  border-radius: 2px;
+  transition: width 0.4s ease;
+}
+.ts-heatbar--off .ts-heatbar-fill { display: none; }
+.ts-heatbar--ready .ts-heatbar-fill {
+  background: rgb(34,197,94);
+  box-shadow: 0 0 6px rgba(34,197,94,0.5);
+}
+.ts-heatbar--heating .ts-heatbar-fill {
+  animation: ts-heat-pulse 1.5s ease-in-out infinite;
+}
+.ts-heatbar--cooling .ts-heatbar-fill {
+  background: linear-gradient(90deg, rgb(100,160,255), rgb(180,200,255));
+  opacity: 0.55;
+}
+@keyframes ts-heat-pulse {
+  0%, 100% { opacity: 1; filter: brightness(1); }
+  50% { opacity: 0.7; filter: brightness(1.25); }
+}
 
 
 

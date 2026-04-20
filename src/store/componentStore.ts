@@ -1005,34 +1005,43 @@ export const useComponentStore = create<ComponentStore>()(persist((set, get) => 
     const { components, bodies } = get();
     const offsets: Record<string, THREE.Vector3> = {};
 
-    // Compute assembly centroid from all body mesh positions
-    const centroid = new THREE.Vector3();
-    let count = 0;
+    // Cache each body's world-space center once per invocation. The previous
+    // implementation called `Box3.setFromObject(body.mesh)` TWICE per body
+    // (once in the centroid loop, once in the component loop) which on a
+    // 200-body assembly with a dragged slider would traverse geometry ~80k
+    // times per second. Now: one pass, one Box3 allocation, O(bodies) work.
+    const bodyCenters = new Map<string, THREE.Vector3>();
+    const _bb = new THREE.Box3();
     for (const comp of Object.values(components)) {
       for (const bodyId of comp.bodyIds) {
+        if (bodyCenters.has(bodyId)) continue;
         const body = bodies[bodyId];
         if (!body?.mesh) continue;
-        const box = new THREE.Box3().setFromObject(body.mesh);
-        const center = new THREE.Vector3();
-        box.getCenter(center);
-        centroid.add(center);
-        count++;
+        _bb.setFromObject(body.mesh);
+        const c = new THREE.Vector3();
+        _bb.getCenter(c);
+        bodyCenters.set(bodyId, c);
       }
+    }
+
+    // Compute assembly centroid from cached body centers.
+    const centroid = new THREE.Vector3();
+    let count = 0;
+    for (const c of bodyCenters.values()) {
+      centroid.add(c);
+      count++;
     }
     if (count > 0) centroid.divideScalar(count);
 
-    // Compute per-component offsets
+    // Compute per-component offsets using cached body centers.
+    const compCenter = new THREE.Vector3();
     for (const comp of Object.values(components)) {
       if (comp.bodyIds.length === 0) continue;
-      // Compute component body centroid
-      const compCenter = new THREE.Vector3();
+      compCenter.set(0, 0, 0);
       let bodyCount = 0;
       for (const bodyId of comp.bodyIds) {
-        const body = bodies[bodyId];
-        if (!body?.mesh) continue;
-        const box = new THREE.Box3().setFromObject(body.mesh);
-        const c = new THREE.Vector3();
-        box.getCenter(c);
+        const c = bodyCenters.get(bodyId);
+        if (!c) continue;
         compCenter.add(c);
         bodyCount++;
       }
@@ -1221,22 +1230,68 @@ export const useComponentStore = create<ComponentStore>()(persist((set, get) => 
   },
 
   solveAllComponentConstraints: () => {
-    const { componentConstraints, components } = get();
-    // Prune stale constraints whose source or target component was deleted.
-    // Without this, the array grows forever with no-op entries that silently
-    // skip in solveComponentConstraint and clutter the dialog list.
+    const { componentConstraints } = get();
+    // Work against a LOCAL component map and apply a SINGLE `set` at the end.
+    // The previous implementation called `solveComponentConstraint` per
+    // constraint, each of which did its own `set` — C constraints triggered
+    // C full-store re-renders and re-rendered the entire Browser tree C
+    // times. Batching into one commit cuts that to a single render.
+    let workingComponents = { ...get().components };
     const stale: string[] = [];
-    const active = componentConstraints.filter(c => !c.suppressed);
-    for (const c of active) {
-      if (!components[c.entityA.componentId] || !components[c.entityB.componentId]) {
-        stale.push(c.id);
-        continue;
+    const _rotAxis = new THREE.Vector3();
+    const _rotation = new THREE.Matrix4();
+    const _rotatedCB = new THREE.Vector3();
+    const _translationOffset = new THREE.Vector3();
+    const _currentPos = new THREE.Vector3();
+
+    for (const c of componentConstraints) {
+      if (c.suppressed) continue;
+      const compA = workingComponents[c.entityA.componentId];
+      const compB = workingComponents[c.entityB.componentId];
+      if (!compA || !compB) { stale.push(c.id); continue; }
+
+      const nA = new THREE.Vector3(...c.entityA.normal);
+      const nB = new THREE.Vector3(...c.entityB.normal);
+      const cA = new THREE.Vector3(...c.entityA.centroid);
+      const cB = new THREE.Vector3(...c.entityB.centroid);
+
+      const targetNormal = c.type === 'flush' ? nA.clone() : nA.clone().negate();
+      _rotAxis.crossVectors(nB, targetNormal);
+      const rotAngle = Math.acos(Math.max(-1, Math.min(1, nB.dot(targetNormal))));
+
+      _rotation.identity();
+      if (_rotAxis.lengthSq() > 1e-10 && Math.abs(rotAngle) > 1e-6) {
+        _rotation.makeRotationAxis(_rotAxis.normalize(), rotAngle);
+      } else if (rotAngle > Math.PI - 1e-6) {
+        const perp = Math.abs(nB.x) < 0.9
+          ? new THREE.Vector3(1, 0, 0)
+          : new THREE.Vector3(0, 1, 0);
+        const flipAxis = new THREE.Vector3().crossVectors(nB, perp).normalize();
+        _rotation.makeRotationAxis(flipAxis, Math.PI);
       }
-      get().solveComponentConstraint(c.id);
+
+      const newTransform = _rotation.clone().multiply(compB.transform);
+      _rotatedCB.copy(cB).applyMatrix4(_rotation);
+      _translationOffset.copy(cA).sub(_rotatedCB);
+      if (c.type === 'mate' && c.offset) {
+        _translationOffset.addScaledVector(nA, c.offset);
+      }
+      _currentPos.setFromMatrixPosition(newTransform);
+      newTransform.setPosition(_currentPos.add(_translationOffset));
+
+      workingComponents = {
+        ...workingComponents,
+        [c.entityB.componentId]: { ...compB, transform: newTransform },
+      };
     }
-    if (stale.length > 0) {
-      set({ componentConstraints: get().componentConstraints.filter((c) => !stale.includes(c.id)) });
-    }
+
+    const nextConstraints = stale.length > 0
+      ? componentConstraints.filter((c) => !stale.includes(c.id))
+      : componentConstraints;
+    set({
+      components: workingComponents,
+      ...(stale.length > 0 ? { componentConstraints: nextConstraints } : {}),
+    });
   },
 }),
 {

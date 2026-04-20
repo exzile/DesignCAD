@@ -177,6 +177,8 @@ interface PrinterStore {
   refreshMacros: () => Promise<void>;
   navigateMacros: (path: string) => Promise<void>;
   runMacro: (filename: string) => Promise<void>;
+  createMacro: (filename: string, contents: string) => Promise<void>;
+  deleteMacro: (filename: string) => Promise<void>;
 
   // Filaments
   refreshFilaments: () => Promise<void>;
@@ -329,7 +331,9 @@ export const usePrinterStore = create<PrinterStore>((set, get) => ({
       service.onModelUpdate((model: Partial<DuetObjectModel>) => {
         // Drop callbacks from a stale service that was replaced/disconnected
         // mid-flight (e.g. user clicked disconnect before initial fetch landed).
-        if (get().service !== service) return;
+        const currentService = get().service;
+        if (currentService !== null && currentService !== service) return;
+        console.log('[printerStore] modelUpdate received', { tools: model.tools?.length, heaters: model.heat?.heaters?.length });
         const state = get();
         const now = Date.now();
 
@@ -792,6 +796,32 @@ export const usePrinterStore = create<PrinterStore>((set, get) => ({
       await service.sendGCode(`M98 P"${macroPath}/${filename}"`);
     } catch (err) {
       set({ error: `Failed to run macro: ${(err as Error).message}` });
+    }
+  },
+
+  createMacro: async (filename, contents) => {
+    const { service, macroPath } = get();
+    if (!service) return;
+    const name = /\.g$/i.test(filename) ? filename : `${filename}.g`;
+    try {
+      const blob = new Blob([contents], { type: 'text/plain' });
+      await service.uploadFile(`${macroPath}/${name}`, blob);
+      const macros = await service.listFiles(macroPath);
+      if (get().macroPath === macroPath) set({ macros });
+    } catch (err) {
+      set({ error: `Failed to create macro: ${(err as Error).message}` });
+    }
+  },
+
+  deleteMacro: async (filename) => {
+    const { service, macroPath } = get();
+    if (!service) return;
+    try {
+      await service.deleteFile(`${macroPath}/${filename}`);
+      const macros = await service.listFiles(macroPath);
+      if (get().macroPath === macroPath) set({ macros });
+    } catch (err) {
+      set({ error: `Failed to delete macro: ${(err as Error).message}` });
     }
   },
 
