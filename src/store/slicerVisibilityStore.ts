@@ -27,18 +27,12 @@ export const SETTINGS_SECTIONS = [
   { id: 'bridging',          label: 'Bridging',             group: 'Advanced',       defaultOn: false },
   { id: 'smallFeatures',     label: 'Small Features',       group: 'Advanced',       defaultOn: false },
   { id: 'primeTower',        label: 'Prime Tower (Multi-Extruder)', group: 'Advanced', defaultOn: false },
-  // Cura-parity expansion (TaskLists.txt Phase A2). Off by default — these
-  // are power-user fields most users won't ever touch.
-  { id: 'wallsAdvanced',     label: 'Walls — Advanced',     group: 'Advanced',       defaultOn: false },
-  { id: 'topBottomAdvanced', label: 'Top/Bottom — Advanced', group: 'Advanced',      defaultOn: false },
-  { id: 'infillAdvanced',    label: 'Infill — Advanced',    group: 'Advanced',       defaultOn: false },
-  { id: 'zhop',              label: 'Z-Hop & Retraction Extras', group: 'Advanced',  defaultOn: false },
-  { id: 'coolingAdvanced',   label: 'Cooling — Advanced',   group: 'Advanced',       defaultOn: false },
-  { id: 'supportAdvanced',   label: 'Support — Advanced',   group: 'Advanced',       defaultOn: false },
-  { id: 'travelAdvanced',    label: 'Travel — Advanced',    group: 'Advanced',       defaultOn: false },
-  { id: 'experimentalExtra', label: 'Experimental (Cura)',  group: 'Advanced',       defaultOn: false },
-  { id: 'raftAdvanced',      label: 'Raft — Advanced',      group: 'Advanced',       defaultOn: false },
-  { id: 'modifierMeshes',   label: 'Modifier Meshes',      group: 'Advanced',       defaultOn: false },
+  { id: 'modifierMeshes',    label: 'Modifier Meshes',      group: 'Advanced',       defaultOn: false },
+  // NOTE: walls/topBottom/infill/travel/cooling/support/raft/experimental
+  // "— Advanced" toggles and the Z-Hop toggle were removed — those fields
+  // now live inside their parent section and appear automatically at
+  // detail level "advanced" or higher. The Detail Level dropdown in the
+  // gear modal controls their visibility instead of per-section toggles.
 ] as const;
 
 export type SettingsSectionId = typeof SETTINGS_SECTIONS[number]['id'];

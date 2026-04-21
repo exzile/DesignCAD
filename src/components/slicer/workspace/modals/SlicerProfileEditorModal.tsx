@@ -5,16 +5,32 @@ import { useSlicerStore } from '../../../../store/slicerStore';
 import type { PrinterProfile, MaterialProfile, PrintProfile } from '../../../../types/slicer';
 import { colors, sharedStyles } from '../../../../utils/theme';
 
-// Badge shown next to fields whose value was imported from a connected printer
-function MachineBadge({ title = 'Value synced from machine' }: { title?: string }) {
+const LOCK_TITLE = 'Value synced from the printer. Edit on the board (config.g) and use "Sync from Duet" in the Printer Manager.';
+
+// Machine badge next to fields whose value is owned by the board. The input
+// itself is also `disabled` so the user can't drift from the machine config —
+// the Cpu icon + greyed-out field together signal "machine-sourced, locked".
+function MachineLockBadge({ title = LOCK_TITLE }: { title?: string }) {
   return (
     <span title={title} style={{
       display: 'inline-flex', alignItems: 'center', marginLeft: 4,
-      color: colors.accent, opacity: 0.75, verticalAlign: 'middle', flexShrink: 0,
+      color: colors.accent, opacity: 0.85, verticalAlign: 'middle', flexShrink: 0,
+      cursor: 'help',
     }}>
       <Cpu size={10} />
     </span>
   );
+}
+
+// Spread onto an input to visually mark + disable it when machine-sourced.
+function lockedInputProps(locked: boolean): React.InputHTMLAttributes<HTMLInputElement> {
+  if (!locked) return {};
+  return {
+    disabled: true,
+    readOnly: true,
+    title: LOCK_TITLE,
+    style: { opacity: 0.55, cursor: 'not-allowed' },
+  };
 }
 
 const btnAccent = sharedStyles.btnAccent;
@@ -60,6 +76,14 @@ export function SlicerProfileEditorModal({
   const renderPrinterEditor = () => {
     if (!printer) return null;
     const tabs = ['General', 'Limits', 'G-code'];
+    const pms = new Set(printer.machineSourcedFields ?? []);
+    const plocked = (field: string) => pms.has(field);
+    const plabel = (field: string, text: React.ReactNode) => (
+      <div style={labelStyle}>{text}{plocked(field) && <MachineLockBadge />}</div>
+    );
+    const plabelChk = (field: string, text: React.ReactNode) => (
+      <span>{text}{plocked(field) && <MachineLockBadge />}</span>
+    );
     return (
       <>
         <div style={{ display: 'flex', borderBottom: `1px solid ${colors.panelBorder}` }}>
@@ -73,61 +97,72 @@ export function SlicerProfileEditorModal({
                 <input style={inputStyle} value={printer.name} onChange={(e) => updatePrinterProfile(printer.id, { name: e.target.value })} />
               </div>
               <div style={fieldRow}>
-                <div style={labelStyle}>Build Volume X (mm)</div>
+                {plabel('buildVolume', 'Build Volume X (mm)')}
                 <input type="number" style={inputStyle} value={printer.buildVolume.x}
+                  {...lockedInputProps(plocked('buildVolume'))}
                   onChange={(e) => updatePrinterProfile(printer.id, { buildVolume: { ...printer.buildVolume, x: parseFloat(e.target.value) || 0 } })} />
               </div>
               <div style={fieldRow}>
-                <div style={labelStyle}>Build Volume Y (mm)</div>
+                {plabel('buildVolume', 'Build Volume Y (mm)')}
                 <input type="number" style={inputStyle} value={printer.buildVolume.y}
+                  {...lockedInputProps(plocked('buildVolume'))}
                   onChange={(e) => updatePrinterProfile(printer.id, { buildVolume: { ...printer.buildVolume, y: parseFloat(e.target.value) || 0 } })} />
               </div>
               <div style={fieldRow}>
-                <div style={labelStyle}>Build Volume Z (mm)</div>
+                {plabel('buildVolume', 'Build Volume Z (mm)')}
                 <input type="number" style={inputStyle} value={printer.buildVolume.z}
+                  {...lockedInputProps(plocked('buildVolume'))}
                   onChange={(e) => updatePrinterProfile(printer.id, { buildVolume: { ...printer.buildVolume, z: parseFloat(e.target.value) || 0 } })} />
               </div>
               <div style={fieldRow}>
-                <div style={labelStyle}>Nozzle Diameter (mm)</div>
+                {plabel('nozzleDiameter', 'Nozzle Diameter (mm)')}
                 <input type="number" style={inputStyle} value={printer.nozzleDiameter} step={0.1}
+                  {...lockedInputProps(plocked('nozzleDiameter'))}
                   onChange={(e) => updatePrinterProfile(printer.id, { nozzleDiameter: parseFloat(e.target.value) || 0.4 })} />
               </div>
               <div style={fieldRow}>
-                <div style={labelStyle}>Nozzle Count</div>
+                {plabel('nozzleCount', 'Nozzle Count')}
                 <input type="number" style={inputStyle} value={printer.nozzleCount} min={1}
+                  {...lockedInputProps(plocked('nozzleCount'))}
                   onChange={(e) => updatePrinterProfile(printer.id, { nozzleCount: parseInt(e.target.value) || 1 })} />
               </div>
               <div style={fieldRow}>
-                <div style={labelStyle}>Filament Diameter (mm)</div>
-                <select style={selectStyle} value={printer.filamentDiameter}
-                  onChange={(e) => updatePrinterProfile(printer.id, { filamentDiameter: parseFloat(e.target.value) })}>
+                {plabel('filamentDiameter', 'Filament Diameter (mm)')}
+                <select style={{ ...selectStyle, ...(plocked('filamentDiameter') ? { opacity: 0.55, cursor: 'not-allowed' } : {}) }} value={printer.filamentDiameter}
+                  disabled={plocked('filamentDiameter')}
+                  title={plocked('filamentDiameter') ? LOCK_TITLE : undefined}
+                  onChange={(e) => { if (plocked('filamentDiameter')) return; updatePrinterProfile(printer.id, { filamentDiameter: parseFloat(e.target.value) }); }}>
                   <option value={1.75}>1.75</option>
                   <option value={2.85}>2.85</option>
                 </select>
               </div>
-              <label style={{ display: 'flex', alignItems: 'center', gap: 6, color: colors.text, fontSize: 12, marginBottom: 8, cursor: 'pointer' }}>
+              <label style={{ display: 'flex', alignItems: 'center', gap: 6, color: colors.text, fontSize: 12, marginBottom: 8, cursor: plocked('hasHeatedBed') ? 'not-allowed' : 'pointer', opacity: plocked('hasHeatedBed') ? 0.55 : 1 }} title={plocked('hasHeatedBed') ? LOCK_TITLE : undefined}>
                 <input type="checkbox" checked={printer.hasHeatedBed}
-                  onChange={(e) => updatePrinterProfile(printer.id, { hasHeatedBed: e.target.checked })}
+                  disabled={plocked('hasHeatedBed')}
+                  onChange={(e) => { if (plocked('hasHeatedBed')) return; updatePrinterProfile(printer.id, { hasHeatedBed: e.target.checked }); }}
                   style={{ accentColor: colors.accent }} />
-                Heated Bed
+                {plabelChk('hasHeatedBed', 'Heated Bed')}
               </label>
-              <label style={{ display: 'flex', alignItems: 'center', gap: 6, color: colors.text, fontSize: 12, marginBottom: 8, cursor: 'pointer' }}>
+              <label style={{ display: 'flex', alignItems: 'center', gap: 6, color: colors.text, fontSize: 12, marginBottom: 8, cursor: plocked('hasHeatedChamber') ? 'not-allowed' : 'pointer', opacity: plocked('hasHeatedChamber') ? 0.55 : 1 }} title={plocked('hasHeatedChamber') ? LOCK_TITLE : undefined}>
                 <input type="checkbox" checked={printer.hasHeatedChamber}
-                  onChange={(e) => updatePrinterProfile(printer.id, { hasHeatedChamber: e.target.checked })}
+                  disabled={plocked('hasHeatedChamber')}
+                  onChange={(e) => { if (plocked('hasHeatedChamber')) return; updatePrinterProfile(printer.id, { hasHeatedChamber: e.target.checked }); }}
                   style={{ accentColor: colors.accent }} />
-                Heated Chamber
+                {plabelChk('hasHeatedChamber', 'Heated Chamber')}
               </label>
-              <label style={{ display: 'flex', alignItems: 'center', gap: 6, color: colors.text, fontSize: 12, marginBottom: 8, cursor: 'pointer' }}>
+              <label style={{ display: 'flex', alignItems: 'center', gap: 6, color: colors.text, fontSize: 12, marginBottom: 8, cursor: plocked('originCenter') ? 'not-allowed' : 'pointer', opacity: plocked('originCenter') ? 0.55 : 1 }} title={plocked('originCenter') ? LOCK_TITLE : undefined}>
                 <input type="checkbox" checked={printer.originCenter}
-                  onChange={(e) => updatePrinterProfile(printer.id, { originCenter: e.target.checked })}
+                  disabled={plocked('originCenter')}
+                  onChange={(e) => { if (plocked('originCenter')) return; updatePrinterProfile(printer.id, { originCenter: e.target.checked }); }}
                   style={{ accentColor: colors.accent }} />
-                Origin Center
+                {plabelChk('originCenter', 'Origin Center')}
               </label>
-              <label style={{ display: 'flex', alignItems: 'center', gap: 6, color: colors.text, fontSize: 12, marginBottom: 8, cursor: 'pointer' }}>
+              <label style={{ display: 'flex', alignItems: 'center', gap: 6, color: colors.text, fontSize: 12, marginBottom: 8, cursor: plocked('firmwareRetraction') ? 'not-allowed' : 'pointer', opacity: plocked('firmwareRetraction') ? 0.55 : 1 }} title={plocked('firmwareRetraction') ? LOCK_TITLE : undefined}>
                 <input type="checkbox" checked={printer.firmwareRetraction ?? false}
-                  onChange={(e) => updatePrinterProfile(printer.id, { firmwareRetraction: e.target.checked })}
+                  disabled={plocked('firmwareRetraction')}
+                  onChange={(e) => { if (plocked('firmwareRetraction')) return; updatePrinterProfile(printer.id, { firmwareRetraction: e.target.checked }); }}
                   style={{ accentColor: colors.accent }} />
-                Firmware Retraction (G10/G11)
+                {plabelChk('firmwareRetraction', 'Firmware Retraction (G10/G11)')}
               </label>
               <label style={{ display: 'flex', alignItems: 'center', gap: 6, color: colors.text, fontSize: 12, marginBottom: 8, cursor: 'pointer' }}>
                 <input type="checkbox" checked={printer.waitForBuildPlate ?? true}
@@ -148,9 +183,11 @@ export function SlicerProfileEditorModal({
                 Scale Fan Speed to 0–1 (Klipper)
               </label>
               <div style={fieldRow}>
-                <div style={labelStyle}>G-code Flavor</div>
-                <select style={selectStyle} value={printer.gcodeFlavorType}
-                  onChange={(e) => updatePrinterProfile(printer.id, { gcodeFlavorType: e.target.value as PrinterProfile['gcodeFlavorType'] })}>
+                {plabel('gcodeFlavorType', 'G-code Flavor')}
+                <select style={{ ...selectStyle, ...(plocked('gcodeFlavorType') ? { opacity: 0.55, cursor: 'not-allowed' } : {}) }} value={printer.gcodeFlavorType}
+                  disabled={plocked('gcodeFlavorType')}
+                  title={plocked('gcodeFlavorType') ? LOCK_TITLE : undefined}
+                  onChange={(e) => { if (plocked('gcodeFlavorType')) return; updatePrinterProfile(printer.id, { gcodeFlavorType: e.target.value as PrinterProfile['gcodeFlavorType'] }); }}>
                   <option value="reprap">RepRap</option>
                   <option value="marlin">Marlin</option>
                   <option value="klipper">Klipper</option>
@@ -162,13 +199,15 @@ export function SlicerProfileEditorModal({
           {activeTab === 1 && (
             <>
               <div style={fieldRow}>
-                <div style={labelStyle}>Max Nozzle Temp (&deg;C)</div>
+                {plabel('maxNozzleTemp', <>Max Nozzle Temp (&deg;C)</>)}
                 <input type="number" style={inputStyle} value={printer.maxNozzleTemp}
+                  {...lockedInputProps(plocked('maxNozzleTemp'))}
                   onChange={(e) => updatePrinterProfile(printer.id, { maxNozzleTemp: parseInt(e.target.value) || 260 })} />
               </div>
               <div style={fieldRow}>
-                <div style={labelStyle}>Max Bed Temp (&deg;C)</div>
+                {plabel('maxBedTemp', <>Max Bed Temp (&deg;C)</>)}
                 <input type="number" style={inputStyle} value={printer.maxBedTemp}
+                  {...lockedInputProps(plocked('maxBedTemp'))}
                   onChange={(e) => updatePrinterProfile(printer.id, { maxBedTemp: parseInt(e.target.value) || 110 })} />
               </div>
               <div style={fieldRow}>
@@ -185,34 +224,38 @@ export function SlicerProfileEditorModal({
               <div style={{ color: colors.textDim, fontSize: 11, marginBottom: 6, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.04em' }}>Per-Axis Limits (M203 / M201)</div>
               {(['X', 'Y', 'Z', 'E'] as const).map((axis) => (
                 <div key={axis} style={fieldRow}>
-                  <div style={labelStyle}>Max Speed {axis} (mm/s)</div>
+                  {plabel(`maxSpeed${axis}`, `Max Speed ${axis} (mm/s)`)}
                   <input type="number" style={inputStyle}
                     value={printer[`maxSpeed${axis}` as keyof typeof printer] as number ?? ''}
                     placeholder="firmware default"
+                    {...lockedInputProps(plocked(`maxSpeed${axis}`))}
                     onChange={(e) => updatePrinterProfile(printer.id, { [`maxSpeed${axis}`]: e.target.value === '' ? undefined : parseInt(e.target.value) })} />
                 </div>
               ))}
               {(['X', 'Y', 'Z', 'E'] as const).map((axis) => (
                 <div key={axis} style={fieldRow}>
-                  <div style={labelStyle}>Max Accel {axis} (mm/s²)</div>
+                  {plabel(`maxAccel${axis}`, `Max Accel ${axis} (mm/s²)`)}
                   <input type="number" style={inputStyle}
                     value={printer[`maxAccel${axis}` as keyof typeof printer] as number ?? ''}
                     placeholder="firmware default"
+                    {...lockedInputProps(plocked(`maxAccel${axis}`))}
                     onChange={(e) => updatePrinterProfile(printer.id, { [`maxAccel${axis}`]: e.target.value === '' ? undefined : parseInt(e.target.value) })} />
                 </div>
               ))}
               <div style={fieldRow}>
-                <div style={labelStyle}>Default Acceleration (mm/s²)</div>
+                {plabel('defaultAcceleration', 'Default Acceleration (mm/s²)')}
                 <input type="number" style={inputStyle}
                   value={printer.defaultAcceleration ?? ''}
                   placeholder="firmware default"
+                  {...lockedInputProps(plocked('defaultAcceleration'))}
                   onChange={(e) => updatePrinterProfile(printer.id, { defaultAcceleration: e.target.value === '' ? undefined : parseInt(e.target.value) })} />
               </div>
               <div style={fieldRow}>
-                <div style={labelStyle}>Default Jerk (mm/s)</div>
+                {plabel('defaultJerk', 'Default Jerk (mm/s)')}
                 <input type="number" style={inputStyle}
                   value={printer.defaultJerk ?? ''}
                   placeholder="firmware default"
+                  {...lockedInputProps(plocked('defaultJerk'))}
                   onChange={(e) => updatePrinterProfile(printer.id, { defaultJerk: e.target.value === '' ? undefined : parseFloat(e.target.value) })} />
               </div>
               <div style={{ borderTop: `1px solid ${colors.panelBorder}`, margin: '8px 0' }} />
@@ -347,43 +390,50 @@ export function SlicerProfileEditorModal({
                 const ms = new Set(material.machineSourcedFields ?? []);
                 const MLabel = ({ field, children }: { field: string; children: React.ReactNode }) => (
                   <div style={labelStyle}>
-                    {children}{ms.has(field) && <MachineBadge />}
+                    {children}{ms.has(field) && <MachineLockBadge />}
                   </div>
                 );
+                const locked = (field: string) => ms.has(field);
                 return (
                   <>
                     <div style={fieldRow}>
                       <MLabel field="retractionDistance">Retraction Distance (mm)</MLabel>
                       <input type="number" style={inputStyle} value={material.retractionDistance} step={0.1}
+                        {...lockedInputProps(locked('retractionDistance'))}
                         onChange={(e) => updateMaterialProfile(material.id, { retractionDistance: parseFloat(e.target.value) || 0.8 })} />
                     </div>
                     <div style={fieldRow}>
                       <MLabel field="retractionSpeed">Retraction Speed (mm/s) — fallback</MLabel>
                       <input type="number" style={inputStyle} value={material.retractionSpeed}
+                        {...lockedInputProps(locked('retractionSpeed'))}
                         onChange={(e) => updateMaterialProfile(material.id, { retractionSpeed: parseInt(e.target.value) || 45 })} />
                     </div>
                     <div style={fieldRow}>
                       <MLabel field="retractionRetractSpeed">Retract Speed (mm/s)</MLabel>
                       <input type="number" style={inputStyle} value={material.retractionRetractSpeed ?? material.retractionSpeed}
+                        {...lockedInputProps(locked('retractionRetractSpeed'))}
                         onChange={(e) => updateMaterialProfile(material.id, { retractionRetractSpeed: parseInt(e.target.value) || 45 })} />
                     </div>
                     <div style={fieldRow}>
                       <MLabel field="retractionPrimeSpeed">Prime Speed (mm/s)</MLabel>
                       <input type="number" style={inputStyle} value={material.retractionPrimeSpeed ?? material.retractionSpeed}
+                        {...lockedInputProps(locked('retractionPrimeSpeed'))}
                         onChange={(e) => updateMaterialProfile(material.id, { retractionPrimeSpeed: parseInt(e.target.value) || 45 })} />
                     </div>
                     <div style={fieldRow}>
                       <MLabel field="retractionZHop">Retraction Z Hop (mm)</MLabel>
                       <input type="number" style={inputStyle} value={material.retractionZHop} step={0.05}
+                        {...lockedInputProps(locked('retractionZHop'))}
                         onChange={(e) => updateMaterialProfile(material.id, { retractionZHop: parseFloat(e.target.value) || 0 })} />
                     </div>
                     <div style={{ borderTop: `1px solid ${colors.panelBorder}`, margin: '8px 0' }} />
                     <div style={{ color: colors.textDim, fontSize: 11, marginBottom: 6, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.04em' }}>
-                      Linear / Pressure Advance{ms.has('linearAdvanceEnabled') && <MachineBadge title="Pressure advance value read from machine (M572)" />}
+                      Linear / Pressure Advance{ms.has('linearAdvanceEnabled') && <MachineLockBadge title="Pressure advance value read from machine (M572) — edit on the Duet and resync." />}
                     </div>
-                    <label style={{ display: 'flex', alignItems: 'center', gap: 6, color: colors.text, fontSize: 12, marginBottom: 8, cursor: 'pointer' }}>
+                    <label style={{ display: 'flex', alignItems: 'center', gap: 6, color: colors.text, fontSize: 12, marginBottom: 8, cursor: locked('linearAdvanceEnabled') ? 'not-allowed' : 'pointer', opacity: locked('linearAdvanceEnabled') ? 0.55 : 1 }} title={locked('linearAdvanceEnabled') ? LOCK_TITLE : undefined}>
                       <input type="checkbox" checked={material.linearAdvanceEnabled ?? false}
-                        onChange={(e) => updateMaterialProfile(material.id, { linearAdvanceEnabled: e.target.checked })}
+                        disabled={locked('linearAdvanceEnabled')}
+                        onChange={(e) => { if (locked('linearAdvanceEnabled')) return; updateMaterialProfile(material.id, { linearAdvanceEnabled: e.target.checked }); }}
                         style={{ accentColor: colors.accent }} />
                       Enable Linear Advance (M900 / M572)
                     </label>
@@ -391,6 +441,7 @@ export function SlicerProfileEditorModal({
                       <div style={fieldRow}>
                         <MLabel field="linearAdvanceFactor">K Factor</MLabel>
                         <input type="number" style={inputStyle} value={material.linearAdvanceFactor ?? 0} step={0.01} min={0} max={2}
+                          {...lockedInputProps(locked('linearAdvanceFactor'))}
                           onChange={(e) => updateMaterialProfile(material.id, { linearAdvanceFactor: parseFloat(e.target.value) || 0 })} />
                       </div>
                     )}

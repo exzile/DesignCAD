@@ -136,7 +136,24 @@
   background: color-mix(in srgb, var(--bg-toolbar) 55%, transparent);
 }
 
-/* ── machine-sourced indicator dot ───────────────────────────────────────── */
+.slicer-settings-field__divider--icon {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 6%, transparent);
+}
+
+.slicer-settings-field__divider-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--accent);
+  opacity: 0.9;
+  flex-shrink: 0;
+}
+
+/* ── machine-sourced indicator dot (deprecated — kept for compatibility) ── */
 .slicer-settings-field__machine-dot {
   display: inline-block;
   width: 6px;
@@ -148,4 +165,30 @@
   vertical-align: middle;
   flex-shrink: 0;
   cursor: default;
+}
+
+/* ── machine-sourced lock badge ──────────────────────────────────────────── */
+.slicer-settings-field__machine-lock {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  margin-left: 5px;
+  color: var(--accent);
+  opacity: 0.85;
+  vertical-align: middle;
+  flex-shrink: 0;
+  cursor: help;
+}
+
+/* ── locked state: field value is editable only via resync ───────────────── */
+.slicer-settings-field--locked .slicer-settings-field__input,
+.slicer-settings-field__check--locked .slicer-settings-field__check-input {
+  opacity: 0.55;
+  cursor: not-allowed;
+  background: color-mix(in srgb, var(--bg-input) 70%, transparent);
+}
+
+.slicer-settings-field--locked .slicer-settings-field__label,
+.slicer-settings-field__check--locked {
+  color: var(--text-muted);
 }

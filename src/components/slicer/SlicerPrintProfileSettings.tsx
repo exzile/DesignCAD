@@ -1,3 +1,4 @@
+import { Sparkles } from 'lucide-react';
 import type { PrintProfile } from '../../types/slicer';
 import { Num, Check, Sel, Density, SectionDivider } from './workspace/settings/controls/SettingsFieldControls';
 import { SlicerSection } from './SlicerSection';
@@ -5,10 +6,18 @@ import { useSlicerVisibilityStore, type DetailLevel } from '../../store/slicerVi
 
 // Renders children only when the current detail level meets the minimum.
 // basic = always shown; advanced = default; expert = power-user only.
-function Tier({ min, children }: { min: DetailLevel; children: React.ReactNode }) {
-  const meets = useSlicerVisibilityStore((s) => s.meetsLevel(min));
+// Accepts either `min` or `level` as a convenience alias.
+function Tier({ min, level, children }: { min?: DetailLevel; level?: DetailLevel; children: React.ReactNode }) {
+  const required: DetailLevel = min ?? level ?? 'basic';
+  const meets = useSlicerVisibilityStore((s) => s.meetsLevel(required));
   if (!meets) return null;
   return <>{children}</>;
+}
+
+// Divider stamped with an Advanced / Expert badge so users can see at a
+// glance that what follows is a deeper-level knob inside a merged section.
+function AdvancedDivider({ label = 'Advanced' }: { label?: string }) {
+  return <SectionDivider label={label} icon={<Sparkles size={10} />} />;
 }
 
 export function SlicerPrintProfileSettings({
@@ -81,8 +90,8 @@ export function SlicerPrintProfileSettings({
             <Num label="Min Thin Wall Line Width" unit="mm" value={print.minThinWallLineWidth ?? 0.1} step={0.01} min={0.01} max={1} onChange={(v) => upd({ minThinWallLineWidth: v })} />
           </>)}
         </Tier>
-        {isVisible('wallsAdvanced') && <>
-          <SectionDivider label="Advanced" />
+        <Tier min="advanced">
+          <AdvancedDivider />
           <Num label="Wall Line Count (alias)" value={print.wallLineCount ?? print.wallCount ?? 2} min={1} max={20} onChange={(v) => upd({ wallLineCount: v, wallCount: v })} />
           <Num label="Inner Wall Line Width" unit="mm" value={print.innerWallLineWidth ?? 0.4} step={0.01} min={0.1} max={2.0} onChange={(v) => upd({ innerWallLineWidth: v })} />
           <Check label="Group Outer Walls" value={print.groupOuterWalls ?? false} onChange={(v) => upd({ groupOuterWalls: v })} />
@@ -115,7 +124,7 @@ export function SlicerPrintProfileSettings({
               { value: 'hide_or_expose', label: 'Hide or Expose' },
               { value: 'smart_hide',     label: 'Smart Hide' },
             ]} />
-        </>}
+        </Tier>
       </SlicerSection>}
 
       {isVisible('topBottom') && <SlicerSection title="Top / Bottom" color="#2dd4bf" defaultOpen={false}>
@@ -156,8 +165,8 @@ export function SlicerPrintProfileSettings({
             <Num label="Small Top/Bottom Width" unit="mm" value={print.smallTopBottomWidth ?? 0} step={0.1} min={0} max={10} onChange={(v) => upd({ smallTopBottomWidth: v })} />
           </Tier>
         </Tier>
-        {isVisible('topBottomAdvanced') && <>
-          <SectionDivider label="Advanced" />
+        <Tier min="advanced">
+          <AdvancedDivider />
           <Num label="Top Thickness" unit="mm" value={print.topThickness ?? 0.8} step={0.05} min={0} max={10} onChange={(v) => upd({ topThickness: v })} />
           <Num label="Bottom Thickness" unit="mm" value={print.bottomThickness ?? 0.8} step={0.05} min={0} max={10} onChange={(v) => upd({ bottomThickness: v })} />
           <Num label="Skin Overlap" unit="%" value={print.skinOverlapPercent ?? 10} step={1} min={0} max={100} onChange={(v) => upd({ skinOverlapPercent: v })} />
@@ -186,7 +195,7 @@ export function SlicerPrintProfileSettings({
             ]} />
           <Num label="Top Surface Skin Expansion" unit="mm" value={print.topSurfaceSkinExpansion ?? 0} step={0.1} min={0} max={10} onChange={(v) => upd({ topSurfaceSkinExpansion: v })} />
           <Num label="Top Surface Skin Flow" unit="%" value={print.topSurfaceSkinFlow ?? 100} step={1} min={0} max={200} onChange={(v) => upd({ topSurfaceSkinFlow: v })} />
-        </>}
+        </Tier>
       </SlicerSection>}
 
       {isVisible('infill') && <SlicerSection title="Infill" color="#fb923c" defaultOpen={true}>
@@ -224,8 +233,8 @@ export function SlicerPrintProfileSettings({
             <Num label="Lightning Overhang Angle" unit="°" value={print.lightningInfillOverhangAngle ?? 40} min={10} max={89} onChange={(v) => upd({ lightningInfillOverhangAngle: v })} />
           )}
         </Tier>
-        {isVisible('infillAdvanced') && <>
-          <SectionDivider label="Advanced" />
+        <Tier min="advanced">
+          <AdvancedDivider />
           <Num label="Infill Line Distance (overrides density)" unit="mm" value={print.infillLineDistance ?? 0} step={0.05} min={0} max={20} onChange={(v) => upd({ infillLineDistance: v })} />
           <Num label="Infill Layer Thickness" unit="mm" value={print.infillLayerThickness ?? 0} step={0.05} min={0} max={2} onChange={(v) => upd({ infillLayerThickness: v })} />
           <Check label="Connect Infill Lines" value={print.connectInfillLines ?? false} onChange={(v) => upd({ connectInfillLines: v })} />
@@ -242,7 +251,7 @@ export function SlicerPrintProfileSettings({
           <Num label="Lightning Straightening Angle" unit="°" value={print.lightningStraighteningAngle ?? 40} min={0} max={89} onChange={(v) => upd({ lightningStraighteningAngle: v })} />
           <SectionDivider label="Cubic Subdivision" />
           <Num label="Cubic Subdivision Shell" unit="mm" value={print.cubicSubdivisionShell ?? 0} step={0.5} min={0} max={20} onChange={(v) => upd({ cubicSubdivisionShell: v })} />
-        </>}
+        </Tier>
       </SlicerSection>}
 
       {isVisible('speed') && <SlicerSection title="Speed" color="#f43f5e" defaultOpen={false}>
@@ -297,6 +306,25 @@ export function SlicerPrintProfileSettings({
           <Check label="Layer Start at Z Seam" value={print.layerStartAtSeam ?? false} onChange={(v) => upd({ layerStartAtSeam: v })} />
           <Num label="Min Extrusion Distance Window" unit="mm" value={print.minimumExtrusionDistanceWindow ?? 0} step={0.5} min={0} max={50} onChange={(v) => upd({ minimumExtrusionDistanceWindow: v })} />
         </Tier>
+        <Tier min="advanced">
+          <AdvancedDivider label="Advanced · Avoidance" />
+          <Check label="Avoid Printed Parts When Traveling" value={print.avoidPrintedParts ?? false} onChange={(v) => upd({ avoidPrintedParts: v })} />
+          <Check label="Avoid Supports When Traveling" value={print.avoidSupports ?? false} onChange={(v) => upd({ avoidSupports: v })} />
+          <Num label="Max Comb Distance w/o Retract" unit="mm" value={print.maxCombDistanceNoRetract ?? 0} step={1} min={0} max={1000} onChange={(v) => upd({ maxCombDistanceNoRetract: v })} />
+          <Num label="Travel Avoid Distance" unit="mm" value={print.travelAvoidDistance ?? 0.625} step={0.05} min={0} max={10} onChange={(v) => upd({ travelAvoidDistance: v })} />
+          <Num label="Inside Travel Avoid Distance" unit="mm" value={print.insideTravelAvoidDistance ?? 0.4} step={0.05} min={0} max={10} onChange={(v) => upd({ insideTravelAvoidDistance: v })} />
+          <AdvancedDivider label="Advanced · Z-Hop" />
+          <Check label="Z-Hop When Retracted" value={print.zHopWhenRetracted ?? false} onChange={(v) => upd({ zHopWhenRetracted: v })} />
+          {(print.zHopWhenRetracted ?? false) && (<>
+            <Num label="Z-Hop Height" unit="mm" value={print.zHopHeight ?? 0.4} step={0.05} min={0.05} max={5} onChange={(v) => upd({ zHopHeight: v })} />
+            <Num label="Z-Hop Speed" unit="mm/s" value={print.zHopSpeed ?? 10} step={1} min={1} max={100} onChange={(v) => upd({ zHopSpeed: v })} />
+            <Check label="Z-Hop Only Over Printed Parts" value={print.zHopOnlyOverPrinted ?? false} onChange={(v) => upd({ zHopOnlyOverPrinted: v })} />
+          </>)}
+          <AdvancedDivider label="Advanced · Prime / Wipe" />
+          <Num label="Retraction Extra Prime Amount" unit="mm³" value={print.retractionExtraPrimeAmount ?? 0} step={0.1} min={0} max={10} onChange={(v) => upd({ retractionExtraPrimeAmount: v })} />
+          <Num label="Wipe Retraction Distance" unit="mm" value={print.wipeRetractionDistance ?? 0} step={0.1} min={0} max={10} onChange={(v) => upd({ wipeRetractionDistance: v })} />
+          <Num label="Wipe Retraction Extra Prime" unit="mm³" value={print.wipeRetractionExtraPrime ?? 0} step={0.1} min={0} max={10} onChange={(v) => upd({ wipeRetractionExtraPrime: v })} />
+        </Tier>
       </SlicerSection>}
 
       {isVisible('cooling') && <SlicerSection title="Cooling" color="#60a5fa" defaultOpen={false}>
@@ -314,6 +342,16 @@ export function SlicerPrintProfileSettings({
           <Num label="Regular Fan Speed at Height" unit="mm" value={print.regularFanSpeedAtHeight ?? 0} step={0.5} min={0} max={500} onChange={(v) => upd({ regularFanSpeedAtHeight: v })} />
           <Num label="Fan Kickstart Time" unit="ms" value={print.fanKickstartTime ?? 100} step={10} min={0} max={5000} onChange={(v) => upd({ fanKickstartTime: v })} />
           <Num label="Small Layer Printing Temp" unit="°C" value={print.smallLayerPrintingTemperature ?? 0} step={1} min={0} max={400} onChange={(v) => upd({ smallLayerPrintingTemperature: v })} />
+          <AdvancedDivider />
+          <Num label="Initial Fan Speed" unit="%" value={print.initialFanSpeed ?? 0} step={1} min={0} max={100} onChange={(v) => upd({ initialFanSpeed: v })} />
+          <Num label="Maximum Fan Speed" unit="%" value={print.maximumFanSpeed ?? 100} step={1} min={0} max={100} onChange={(v) => upd({ maximumFanSpeed: v })} />
+          <Num label="Regular/Max Fan Threshold" unit="s" value={print.regularMaxFanThreshold ?? 10} step={0.5} min={0} max={60} onChange={(v) => upd({ regularMaxFanThreshold: v })} />
+          <Num label="Minimum Speed" unit="mm/s" value={print.minimumSpeed ?? 10} step={1} min={1} max={100} onChange={(v) => upd({ minimumSpeed: v })} />
+          <Num label="Build Volume Fan Speed" unit="%" value={print.buildVolumeFanSpeed ?? 0} step={1} min={0} max={100} onChange={(v) => upd({ buildVolumeFanSpeed: v })} />
+          <Tier min="expert">
+            <Num label="Build Volume Fan Speed at Height" unit="mm" value={print.buildVolumeFanSpeedAtHeight ?? 0} step={0.5} min={0} max={500} onChange={(v) => upd({ buildVolumeFanSpeedAtHeight: v })} />
+            <Num label="Initial Layers Build Volume Fan Speed" unit="%" value={print.initialLayersBuildVolumeFanSpeed ?? 0} step={1} min={0} max={100} onChange={(v) => upd({ initialLayersBuildVolumeFanSpeed: v })} />
+          </Tier>
         </Tier>
       </SlicerSection>}
 
@@ -412,6 +450,47 @@ export function SlicerPrintProfileSettings({
               <Num label="Tower Roof Angle" unit="°" value={print.towerRoofAngle ?? 65} min={0} max={89} onChange={(v) => upd({ towerRoofAngle: v })} />
             </>)}
           </Tier>
+          <Tier min="advanced">
+            <AdvancedDivider />
+            <Num label="Support Horizontal Expansion" unit="mm" value={print.supportHorizontalExpansion ?? 0} step={0.1} min={-5} max={5} onChange={(v) => upd({ supportHorizontalExpansion: v })} />
+            <Num label="Support Line Distance" unit="mm" value={print.supportLineDistance ?? 0} step={0.1} min={0} max={20} onChange={(v) => upd({ supportLineDistance: v })} />
+            <Num label="Support Join Distance" unit="mm" value={print.supportJoinDistance ?? 2} step={0.1} min={0} max={20} onChange={(v) => upd({ supportJoinDistance: v })} />
+            <Num label="Minimum Support Area" unit="mm²" value={print.minimumSupportArea ?? 0} step={0.5} min={0} max={100} onChange={(v) => upd({ minimumSupportArea: v })} />
+            <Num label="Support Infill Layer Thickness" unit="mm" value={print.supportInfillLayerThickness ?? 0} step={0.05} min={0} max={2} onChange={(v) => upd({ supportInfillLayerThickness: v })} />
+            <SectionDivider label="Connect / Chain" />
+            <Check label="Connect Support Lines" value={print.connectSupportLines ?? false} onChange={(v) => upd({ connectSupportLines: v })} />
+            <Check label="Connect Support ZigZags" value={print.connectSupportZigZags ?? false} onChange={(v) => upd({ connectSupportZigZags: v })} />
+            <SectionDivider label="Conical Support" />
+            <Check label="Enable Conical Support" value={print.enableConicalSupport ?? false} onChange={(v) => upd({ enableConicalSupport: v })} />
+            {(print.enableConicalSupport ?? false) && (
+              <Num label="Conical Support Angle" unit="°" value={print.conicalSupportAngle ?? 30} min={0} max={60} onChange={(v) => upd({ conicalSupportAngle: v })} />
+            )}
+            <SectionDivider label="Support Brim" />
+            <Check label="Enable Support Brim" value={print.enableSupportBrim ?? false} onChange={(v) => upd({ enableSupportBrim: v })} />
+            {(print.enableSupportBrim ?? false) && (<>
+              <Num label="Support Brim Line Count" value={print.supportBrimLineCount ?? 5} min={0} max={50} onChange={(v) => upd({ supportBrimLineCount: v })} />
+              <Num label="Support Brim Width" unit="mm" value={print.supportBrimWidth ?? 3} step={0.1} min={0} max={50} onChange={(v) => upd({ supportBrimWidth: v })} />
+            </>)}
+            <SectionDivider label="Stair Step Base" />
+            <Num label="Stair Step Height" unit="mm" value={print.supportStairStepHeight ?? 0.3} step={0.05} min={0} max={10} onChange={(v) => upd({ supportStairStepHeight: v })} />
+            <Num label="Stair Step Minimum Slope" unit="°" value={print.supportStairStepMinSlope ?? 10} min={0} max={89} onChange={(v) => upd({ supportStairStepMinSlope: v })} />
+            <Num label="Stair Step Max Width" unit="mm" value={print.supportStairStepMaxWidth ?? 5} step={0.1} min={0} max={50} onChange={(v) => upd({ supportStairStepMaxWidth: v })} />
+            <SectionDivider label="Distance Priority" />
+            <Sel label="Support Distance Priority" value={print.supportDistancePriority ?? 'xy_overrides_z'}
+              onChange={(v) => upd({ supportDistancePriority: v })}
+              options={[
+                { value: 'xy_overrides_z', label: 'XY overrides Z' },
+                { value: 'z_overrides_xy', label: 'Z overrides XY' },
+              ]} />
+            <SectionDivider label="Break Up Chunks" />
+            <Check label="Break Up Support in Chunks" value={print.breakUpSupportInChunks ?? false} onChange={(v) => upd({ breakUpSupportInChunks: v })} />
+            {(print.breakUpSupportInChunks ?? false) && (<>
+              <Num label="Chunk Size" unit="mm" value={print.breakUpSupportChunkSize ?? 20} step={1} min={1} max={100} onChange={(v) => upd({ breakUpSupportChunkSize: v })} />
+              <Num label="Chunk Line Count" value={print.breakUpSupportChunkLineCount ?? 5} min={1} max={50} onChange={(v) => upd({ breakUpSupportChunkLineCount: v })} />
+            </>)}
+            <SectionDivider label="Conical Min Width" />
+            <Num label="Conical Support Min Width" unit="mm" value={print.conicalSupportMinWidth ?? 5} step={0.5} min={0} max={50} onChange={(v) => upd({ conicalSupportMinWidth: v })} />
+          </Tier>
         </>)}
       </SlicerSection>}
 
@@ -468,6 +547,37 @@ export function SlicerPrintProfileSettings({
             <Num label="Surface Air Gap" unit="mm" value={print.raftAirGap ?? 0.3} step={0.05} min={0} max={2} onChange={(v) => upd({ raftAirGap: v })} />
           </>)}
         </Tier>
+        {print.adhesionType === 'raft' && (
+          <Tier min="advanced">
+            <AdvancedDivider label="Advanced · Raft" />
+            <Num label="Raft Wall Count" value={print.raftWallCount ?? 0} min={0} max={10} onChange={(v) => upd({ raftWallCount: v })} />
+            <Num label="Raft Smoothing" unit="mm" value={print.raftSmoothing ?? 5} step={0.5} min={0} max={50} onChange={(v) => upd({ raftSmoothing: v })} />
+            <Num label="Raft Extra Margin" unit="mm" value={print.raftExtraMargin ?? 15} step={0.5} min={0} max={50} onChange={(v) => upd({ raftExtraMargin: v })} />
+            <SectionDivider label="Middle Layers" />
+            <Num label="Middle Layer Count" value={print.raftMiddleLayers ?? 2} min={0} max={20} onChange={(v) => upd({ raftMiddleLayers: v })} />
+            <Num label="Middle Layer Thickness" unit="mm" value={print.raftMiddleThickness ?? 0.15} step={0.01} min={0.05} max={2} onChange={(v) => upd({ raftMiddleThickness: v })} />
+            <Num label="Middle Layer Line Width" unit="mm" value={print.raftMiddleLineWidth ?? 0.4} step={0.01} min={0.1} max={2.0} onChange={(v) => upd({ raftMiddleLineWidth: v })} />
+            <SectionDivider label="Top Layers" />
+            <Num label="Top Layer Count" value={print.raftTopLayers ?? 2} min={0} max={20} onChange={(v) => upd({ raftTopLayers: v })} />
+            <Num label="Top Layer Thickness" unit="mm" value={print.raftTopThickness ?? 0.1} step={0.01} min={0.05} max={1} onChange={(v) => upd({ raftTopThickness: v })} />
+            <Num label="Top Line Width" unit="mm" value={print.raftTopLineWidth ?? 0.4} step={0.01} min={0.1} max={2} onChange={(v) => upd({ raftTopLineWidth: v })} />
+            <Num label="Top Line Spacing" unit="mm" value={print.raftTopLineSpacing ?? 0.4} step={0.05} min={0.1} max={5} onChange={(v) => upd({ raftTopLineSpacing: v })} />
+            <Num label="Top Surface Z Offset" unit="mm" value={print.raftTopSurfaceZOffset ?? 0} step={0.01} min={-1} max={1} onChange={(v) => upd({ raftTopSurfaceZOffset: v })} />
+            <SectionDivider label="Base" />
+            <Num label="Base Line Spacing" unit="mm" value={print.raftBaseLineSpacing ?? 1.6} step={0.1} min={0.1} max={10} onChange={(v) => upd({ raftBaseLineSpacing: v })} />
+            <Num label="Base Infill Overlap" unit="%" value={print.raftBaseInfillOverlap ?? 0} step={1} min={0} max={100} onChange={(v) => upd({ raftBaseInfillOverlap: v })} />
+            <SectionDivider label="Middle" />
+            <Num label="Middle Line Spacing" unit="mm" value={print.raftMiddleLineSpacing ?? 0.8} step={0.05} min={0.1} max={5} onChange={(v) => upd({ raftMiddleLineSpacing: v })} />
+            <Num label="Interface Z Offset" unit="mm" value={print.raftInterfaceZOffset ?? 0} step={0.01} min={-1} max={1} onChange={(v) => upd({ raftInterfaceZOffset: v })} />
+            <SectionDivider label="Print Settings" />
+            <Num label="Raft Print Acceleration" unit="mm/s²" value={print.raftPrintAcceleration ?? 0} step={100} min={0} max={10000} onChange={(v) => upd({ raftPrintAcceleration: v })} />
+            <Num label="Raft Print Jerk" unit="mm/s" value={print.raftPrintJerk ?? 0} step={0.5} min={0} max={30} onChange={(v) => upd({ raftPrintJerk: v })} />
+            <Num label="Raft Fan Speed" unit="%" value={print.raftFanSpeed ?? 0} step={1} min={0} max={100} onChange={(v) => upd({ raftFanSpeed: v })} />
+            <Num label="Raft Flow" unit="%" value={print.raftFlow ?? 100} step={1} min={0} max={200} onChange={(v) => upd({ raftFlow: v })} />
+            <Check label="Monotonic Raft Top Surface" value={print.monotonicRaftTopSurface ?? false} onChange={(v) => upd({ monotonicRaftTopSurface: v })} />
+            <Check label="Remove Raft Inside Corners" value={print.removeRaftInsideCorners ?? false} onChange={(v) => upd({ removeRaftInsideCorners: v })} />
+          </Tier>
+        )}
       </SlicerSection>}
 
       {isVisible('specialModes') && <SlicerSection title="Special Modes" color="#e879f9" defaultOpen={false}>
@@ -539,6 +649,35 @@ export function SlicerPrintProfileSettings({
           ]} />
         <Num label="Min Polygon Circumference" unit="mm" value={print.minimumPolygonCircumference ?? 1.0} step={0.1} min={0.1} max={10} onChange={(v) => upd({ minimumPolygonCircumference: v })} />
         <Num label="Small Hole Max Size" unit="mm" value={print.smallHoleMaxSize ?? 0} step={0.1} min={0} max={10} onChange={(v) => upd({ smallHoleMaxSize: v })} />
+        <Tier min="advanced">
+          <AdvancedDivider label="Advanced · Fluid Motion" />
+          <Check label="Enable Fluid Motion" value={print.fluidMotionEnable ?? false} onChange={(v) => upd({ fluidMotionEnable: v })} />
+          {(print.fluidMotionEnable ?? false) && (<>
+            <Num label="Fluid Motion Angle" unit="°" value={print.fluidMotionAngle ?? 15} min={0} max={89} onChange={(v) => upd({ fluidMotionAngle: v })} />
+            <Num label="Fluid Motion Small Distance" unit="mm" value={print.fluidMotionSmallDistance ?? 0.01} step={0.005} min={0.001} max={1} onChange={(v) => upd({ fluidMotionSmallDistance: v })} />
+          </>)}
+          <AdvancedDivider label="Advanced · Flow Compensation" />
+          <Num label="Flow Rate Compensation Factor" value={print.flowRateCompensationFactor ?? 1.0} step={0.01} min={0.1} max={3.0} onChange={(v) => upd({ flowRateCompensationFactor: v })} />
+          <AdvancedDivider label="Advanced · Coasting" />
+          <Num label="Coasting Speed" unit="%" value={print.coastingSpeed ?? 90} step={1} min={10} max={100} onChange={(v) => upd({ coastingSpeed: v })} />
+          <AdvancedDivider label="Advanced · Scarf Seam" />
+          <Num label="Scarf Seam Length" unit="mm" value={print.scarfSeamLength ?? 0} step={0.1} min={0} max={10} onChange={(v) => upd({ scarfSeamLength: v })} />
+          <Num label="Scarf Seam Step Length" unit="mm" value={print.scarfSeamStepLength ?? 0.5} step={0.05} min={0.05} max={5} onChange={(v) => upd({ scarfSeamStepLength: v })} />
+          <Num label="Scarf Seam Start Height" unit="mm" value={print.scarfSeamStartHeight ?? 0} step={0.05} min={0} max={10} onChange={(v) => upd({ scarfSeamStartHeight: v })} />
+          <Num label="Scarf Seam Start Speed Ratio" value={print.scarfSeamStartSpeedRatio ?? 1.0} step={0.05} min={0.1} max={1.0} onChange={(v) => upd({ scarfSeamStartSpeedRatio: v })} />
+          <AdvancedDivider label="Advanced · Ooze Shield" />
+          <Check label="Enable Ooze Shield" value={print.enableOozeShield ?? false} onChange={(v) => upd({ enableOozeShield: v })} />
+          {(print.enableOozeShield ?? false) && (<>
+            <Num label="Ooze Shield Angle" unit="°" value={print.oozeShieldAngle ?? 60} min={0} max={89} onChange={(v) => upd({ oozeShieldAngle: v })} />
+            <Num label="Ooze Shield Distance" unit="mm" value={print.oozeShieldDistance ?? 2} step={0.1} min={0} max={20} onChange={(v) => upd({ oozeShieldDistance: v })} />
+          </>)}
+          <AdvancedDivider label="Advanced · Cooling Extras" />
+          <Num label="Min Layer Time With Overhang" unit="s" value={print.minLayerTimeWithOverhang ?? 0} step={0.5} min={0} max={30} onChange={(v) => upd({ minLayerTimeWithOverhang: v })} />
+          <AdvancedDivider label="Advanced · Travel Extras" />
+          <Check label="Keep Retracting During Travel" value={print.keepRetractingDuringTravel ?? false} onChange={(v) => upd({ keepRetractingDuringTravel: v })} />
+          <Check label="Prime During Travel" value={print.primeDuringTravel ?? false} onChange={(v) => upd({ primeDuringTravel: v })} />
+          <Check label="Infill Travel Optimization" value={print.infillTravelOptimization ?? false} onChange={(v) => upd({ infillTravelOptimization: v })} />
+        </Tier>
       </SlicerSection>}
 
       {isVisible('acceleration') && <SlicerSection title="Acceleration & Jerk" color="#fb7185" defaultOpen={false}>
@@ -654,229 +793,14 @@ export function SlicerPrintProfileSettings({
         <Num label="Small Hole Max Size" unit="mm" value={print.smallHoleMaxSize ?? 0} step={0.1} min={0} max={20} onChange={(v) => upd({ smallHoleMaxSize: v })} />
       </SlicerSection>}
 
-      {/* ══════════════════════════════════════════════════════════════════
-          Cura-parity expansion — see TaskLists.txt Phase A2.
-          Fields marked "storage-only" persist through save/load but
-          aren't yet honored by the slicer worker.
-          ══════════════════════════════════════════════════════════════════ */}
+      {/* Cura-parity advanced fields are now merged into their parent
+          sections (Walls, Top/Bottom, Infill, Travel, Cooling, Support,
+          Adhesion, Experimental) and gated by Tier min="advanced" so they
+          only appear at advanced/expert detail level. Each block is
+          prefixed with an AdvancedDivider so users can tell them apart.
+          Only sections that don't fit under an existing parent (Prime
+          Tower, Modifier Meshes) remain standalone below. */}
 
-      {isVisible('wallsAdvanced') && <SlicerSection title="Walls — Advanced" color="#c4b5fd" defaultOpen={false}>
-        <Num label="Wall Line Count (alias)" value={print.wallLineCount ?? print.wallCount ?? 2} min={1} max={20} onChange={(v) => upd({ wallLineCount: v, wallCount: v })} />
-        <Num label="Inner Wall Line Width" unit="mm" value={print.innerWallLineWidth ?? 0.4} step={0.01} min={0.1} max={2.0} onChange={(v) => upd({ innerWallLineWidth: v })} />
-        <Check label="Group Outer Walls" value={print.groupOuterWalls ?? false} onChange={(v) => upd({ groupOuterWalls: v })} />
-        <Check label="Alternate Wall Directions" value={print.alternateWallDirections ?? false} onChange={(v) => upd({ alternateWallDirections: v })} />
-        <Check label="Optimize Wall Printing Order" value={print.optimizeWallOrder ?? false} onChange={(v) => upd({ optimizeWallOrder: v })} />
-        <Num label="Min Odd Wall Line Width" unit="mm" value={print.minOddWallLineWidth ?? 0.2} step={0.01} min={0.05} max={1} onChange={(v) => upd({ minOddWallLineWidth: v })} />
-        <SectionDivider label="Overhanging Walls" />
-        <Num label="Overhanging Wall Angle" unit="°" value={print.overhangingWallAngle ?? 45} min={0} max={89} onChange={(v) => upd({ overhangingWallAngle: v })} />
-        <Num label="Overhanging Wall Speed" unit="%" value={print.overhangingWallSpeed ?? 100} step={5} min={10} max={100} onChange={(v) => upd({ overhangingWallSpeed: v })} />
-        <SectionDivider label="Z Seam" />
-        <Sel label="Z Seam Position" value={print.zSeamPosition ?? 'sharpest_corner'}
-          onChange={(v) => upd({ zSeamPosition: v })}
-          options={[
-            { value: 'shortest',         label: 'Shortest' },
-            { value: 'sharpest_corner',  label: 'Sharpest Corner' },
-            { value: 'random',           label: 'Random' },
-            { value: 'user_specified',   label: 'User Specified (X/Y)' },
-            { value: 'back',             label: 'Back' },
-          ]} />
-        <Check label="Z Seam Relative (X/Y relative to model center)" value={print.zSeamRelative ?? false} onChange={(v) => upd({ zSeamRelative: v })} />
-        <Check label="Snap Z Seam to Vertex" value={print.zSeamOnVertex ?? false} onChange={(v) => upd({ zSeamOnVertex: v })} />
-        <Num label="Z Seam X" unit="mm" value={print.zSeamX ?? 0} step={0.1} min={-1000} max={1000} onChange={(v) => upd({ zSeamX: v })} />
-        <Num label="Z Seam Y" unit="mm" value={print.zSeamY ?? 0} step={0.1} min={-1000} max={1000} onChange={(v) => upd({ zSeamY: v })} />
-        <Sel label="Seam Corner Preference" value={print.seamCornerPreference ?? 'none'}
-          onChange={(v) => upd({ seamCornerPreference: v })}
-          options={[
-            { value: 'none',           label: 'None' },
-            { value: 'hide_seam',      label: 'Hide Seam' },
-            { value: 'expose_seam',    label: 'Expose Seam' },
-            { value: 'hide_or_expose', label: 'Hide or Expose' },
-            { value: 'smart_hide',     label: 'Smart Hide' },
-          ]} />
-      </SlicerSection>}
-
-      {isVisible('topBottomAdvanced') && <SlicerSection title="Top/Bottom — Advanced" color="#5eead4" defaultOpen={false}>
-        <Num label="Top Thickness" unit="mm" value={print.topThickness ?? 0.8} step={0.05} min={0} max={10} onChange={(v) => upd({ topThickness: v })} />
-        <Num label="Bottom Thickness" unit="mm" value={print.bottomThickness ?? 0.8} step={0.05} min={0} max={10} onChange={(v) => upd({ bottomThickness: v })} />
-        <Num label="Skin Overlap" unit="%" value={print.skinOverlapPercent ?? 10} step={1} min={0} max={100} onChange={(v) => upd({ skinOverlapPercent: v })} />
-        <Num label="Top Skin Expand Distance" unit="mm" value={print.topSkinExpandDistance ?? 0} step={0.1} min={0} max={10} onChange={(v) => upd({ topSkinExpandDistance: v })} />
-        <Num label="Bottom Skin Expand Distance" unit="mm" value={print.bottomSkinExpandDistance ?? 0} step={0.1} min={0} max={10} onChange={(v) => upd({ bottomSkinExpandDistance: v })} />
-        <Num label="Skin Removal Width" unit="mm" value={print.skinRemovalWidth ?? 0} step={0.05} min={0} max={5} onChange={(v) => upd({ skinRemovalWidth: v })} />
-        <Num label="Extra Skin Wall Count" value={print.extraSkinWallCount ?? 0} min={0} max={10} onChange={(v) => upd({ extraSkinWallCount: v })} />
-        <Check label="No Skin in Z Gaps" value={print.noSkinInZGaps ?? false} onChange={(v) => upd({ noSkinInZGaps: v })} />
-        <Sel label="Bottom Pattern (Initial Layer)" value={print.bottomPatternInitialLayer ?? 'lines'}
-          onChange={(v) => upd({ bottomPatternInitialLayer: v })}
-          options={[
-            { value: 'lines',      label: 'Lines' },
-            { value: 'concentric', label: 'Concentric' },
-            { value: 'zigzag',     label: 'Zigzag' },
-            { value: 'monotonic',  label: 'Monotonic' },
-          ]} />
-        <Check label="Iron Only Highest Layer" value={print.ironOnlyHighestLayer ?? false} onChange={(v) => upd({ ironOnlyHighestLayer: v })} />
-        <SectionDivider label="Top Surface Skin" />
-        <Num label="Top Surface Skin Line Width" unit="mm" value={print.topSurfaceSkinLineWidth ?? 0.4} step={0.01} min={0.1} max={2} onChange={(v) => upd({ topSurfaceSkinLineWidth: v })} />
-        <Sel label="Top Surface Skin Pattern" value={print.topSurfaceSkinPattern ?? 'lines'}
-          onChange={(v) => upd({ topSurfaceSkinPattern: v })}
-          options={[
-            { value: 'lines',       label: 'Lines' },
-            { value: 'concentric',  label: 'Concentric' },
-            { value: 'zigzag',      label: 'Zigzag' },
-          ]} />
-        <Num label="Top Surface Skin Expansion" unit="mm" value={print.topSurfaceSkinExpansion ?? 0} step={0.1} min={0} max={10} onChange={(v) => upd({ topSurfaceSkinExpansion: v })} />
-        <Num label="Top Surface Skin Flow" unit="%" value={print.topSurfaceSkinFlow ?? 100} step={1} min={0} max={200} onChange={(v) => upd({ topSurfaceSkinFlow: v })} />
-      </SlicerSection>}
-
-      {isVisible('infillAdvanced') && <SlicerSection title="Infill — Advanced" color="#fdba74" defaultOpen={false}>
-        <Num label="Infill Line Distance (overrides density)" unit="mm" value={print.infillLineDistance ?? 0} step={0.05} min={0} max={20} onChange={(v) => upd({ infillLineDistance: v })} />
-        <Num label="Infill Layer Thickness" unit="mm" value={print.infillLayerThickness ?? 0} step={0.05} min={0} max={2} onChange={(v) => upd({ infillLayerThickness: v })} />
-        <Check label="Connect Infill Lines" value={print.connectInfillLines ?? false} onChange={(v) => upd({ connectInfillLines: v })} />
-        <Check label="Connect Infill Polygons" value={print.connectInfillPolygons ?? true} onChange={(v) => upd({ connectInfillPolygons: v })} />
-        <Num label="Infill Wipe Distance" unit="mm" value={print.infillWipeDistance ?? 0} step={0.1} min={0} max={10} onChange={(v) => upd({ infillWipeDistance: v })} />
-        <Num label="Infill Start Move Inwards" unit="mm" value={print.infillStartMoveInwardsLength ?? 0} step={0.1} min={0} max={5} onChange={(v) => upd({ infillStartMoveInwardsLength: v })} />
-        <Num label="Infill End Move Inwards" unit="mm" value={print.infillEndMoveInwardsLength ?? 0} step={0.1} min={0} max={5} onChange={(v) => upd({ infillEndMoveInwardsLength: v })} />
-        <Num label="Infill Overhang Angle" unit="°" value={print.infillOverhangAngle ?? 0} min={0} max={89} onChange={(v) => upd({ infillOverhangAngle: v })} />
-        <Num label="Gradual Infill Step Height" unit="mm" value={print.gradualInfillStepHeight ?? 1.5} step={0.1} min={0.1} max={20} onChange={(v) => upd({ gradualInfillStepHeight: v })} />
-        <Num label="Infill X Offset" unit="mm" value={print.infillXOffset ?? 0} step={0.1} min={-100} max={100} onChange={(v) => upd({ infillXOffset: v })} />
-        <Num label="Infill Y Offset" unit="mm" value={print.infillYOffset ?? 0} step={0.1} min={-100} max={100} onChange={(v) => upd({ infillYOffset: v })} />
-        <SectionDivider label="Lightning Infill" />
-        <Num label="Lightning Prune Angle" unit="°" value={print.lightningPruneAngle ?? 40} min={0} max={89} onChange={(v) => upd({ lightningPruneAngle: v })} />
-        <Num label="Lightning Straightening Angle" unit="°" value={print.lightningStraighteningAngle ?? 40} min={0} max={89} onChange={(v) => upd({ lightningStraighteningAngle: v })} />
-        <SectionDivider label="Cubic Subdivision" />
-        <Num label="Cubic Subdivision Shell" unit="mm" value={print.cubicSubdivisionShell ?? 0} step={0.5} min={0} max={20} onChange={(v) => upd({ cubicSubdivisionShell: v })} />
-      </SlicerSection>}
-
-      {isVisible('zhop') && <SlicerSection title="Z-Hop & Retraction Extras" color="#93c5fd" defaultOpen={false}>
-        <Check label="Z-Hop When Retracted" value={print.zHopWhenRetracted ?? false} onChange={(v) => upd({ zHopWhenRetracted: v })} />
-        {(print.zHopWhenRetracted ?? false) && (<>
-          <Num label="Z-Hop Height" unit="mm" value={print.zHopHeight ?? 0.4} step={0.05} min={0.05} max={5} onChange={(v) => upd({ zHopHeight: v })} />
-          <Num label="Z-Hop Speed" unit="mm/s" value={print.zHopSpeed ?? 10} step={1} min={1} max={100} onChange={(v) => upd({ zHopSpeed: v })} />
-          <Check label="Z-Hop Only Over Printed Parts" value={print.zHopOnlyOverPrinted ?? false} onChange={(v) => upd({ zHopOnlyOverPrinted: v })} />
-        </>)}
-        <SectionDivider label="Prime / Wipe" />
-        <Num label="Retraction Extra Prime Amount" unit="mm³" value={print.retractionExtraPrimeAmount ?? 0} step={0.1} min={0} max={10} onChange={(v) => upd({ retractionExtraPrimeAmount: v })} />
-        <Num label="Wipe Retraction Distance" unit="mm" value={print.wipeRetractionDistance ?? 0} step={0.1} min={0} max={10} onChange={(v) => upd({ wipeRetractionDistance: v })} />
-        <Num label="Wipe Retraction Extra Prime" unit="mm³" value={print.wipeRetractionExtraPrime ?? 0} step={0.1} min={0} max={10} onChange={(v) => upd({ wipeRetractionExtraPrime: v })} />
-      </SlicerSection>}
-
-      {isVisible('coolingAdvanced') && <SlicerSection title="Cooling — Advanced" color="#7dd3fc" defaultOpen={false}>
-        <Num label="Initial Fan Speed" unit="%" value={print.initialFanSpeed ?? 0} step={1} min={0} max={100} onChange={(v) => upd({ initialFanSpeed: v })} />
-        <Num label="Maximum Fan Speed" unit="%" value={print.maximumFanSpeed ?? 100} step={1} min={0} max={100} onChange={(v) => upd({ maximumFanSpeed: v })} />
-        <Num label="Regular/Max Fan Threshold" unit="s" value={print.regularMaxFanThreshold ?? 10} step={0.5} min={0} max={60} onChange={(v) => upd({ regularMaxFanThreshold: v })} />
-        <Num label="Minimum Speed" unit="mm/s" value={print.minimumSpeed ?? 10} step={1} min={1} max={100} onChange={(v) => upd({ minimumSpeed: v })} />
-        <Num label="Build Volume Fan Speed" unit="%" value={print.buildVolumeFanSpeed ?? 0} step={1} min={0} max={100} onChange={(v) => upd({ buildVolumeFanSpeed: v })} />
-        <Tier level="expert">
-          <Num label="Build Volume Fan Speed at Height" unit="mm" value={print.buildVolumeFanSpeedAtHeight ?? 0} step={0.5} min={0} max={500} onChange={(v) => upd({ buildVolumeFanSpeedAtHeight: v })} />
-          <Num label="Initial Layers Build Volume Fan Speed" unit="%" value={print.initialLayersBuildVolumeFanSpeed ?? 0} step={1} min={0} max={100} onChange={(v) => upd({ initialLayersBuildVolumeFanSpeed: v })} />
-        </Tier>
-      </SlicerSection>}
-
-      {isVisible('supportAdvanced') && <SlicerSection title="Support — Advanced" color="#fde68a" defaultOpen={false}>
-        <Num label="Support Horizontal Expansion" unit="mm" value={print.supportHorizontalExpansion ?? 0} step={0.1} min={-5} max={5} onChange={(v) => upd({ supportHorizontalExpansion: v })} />
-        <Num label="Support Line Distance" unit="mm" value={print.supportLineDistance ?? 0} step={0.1} min={0} max={20} onChange={(v) => upd({ supportLineDistance: v })} />
-        <Num label="Support Join Distance" unit="mm" value={print.supportJoinDistance ?? 2} step={0.1} min={0} max={20} onChange={(v) => upd({ supportJoinDistance: v })} />
-        <Num label="Minimum Support Area" unit="mm²" value={print.minimumSupportArea ?? 0} step={0.5} min={0} max={100} onChange={(v) => upd({ minimumSupportArea: v })} />
-        <Num label="Support Infill Layer Thickness" unit="mm" value={print.supportInfillLayerThickness ?? 0} step={0.05} min={0} max={2} onChange={(v) => upd({ supportInfillLayerThickness: v })} />
-        <SectionDivider label="Connect / Chain" />
-        <Check label="Connect Support Lines" value={print.connectSupportLines ?? false} onChange={(v) => upd({ connectSupportLines: v })} />
-        <Check label="Connect Support ZigZags" value={print.connectSupportZigZags ?? false} onChange={(v) => upd({ connectSupportZigZags: v })} />
-        <SectionDivider label="Conical Support" />
-        <Check label="Enable Conical Support" value={print.enableConicalSupport ?? false} onChange={(v) => upd({ enableConicalSupport: v })} />
-        {(print.enableConicalSupport ?? false) && (
-          <Num label="Conical Support Angle" unit="°" value={print.conicalSupportAngle ?? 30} min={0} max={60} onChange={(v) => upd({ conicalSupportAngle: v })} />
-        )}
-        <SectionDivider label="Support Brim" />
-        <Check label="Enable Support Brim" value={print.enableSupportBrim ?? false} onChange={(v) => upd({ enableSupportBrim: v })} />
-        {(print.enableSupportBrim ?? false) && (<>
-          <Num label="Support Brim Line Count" value={print.supportBrimLineCount ?? 5} min={0} max={50} onChange={(v) => upd({ supportBrimLineCount: v })} />
-          <Num label="Support Brim Width" unit="mm" value={print.supportBrimWidth ?? 3} step={0.1} min={0} max={50} onChange={(v) => upd({ supportBrimWidth: v })} />
-        </>)}
-        <SectionDivider label="Stair Step Base" />
-        <Num label="Stair Step Height" unit="mm" value={print.supportStairStepHeight ?? 0.3} step={0.05} min={0} max={10} onChange={(v) => upd({ supportStairStepHeight: v })} />
-        <Num label="Stair Step Minimum Slope" unit="°" value={print.supportStairStepMinSlope ?? 10} min={0} max={89} onChange={(v) => upd({ supportStairStepMinSlope: v })} />
-        <Num label="Stair Step Max Width" unit="mm" value={print.supportStairStepMaxWidth ?? 5} step={0.1} min={0} max={50} onChange={(v) => upd({ supportStairStepMaxWidth: v })} />
-        <SectionDivider label="Distance Priority" />
-        <Sel label="Support Distance Priority" value={print.supportDistancePriority ?? 'xy_overrides_z'}
-          onChange={(v) => upd({ supportDistancePriority: v })}
-          options={[
-            { value: 'xy_overrides_z', label: 'XY overrides Z' },
-            { value: 'z_overrides_xy', label: 'Z overrides XY' },
-          ]} />
-        <SectionDivider label="Break Up Chunks" />
-        <Check label="Break Up Support in Chunks" value={print.breakUpSupportInChunks ?? false} onChange={(v) => upd({ breakUpSupportInChunks: v })} />
-        {(print.breakUpSupportInChunks ?? false) && (<>
-          <Num label="Chunk Size" unit="mm" value={print.breakUpSupportChunkSize ?? 20} step={1} min={1} max={100} onChange={(v) => upd({ breakUpSupportChunkSize: v })} />
-          <Num label="Chunk Line Count" value={print.breakUpSupportChunkLineCount ?? 5} min={1} max={50} onChange={(v) => upd({ breakUpSupportChunkLineCount: v })} />
-        </>)}
-        <SectionDivider label="Conical Min Width" />
-        <Num label="Conical Support Min Width" unit="mm" value={print.conicalSupportMinWidth ?? 5} step={0.5} min={0} max={50} onChange={(v) => upd({ conicalSupportMinWidth: v })} />
-      </SlicerSection>}
-
-      {isVisible('travelAdvanced') && <SlicerSection title="Travel — Advanced" color="#67e8f9" defaultOpen={false}>
-        <Check label="Avoid Printed Parts When Traveling" value={print.avoidPrintedParts ?? false} onChange={(v) => upd({ avoidPrintedParts: v })} />
-        <Check label="Avoid Supports When Traveling" value={print.avoidSupports ?? false} onChange={(v) => upd({ avoidSupports: v })} />
-        <Num label="Max Comb Distance w/o Retract" unit="mm" value={print.maxCombDistanceNoRetract ?? 0} step={1} min={0} max={1000} onChange={(v) => upd({ maxCombDistanceNoRetract: v })} />
-        <Num label="Travel Avoid Distance" unit="mm" value={print.travelAvoidDistance ?? 0.625} step={0.05} min={0} max={10} onChange={(v) => upd({ travelAvoidDistance: v })} />
-        <Num label="Inside Travel Avoid Distance" unit="mm" value={print.insideTravelAvoidDistance ?? 0.4} step={0.05} min={0} max={10} onChange={(v) => upd({ insideTravelAvoidDistance: v })} />
-      </SlicerSection>}
-
-      {isVisible('experimentalExtra') && <SlicerSection title="Experimental (Cura)" color="#cbd5e1" defaultOpen={false}>
-        <SectionDivider label="Fluid Motion" />
-        <Check label="Enable Fluid Motion" value={print.fluidMotionEnable ?? false} onChange={(v) => upd({ fluidMotionEnable: v })} />
-        {(print.fluidMotionEnable ?? false) && (<>
-          <Num label="Fluid Motion Angle" unit="°" value={print.fluidMotionAngle ?? 15} min={0} max={89} onChange={(v) => upd({ fluidMotionAngle: v })} />
-          <Num label="Fluid Motion Small Distance" unit="mm" value={print.fluidMotionSmallDistance ?? 0.01} step={0.005} min={0.001} max={1} onChange={(v) => upd({ fluidMotionSmallDistance: v })} />
-        </>)}
-        <SectionDivider label="Flow Compensation" />
-        <Num label="Flow Rate Compensation Factor" value={print.flowRateCompensationFactor ?? 1.0} step={0.01} min={0.1} max={3.0} onChange={(v) => upd({ flowRateCompensationFactor: v })} />
-        <SectionDivider label="Coasting" />
-        <Num label="Coasting Speed" unit="%" value={print.coastingSpeed ?? 90} step={1} min={10} max={100} onChange={(v) => upd({ coastingSpeed: v })} />
-        <SectionDivider label="Scarf Seam" />
-        <Num label="Scarf Seam Length" unit="mm" value={print.scarfSeamLength ?? 0} step={0.1} min={0} max={10} onChange={(v) => upd({ scarfSeamLength: v })} />
-        <Num label="Scarf Seam Step Length" unit="mm" value={print.scarfSeamStepLength ?? 0.5} step={0.05} min={0.05} max={5} onChange={(v) => upd({ scarfSeamStepLength: v })} />
-        <Num label="Scarf Seam Start Height" unit="mm" value={print.scarfSeamStartHeight ?? 0} step={0.05} min={0} max={10} onChange={(v) => upd({ scarfSeamStartHeight: v })} />
-        <Num label="Scarf Seam Start Speed Ratio" value={print.scarfSeamStartSpeedRatio ?? 1.0} step={0.05} min={0.1} max={1.0} onChange={(v) => upd({ scarfSeamStartSpeedRatio: v })} />
-        <SectionDivider label="Ooze Shield" />
-        <Check label="Enable Ooze Shield" value={print.enableOozeShield ?? false} onChange={(v) => upd({ enableOozeShield: v })} />
-        {(print.enableOozeShield ?? false) && (<>
-          <Num label="Ooze Shield Angle" unit="°" value={print.oozeShieldAngle ?? 60} min={0} max={89} onChange={(v) => upd({ oozeShieldAngle: v })} />
-          <Num label="Ooze Shield Distance" unit="mm" value={print.oozeShieldDistance ?? 2} step={0.1} min={0} max={20} onChange={(v) => upd({ oozeShieldDistance: v })} />
-        </>)}
-        <SectionDivider label="Cooling Extras" />
-        <Num label="Min Layer Time With Overhang" unit="s" value={print.minLayerTimeWithOverhang ?? 0} step={0.5} min={0} max={30} onChange={(v) => upd({ minLayerTimeWithOverhang: v })} />
-        <SectionDivider label="Travel Extras" />
-        <Check label="Keep Retracting During Travel" value={print.keepRetractingDuringTravel ?? false} onChange={(v) => upd({ keepRetractingDuringTravel: v })} />
-        <Check label="Prime During Travel" value={print.primeDuringTravel ?? false} onChange={(v) => upd({ primeDuringTravel: v })} />
-        <Check label="Infill Travel Optimization" value={print.infillTravelOptimization ?? false} onChange={(v) => upd({ infillTravelOptimization: v })} />
-      </SlicerSection>}
-
-      {isVisible('raftAdvanced') && <SlicerSection title="Raft — Advanced" color="#86efac" defaultOpen={false}>
-        <Num label="Raft Wall Count" value={print.raftWallCount ?? 0} min={0} max={10} onChange={(v) => upd({ raftWallCount: v })} />
-        <Num label="Raft Smoothing" unit="mm" value={print.raftSmoothing ?? 5} step={0.5} min={0} max={50} onChange={(v) => upd({ raftSmoothing: v })} />
-        <Num label="Raft Extra Margin" unit="mm" value={print.raftExtraMargin ?? 15} step={0.5} min={0} max={50} onChange={(v) => upd({ raftExtraMargin: v })} />
-        <SectionDivider label="Middle Layers" />
-        <Num label="Middle Layer Count" value={print.raftMiddleLayers ?? 2} min={0} max={20} onChange={(v) => upd({ raftMiddleLayers: v })} />
-        <Num label="Middle Layer Thickness" unit="mm" value={print.raftMiddleThickness ?? 0.15} step={0.01} min={0.05} max={2} onChange={(v) => upd({ raftMiddleThickness: v })} />
-        <Num label="Middle Layer Line Width" unit="mm" value={print.raftMiddleLineWidth ?? 0.4} step={0.01} min={0.1} max={2.0} onChange={(v) => upd({ raftMiddleLineWidth: v })} />
-        <SectionDivider label="Top Layers" />
-        <Num label="Top Layer Count" value={print.raftTopLayers ?? 2} min={0} max={20} onChange={(v) => upd({ raftTopLayers: v })} />
-        <Num label="Top Layer Thickness" unit="mm" value={print.raftTopThickness ?? 0.1} step={0.01} min={0.05} max={1} onChange={(v) => upd({ raftTopThickness: v })} />
-        <Num label="Top Line Width" unit="mm" value={print.raftTopLineWidth ?? 0.4} step={0.01} min={0.1} max={2} onChange={(v) => upd({ raftTopLineWidth: v })} />
-        <Num label="Top Line Spacing" unit="mm" value={print.raftTopLineSpacing ?? 0.4} step={0.05} min={0.1} max={5} onChange={(v) => upd({ raftTopLineSpacing: v })} />
-        <Num label="Top Surface Z Offset" unit="mm" value={print.raftTopSurfaceZOffset ?? 0} step={0.01} min={-1} max={1} onChange={(v) => upd({ raftTopSurfaceZOffset: v })} />
-        <SectionDivider label="Base" />
-        <Num label="Base Line Spacing" unit="mm" value={print.raftBaseLineSpacing ?? 1.6} step={0.1} min={0.1} max={10} onChange={(v) => upd({ raftBaseLineSpacing: v })} />
-        <Num label="Base Infill Overlap" unit="%" value={print.raftBaseInfillOverlap ?? 0} step={1} min={0} max={100} onChange={(v) => upd({ raftBaseInfillOverlap: v })} />
-        <SectionDivider label="Middle" />
-        <Num label="Middle Line Spacing" unit="mm" value={print.raftMiddleLineSpacing ?? 0.8} step={0.05} min={0.1} max={5} onChange={(v) => upd({ raftMiddleLineSpacing: v })} />
-        <Num label="Interface Z Offset" unit="mm" value={print.raftInterfaceZOffset ?? 0} step={0.01} min={-1} max={1} onChange={(v) => upd({ raftInterfaceZOffset: v })} />
-        <SectionDivider label="Print Settings" />
-        <Num label="Raft Print Acceleration" unit="mm/s²" value={print.raftPrintAcceleration ?? 0} step={100} min={0} max={10000} onChange={(v) => upd({ raftPrintAcceleration: v })} />
-        <Num label="Raft Print Jerk" unit="mm/s" value={print.raftPrintJerk ?? 0} step={0.5} min={0} max={30} onChange={(v) => upd({ raftPrintJerk: v })} />
-        <Num label="Raft Fan Speed" unit="%" value={print.raftFanSpeed ?? 0} step={1} min={0} max={100} onChange={(v) => upd({ raftFanSpeed: v })} />
-        <Num label="Raft Flow" unit="%" value={print.raftFlow ?? 100} step={1} min={0} max={200} onChange={(v) => upd({ raftFlow: v })} />
-        <Check label="Monotonic Raft Top Surface" value={print.monotonicRaftTopSurface ?? false} onChange={(v) => upd({ monotonicRaftTopSurface: v })} />
-        <Check label="Remove Raft Inside Corners" value={print.removeRaftInsideCorners ?? false} onChange={(v) => upd({ removeRaftInsideCorners: v })} />
-      </SlicerSection>}
 
       {/* ─── Prime Tower (Multi-Extruder) ───────────────────────────────── */}
       {isVisible('primeTower') && <SlicerSection title="Prime Tower" color="#a3e635" defaultOpen={false}>

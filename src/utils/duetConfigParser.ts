@@ -55,6 +55,8 @@ export interface MaterialProfilePatch {
 
 export interface DuetConfigParseResult {
   profile: Partial<Omit<PrinterProfile, 'id' | 'name' | 'startGCode' | 'endGCode'>>;
+  /** Printer profile field names whose values came from config.g */
+  profileMachineSourcedFields: string[];
   startGCode: string;
   endGCode: string;
   /** G-code to run when the extruder is activated (tool0.g content) */
@@ -79,8 +81,17 @@ function parseMainConfig(text: string, overrideText: string): {
   hasHeatedChamber: boolean;
   maxSpeedX?: number; maxSpeedY?: number; maxSpeedZ?: number; maxSpeedE?: number;
   maxAccelX?: number; maxAccelY?: number; maxAccelZ?: number; maxAccelE?: number;
+  // M204 S (legacy "general" accel), P (print accel), T (travel accel).
+  // RRF treats P/T as the authoritative per-move-type values; S is a
+  // deprecated combined form but many older configs still use it.
   defaultAcceleration?: number;
-  defaultJerk?: number;
+  printAcceleration?: number;
+  travelAcceleration?: number;
+  // RepRap Firmware does NOT call this "jerk" — M566 is "Set allowable
+  // instantaneous speed change" (mm/min). Conceptually it's the corner
+  // junction velocity like Marlin jerk, so slicers (Cura/PrusaSlicer) and
+  // our own print profile surface it under the "Jerk" label.
+  defaultJerk?: number;   // min(X,Y) — conservative for XY moves
   maxNozzleTemp: number;
   maxBedTemp: number;
   extruderOffsetX?: number;
@@ -93,6 +104,10 @@ function parseMainConfig(text: string, overrideText: string): {
   retractionZHop?: number;
   // Pressure advance (M572)
   pressureAdvance?: number;
+  // Firmware retraction configured (M207 present) → slicer can use G10/G11
+  firmwareRetraction: boolean;
+  // Delta / polar kinematics (M665 or M669 K3/K9) → round bed
+  isDelta: boolean;
 } {
   // Merge config.g + config-override.g; override values win for calibrated entries
   const allLines = [...codeLines(text), ...codeLines(overrideText)];
@@ -116,7 +131,11 @@ function parseMainConfig(text: string, overrideText: string): {
   let maxAccelZ: number | undefined;
   let maxAccelE: number | undefined;
   let defaultAcceleration: number | undefined;
+  let printAcceleration: number | undefined;
+  let travelAcceleration: number | undefined;
   let defaultJerk: number | undefined;
+  let jerkX: number | undefined;
+  let jerkY: number | undefined;
   let maxNozzleTemp = 300;
   let maxBedTemp = 120;
   let extruderOffsetX: number | undefined;
@@ -127,6 +146,8 @@ function parseMainConfig(text: string, overrideText: string): {
   let retractionPrimeSpeed: number | undefined;
   let retractionZHop: number | undefined;
   let pressureAdvance: number | undefined;
+  let firmwareRetraction = false;
+  let isDelta = false;
 
   // Scan comments for nozzle diameter hints (e.g. left by Cura/SuperSlicer exports)
   for (const c of allComments) {
@@ -175,16 +196,38 @@ function parseMainConfig(text: string, overrideText: string): {
       if (p['E'] !== undefined) maxAccelE = num(p, 'E');
     }
 
-    // M204 — default print acceleration
+    // M204 — acceleration in RRF.
+    //   P = acceleration for PRINT moves (mm/s²)   → slicer "Print Acceleration"
+    //   T = acceleration for TRAVEL moves (mm/s²)  → slicer "Travel Acceleration"
+    //   S = legacy general acceleration (applies to all moves when P/T absent)
+    // Real configs commonly look like:  M204 P1000 T3000
     if (upper.startsWith('M204')) {
       const s = num(p, 'S');
-      if (s !== undefined) defaultAcceleration = s;
+      const pAccel = num(p, 'P');
+      const tAccel = num(p, 'T');
+      if (s !== undefined)      defaultAcceleration = s;
+      if (pAccel !== undefined) printAcceleration   = pAccel;
+      if (tAccel !== undefined) travelAcceleration  = tAccel;
     }
 
-    // M566 — instantaneous speed change (Duet jerk), mm/min → mm/s
+    // M566 — "Allowable instantaneous speed change" (mm/min per axis).
+    // RRF does not call this "jerk" but it plays the same role as Marlin's
+    // jerk setting (corner junction velocity), and slicers expose it under
+    // the "Jerk" label. We convert mm/min → mm/s to match slicer units and
+    // use min(X,Y) as the XY jerk so neither axis's firmware limit is
+    // overshot by the slicer.
     if (upper.startsWith('M566')) {
       const x = num(p, 'X');
-      if (x !== undefined) defaultJerk = Math.round(x / 60);
+      const y = num(p, 'Y');
+      if (x !== undefined) jerkX = Math.round(x / 60);
+      if (y !== undefined) jerkY = Math.round(y / 60);
+      if (jerkX !== undefined && jerkY !== undefined) {
+        defaultJerk = Math.min(jerkX, jerkY);
+      } else if (jerkX !== undefined) {
+        defaultJerk = jerkX;
+      } else if (jerkY !== undefined) {
+        defaultJerk = jerkY;
+      }
     }
 
     // M563 — define tool: count extruders, read fan assignment
@@ -233,6 +276,8 @@ function parseMainConfig(text: string, overrideText: string): {
     }
 
     // M207 — firmware retraction: S=distance F=retractSpeed(mm/min) T=primeSpeed(mm/min) Z=zhop
+    // Presence of M207 in config.g means the board is set up for G10/G11
+    // firmware retraction, so switch the slicer into firmwareRetraction mode.
     if (upper.startsWith('M207')) {
       const s = num(p, 'S');
       const f = num(p, 'F');
@@ -242,6 +287,17 @@ function parseMainConfig(text: string, overrideText: string): {
       if (f !== undefined) retractionRetractSpeed = Math.round(f / 60);
       if (t !== undefined) retractionPrimeSpeed = Math.round(t / 60);
       if (z !== undefined) retractionZHop = z;
+      firmwareRetraction = true;
+    }
+
+    // M665 / M669 — kinematics. Delta printers (M665 or M669 K3 Linear Delta
+    // / K9 Rotary Delta) and polar (K14) have circular build plates.
+    if (upper.startsWith('M665')) {
+      isDelta = true;
+    }
+    if (upper.startsWith('M669')) {
+      const k = num(p, 'K');
+      if (k === 3 || k === 9 || k === 14) isDelta = true;
     }
 
     // M572 — pressure advance: D=drive S=value (config-override.g usually has calibrated value)
@@ -261,12 +317,15 @@ function parseMainConfig(text: string, overrideText: string): {
     hasHeatedBed, hasHeatedChamber,
     maxSpeedX, maxSpeedY, maxSpeedZ, maxSpeedE,
     maxAccelX, maxAccelY, maxAccelZ, maxAccelE,
-    defaultAcceleration, defaultJerk,
+    defaultAcceleration, printAcceleration, travelAcceleration,
+    defaultJerk,
     maxNozzleTemp, maxBedTemp,
     extruderOffsetX, extruderOffsetY,
     coolingFanNumber,
     retractionDistance, retractionRetractSpeed, retractionPrimeSpeed, retractionZHop,
     pressureAdvance,
+    firmwareRetraction,
+    isDelta,
   };
 }
 
@@ -283,6 +342,10 @@ export function parseDuetConfig(
 
   const maxSpeed = r.maxSpeedX ?? r.maxSpeedY ?? 200;
   const maxAccel = r.maxAccelX ?? r.maxAccelY ?? 3000;
+
+  // Prefer M204 P (print) or M204 S (legacy) for the printer-level "default"
+  // acceleration display; fall back to travel if that's all we parsed.
+  const printerDefaultAccel = r.printAcceleration ?? r.defaultAcceleration ?? r.travelAcceleration;
 
   const profile: Partial<Omit<PrinterProfile, 'id' | 'name' | 'startGCode' | 'endGCode'>> = {
     gcodeFlavorType: 'duet',
@@ -307,12 +370,40 @@ export function parseDuetConfig(
     ...(r.maxAccelY !== undefined ? { maxAccelY: r.maxAccelY } : {}),
     ...(r.maxAccelZ !== undefined ? { maxAccelZ: r.maxAccelZ } : {}),
     ...(r.maxAccelE !== undefined ? { maxAccelE: r.maxAccelE } : {}),
-    ...(r.defaultAcceleration !== undefined ? { defaultAcceleration: r.defaultAcceleration } : {}),
+    ...(printerDefaultAccel !== undefined ? { defaultAcceleration: printerDefaultAccel } : {}),
     ...(r.defaultJerk !== undefined ? { defaultJerk: r.defaultJerk } : {}),
     ...(r.extruderOffsetX !== undefined ? { extruderOffsetX: r.extruderOffsetX } : {}),
     ...(r.extruderOffsetY !== undefined ? { extruderOffsetY: r.extruderOffsetY } : {}),
     ...(r.coolingFanNumber !== undefined ? { coolingFanNumber: r.coolingFanNumber } : {}),
+    // M207 in config.g → board is ready for G10/G11 firmware retraction.
+    ...(r.firmwareRetraction ? { firmwareRetraction: true } : {}),
+    // Delta / polar kinematics → round bed.
+    ...(r.isDelta ? { buildPlateShape: 'elliptic' as const } : {}),
   };
+
+  // List of printer-profile fields whose values were imported from config.g
+  // so the slicer UI can lock them (user must edit on the board + resync).
+  const profileMachineSourcedFields: string[] = ['gcodeFlavorType'];
+  if (r.buildX !== undefined && r.buildY !== undefined && r.buildZ !== undefined) profileMachineSourcedFields.push('buildVolume');
+  if (r.originCenter)                                profileMachineSourcedFields.push('originCenter');
+  if (r.nozzleCount > 0)                             profileMachineSourcedFields.push('nozzleCount');
+  if (r.filamentDiameter > 0)                        profileMachineSourcedFields.push('filamentDiameter');
+  profileMachineSourcedFields.push('hasHeatedBed', 'hasHeatedChamber', 'maxNozzleTemp', 'maxBedTemp');
+  if (r.maxSpeedX !== undefined) profileMachineSourcedFields.push('maxSpeedX');
+  if (r.maxSpeedY !== undefined) profileMachineSourcedFields.push('maxSpeedY');
+  if (r.maxSpeedZ !== undefined) profileMachineSourcedFields.push('maxSpeedZ');
+  if (r.maxSpeedE !== undefined) profileMachineSourcedFields.push('maxSpeedE');
+  if (r.maxAccelX !== undefined) profileMachineSourcedFields.push('maxAccelX');
+  if (r.maxAccelY !== undefined) profileMachineSourcedFields.push('maxAccelY');
+  if (r.maxAccelZ !== undefined) profileMachineSourcedFields.push('maxAccelZ');
+  if (r.maxAccelE !== undefined) profileMachineSourcedFields.push('maxAccelE');
+  if (printerDefaultAccel !== undefined) profileMachineSourcedFields.push('defaultAcceleration');
+  if (r.defaultJerk !== undefined)       profileMachineSourcedFields.push('defaultJerk');
+  if (r.extruderOffsetX !== undefined)   profileMachineSourcedFields.push('extruderOffsetX');
+  if (r.extruderOffsetY !== undefined)   profileMachineSourcedFields.push('extruderOffsetY');
+  if (r.coolingFanNumber !== undefined)  profileMachineSourcedFields.push('coolingFanNumber');
+  if (r.firmwareRetraction)              profileMachineSourcedFields.push('firmwareRetraction');
+  if (r.isDelta)                         profileMachineSourcedFields.push('buildPlateShape');
 
   // Build material profile patch from retraction + pressure advance
   const materialFields: MaterialProfilePatch['fields'] = {};
@@ -341,26 +432,38 @@ export function parseDuetConfig(
     machineSourcedFields.push('linearAdvanceFactor', 'linearAdvanceEnabled');
   }
 
-  // Build print profile patch from acceleration (M204/M201) and jerk (M566)
-  // Duet applies one value globally; we seed all per-zone fields from it so
-  // the user has a sensible starting point and can tune individually.
+  // Build print profile patch from acceleration (M204 P/T/S, fallback M201)
+  // and jerk (M566). RRF terminology → slicer terminology:
+  //   M204 P  → accelerationPrint (seeds wall/infill/topBottom/support too)
+  //   M204 T  → accelerationTravel
+  //   M204 S  → fallback for both when P/T not set
+  //   M201 X/Y → hardware ceiling, last-resort fallback
+  //   M566 X/Y → jerkPrint / jerkTravel / jerkWall / jerkInfill / jerkTopBottom
+  //             (RRF calls this "instantaneous speed change", not "jerk")
   const printFields: PrintProfilePatch['fields'] = {};
   const printMachineSourced: string[] = [];
 
-  // Prefer M204 S (default acceleration) over M201 X/Y (max acceleration limit)
-  const accel = r.defaultAcceleration ?? r.maxAccelX ?? r.maxAccelY;
-  if (accel !== undefined) {
-    printFields.accelerationEnabled   = true;
-    printFields.accelerationPrint     = accel;
-    printFields.accelerationTravel    = accel;
-    printFields.accelerationWall      = accel;
-    printFields.accelerationInfill    = accel;
-    printFields.accelerationTopBottom = accel;
-    printFields.accelerationSupport   = accel;
+  const printAccel  = r.printAcceleration  ?? r.defaultAcceleration ?? r.maxAccelX ?? r.maxAccelY;
+  const travelAccel = r.travelAcceleration ?? r.defaultAcceleration ?? r.printAcceleration ?? r.maxAccelX ?? r.maxAccelY;
+
+  if (printAccel !== undefined || travelAccel !== undefined) {
+    printFields.accelerationEnabled = true;
+    printMachineSourced.push('accelerationEnabled');
+  }
+  if (printAccel !== undefined) {
+    printFields.accelerationPrint     = printAccel;
+    printFields.accelerationWall      = printAccel;
+    printFields.accelerationInfill    = printAccel;
+    printFields.accelerationTopBottom = printAccel;
+    printFields.accelerationSupport   = printAccel;
     printMachineSourced.push(
-      'accelerationEnabled', 'accelerationPrint', 'accelerationTravel',
-      'accelerationWall', 'accelerationInfill', 'accelerationTopBottom', 'accelerationSupport',
+      'accelerationPrint', 'accelerationWall', 'accelerationInfill',
+      'accelerationTopBottom', 'accelerationSupport',
     );
+  }
+  if (travelAccel !== undefined) {
+    printFields.accelerationTravel = travelAccel;
+    printMachineSourced.push('accelerationTravel');
   }
 
   if (r.defaultJerk !== undefined) {
@@ -378,6 +481,7 @@ export function parseDuetConfig(
 
   return {
     profile,
+    profileMachineSourcedFields,
     startGCode: startG,
     endGCode: stopG,
     extruderStartGCode: tool0G,
