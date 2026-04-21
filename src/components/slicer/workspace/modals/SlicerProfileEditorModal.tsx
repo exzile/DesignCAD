@@ -111,6 +111,30 @@ export function SlicerProfileEditorModal({
                   style={{ accentColor: colors.accent }} />
                 Origin Center
               </label>
+              <label style={{ display: 'flex', alignItems: 'center', gap: 6, color: colors.text, fontSize: 12, marginBottom: 8, cursor: 'pointer' }}>
+                <input type="checkbox" checked={printer.firmwareRetraction ?? false}
+                  onChange={(e) => updatePrinterProfile(printer.id, { firmwareRetraction: e.target.checked })}
+                  style={{ accentColor: colors.accent }} />
+                Firmware Retraction (G10/G11)
+              </label>
+              <label style={{ display: 'flex', alignItems: 'center', gap: 6, color: colors.text, fontSize: 12, marginBottom: 8, cursor: 'pointer' }}>
+                <input type="checkbox" checked={printer.waitForBuildPlate ?? true}
+                  onChange={(e) => updatePrinterProfile(printer.id, { waitForBuildPlate: e.target.checked })}
+                  style={{ accentColor: colors.accent }} />
+                Wait for Build Plate (M190 blocking)
+              </label>
+              <label style={{ display: 'flex', alignItems: 'center', gap: 6, color: colors.text, fontSize: 12, marginBottom: 8, cursor: 'pointer' }}>
+                <input type="checkbox" checked={printer.waitForNozzle ?? true}
+                  onChange={(e) => updatePrinterProfile(printer.id, { waitForNozzle: e.target.checked })}
+                  style={{ accentColor: colors.accent }} />
+                Wait for Nozzle (M109 blocking)
+              </label>
+              <label style={{ display: 'flex', alignItems: 'center', gap: 6, color: colors.text, fontSize: 12, marginBottom: 8, cursor: 'pointer' }}>
+                <input type="checkbox" checked={printer.scaleFanSpeedTo01 ?? false}
+                  onChange={(e) => updatePrinterProfile(printer.id, { scaleFanSpeedTo01: e.target.checked })}
+                  style={{ accentColor: colors.accent }} />
+                Scale Fan Speed to 0–1 (Klipper)
+              </label>
               <div style={fieldRow}>
                 <div style={labelStyle}>G-code Flavor</div>
                 <select style={selectStyle} value={printer.gcodeFlavorType}
@@ -144,6 +168,46 @@ export function SlicerProfileEditorModal({
                 <div style={labelStyle}>Max Acceleration (mm/s&sup2;)</div>
                 <input type="number" style={inputStyle} value={printer.maxAcceleration}
                   onChange={(e) => updatePrinterProfile(printer.id, { maxAcceleration: parseInt(e.target.value) || 2000 })} />
+              </div>
+              <div style={{ borderTop: `1px solid ${colors.panelBorder}`, margin: '8px 0' }} />
+              <div style={{ color: colors.textDim, fontSize: 11, marginBottom: 6, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.04em' }}>Per-Axis Limits (M203 / M201)</div>
+              {(['X', 'Y', 'Z', 'E'] as const).map((axis) => (
+                <div key={axis} style={fieldRow}>
+                  <div style={labelStyle}>Max Speed {axis} (mm/s)</div>
+                  <input type="number" style={inputStyle}
+                    value={printer[`maxSpeed${axis}` as keyof typeof printer] as number ?? ''}
+                    placeholder="firmware default"
+                    onChange={(e) => updatePrinterProfile(printer.id, { [`maxSpeed${axis}`]: e.target.value === '' ? undefined : parseInt(e.target.value) })} />
+                </div>
+              ))}
+              {(['X', 'Y', 'Z', 'E'] as const).map((axis) => (
+                <div key={axis} style={fieldRow}>
+                  <div style={labelStyle}>Max Accel {axis} (mm/s²)</div>
+                  <input type="number" style={inputStyle}
+                    value={printer[`maxAccel${axis}` as keyof typeof printer] as number ?? ''}
+                    placeholder="firmware default"
+                    onChange={(e) => updatePrinterProfile(printer.id, { [`maxAccel${axis}`]: e.target.value === '' ? undefined : parseInt(e.target.value) })} />
+                </div>
+              ))}
+              <div style={fieldRow}>
+                <div style={labelStyle}>Default Acceleration (mm/s²)</div>
+                <input type="number" style={inputStyle}
+                  value={printer.defaultAcceleration ?? ''}
+                  placeholder="firmware default"
+                  onChange={(e) => updatePrinterProfile(printer.id, { defaultAcceleration: e.target.value === '' ? undefined : parseInt(e.target.value) })} />
+              </div>
+              <div style={fieldRow}>
+                <div style={labelStyle}>Default Jerk (mm/s)</div>
+                <input type="number" style={inputStyle}
+                  value={printer.defaultJerk ?? ''}
+                  placeholder="firmware default"
+                  onChange={(e) => updatePrinterProfile(printer.id, { defaultJerk: e.target.value === '' ? undefined : parseFloat(e.target.value) })} />
+              </div>
+              <div style={{ borderTop: `1px solid ${colors.panelBorder}`, margin: '8px 0' }} />
+              <div style={fieldRow}>
+                <div style={labelStyle}>Print Time Estimation Factor</div>
+                <input type="number" style={inputStyle} value={printer.printTimeEstimationFactor ?? 1.0} step={0.05} min={0.1} max={5}
+                  onChange={(e) => updatePrinterProfile(printer.id, { printTimeEstimationFactor: parseFloat(e.target.value) || 1.0 })} />
               </div>
             </>
           )}
@@ -236,6 +300,19 @@ export function SlicerProfileEditorModal({
                   onChange={(e) => updateMaterialProfile(material.id, { chamberTemp: parseInt(e.target.value) || 0 })} />
               </div>
               <div style={fieldRow}>
+                <div style={labelStyle}>Initial Printing Temp (&deg;C) — preheat while bed warms</div>
+                <input type="number" style={inputStyle} value={material.initialPrintingTemperature ?? material.nozzleTempFirstLayer}
+                  onChange={(e) => updateMaterialProfile(material.id, { initialPrintingTemperature: parseInt(e.target.value) || 0 })} />
+              </div>
+              <div style={fieldRow}>
+                <div style={labelStyle}>Final Printing Temp (&deg;C) — cooldown at end (0 = off)</div>
+                <input type="number" style={inputStyle} value={material.finalPrintingTemperature ?? 0}
+                  onChange={(e) => {
+                    const v = parseInt(e.target.value) || 0;
+                    updateMaterialProfile(material.id, { finalPrintingTemperature: v > 0 ? v : undefined });
+                  }} />
+              </div>
+              <div style={fieldRow}>
                 <div style={labelStyle}>Fan Speed Min (%)</div>
                 <input type="number" style={inputStyle} value={material.fanSpeedMin} min={0} max={100}
                   onChange={(e) => updateMaterialProfile(material.id, { fanSpeedMin: parseInt(e.target.value) || 0 })} />
@@ -260,15 +337,40 @@ export function SlicerProfileEditorModal({
                   onChange={(e) => updateMaterialProfile(material.id, { retractionDistance: parseFloat(e.target.value) || 0.8 })} />
               </div>
               <div style={fieldRow}>
-                <div style={labelStyle}>Retraction Speed (mm/s)</div>
+                <div style={labelStyle}>Retraction Speed (mm/s) — fallback</div>
                 <input type="number" style={inputStyle} value={material.retractionSpeed}
                   onChange={(e) => updateMaterialProfile(material.id, { retractionSpeed: parseInt(e.target.value) || 45 })} />
+              </div>
+              <div style={fieldRow}>
+                <div style={labelStyle}>Retract Speed (mm/s)</div>
+                <input type="number" style={inputStyle} value={material.retractionRetractSpeed ?? material.retractionSpeed}
+                  onChange={(e) => updateMaterialProfile(material.id, { retractionRetractSpeed: parseInt(e.target.value) || 45 })} />
+              </div>
+              <div style={fieldRow}>
+                <div style={labelStyle}>Prime Speed (mm/s)</div>
+                <input type="number" style={inputStyle} value={material.retractionPrimeSpeed ?? material.retractionSpeed}
+                  onChange={(e) => updateMaterialProfile(material.id, { retractionPrimeSpeed: parseInt(e.target.value) || 45 })} />
               </div>
               <div style={fieldRow}>
                 <div style={labelStyle}>Retraction Z Hop (mm)</div>
                 <input type="number" style={inputStyle} value={material.retractionZHop} step={0.05}
                   onChange={(e) => updateMaterialProfile(material.id, { retractionZHop: parseFloat(e.target.value) || 0 })} />
               </div>
+              <div style={{ borderTop: `1px solid ${colors.panelBorder}`, margin: '8px 0' }} />
+              <div style={{ color: colors.textDim, fontSize: 11, marginBottom: 6, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.04em' }}>Linear Advance</div>
+              <label style={{ display: 'flex', alignItems: 'center', gap: 6, color: colors.text, fontSize: 12, marginBottom: 8, cursor: 'pointer' }}>
+                <input type="checkbox" checked={material.linearAdvanceEnabled ?? false}
+                  onChange={(e) => updateMaterialProfile(material.id, { linearAdvanceEnabled: e.target.checked })}
+                  style={{ accentColor: colors.accent }} />
+                Enable Linear Advance (M900)
+              </label>
+              {(material.linearAdvanceEnabled ?? false) && (
+                <div style={fieldRow}>
+                  <div style={labelStyle}>K Factor</div>
+                  <input type="number" style={inputStyle} value={material.linearAdvanceFactor ?? 0} step={0.01} min={0} max={2}
+                    onChange={(e) => updateMaterialProfile(material.id, { linearAdvanceFactor: parseFloat(e.target.value) || 0 })} />
+                </div>
+              )}
             </>
           )}
           {activeTab === 3 && (
@@ -277,6 +379,18 @@ export function SlicerProfileEditorModal({
                 <div style={labelStyle}>Flow Rate (multiplier)</div>
                 <input type="number" style={inputStyle} value={material.flowRate} step={0.01} min={0.5} max={2.0}
                   onChange={(e) => updateMaterialProfile(material.id, { flowRate: parseFloat(e.target.value) || 1.0 })} />
+              </div>
+              <div style={{ borderTop: `1px solid ${colors.panelBorder}`, margin: '8px 0' }} />
+              <div style={{ color: colors.textDim, fontSize: 11, marginBottom: 6, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.04em' }}>Shrinkage Compensation</div>
+              <div style={fieldRow}>
+                <div style={labelStyle}>XY Compensation (%)</div>
+                <input type="number" style={inputStyle} value={material.shrinkageCompensationXY ?? 0} step={0.05} min={-5} max={5}
+                  onChange={(e) => updateMaterialProfile(material.id, { shrinkageCompensationXY: parseFloat(e.target.value) || 0 })} />
+              </div>
+              <div style={fieldRow}>
+                <div style={labelStyle}>Z Compensation (%)</div>
+                <input type="number" style={inputStyle} value={material.shrinkageCompensationZ ?? 0} step={0.05} min={-5} max={5}
+                  onChange={(e) => updateMaterialProfile(material.id, { shrinkageCompensationZ: parseFloat(e.target.value) || 0 })} />
               </div>
               <div style={fieldRow}>
                 <div style={labelStyle}>Density (g/cm&sup3;)</div>

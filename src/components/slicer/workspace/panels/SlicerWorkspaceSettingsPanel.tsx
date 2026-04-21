@@ -19,6 +19,8 @@ export function SlicerWorkspaceSettingsPanel({ onEditProfile }: { onEditProfile:
   const updatePrintProfile = useSlicerStore((s) => s.updatePrintProfile);
 
   const isVisible = useSlicerVisibilityStore((s) => s.isVisible);
+  const detailLevel = useSlicerVisibilityStore((s) => s.detailLevel);
+  const setDetailLevel = useSlicerVisibilityStore((s) => s.setDetailLevel);
   // Subscribe to the visible map itself so toggles in the modal re-render this panel.
   useSlicerVisibilityStore((s) => s.visible);
 
@@ -61,6 +63,18 @@ export function SlicerWorkspaceSettingsPanel({ onEditProfile }: { onEditProfile:
             </button>
           </div>
         )}
+        <div className="slicer-workspace-settings-panel__level-row">
+          {(['basic', 'advanced', 'expert'] as const).map((lvl) => (
+            <button
+              key={lvl}
+              type="button"
+              className={`slicer-workspace-settings-panel__level-btn${detailLevel === lvl ? ' is-active' : ''}`}
+              onClick={() => setDetailLevel(lvl)}
+            >
+              {lvl}
+            </button>
+          ))}
+        </div>
       </div>
 
       <div className="slicer-workspace-settings-panel__search-shell">

@@ -38,6 +38,7 @@ export const SETTINGS_SECTIONS = [
   { id: 'travelAdvanced',    label: 'Travel — Advanced',    group: 'Advanced',       defaultOn: false },
   { id: 'experimentalExtra', label: 'Experimental (Cura)',  group: 'Advanced',       defaultOn: false },
   { id: 'raftAdvanced',      label: 'Raft — Advanced',      group: 'Advanced',       defaultOn: false },
+  { id: 'modifierMeshes',   label: 'Modifier Meshes',      group: 'Advanced',       defaultOn: false },
 ] as const;
 
 export type SettingsSectionId = typeof SETTINGS_SECTIONS[number]['id'];
@@ -46,10 +47,16 @@ const DEFAULTS: Record<string, boolean> = Object.fromEntries(
   SETTINGS_SECTIONS.map((s) => [s.id, s.defaultOn]),
 );
 
+export type DetailLevel = 'basic' | 'advanced' | 'expert';
+const LEVEL_RANK: Record<DetailLevel, number> = { basic: 0, advanced: 1, expert: 2 };
+
 interface SlicerVisibilityStore {
   visible: Record<string, boolean>;
+  detailLevel: DetailLevel;
   isVisible: (id: SettingsSectionId) => boolean;
+  meetsLevel: (required: DetailLevel) => boolean;
   setVisible: (id: SettingsSectionId, on: boolean) => void;
+  setDetailLevel: (level: DetailLevel) => void;
   setAll: (on: boolean) => void;
   resetDefaults: () => void;
 }
@@ -57,12 +64,16 @@ interface SlicerVisibilityStore {
 export const useSlicerVisibilityStore = create<SlicerVisibilityStore>()(persist(
   (set, get) => ({
     visible: { ...DEFAULTS },
-    isVisible: (id) => get().visible[id] ?? DEFAULTS[id] ?? true,
+    detailLevel: 'advanced' as DetailLevel,
+    // In expert mode all sections are visible regardless of toggle state.
+    isVisible: (id) => get().detailLevel === 'expert' || (get().visible[id] ?? DEFAULTS[id] ?? true),
+    meetsLevel: (required) => LEVEL_RANK[get().detailLevel] >= LEVEL_RANK[required],
     setVisible: (id, on) => set((state) => ({ visible: { ...state.visible, [id]: on } })),
+    setDetailLevel: (level) => set({ detailLevel: level }),
     setAll: (on) => set({
       visible: Object.fromEntries(SETTINGS_SECTIONS.map((s) => [s.id, on])),
     }),
-    resetDefaults: () => set({ visible: { ...DEFAULTS } }),
+    resetDefaults: () => set({ visible: { ...DEFAULTS }, detailLevel: 'advanced' }),
   }),
   {
     name: 'dzign3d-slicer-section-visibility',

@@ -29,6 +29,28 @@ export interface PrinterProfile {
   originCenter: boolean; // center or front-left
   // G-code flavor
   gcodeFlavorType: 'reprap' | 'marlin' | 'klipper' | 'duet';
+  // Retraction mode
+  firmwareRetraction?: boolean; // use G10/G11 instead of E-move retraction
+  // Heatup behaviour
+  waitForBuildPlate?: boolean;  // true = M190 (blocking), false = M140 (non-blocking); default true
+  waitForNozzle?: boolean;      // true = M109 (blocking), false = M104 (non-blocking); default true
+  // Fan output scaling
+  scaleFanSpeedTo01?: boolean;  // emit M106 S0.0–1.0 instead of S0–255 (some Klipper configs)
+  // Per-axis machine limits — emitted as M203 (max speed) and M201 (max accel) in start G-code.
+  // Undefined means "don't emit" — keeps existing firmware defaults.
+  maxSpeedX?: number;     // mm/s — M203 X
+  maxSpeedY?: number;     // mm/s — M203 Y
+  maxSpeedZ?: number;     // mm/s — M203 Z
+  maxSpeedE?: number;     // mm/s — M203 E
+  maxAccelX?: number;     // mm/s² — M201 X
+  maxAccelY?: number;     // mm/s² — M201 Y
+  maxAccelZ?: number;     // mm/s² — M201 Z
+  maxAccelE?: number;     // mm/s² — M201 E
+  // Default acceleration (M204 S) and jerk (M205 X/Y)
+  defaultAcceleration?: number; // mm/s² — M204 S
+  defaultJerk?: number;         // mm/s  — M205 X Y
+  // Time estimation
+  printTimeEstimationFactor?: number; // multiply computed print time by this factor (default 1.0)
   // Start/end gcode templates
   startGCode: string;
   endGCode: string;
@@ -49,14 +71,26 @@ export interface MaterialProfile {
   bedTemp: number;
   bedTempFirstLayer: number;
   chamberTemp: number;
+  initialPrintingTemperature?: number; // preheat temp before bed reaches target (avoids ooze while waiting)
+  finalPrintingTemperature?: number;   // cooldown temp emitted at end of print (before end G-code)
   // Fan
   fanSpeedMin: number; // 0-100%
   fanSpeedMax: number;
   fanDisableFirstLayers: number;
   // Retraction
   retractionDistance: number; // mm
-  retractionSpeed: number; // mm/s
+  retractionSpeed: number; // mm/s — used as fallback for retract and prime
+  retractionRetractSpeed?: number; // mm/s — retract (pull) speed; overrides retractionSpeed
+  retractionPrimeSpeed?: number;   // mm/s — prime (push) speed; overrides retractionSpeed
   retractionZHop: number; // mm
+  // Linear Advance (Marlin M900 / Klipper pressure_advance)
+  linearAdvanceEnabled?: boolean; // emit M900 before print starts
+  linearAdvanceFactor?: number;   // K value (Marlin) or pressure_advance (Klipper)
+
+  // Shrinkage compensation
+  shrinkageCompensationXY?: number; // % — scale XY contours up to pre-compensate for material shrinkage (e.g. 0.2)
+  shrinkageCompensationZ?: number;  // % — scale Z layer heights to pre-compensate for vertical shrinkage
+
   // Flow
   flowRate: number; // multiplier (1.0 default)
   // Density for weight estimation
@@ -128,6 +162,14 @@ export interface PrintProfile {
   outerWallLineWidth: number;    // outer wall line width
   topBottomLineWidth: number;    // top/bottom surface line width
   initialLayerLineWidthFactor: number; // % of line width for first layer (e.g. 120%)
+  skirtBrimLineWidth?: number;         // mm — line width for skirt/brim (defaults to wallLineWidth)
+  supportLineWidth?: number;           // mm — line width for support infill (defaults to wallLineWidth)
+  supportInterfaceLineWidth?: number;  // mm — line width for support interface (storage-only)
+  supportRoofLineWidth?: number;       // mm — line width for support roof (storage-only)
+  supportFloorLineWidth?: number;      // mm — line width for support floor (storage-only)
+
+  // ADHESION — skirt minimum perimeter
+  skirtBrimMinLength?: number;   // mm — keep adding skirt loops until total perimeter >= this
 
   // Wall behavior
   outerWallFirst: boolean;       // print outer before inner (better surface, less ooze)
@@ -138,8 +180,14 @@ export interface PrintProfile {
   gradualInfillSteps: number;    // reduce infill every N layers closer to top
 
   // Speed — per-zone overrides
-  supportSpeed: number;          // mm/s for support structures
+  supportSpeed: number;          // mm/s for support structures (walls, interface)
+  supportInfillSpeed?: number;   // mm/s for support infill lines (defaults to supportSpeed)
+  supportInterfaceSpeed?: number; // mm/s for support interface layers (defaults to supportSpeed)
+  maxFlowRate?: number;           // mm³/s — cap extrusion speed so volumetric flow ≤ this
   smallAreaSpeed: number;        // mm/s for small cross-sections
+  bottomSpeed?: number;          // mm/s for bottom skin layers (defaults to topSpeed)
+  numberOfSlowerLayers?: number; // ramp from firstLayerSpeed to full speed over this many layers
+  initialLayerTravelSpeed?: number; // mm/s for travel moves on layer 0 only
 
   // Travel advanced
   retractionMinTravel: number;   // mm — don't retract on moves shorter than this
@@ -150,8 +198,13 @@ export interface PrintProfile {
   liftHeadEnabled: boolean;      // lift nozzle during min-layer-time wait
 
   // Support — tree-specific
-  supportTreeAngle: number;      // max branch overhang angle (deg)
-  supportTreeBranchDiameter: number; // mm
+  supportTreeAngle: number;         // max branch overhang angle (deg)
+  supportTreeBranchDiameter: number; // mm — diameter at base
+  supportTreeTipDiameter?: number;   // mm — diameter at model contact (default 0.8)
+  supportTreeMaxBranchDiameter?: number; // mm — cap on branch growth
+  supportTreeBranchDiameterAngle?: number; // deg — extra taper angle for branch diameter
+  supportTreeMinHeight?: number;     // mm — min height for tree support to activate
+  supportTreeBuildplateOnly?: boolean; // only root branches on build plate
 
   // Adhesion — detailed
   brimGap: number;               // mm gap between brim and model
@@ -169,8 +222,14 @@ export interface PrintProfile {
   ironingSpeed: number;
   ironingFlow: number; // very low flow %
   ironingSpacing: number; // line spacing
+  ironingPattern?: 'lines' | 'concentric' | 'zigzag'; // fill pattern for ironing pass
+  ironingInset?: number;  // mm — keep ironing pass away from outer walls (default 0.35)
+
+  // Infill — minimum area
+  minInfillArea?: number;        // mm² — skip sparse infill in regions smaller than this
 
   // Special modes
+  relativeExtrusion?: boolean;   // emit M83 + relative E values instead of M82 + absolute
   spiralizeContour: boolean;     // vase mode — single continuous wall
   printSequence: 'all_at_once' | 'one_at_a_time';
 
@@ -209,6 +268,10 @@ export interface PrintProfile {
   randomInfillStart: boolean;     // randomize infill start position each layer
   lightningInfillSupportAngle: number; // deg — angle for lightning infill support branches
 
+  // ── Speed: Travel Acceleration/Jerk toggles ──────────────────────────────
+  travelAccelerationEnabled?: boolean; // wired — gate M204/M205 on travel moves
+  travelJerkEnabled?: boolean;         // wired — gate M205 on travel moves
+
   // ── Speed: Acceleration & Jerk ────────────────────────────────────────────
   accelerationEnabled: boolean;
   jerkEnabled: boolean;
@@ -218,24 +281,40 @@ export interface PrintProfile {
   accelerationInfill: number;     // mm/s²
   accelerationTopBottom: number;  // mm/s²
   accelerationSupport: number;    // mm/s²
+  accelerationOuterWall?: number; // mm/s² — outer wall only (overrides accelerationWall)
+  accelerationInnerWall?: number; // mm/s² — inner walls only
+  accelerationSkirtBrim?: number; // mm/s² — skirt/brim only
+  accelerationInitialLayer?: number; // mm/s² — first layer only
   jerkPrint: number;              // mm/s
   jerkTravel: number;             // mm/s
   jerkWall: number;               // mm/s
   jerkInfill: number;             // mm/s
   jerkTopBottom: number;          // mm/s
+  jerkOuterWall?: number;         // mm/s — outer wall only
+  jerkInnerWall?: number;         // mm/s — inner walls only
+  jerkSupport?: number;           // mm/s — support structures
+  jerkSkirtBrim?: number;         // mm/s — skirt/brim
+  jerkInitialLayer?: number;      // mm/s — first layer only
   skirtBrimSpeed: number;         // mm/s
 
   // ── Travel (advanced) ─────────────────────────────────────────────────────
+  layerStartX?: number;           // mm — travel to this X at the start of every layer
+  layerStartY?: number;           // mm — travel to this Y at the start of every layer
   retractAtLayerChange: boolean;
   maxRetractionCount: number;     // max retractions within minimumExtrusionWindow mm
   retractionExtraPrimeAmount: number; // mm³ — extra prime after long travel
   combingAvoidsSupports: boolean;
   travelRetractBeforeOuterWall: boolean;
 
+  // ── Top/Bottom (advanced) — line directions ───────────────────────────────
+  topBottomLineDirections?: number[]; // degrees list cycled per layer (overrides pattern angle)
+
   // ── Cooling (advanced) ────────────────────────────────────────────────────
   coolingFanEnabled: boolean;
   regularFanSpeedLayer: number;   // layer at which regular fan speed kicks in
+  regularFanSpeedAtHeight?: number; // mm — switch to regular fan speed at this Z height
   fanKickstartTime: number;       // ms — kickstart time for fan PWM
+  smallLayerPrintingTemperature?: number; // °C — reduce nozzle temp on very short layers
 
   // ── Support (advanced) ────────────────────────────────────────────────────
   supportBuildplateOnly: boolean; // only generate support touching buildplate
@@ -342,8 +421,17 @@ export interface PrintProfile {
 
   // ─── Walls (Cura: Shell) ────────────────────────────────────────────────
   wallLineCount?: number;              // wired — alias for wallCount
+  minEvenWallLineWidth?: number;       // storage-only — mm; min width for even-count walls
+  holeHorizontalExpansionMaxDiameter?: number; // storage-only — mm; holes > this skip HE
+  wallDistributionCount?: number;      // storage-only — Cura adaptive-width algorithm
+  wallTransitionFilterDistance?: number; // storage-only — mm
+  wallTransitionFilterMargin?: number;   // storage-only — mm
   innerWallLineWidth?: number;         // wired — inner perimeter line width
   groupOuterWalls?: boolean;           // wired — emit all outer walls together
+  outerWallInset?: number;             // wired — mm; shift outer wall inward from contour
+  printThinWalls?: boolean;            // storage-only — detect and print narrow gaps
+  minFeatureSize?: number;             // storage-only — mm; skip contours narrower than this
+  minThinWallLineWidth?: number;       // storage-only — mm; extrusion floor for thin walls
   alternateWallDirections?: boolean;   // storage-only — flip wall direction per layer
   overhangingWallAngle?: number;       // storage-only — degrees
   overhangingWallSpeed?: number;       // storage-only — % of wall speed
@@ -354,6 +442,18 @@ export interface PrintProfile {
   seamCornerPreference?: 'none' | 'hide_seam' | 'expose_seam' | 'hide_or_expose' | 'smart_hide'; // storage-only
 
   // ─── Top/Bottom (Cura: Top/Bottom) ──────────────────────────────────────
+  initialBottomLayers?: number;        // wired — extra solid bottom layers on the very first solid bottom
+  connectTopBottomPolygons?: boolean;  // storage-only — connect top/bottom fill polygons
+  monotonicIroningOrder?: boolean;     // storage-only — monotonic order for ironing passes
+  topSurfaceSkinLayers?: number;       // storage-only — extra ultra-quality top layers
+  bottomSurfaceSkinLayers?: number;    // storage-only — extra ultra-quality bottom layers
+  topSkinRemovalWidth?: number;        // storage-only — mm; separate top skin removal width
+  bottomSkinRemovalWidth?: number;     // storage-only — mm; separate bottom skin removal width
+  smallTopBottomWidth?: number;        // storage-only — mm; min width to generate skin
+  maxSkinAngleForExpansion?: number;   // storage-only — deg
+  minSkinWidthForExpansion?: number;   // storage-only — mm
+  layerStartAtSeam?: boolean;          // storage-only — start each layer at the seam
+  minimumExtrusionDistanceWindow?: number; // storage-only — mm window for maxRetractionCount
   topThickness?: number;               // wired — mm; overrides topLayers when set
   bottomThickness?: number;            // wired — mm; overrides bottomLayers when set
   skinOverlapPercent?: number;         // wired — % overlap between skin and walls
@@ -376,6 +476,7 @@ export interface PrintProfile {
   gradualInfillStepHeight?: number;    // storage-only — mm per gradual step
   lightningPruneAngle?: number;        // storage-only — degrees
   lightningStraighteningAngle?: number;// storage-only — degrees
+  lightningInfillOverhangAngle?: number; // wired — deg — overhang angle for lightning infill (separate from supportAngle)
   infillXOffset?: number;              // wired — mm — shift infill pattern origin
   infillYOffset?: number;              // wired — mm — shift infill pattern origin
 
@@ -389,6 +490,8 @@ export interface PrintProfile {
   wipeRetractionExtraPrime?: number;   // storage-only — mm³ prime after wipe retract
 
   // ─── Cooling ───────────────────────────────────────────────────────────
+  buildVolumeFanSpeedAtHeight?: number; // wired — mm — switch build vol fan at this Z
+  initialLayersBuildVolumeFanSpeed?: number; // storage-only — % — build vol fan for first layers
   initialFanSpeed?: number;            // wired — % — fan at layer 0
   maximumFanSpeed?: number;            // wired — % — ramp ceiling
   regularMaxFanThreshold?: number;     // wired — seconds/layer — below this, fan ramps toward max
@@ -396,6 +499,31 @@ export interface PrintProfile {
   buildVolumeFanSpeed?: number;        // wired — % — auxiliary chamber/build-volume fan
 
   // ─── Support advanced ──────────────────────────────────────────────────
+  supportTopDistance?: number;         // wired — mm — gap above support (to model below next layer)
+  supportFanSpeedOverride?: number;    // wired — % — fan speed during support printing (0 = disabled)
+  supportInfillLineDirections?: number[]; // wired — degrees list cycled per layer for support scan angle
+  initialLayerSupportLineDistance?: number; // wired — mm — override support spacing on layer 0
+  gradualSupportSteps?: number;        // wired — reduce support density every N layers from the top
+  gradualSupportStepHeight?: number;   // wired — mm — height of each gradual support step
+  minSupportXYDistance?: number;       // wired — mm — hard minimum XY gap (on top of supportXYDistance)
+  supportWallLineCount?: number;       // wired — perimeter walls around support infill
+  supportDistancePriority?: 'xy_overrides_z' | 'z_overrides_xy'; // storage-only
+  supportStairStepMaxWidth?: number;   // storage-only — mm
+  supportInterfaceThickness?: number;  // storage-only — mm
+  supportRoofThickness?: number;       // storage-only — mm
+  supportFloorThickness?: number;      // storage-only — mm
+  supportRoofDensity?: number;         // storage-only — %
+  supportFloorDensity?: number;        // storage-only — %
+  supportRoofLineDistance?: number;    // storage-only — mm
+  supportFloorLineDistance?: number;   // storage-only — mm
+  supportRoofPattern?: 'lines' | 'grid' | 'concentric' | 'zigzag'; // storage-only
+  supportFloorPattern?: 'lines' | 'grid' | 'concentric' | 'zigzag'; // storage-only
+  minSupportInterfaceArea?: number;    // storage-only — mm²
+  supportInterfaceHorizontalExpansion?: number; // storage-only — mm
+  supportInterfaceLineDirections?: number[]; // storage-only — degrees
+  useTowers?: boolean;                 // storage-only
+  towerDiameter?: number;              // storage-only — mm
+  towerRoofAngle?: number;             // storage-only — degrees
   supportHorizontalExpansion?: number; // wired — mm — inflate support regions
   enableConicalSupport?: boolean;      // storage-only
   conicalSupportAngle?: number;        // storage-only — degrees
@@ -419,6 +547,29 @@ export interface PrintProfile {
   insideTravelAvoidDistance?: number;  // storage-only — mm — buffer for inside-part travel
 
   // ─── Experimental ──────────────────────────────────────────────────────
+  smoothSpiralizedContours?: boolean;  // storage-only — round corners in vase mode
+  flowEqualizationRatio?: number;      // storage-only — % adjust speed to equalize flow volume
+  flowRateCompensationFactor?: number; // wired — multiplier on all extrusion E values
+  primeBlobEnable?: boolean;           // wired — deposit purge blob before print starts
+  primeBlobSize?: number;              // wired — mm³ of material to purge
+  fuzzySkinOutsideOnly?: boolean;      // storage-only — only apply fuzzy skin to outer walls
+  minVolumeBeforeCoasting?: number;    // wired — mm³ — don't coast if total wall extrusion < this
+  draftShieldLimitation?: 'full' | 'limited'; // wired — cap draft shield height
+  draftShieldHeight?: number;          // wired — mm — max Z for draft shield when limitation = limited
+  infillTravelOptimization?: boolean;  // storage-only — reorder infill to minimize travel (already default behavior)
+  breakUpSupportInChunks?: boolean;    // storage-only
+  breakUpSupportChunkSize?: number;    // storage-only — mm
+  breakUpSupportChunkLineCount?: number; // storage-only
+  conicalSupportMinWidth?: number;     // storage-only — mm (companion to conicalSupportAngle)
+  adaptiveLayersTopographySize?: number; // storage-only — mm
+  minLayerTimeWithOverhang?: number;   // storage-only — seconds
+  keepRetractingDuringTravel?: boolean; // storage-only
+  primeDuringTravel?: boolean;         // storage-only
+  smallHoleMaxSize?: number;           // wired — mm — holes ≤ this use smallFeatureSpeed
+  brimAvoidMargin?: number;            // wired — mm — keep brim this far from other parts
+  smartBrim?: boolean;                 // storage-only — only generate brim where needed
+  initialLayerZOverlap?: number;       // wired — mm — first-layer over-extrusion to improve adhesion
+  minMoldWidth?: number;               // storage-only — mm
   fluidMotionEnable?: boolean;         // storage-only
   fluidMotionAngle?: number;           // storage-only — degrees
   fluidMotionSmallDistance?: number;   // storage-only — mm
@@ -434,10 +585,67 @@ export interface PrintProfile {
   raftMiddleLayers?: number;           // storage-only — count of middle layers
   raftMiddleThickness?: number;        // storage-only — mm per middle layer
   raftMiddleLineWidth?: number;        // storage-only — mm
+  raftMiddleLineSpacing?: number;      // storage-only — mm
+  raftInterfaceZOffset?: number;       // storage-only — mm
   raftTopLayers?: number;              // storage-only — count of top surface layers
+  raftTopThickness?: number;           // storage-only — mm
+  raftTopLineWidth?: number;           // storage-only — mm
+  raftTopLineSpacing?: number;         // storage-only — mm
+  raftTopSurfaceZOffset?: number;      // storage-only — mm
+  raftBaseLineSpacing?: number;        // storage-only — mm
+  raftBaseInfillOverlap?: number;      // storage-only — %
+  raftPrintAcceleration?: number;      // storage-only — mm/s²
+  raftPrintJerk?: number;              // storage-only — mm/s
+  raftFanSpeed?: number;               // storage-only — %
+  raftFlow?: number;                   // storage-only — %
+  monotonicRaftTopSurface?: boolean;   // storage-only
+  removeRaftInsideCorners?: boolean;   // storage-only
   raftSmoothing?: number;              // storage-only — mm — outline smoothing radius
   raftExtraMargin?: number;            // storage-only — mm — extra padding around model
   raftWallCount?: number;              // storage-only
+
+  // ─── Top Surface Skin ─────────────────────────────────────────────────
+  topSurfaceSkinLineWidth?: number;    // storage-only — mm
+  topSurfaceSkinPattern?: 'lines' | 'concentric' | 'zigzag'; // storage-only
+  topSurfaceSkinExpansion?: number;    // storage-only — mm
+  topSurfaceSkinFlow?: number;         // storage-only — %
+
+  // ─── Initial Layer Per-Feature Flow Overrides ─────────────────────────
+  initialLayerOuterWallFlow?: number;  // wired — % override for first layer outer wall
+  initialLayerInnerWallFlow?: number;  // wired — % override for first layer inner walls
+  initialLayerBottomFlow?: number;     // wired — % override for first layer solid fill
+
+  // ─── Infill Line Move-Inwards ─────────────────────────────────────────
+  infillStartMoveInwardsLength?: number; // wired — mm — extend scan-line start outward
+  infillEndMoveInwardsLength?: number;   // wired — mm — extend scan-line end outward
+
+  // ─── Scarf Seam Speed Ratio ───────────────────────────────────────────
+  scarfSeamStartSpeedRatio?: number;   // wired — 0.0–1.0 — speed fraction at seam start
+
+  // ─── Wall Order Optimisation ──────────────────────────────────────────
+  optimizeWallOrder?: boolean;         // storage-only — reorder walls to minimize travel
+
+  // ─── Cubic Subdivision ────────────────────────────────────────────────
+  cubicSubdivisionShell?: number;      // storage-only — mm shell excluded from cubic subdivision
+
+  // ─── Support Roof / Floor Speeds & Flow ───────────────────────────────
+  supportRoofSpeed?: number;           // storage-only — mm/s
+  supportFloorSpeed?: number;          // storage-only — mm/s
+  supportRoofFlow?: number;            // storage-only — %
+  supportFloorFlow?: number;           // storage-only — %
+
+  // ─── Flow Equalization ────────────────────────────────────────────────
+  flowEqualizationRatio?: number;      // storage-only — 0.0–1.0
+
+  // ─── Bridge Extras ────────────────────────────────────────────────────
+  bridgeSkinDensity?: number;          // storage-only — %
+  interlaceBridgeLines?: boolean;      // storage-only
+  bridgeHasMultipleLayers?: boolean;   // storage-only
+  bridgeFanSpeed2?: number;            // storage-only — % for 2nd bridge layer
+  bridgeFanSpeed3?: number;            // storage-only — % for 3rd bridge layer
+
+  // ─── Support Interface Wall Count ─────────────────────────────────────
+  supportInterfaceWallCount?: number;  // storage-only
 }
 
 // -----------------------------------------------------------------------------
@@ -468,6 +676,30 @@ export interface PlateObject {
   // Per-object settings override (null keys inherit global print profile)
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   perObjectSettings?: Record<string, any>;
+  // Modifier mesh role — when set this object modifies slicing of other meshes
+  // rather than being printed itself. Storage-only until engine support lands.
+  modifierMeshRole?: ModifierMeshRole;
+  modifierMeshSettings?: ModifierMeshSettings;
+}
+
+// -----------------------------------------------------------------------------
+// Modifier Meshes (per-object mesh roles — storage scaffold)
+// -----------------------------------------------------------------------------
+
+export type ModifierMeshRole =
+  | 'normal'          // regular printable object
+  | 'infill_mesh'     // forces infill settings inside volume
+  | 'cutting_mesh'    // subtracts geometry from overlapping objects
+  | 'support_mesh'    // forces support generation inside volume
+  | 'anti_overhang_mesh'; // prevents support generation inside volume
+
+export interface ModifierMeshSettings {
+  // Infill mesh overrides (active when role === 'infill_mesh')
+  infillDensity?: number;
+  infillPattern?: PrintProfile['infillPattern'];
+  // Support mesh overrides (active when role === 'support_mesh')
+  supportEnabled?: boolean;
+  // Anti-overhang: no additional settings needed — volume defines blocked region
 }
 
 // -----------------------------------------------------------------------------

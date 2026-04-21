@@ -475,6 +475,15 @@ export const useSlicerStore = create<SlicerStore>()(persist((set, get) => ({
   removeFromPlate: (id) => set((state) => ({
     plateObjects: state.plateObjects.filter((o) => o.id !== id),
     selectedPlateObjectId: state.selectedPlateObjectId === id ? null : state.selectedPlateObjectId,
+    // Invalidate slice result — it was computed for the old object set
+    sliceResult: null,
+    previewMode: 'model' as const,
+    previewLayer: 0,
+    previewLayerStart: 0,
+    previewLayerMax: 0,
+    previewSimEnabled: false,
+    previewSimPlaying: false,
+    previewSimTime: 0,
   })),
 
   selectPlateObject: (id) => set({ selectedPlateObjectId: id }),
