@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, useCallback } from 'react';
+import { useEffect, useMemo, useState, useCallback, useRef } from 'react';
 import { Canvas } from '@react-three/fiber';
 import * as THREE from 'three';
 import { Check, Box, Loader2, Layers } from 'lucide-react';
@@ -10,9 +10,9 @@ import { useSlicerStore } from '../../../../store/slicerStore';
 type Stage = 'hydrate' | 'geometry' | 'canvas' | 'ready';
 
 export function SlicerWorkspaceViewport() {
-  const [stage, setStage] = useState<Stage>('hydrate');
   const [hydrated, setHydrated] = useState(() => useSlicerStore.persist.hasHydrated());
   const [canvasReady, setCanvasReady] = useState(false);
+  const createdRafRef = useRef<number | null>(null);
   // User- or timeout-forced dismissal. Wins over every other condition so the
   // overlay can never trap the user even if the Canvas `onCreated` never fires
   // (WebGL context failure, silent error inside the scene, etc.).
@@ -21,9 +21,7 @@ export function SlicerWorkspaceViewport() {
 
   // Listen for zustand persist finishing IDB rehydration.
   useEffect(() => {
-    const unsub = useSlicerStore.persist.onFinishHydration(() => setHydrated(true));
-    if (useSlicerStore.persist.hasHydrated()) setHydrated(true);
-    return unsub;
+    return useSlicerStore.persist.onFinishHydration(() => setHydrated(true));
   }, []);
 
   // Geometry readiness: count plateObjects that don't need any further work.
@@ -43,17 +41,24 @@ export function SlicerWorkspaceViewport() {
     [plateObjects],
   );
 
-  // Derive the current stage.
-  useEffect(() => {
-    if (!hydrated) { setStage('hydrate'); return; }
-    if (total > 0 && ready < total) { setStage('geometry'); return; }
-    if (!canvasReady) { setStage('canvas'); return; }
-    setStage('ready');
+  const stage: Stage = useMemo(() => {
+    if (!hydrated) return 'hydrate';
+    if (total > 0 && ready < total) return 'geometry';
+    if (!canvasReady) return 'canvas';
+    return 'ready';
   }, [hydrated, total, ready, canvasReady]);
 
   const handleCreated = useCallback(() => {
     // Defer setting ready so one frame paints first.
-    requestAnimationFrame(() => setCanvasReady(true));
+    if (createdRafRef.current !== null) cancelAnimationFrame(createdRafRef.current);
+    createdRafRef.current = requestAnimationFrame(() => {
+      createdRafRef.current = null;
+      setCanvasReady(true);
+    });
+  }, []);
+
+  useEffect(() => () => {
+    if (createdRafRef.current !== null) cancelAnimationFrame(createdRafRef.current);
   }, []);
 
   // Absolute safety net: no matter what stage we're on, force the loader to
