@@ -55,6 +55,8 @@ export interface MaterialProfilePatch {
 
 export interface DuetConfigParseResult {
   profile: Partial<Omit<PrinterProfile, 'id' | 'name' | 'startGCode' | 'endGCode'>>;
+  /** Printer profile field names whose values came from config.g */
+  profileMachineSourcedFields: string[];
   startGCode: string;
   endGCode: string;
   /** G-code to run when the extruder is activated (tool0.g content) */
@@ -379,6 +381,30 @@ export function parseDuetConfig(
     ...(r.isDelta ? { buildPlateShape: 'elliptic' as const } : {}),
   };
 
+  // List of printer-profile fields whose values were imported from config.g
+  // so the slicer UI can lock them (user must edit on the board + resync).
+  const profileMachineSourcedFields: string[] = ['gcodeFlavorType'];
+  if (r.buildX !== undefined && r.buildY !== undefined && r.buildZ !== undefined) profileMachineSourcedFields.push('buildVolume');
+  if (r.originCenter)                                profileMachineSourcedFields.push('originCenter');
+  if (r.nozzleCount > 0)                             profileMachineSourcedFields.push('nozzleCount');
+  if (r.filamentDiameter > 0)                        profileMachineSourcedFields.push('filamentDiameter');
+  profileMachineSourcedFields.push('hasHeatedBed', 'hasHeatedChamber', 'maxNozzleTemp', 'maxBedTemp');
+  if (r.maxSpeedX !== undefined) profileMachineSourcedFields.push('maxSpeedX');
+  if (r.maxSpeedY !== undefined) profileMachineSourcedFields.push('maxSpeedY');
+  if (r.maxSpeedZ !== undefined) profileMachineSourcedFields.push('maxSpeedZ');
+  if (r.maxSpeedE !== undefined) profileMachineSourcedFields.push('maxSpeedE');
+  if (r.maxAccelX !== undefined) profileMachineSourcedFields.push('maxAccelX');
+  if (r.maxAccelY !== undefined) profileMachineSourcedFields.push('maxAccelY');
+  if (r.maxAccelZ !== undefined) profileMachineSourcedFields.push('maxAccelZ');
+  if (r.maxAccelE !== undefined) profileMachineSourcedFields.push('maxAccelE');
+  if (printerDefaultAccel !== undefined) profileMachineSourcedFields.push('defaultAcceleration');
+  if (r.defaultJerk !== undefined)       profileMachineSourcedFields.push('defaultJerk');
+  if (r.extruderOffsetX !== undefined)   profileMachineSourcedFields.push('extruderOffsetX');
+  if (r.extruderOffsetY !== undefined)   profileMachineSourcedFields.push('extruderOffsetY');
+  if (r.coolingFanNumber !== undefined)  profileMachineSourcedFields.push('coolingFanNumber');
+  if (r.firmwareRetraction)              profileMachineSourcedFields.push('firmwareRetraction');
+  if (r.isDelta)                         profileMachineSourcedFields.push('buildPlateShape');
+
   // Build material profile patch from retraction + pressure advance
   const materialFields: MaterialProfilePatch['fields'] = {};
   const machineSourcedFields: string[] = [];
@@ -455,6 +481,7 @@ export function parseDuetConfig(
 
   return {
     profile,
+    profileMachineSourcedFields,
     startGCode: startG,
     endGCode: stopG,
     extruderStartGCode: tool0G,

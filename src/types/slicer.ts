@@ -75,6 +75,9 @@ export interface PrinterProfile {
   // Start/end gcode templates
   startGCode: string;
   endGCode: string;
+  // Fields whose values were imported from a connected printer (shown with
+  // lock badge in UI; edit via the board's config.g + resync).
+  machineSourcedFields?: string[];
 }
 
 // -----------------------------------------------------------------------------

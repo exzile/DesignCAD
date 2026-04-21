@@ -1,12 +1,17 @@
+import { Cpu } from 'lucide-react';
 import { clamp, parseIntOr, parseNumberOr } from '../helpers/numberParsing';
 import './SettingsFieldControls.css';
 
-function MachineDot() {
+// Machine-sourced fields come from the printer's config.g (RRF) or equivalent.
+// We still show the machine badge (Cpu icon) so the user recognises the source,
+// and disable the input so edits only happen on the board + a resync.
+const LOCK_TOOLTIP = 'Value synced from the printer. Edit on the board (config.g) and use "Sync from Duet" in the Printer Manager.';
+
+function MachineLock() {
   return (
-    <span
-      className="slicer-settings-field__machine-dot"
-      title="Value synced from machine"
-    />
+    <span className="slicer-settings-field__machine-lock" title={LOCK_TOOLTIP}>
+      <Cpu size={10} />
+    </span>
   );
 }
 
@@ -30,8 +35,8 @@ export function Num({
   machineSourced?: boolean;
 }) {
   return (
-    <div className="slicer-settings-field">
-      <div className="slicer-settings-field__label">{label}{machineSourced && <MachineDot />}</div>
+    <div className={`slicer-settings-field${machineSourced ? ' slicer-settings-field--locked' : ''}`} title={machineSourced ? LOCK_TOOLTIP : undefined}>
+      <div className="slicer-settings-field__label">{label}{machineSourced && <MachineLock />}</div>
       <div className="slicer-settings-field__input-wrap">
         <input
           type="number"
@@ -40,7 +45,9 @@ export function Num({
           step={step}
           min={min}
           max={max}
-          onChange={(e) => onChange(clamp(parseNumberOr(e.target.value, min), min, max))}
+          disabled={machineSourced}
+          readOnly={machineSourced}
+          onChange={(e) => { if (machineSourced) return; onChange(clamp(parseNumberOr(e.target.value, min), min, max)); }}
         />
         <span className="slicer-settings-field__unit">{unit ?? ''}</span>
       </div>
@@ -50,9 +57,9 @@ export function Num({
 
 export function Check({ label, value, onChange, machineSourced }: { label: string; value: boolean; onChange: (v: boolean) => void; machineSourced?: boolean }) {
   return (
-    <label className="slicer-settings-field__check">
-      <input className="slicer-settings-field__check-input" type="checkbox" checked={value} onChange={(e) => onChange(e.target.checked)} />
-      {label}{machineSourced && <MachineDot />}
+    <label className={`slicer-settings-field__check${machineSourced ? ' slicer-settings-field__check--locked' : ''}`} title={machineSourced ? LOCK_TOOLTIP : undefined}>
+      <input className="slicer-settings-field__check-input" type="checkbox" checked={value} disabled={machineSourced} onChange={(e) => { if (machineSourced) return; onChange(e.target.checked); }} />
+      {label}{machineSourced && <MachineLock />}
     </label>
   );
 }

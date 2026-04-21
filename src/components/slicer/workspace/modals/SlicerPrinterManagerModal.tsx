@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { X, Printer, Plus, Trash2, ChevronRight, RefreshCw } from 'lucide-react';
+import { X, Printer, Plus, Trash2, ChevronRight, RefreshCw, Cpu } from 'lucide-react';
 import { useSlicerStore } from '../../../../store/slicerStore';
 import { usePrinterStore } from '../../../../store/printerStore';
 import type { PrinterProfile } from '../../../../types/slicer';
@@ -15,25 +15,42 @@ function Lbl({ children }: { children: React.ReactNode }) {
   return <div style={{ flex: 1, fontSize: 12, color: colors.text }}>{children}</div>;
 }
 
-function NumIn({ value, onChange, step = 1, min, max, suffix, width = 80 }: {
+const LOCK_TOOLTIP = 'Value synced from the printer. Edit on the board (config.g) and use "Sync from Duet".';
+
+function MachineLockIcon() {
+  return (
+    <span title={LOCK_TOOLTIP} style={{
+      display: 'inline-flex', alignItems: 'center', marginLeft: 4,
+      color: colors.accent, opacity: 0.85, cursor: 'help', flexShrink: 0,
+    }}>
+      <Cpu size={10} />
+    </span>
+  );
+}
+
+function NumIn({ value, onChange, step = 1, min, max, suffix, width = 80, locked }: {
   value: number; onChange: (v: number) => void;
-  step?: number; min?: number; max?: number; suffix?: string; width?: number;
+  step?: number; min?: number; max?: number; suffix?: string; width?: number; locked?: boolean;
 }) {
   return (
-    <div style={{ display: 'flex', alignItems: 'center', gap: 0 }}>
+    <div style={{ display: 'flex', alignItems: 'center', gap: 0 }} title={locked ? LOCK_TOOLTIP : undefined}>
       <input
         type="number"
         value={value}
         step={step}
         min={min}
         max={max}
-        onChange={(e) => onChange(parseFloat(e.target.value) || 0)}
+        disabled={locked}
+        readOnly={locked}
+        onChange={(e) => { if (locked) return; onChange(parseFloat(e.target.value) || 0); }}
         style={{
           ...sharedStyles.input,
           width,
           textAlign: 'right',
           borderRadius: suffix ? '4px 0 0 4px' : 4,
           borderRight: suffix ? 'none' : undefined,
+          opacity: locked ? 0.55 : 1,
+          cursor: locked ? 'not-allowed' : undefined,
         }}
       />
       {suffix && (
@@ -48,6 +65,7 @@ function NumIn({ value, onChange, step = 1, min, max, suffix, width = 80 }: {
           height: 24,
           display: 'flex',
           alignItems: 'center',
+          opacity: locked ? 0.55 : 1,
         }}>
           {suffix}
         </div>
@@ -56,27 +74,37 @@ function NumIn({ value, onChange, step = 1, min, max, suffix, width = 80 }: {
   );
 }
 
-function SelIn<T extends string>({ value, onChange, options, width = 180 }: {
+function SelIn<T extends string>({ value, onChange, options, width = 180, locked }: {
   value: T; onChange: (v: T) => void;
-  options: { value: T; label: string }[]; width?: number;
+  options: { value: T; label: string }[]; width?: number; locked?: boolean;
 }) {
   return (
     <select
       value={value}
-      onChange={(e) => onChange(e.target.value as T)}
-      style={{ ...sharedStyles.select, width }}
+      disabled={locked}
+      onChange={(e) => { if (locked) return; onChange(e.target.value as T); }}
+      title={locked ? LOCK_TOOLTIP : undefined}
+      style={{ ...sharedStyles.select, width, opacity: locked ? 0.55 : 1, cursor: locked ? 'not-allowed' : undefined }}
     >
       {options.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
     </select>
   );
 }
 
-function Chk({ checked, onChange, label }: { checked: boolean; onChange: (v: boolean) => void; label: string }) {
+function Chk({ checked, onChange, label, locked }: { checked: boolean; onChange: (v: boolean) => void; label: string; locked?: boolean }) {
   return (
-    <label style={{ ...row, cursor: 'pointer', gap: 7, marginBottom: 2 }}>
-      <input type="checkbox" checked={checked} onChange={(e) => onChange(e.target.checked)} style={{ accentColor: colors.accent }} />
-      <span style={{ fontSize: 12, color: colors.text }}>{label}</span>
+    <label title={locked ? LOCK_TOOLTIP : undefined} style={{ ...row, cursor: locked ? 'not-allowed' : 'pointer', gap: 7, marginBottom: 2, opacity: locked ? 0.55 : 1 }}>
+      <input type="checkbox" checked={checked} disabled={locked} onChange={(e) => { if (locked) return; onChange(e.target.checked); }} style={{ accentColor: colors.accent }} />
+      <span style={{ fontSize: 12, color: colors.text, display: 'flex', alignItems: 'center' }}>{label}{locked && <MachineLockIcon />}</span>
     </label>
+  );
+}
+
+function Lbl2({ locked, children }: { locked?: boolean; children: React.ReactNode }) {
+  return (
+    <div style={{ flex: 1, fontSize: 12, color: colors.text, display: 'flex', alignItems: 'center' }}>
+      {children}{locked && <MachineLockIcon />}
+    </div>
   );
 }
 
@@ -110,6 +138,8 @@ function ColHead({ children }: { children: React.ReactNode }) {
 // ── Printer tab ───────────────────────────────────────────────────────────────
 
 function PrinterTab({ p, upd }: { p: PrinterProfile; upd: (u: Partial<PrinterProfile>) => void }) {
+  const ms = new Set(p.machineSourcedFields ?? []);
+  const locked = (field: string) => ms.has(field);
   return (
     <div style={{ flex: 1, overflowY: 'auto', padding: '16px 20px', display: 'flex', flexDirection: 'column', gap: 16 }}>
       {/* Top: two columns */}
@@ -118,23 +148,24 @@ function PrinterTab({ p, upd }: { p: PrinterProfile; upd: (u: Partial<PrinterPro
         {/* Left: Printer Settings */}
         <div style={col}>
           <ColHead>Printer Settings</ColHead>
-          <div style={row}><Lbl>X (Width)</Lbl><NumIn value={p.buildVolume.x} onChange={(v) => upd({ buildVolume: { ...p.buildVolume, x: v } })} suffix="mm" min={1} /></div>
-          <div style={row}><Lbl>Y (Depth)</Lbl><NumIn value={p.buildVolume.y} onChange={(v) => upd({ buildVolume: { ...p.buildVolume, y: v } })} suffix="mm" min={1} /></div>
-          <div style={row}><Lbl>Z (Height)</Lbl><NumIn value={p.buildVolume.z} onChange={(v) => upd({ buildVolume: { ...p.buildVolume, z: v } })} suffix="mm" min={1} /></div>
+          <div style={row}><Lbl2 locked={locked('buildVolume')}>X (Width)</Lbl2><NumIn value={p.buildVolume.x} onChange={(v) => upd({ buildVolume: { ...p.buildVolume, x: v } })} suffix="mm" min={1} locked={locked('buildVolume')} /></div>
+          <div style={row}><Lbl2 locked={locked('buildVolume')}>Y (Depth)</Lbl2><NumIn value={p.buildVolume.y} onChange={(v) => upd({ buildVolume: { ...p.buildVolume, y: v } })} suffix="mm" min={1} locked={locked('buildVolume')} /></div>
+          <div style={row}><Lbl2 locked={locked('buildVolume')}>Z (Height)</Lbl2><NumIn value={p.buildVolume.z} onChange={(v) => upd({ buildVolume: { ...p.buildVolume, z: v } })} suffix="mm" min={1} locked={locked('buildVolume')} /></div>
           <div style={row}>
-            <Lbl>Build plate shape</Lbl>
+            <Lbl2 locked={locked('buildPlateShape')}>Build plate shape</Lbl2>
             <SelIn
               value={p.buildPlateShape ?? 'rectangular'}
               onChange={(v) => upd({ buildPlateShape: v })}
               options={[{ value: 'rectangular', label: 'Rectangular' }, { value: 'elliptic', label: 'Elliptic' }]}
               width={150}
+              locked={locked('buildPlateShape')}
             />
           </div>
-          <Chk checked={p.originCenter} onChange={(v) => upd({ originCenter: v })} label="Origin at center" />
-          <Chk checked={p.hasHeatedBed} onChange={(v) => upd({ hasHeatedBed: v })} label="Heated bed" />
-          <Chk checked={p.hasHeatedChamber} onChange={(v) => upd({ hasHeatedChamber: v })} label="Heated build volume" />
+          <Chk checked={p.originCenter} onChange={(v) => upd({ originCenter: v })} label="Origin at center" locked={locked('originCenter')} />
+          <Chk checked={p.hasHeatedBed} onChange={(v) => upd({ hasHeatedBed: v })} label="Heated bed" locked={locked('hasHeatedBed')} />
+          <Chk checked={p.hasHeatedChamber} onChange={(v) => upd({ hasHeatedChamber: v })} label="Heated build volume" locked={locked('hasHeatedChamber')} />
           <div style={{ ...row, marginTop: 4 }}>
-            <Lbl>G-code flavor</Lbl>
+            <Lbl2 locked={locked('gcodeFlavorType')}>G-code flavor</Lbl2>
             <SelIn
               value={p.gcodeFlavorType}
               onChange={(v) => upd({ gcodeFlavorType: v })}
@@ -145,6 +176,7 @@ function PrinterTab({ p, upd }: { p: PrinterProfile; upd: (u: Partial<PrinterPro
                 { value: 'duet',    label: 'Duet (RepRap Firmware)' },
               ]}
               width={200}
+              locked={locked('gcodeFlavorType')}
             />
           </div>
           <div style={row}>
@@ -168,12 +200,13 @@ function PrinterTab({ p, upd }: { p: PrinterProfile; upd: (u: Partial<PrinterPro
           <div style={row}><Lbl>Y max ('+' towards front)</Lbl><NumIn value={p.printheadMaxY ?? 10} onChange={(v) => upd({ printheadMaxY: v })} suffix="mm" /></div>
           <div style={row}><Lbl>Gantry Height</Lbl><NumIn value={p.gantryHeight ?? p.buildVolume.z} onChange={(v) => upd({ gantryHeight: v })} suffix="mm" min={0} /></div>
           <div style={row}>
-            <Lbl>Number of Extruders</Lbl>
+            <Lbl2 locked={locked('nozzleCount')}>Number of Extruders</Lbl2>
             <SelIn
               value={String(p.nozzleCount) as '1'|'2'|'3'|'4'}
               onChange={(v) => upd({ nozzleCount: parseInt(v) })}
               options={(['1','2','3','4'] as const).map((n) => ({ value: n, label: n }))}
               width={80}
+              locked={locked('nozzleCount')}
             />
           </div>
           <Chk checked={p.applyExtruderOffsets ?? true} onChange={(v) => upd({ applyExtruderOffsets: v })} label="Apply Extruder offsets to GCode" />
@@ -193,25 +226,28 @@ function PrinterTab({ p, upd }: { p: PrinterProfile; upd: (u: Partial<PrinterPro
 // ── Extruder tab ──────────────────────────────────────────────────────────────
 
 function ExtruderTab({ p, upd }: { p: PrinterProfile; upd: (u: Partial<PrinterProfile>) => void }) {
+  const ms = new Set(p.machineSourcedFields ?? []);
+  const locked = (field: string) => ms.has(field);
   return (
     <div style={{ flex: 1, overflowY: 'auto', padding: '16px 20px', display: 'flex', flexDirection: 'column', gap: 16 }}>
       <div style={{ display: 'flex', gap: 32 }}>
         {/* Left */}
         <div style={col}>
           <ColHead>Nozzle Settings</ColHead>
-          <div style={row}><Lbl>Nozzle size</Lbl><NumIn value={p.nozzleDiameter} onChange={(v) => upd({ nozzleDiameter: v })} step={0.1} min={0.1} max={2} suffix="mm" /></div>
+          <div style={row}><Lbl2 locked={locked('nozzleDiameter')}>Nozzle size</Lbl2><NumIn value={p.nozzleDiameter} onChange={(v) => upd({ nozzleDiameter: v })} step={0.1} min={0.1} max={2} suffix="mm" locked={locked('nozzleDiameter')} /></div>
           <div style={row}>
-            <Lbl>Compatible material diameter</Lbl>
+            <Lbl2 locked={locked('filamentDiameter')}>Compatible material diameter</Lbl2>
             <SelIn
               value={p.filamentDiameter === 2.85 ? '2.85' : '1.75'}
               onChange={(v) => upd({ filamentDiameter: parseFloat(v) })}
               options={[{ value: '1.75', label: '1.75 mm' }, { value: '2.85', label: '2.85 mm' }]}
               width={110}
+              locked={locked('filamentDiameter')}
             />
           </div>
-          <div style={row}><Lbl>Nozzle offset X</Lbl><NumIn value={p.extruderOffsetX ?? 0} onChange={(v) => upd({ extruderOffsetX: v })} suffix="mm" /></div>
-          <div style={row}><Lbl>Nozzle offset Y</Lbl><NumIn value={p.extruderOffsetY ?? 0} onChange={(v) => upd({ extruderOffsetY: v })} suffix="mm" /></div>
-          <div style={row}><Lbl>Cooling Fan Number</Lbl><NumIn value={p.coolingFanNumber ?? 0} onChange={(v) => upd({ coolingFanNumber: Math.max(0, Math.round(v)) })} min={0} max={8} width={60} /></div>
+          <div style={row}><Lbl2 locked={locked('extruderOffsetX')}>Nozzle offset X</Lbl2><NumIn value={p.extruderOffsetX ?? 0} onChange={(v) => upd({ extruderOffsetX: v })} suffix="mm" locked={locked('extruderOffsetX')} /></div>
+          <div style={row}><Lbl2 locked={locked('extruderOffsetY')}>Nozzle offset Y</Lbl2><NumIn value={p.extruderOffsetY ?? 0} onChange={(v) => upd({ extruderOffsetY: v })} suffix="mm" locked={locked('extruderOffsetY')} /></div>
+          <div style={row}><Lbl2 locked={locked('coolingFanNumber')}>Cooling Fan Number</Lbl2><NumIn value={p.coolingFanNumber ?? 0} onChange={(v) => upd({ coolingFanNumber: Math.max(0, Math.round(v)) })} min={0} max={8} width={60} locked={locked('coolingFanNumber')} /></div>
         </div>
 
         {/* Right */}
@@ -305,7 +341,7 @@ export function SlicerPrinterManagerModal({ onClose }: { onClose: () => void }) 
         readFile('0:/sys/tpre0.g'),             // extruder prestart G-code
         readFile('0:/sys/tfree0.g'),            // extruder end G-code (runs when T0 released)
       ]);
-      const { profile, startGCode, endGCode, extruderStartGCode, extruderEndGCode, extruderPrestartGCode, materialPatch, printPatch } =
+      const { profile, profileMachineSourcedFields, startGCode, endGCode, extruderStartGCode, extruderEndGCode, extruderPrestartGCode, materialPatch, printPatch } =
         parseDuetConfig(configG, startG, stopG, overrideG, tool0G, tpre0G, tfree0G);
 
       const duetPrinterName = duetPrinters.find((p) => p.id === selectedDuetId)?.name ?? '';
@@ -322,6 +358,7 @@ export function SlicerPrinterManagerModal({ onClose }: { onClose: () => void }) 
         ...(extruderStartGCode   ? { extruderStartGCode }   : {}),
         ...(extruderEndGCode     ? { extruderEndGCode }     : {}),
         ...(extruderPrestartGCode ? { extruderPrestartGCode } : {}),
+        machineSourcedFields: profileMachineSourcedFields,
       });
 
       // Apply material-profile patch (retraction, pressure advance)
@@ -388,7 +425,7 @@ export function SlicerPrinterManagerModal({ onClose }: { onClose: () => void }) 
       if (!configG.trim()) {
         throw new Error('config.g is empty or missing on the board');
       }
-      const { profile, startGCode, endGCode, extruderStartGCode, extruderEndGCode, extruderPrestartGCode, materialPatch, printPatch } =
+      const { profile, profileMachineSourcedFields, startGCode, endGCode, extruderStartGCode, extruderEndGCode, extruderPrestartGCode, materialPatch, printPatch } =
         parseDuetConfig(configG, startG, stopG, overrideG, tool0G, tpre0G, tfree0G);
 
       updatePrinter(selectedPrinter.id, {
@@ -399,6 +436,7 @@ export function SlicerPrinterManagerModal({ onClose }: { onClose: () => void }) 
         ...(extruderStartGCode    ? { extruderStartGCode }    : {}),
         ...(extruderEndGCode      ? { extruderEndGCode }      : {}),
         ...(extruderPrestartGCode ? { extruderPrestartGCode } : {}),
+        machineSourcedFields: profileMachineSourcedFields,
       });
 
       const state = useSlicerStore.getState();
