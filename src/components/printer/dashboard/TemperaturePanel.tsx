@@ -140,9 +140,12 @@ function TemperatureChart({
   const H = 160;
   // Reserve right space for the legend when heaters exist
   const LEGEND_W = rows.length > 0 ? 130 : 0;
-  const PAD = { top: 10, right: LEGEND_W + 10, bottom: 20, left: 40 };
-  const plotW = W - PAD.left - PAD.right;
-  const plotH = H - PAD.top - PAD.bottom;
+  const padTop = 10;
+  const padRight = LEGEND_W + 10;
+  const padBottom = 20;
+  const padLeft = 40;
+  const plotW = W - padLeft - padRight;
+  const plotH = H - padTop - padBottom;
 
   const allTemps: number[] = [];
   const history = temperatureHistory as Array<{ timestamp: number; bed?: { current: number }; tools?: { current: number }[] }>;
@@ -154,7 +157,10 @@ function TemperatureChart({
   const maxTemp = Math.max(50, ...allTemps) + 10;
   const minTemp = Math.max(0, Math.min(0, ...allTemps) - 5);
 
-  const yScale = (v: number) => PAD.top + plotH - ((v - minTemp) / (maxTemp - minTemp)) * plotH;
+  const yScale = useCallback(
+    (v: number) => padTop + plotH - ((v - minTemp) / (maxTemp - minTemp)) * plotH,
+    [padTop, plotH, minTemp, maxTemp],
+  );
 
   const lines = useMemo(() => {
     const result: { index: number; color: string; points: string }[] = [];
@@ -168,7 +174,7 @@ function TemperatureChart({
           val = sample.tools[row.index - 1].current;
         }
         if (val !== undefined) {
-          const x = PAD.left + (i / Math.max(1, history.length - 1)) * plotW;
+          const x = padLeft + (i / Math.max(1, history.length - 1)) * plotW;
           const y = yScale(val);
           pts.push(`${x.toFixed(1)},${y.toFixed(1)}`);
         }
@@ -178,7 +184,7 @@ function TemperatureChart({
       }
     });
     return result;
-  }, [rows, history, plotW, yScale]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [rows, history, plotW, yScale, padLeft]);
 
   const yTicks = useMemo(() => {
     const ticks: number[] = [];
@@ -196,8 +202,8 @@ function TemperatureChart({
       {/* y-axis grid lines */}
       {yTicks.map((v) => (
         <g key={v}>
-          <line x1={PAD.left} y1={yScale(v)} x2={W - PAD.right} y2={yScale(v)} stroke={COLORS.panelBorder} strokeWidth={0.5} />
-          <text x={PAD.left - 4} y={yScale(v) + 3} fill={COLORS.textDim} fontSize={9} textAnchor="end">{v}</text>
+          <line x1={padLeft} y1={yScale(v)} x2={W - padRight} y2={yScale(v)} stroke={COLORS.panelBorder} strokeWidth={0.5} />
+          <text x={padLeft - 4} y={yScale(v) + 3} fill={COLORS.textDim} fontSize={9} textAnchor="end">{v}</text>
         </g>
       ))}
 
@@ -210,7 +216,7 @@ function TemperatureChart({
       {rows.map((row, i) => {
         const color = HEATER_CHART_COLORS[row.index % HEATER_CHART_COLORS.length];
         const current = heaters[row.index]?.current;
-        const ly = PAD.top + 4 + i * legendRowH;
+        const ly = padTop + 4 + i * legendRowH;
         return (
           <g key={row.index}>
             {/* colored line swatch */}

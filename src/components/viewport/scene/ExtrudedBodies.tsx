@@ -50,10 +50,14 @@ function BodyMesh({
   }, [animatedMat]);
 
   useFrame(({ clock, invalidate }) => {
-    if (!animatedMat) return;
+    if (!isSelected) return;
+    const mesh = meshRef.current;
+    if (!mesh) return;
+    const meshMat = Array.isArray(mesh.material) ? mesh.material[0] : mesh.material;
+    if (!(meshMat instanceof THREE.MeshStandardMaterial) || meshMat === material) return;
     // Pulse emissive intensity at 3 Hz so the selected body breathes visibly.
     const pulse = 0.3 + 0.3 * Math.sin(clock.elapsedTime * 6);
-    animatedMat.emissiveIntensity = pulse;
+    meshMat.emissiveIntensity = pulse;
     invalidate();
   });
 
