@@ -102,6 +102,10 @@ function parseMainConfig(text: string, overrideText: string): {
   retractionZHop?: number;
   // Pressure advance (M572)
   pressureAdvance?: number;
+  // Firmware retraction configured (M207 present) → slicer can use G10/G11
+  firmwareRetraction: boolean;
+  // Delta / polar kinematics (M665 or M669 K3/K9) → round bed
+  isDelta: boolean;
 } {
   // Merge config.g + config-override.g; override values win for calibrated entries
   const allLines = [...codeLines(text), ...codeLines(overrideText)];
@@ -140,6 +144,8 @@ function parseMainConfig(text: string, overrideText: string): {
   let retractionPrimeSpeed: number | undefined;
   let retractionZHop: number | undefined;
   let pressureAdvance: number | undefined;
+  let firmwareRetraction = false;
+  let isDelta = false;
 
   // Scan comments for nozzle diameter hints (e.g. left by Cura/SuperSlicer exports)
   for (const c of allComments) {
@@ -268,6 +274,8 @@ function parseMainConfig(text: string, overrideText: string): {
     }
 
     // M207 — firmware retraction: S=distance F=retractSpeed(mm/min) T=primeSpeed(mm/min) Z=zhop
+    // Presence of M207 in config.g means the board is set up for G10/G11
+    // firmware retraction, so switch the slicer into firmwareRetraction mode.
     if (upper.startsWith('M207')) {
       const s = num(p, 'S');
       const f = num(p, 'F');
@@ -277,6 +285,17 @@ function parseMainConfig(text: string, overrideText: string): {
       if (f !== undefined) retractionRetractSpeed = Math.round(f / 60);
       if (t !== undefined) retractionPrimeSpeed = Math.round(t / 60);
       if (z !== undefined) retractionZHop = z;
+      firmwareRetraction = true;
+    }
+
+    // M665 / M669 — kinematics. Delta printers (M665 or M669 K3 Linear Delta
+    // / K9 Rotary Delta) and polar (K14) have circular build plates.
+    if (upper.startsWith('M665')) {
+      isDelta = true;
+    }
+    if (upper.startsWith('M669')) {
+      const k = num(p, 'K');
+      if (k === 3 || k === 9 || k === 14) isDelta = true;
     }
 
     // M572 — pressure advance: D=drive S=value (config-override.g usually has calibrated value)
@@ -303,6 +322,8 @@ function parseMainConfig(text: string, overrideText: string): {
     coolingFanNumber,
     retractionDistance, retractionRetractSpeed, retractionPrimeSpeed, retractionZHop,
     pressureAdvance,
+    firmwareRetraction,
+    isDelta,
   };
 }
 
@@ -352,6 +373,10 @@ export function parseDuetConfig(
     ...(r.extruderOffsetX !== undefined ? { extruderOffsetX: r.extruderOffsetX } : {}),
     ...(r.extruderOffsetY !== undefined ? { extruderOffsetY: r.extruderOffsetY } : {}),
     ...(r.coolingFanNumber !== undefined ? { coolingFanNumber: r.coolingFanNumber } : {}),
+    // M207 in config.g → board is ready for G10/G11 firmware retraction.
+    ...(r.firmwareRetraction ? { firmwareRetraction: true } : {}),
+    // Delta / polar kinematics → round bed.
+    ...(r.isDelta ? { buildPlateShape: 'elliptic' as const } : {}),
   };
 
   // Build material profile patch from retraction + pressure advance
