@@ -112,6 +112,11 @@ export function Density({ value, onChange }: { value: number; onChange: (v: numb
   );
 }
 
-export function SectionDivider({ label }: { label: string }) {
-  return <div className="slicer-settings-field__divider">{label}</div>;
+export function SectionDivider({ label, icon }: { label: string; icon?: React.ReactNode }) {
+  return (
+    <div className={`slicer-settings-field__divider${icon ? ' slicer-settings-field__divider--icon' : ''}`}>
+      {icon && <span className="slicer-settings-field__divider-icon">{icon}</span>}
+      {label}
+    </div>
+  );
 }

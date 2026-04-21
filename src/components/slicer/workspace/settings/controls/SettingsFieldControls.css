@@ -136,6 +136,23 @@
   background: color-mix(in srgb, var(--bg-toolbar) 55%, transparent);
 }
 
+.slicer-settings-field__divider--icon {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 6%, transparent);
+}
+
+.slicer-settings-field__divider-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--accent);
+  opacity: 0.9;
+  flex-shrink: 0;
+}
+
 /* ── machine-sourced indicator dot (deprecated — kept for compatibility) ── */
 .slicer-settings-field__machine-dot {
   display: inline-block;
