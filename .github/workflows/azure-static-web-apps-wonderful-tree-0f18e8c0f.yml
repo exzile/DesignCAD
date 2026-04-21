@@ -35,15 +35,15 @@ jobs:
         run: npm ci --no-audit --no-fund
       - name: Build
         run: npm run build
-      - name: Install OIDC Client from Core Package
-        run: npm install @actions/core @actions/http-client
+      # actions/github-script auto-injects `core` as a global — no need to
+      # install @actions/core separately (v7 also sandboxes require() so the
+      # previous install-then-require hop stopped working).
       - name: Get Id Token
         uses: actions/github-script@v7
         id: idtoken
         with:
            script: |
-               const coredemo = require('@actions/core')
-               return await coredemo.getIDToken()
+               return await core.getIDToken()
            result-encoding: string
       - name: Build And Deploy
         id: builddeploy
