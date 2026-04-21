@@ -118,6 +118,8 @@ export interface MaterialProfile {
   // Density for weight estimation
   density: number; // g/cm³
   costPerKg: number; // $ per kg
+  // Fields whose values were imported from a connected printer (shown with machine badge in UI)
+  machineSourcedFields?: string[];
 }
 
 // -----------------------------------------------------------------------------
@@ -669,6 +671,9 @@ export interface PrintProfile {
 
   // ─── Support Interface Wall Count ─────────────────────────────────────
   supportInterfaceWallCount?: number;  // storage-only
+
+  // Fields whose values were imported from a connected printer (shown with machine badge in UI)
+  machineSourcedFields?: string[];
 }
 
 // -----------------------------------------------------------------------------
@@ -775,6 +780,7 @@ export interface SliceMove {
   speed: number; // mm/s
   extrusion: number; // mm of filament
   lineWidth: number;
+  layerHeight?: number; // override extrusion layer height (raft sub-layers use per-section heights)
 }
 
 // =============================================================================
@@ -782,6 +788,49 @@ export interface SliceMove {
 // =============================================================================
 
 export const DEFAULT_PRINTER_PROFILES: PrinterProfile[] = [
+  {
+    id: 'custom-fff',
+    name: 'Custom FFF Printer',
+    buildVolume: { x: 100, y: 100, z: 100 },
+    nozzleDiameter: 0.4,
+    nozzleCount: 1,
+    filamentDiameter: 2.85,
+    hasHeatedBed: true,
+    hasHeatedChamber: false,
+    maxNozzleTemp: 300,
+    maxBedTemp: 120,
+    maxSpeed: 200,
+    maxAcceleration: 3000,
+    originCenter: false,
+    gcodeFlavorType: 'marlin',
+    buildPlateShape: 'rectangular',
+    printheadMinX: -20,
+    printheadMinY: -10,
+    printheadMaxX: 10,
+    printheadMaxY: 10,
+    gantryHeight: 100,
+    applyExtruderOffsets: true,
+    startGCodeMustBeFirst: false,
+    extruderOffsetX: 0,
+    extruderOffsetY: 0,
+    coolingFanNumber: 0,
+    printTimeEstimationFactor: 1.0,
+    startGCode:
+      'G28 ;Home\n' +
+      'G1 Z15.0 F6000 ;Move the platform down 15mm\n' +
+      ';Prime the extruder\n' +
+      'G92 E0\n' +
+      'G1 F200 E3\n' +
+      'G92 E0\n',
+    endGCode:
+      'M104 S0\n' +
+      'M140 S0\n' +
+      ';Retract the filament\n' +
+      'G92 E1\n' +
+      'G1 E-1 F300\n' +
+      'G28 X0 Y0\n' +
+      'M84\n',
+  },
   {
     id: 'duet3d-generic',
     name: 'Duet3D Generic',

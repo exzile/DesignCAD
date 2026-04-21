@@ -135,3 +135,17 @@
   border-top: 1px solid var(--border);
   background: color-mix(in srgb, var(--bg-toolbar) 55%, transparent);
 }
+
+/* ── machine-sourced indicator dot ───────────────────────────────────────── */
+.slicer-settings-field__machine-dot {
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--accent);
+  margin-left: 5px;
+  opacity: 0.75;
+  vertical-align: middle;
+  flex-shrink: 0;
+  cursor: default;
+}

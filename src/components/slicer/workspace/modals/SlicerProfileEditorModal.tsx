@@ -1,9 +1,21 @@
 import { useState } from 'react';
 import type { CSSProperties } from 'react';
-import { X } from 'lucide-react';
+import { X, Cpu } from 'lucide-react';
 import { useSlicerStore } from '../../../../store/slicerStore';
 import type { PrinterProfile, MaterialProfile, PrintProfile } from '../../../../types/slicer';
 import { colors, sharedStyles } from '../../../../utils/theme';
+
+// Badge shown next to fields whose value was imported from a connected printer
+function MachineBadge({ title = 'Value synced from machine' }: { title?: string }) {
+  return (
+    <span title={title} style={{
+      display: 'inline-flex', alignItems: 'center', marginLeft: 4,
+      color: colors.accent, opacity: 0.75, verticalAlign: 'middle', flexShrink: 0,
+    }}>
+      <Cpu size={10} />
+    </span>
+  );
+}
 
 const btnAccent = sharedStyles.btnAccent;
 const inputStyle = sharedStyles.input;
@@ -331,46 +343,60 @@ export function SlicerProfileEditorModal({
           )}
           {activeTab === 2 && (
             <>
-              <div style={fieldRow}>
-                <div style={labelStyle}>Retraction Distance (mm)</div>
-                <input type="number" style={inputStyle} value={material.retractionDistance} step={0.1}
-                  onChange={(e) => updateMaterialProfile(material.id, { retractionDistance: parseFloat(e.target.value) || 0.8 })} />
-              </div>
-              <div style={fieldRow}>
-                <div style={labelStyle}>Retraction Speed (mm/s) — fallback</div>
-                <input type="number" style={inputStyle} value={material.retractionSpeed}
-                  onChange={(e) => updateMaterialProfile(material.id, { retractionSpeed: parseInt(e.target.value) || 45 })} />
-              </div>
-              <div style={fieldRow}>
-                <div style={labelStyle}>Retract Speed (mm/s)</div>
-                <input type="number" style={inputStyle} value={material.retractionRetractSpeed ?? material.retractionSpeed}
-                  onChange={(e) => updateMaterialProfile(material.id, { retractionRetractSpeed: parseInt(e.target.value) || 45 })} />
-              </div>
-              <div style={fieldRow}>
-                <div style={labelStyle}>Prime Speed (mm/s)</div>
-                <input type="number" style={inputStyle} value={material.retractionPrimeSpeed ?? material.retractionSpeed}
-                  onChange={(e) => updateMaterialProfile(material.id, { retractionPrimeSpeed: parseInt(e.target.value) || 45 })} />
-              </div>
-              <div style={fieldRow}>
-                <div style={labelStyle}>Retraction Z Hop (mm)</div>
-                <input type="number" style={inputStyle} value={material.retractionZHop} step={0.05}
-                  onChange={(e) => updateMaterialProfile(material.id, { retractionZHop: parseFloat(e.target.value) || 0 })} />
-              </div>
-              <div style={{ borderTop: `1px solid ${colors.panelBorder}`, margin: '8px 0' }} />
-              <div style={{ color: colors.textDim, fontSize: 11, marginBottom: 6, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.04em' }}>Linear Advance</div>
-              <label style={{ display: 'flex', alignItems: 'center', gap: 6, color: colors.text, fontSize: 12, marginBottom: 8, cursor: 'pointer' }}>
-                <input type="checkbox" checked={material.linearAdvanceEnabled ?? false}
-                  onChange={(e) => updateMaterialProfile(material.id, { linearAdvanceEnabled: e.target.checked })}
-                  style={{ accentColor: colors.accent }} />
-                Enable Linear Advance (M900)
-              </label>
-              {(material.linearAdvanceEnabled ?? false) && (
-                <div style={fieldRow}>
-                  <div style={labelStyle}>K Factor</div>
-                  <input type="number" style={inputStyle} value={material.linearAdvanceFactor ?? 0} step={0.01} min={0} max={2}
-                    onChange={(e) => updateMaterialProfile(material.id, { linearAdvanceFactor: parseFloat(e.target.value) || 0 })} />
-                </div>
-              )}
+              {(() => {
+                const ms = new Set(material.machineSourcedFields ?? []);
+                const MLabel = ({ field, children }: { field: string; children: React.ReactNode }) => (
+                  <div style={labelStyle}>
+                    {children}{ms.has(field) && <MachineBadge />}
+                  </div>
+                );
+                return (
+                  <>
+                    <div style={fieldRow}>
+                      <MLabel field="retractionDistance">Retraction Distance (mm)</MLabel>
+                      <input type="number" style={inputStyle} value={material.retractionDistance} step={0.1}
+                        onChange={(e) => updateMaterialProfile(material.id, { retractionDistance: parseFloat(e.target.value) || 0.8 })} />
+                    </div>
+                    <div style={fieldRow}>
+                      <MLabel field="retractionSpeed">Retraction Speed (mm/s) — fallback</MLabel>
+                      <input type="number" style={inputStyle} value={material.retractionSpeed}
+                        onChange={(e) => updateMaterialProfile(material.id, { retractionSpeed: parseInt(e.target.value) || 45 })} />
+                    </div>
+                    <div style={fieldRow}>
+                      <MLabel field="retractionRetractSpeed">Retract Speed (mm/s)</MLabel>
+                      <input type="number" style={inputStyle} value={material.retractionRetractSpeed ?? material.retractionSpeed}
+                        onChange={(e) => updateMaterialProfile(material.id, { retractionRetractSpeed: parseInt(e.target.value) || 45 })} />
+                    </div>
+                    <div style={fieldRow}>
+                      <MLabel field="retractionPrimeSpeed">Prime Speed (mm/s)</MLabel>
+                      <input type="number" style={inputStyle} value={material.retractionPrimeSpeed ?? material.retractionSpeed}
+                        onChange={(e) => updateMaterialProfile(material.id, { retractionPrimeSpeed: parseInt(e.target.value) || 45 })} />
+                    </div>
+                    <div style={fieldRow}>
+                      <MLabel field="retractionZHop">Retraction Z Hop (mm)</MLabel>
+                      <input type="number" style={inputStyle} value={material.retractionZHop} step={0.05}
+                        onChange={(e) => updateMaterialProfile(material.id, { retractionZHop: parseFloat(e.target.value) || 0 })} />
+                    </div>
+                    <div style={{ borderTop: `1px solid ${colors.panelBorder}`, margin: '8px 0' }} />
+                    <div style={{ color: colors.textDim, fontSize: 11, marginBottom: 6, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+                      Linear / Pressure Advance{ms.has('linearAdvanceEnabled') && <MachineBadge title="Pressure advance value read from machine (M572)" />}
+                    </div>
+                    <label style={{ display: 'flex', alignItems: 'center', gap: 6, color: colors.text, fontSize: 12, marginBottom: 8, cursor: 'pointer' }}>
+                      <input type="checkbox" checked={material.linearAdvanceEnabled ?? false}
+                        onChange={(e) => updateMaterialProfile(material.id, { linearAdvanceEnabled: e.target.checked })}
+                        style={{ accentColor: colors.accent }} />
+                      Enable Linear Advance (M900 / M572)
+                    </label>
+                    {(material.linearAdvanceEnabled ?? false) && (
+                      <div style={fieldRow}>
+                        <MLabel field="linearAdvanceFactor">K Factor</MLabel>
+                        <input type="number" style={inputStyle} value={material.linearAdvanceFactor ?? 0} step={0.01} min={0} max={2}
+                          onChange={(e) => updateMaterialProfile(material.id, { linearAdvanceFactor: parseFloat(e.target.value) || 0 })} />
+                      </div>
+                    )}
+                  </>
+                );
+              })()}
             </>
           )}
           {activeTab === 3 && (

@@ -1,6 +1,15 @@
 import { clamp, parseIntOr, parseNumberOr } from '../helpers/numberParsing';
 import './SettingsFieldControls.css';
 
+function MachineDot() {
+  return (
+    <span
+      className="slicer-settings-field__machine-dot"
+      title="Value synced from machine"
+    />
+  );
+}
+
 export function Num({
   label,
   value,
@@ -9,6 +18,7 @@ export function Num({
   min = 0,
   max = 9999,
   unit,
+  machineSourced,
 }: {
   label: string;
   value: number;
@@ -17,10 +27,11 @@ export function Num({
   min?: number;
   max?: number;
   unit?: string;
+  machineSourced?: boolean;
 }) {
   return (
     <div className="slicer-settings-field">
-      <div className="slicer-settings-field__label">{label}</div>
+      <div className="slicer-settings-field__label">{label}{machineSourced && <MachineDot />}</div>
       <div className="slicer-settings-field__input-wrap">
         <input
           type="number"
@@ -37,11 +48,11 @@ export function Num({
   );
 }
 
-export function Check({ label, value, onChange }: { label: string; value: boolean; onChange: (v: boolean) => void }) {
+export function Check({ label, value, onChange, machineSourced }: { label: string; value: boolean; onChange: (v: boolean) => void; machineSourced?: boolean }) {
   return (
     <label className="slicer-settings-field__check">
       <input className="slicer-settings-field__check-input" type="checkbox" checked={value} onChange={(e) => onChange(e.target.checked)} />
-      {label}
+      {label}{machineSourced && <MachineDot />}
     </label>
   );
 }

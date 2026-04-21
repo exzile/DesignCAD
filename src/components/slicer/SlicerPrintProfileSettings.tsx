@@ -20,6 +20,7 @@ export function SlicerPrintProfileSettings({
 }) {
   const isVisible = useSlicerVisibilityStore((s) => s.isVisible);
   useSlicerVisibilityStore((s) => s.visible); // re-render on toggle
+  const ms = new Set(print.machineSourcedFields ?? []);
 
   return (
     <>
@@ -80,6 +81,41 @@ export function SlicerPrintProfileSettings({
             <Num label="Min Thin Wall Line Width" unit="mm" value={print.minThinWallLineWidth ?? 0.1} step={0.01} min={0.01} max={1} onChange={(v) => upd({ minThinWallLineWidth: v })} />
           </>)}
         </Tier>
+        {isVisible('wallsAdvanced') && <>
+          <SectionDivider label="Advanced" />
+          <Num label="Wall Line Count (alias)" value={print.wallLineCount ?? print.wallCount ?? 2} min={1} max={20} onChange={(v) => upd({ wallLineCount: v, wallCount: v })} />
+          <Num label="Inner Wall Line Width" unit="mm" value={print.innerWallLineWidth ?? 0.4} step={0.01} min={0.1} max={2.0} onChange={(v) => upd({ innerWallLineWidth: v })} />
+          <Check label="Group Outer Walls" value={print.groupOuterWalls ?? false} onChange={(v) => upd({ groupOuterWalls: v })} />
+          <Check label="Alternate Wall Directions" value={print.alternateWallDirections ?? false} onChange={(v) => upd({ alternateWallDirections: v })} />
+          <Check label="Optimize Wall Printing Order" value={print.optimizeWallOrder ?? false} onChange={(v) => upd({ optimizeWallOrder: v })} />
+          <Num label="Min Odd Wall Line Width" unit="mm" value={print.minOddWallLineWidth ?? 0.2} step={0.01} min={0.05} max={1} onChange={(v) => upd({ minOddWallLineWidth: v })} />
+          <SectionDivider label="Overhanging Walls" />
+          <Num label="Overhanging Wall Angle" unit="°" value={print.overhangingWallAngle ?? 45} min={0} max={89} onChange={(v) => upd({ overhangingWallAngle: v })} />
+          <Num label="Overhanging Wall Speed" unit="%" value={print.overhangingWallSpeed ?? 100} step={5} min={10} max={100} onChange={(v) => upd({ overhangingWallSpeed: v })} />
+          <SectionDivider label="Z Seam" />
+          <Sel label="Z Seam Position" value={print.zSeamPosition ?? 'sharpest_corner'}
+            onChange={(v) => upd({ zSeamPosition: v })}
+            options={[
+              { value: 'shortest',         label: 'Shortest' },
+              { value: 'sharpest_corner',  label: 'Sharpest Corner' },
+              { value: 'random',           label: 'Random' },
+              { value: 'user_specified',   label: 'User Specified (X/Y)' },
+              { value: 'back',             label: 'Back' },
+            ]} />
+          <Check label="Z Seam Relative" value={print.zSeamRelative ?? false} onChange={(v) => upd({ zSeamRelative: v })} />
+          <Check label="Snap Z Seam to Vertex" value={print.zSeamOnVertex ?? false} onChange={(v) => upd({ zSeamOnVertex: v })} />
+          <Num label="Z Seam X" unit="mm" value={print.zSeamX ?? 0} step={0.1} min={-1000} max={1000} onChange={(v) => upd({ zSeamX: v })} />
+          <Num label="Z Seam Y" unit="mm" value={print.zSeamY ?? 0} step={0.1} min={-1000} max={1000} onChange={(v) => upd({ zSeamY: v })} />
+          <Sel label="Seam Corner Preference" value={print.seamCornerPreference ?? 'none'}
+            onChange={(v) => upd({ seamCornerPreference: v })}
+            options={[
+              { value: 'none',           label: 'None' },
+              { value: 'hide_seam',      label: 'Hide Seam' },
+              { value: 'expose_seam',    label: 'Expose Seam' },
+              { value: 'hide_or_expose', label: 'Hide or Expose' },
+              { value: 'smart_hide',     label: 'Smart Hide' },
+            ]} />
+        </>}
       </SlicerSection>}
 
       {isVisible('topBottom') && <SlicerSection title="Top / Bottom" color="#2dd4bf" defaultOpen={false}>
@@ -120,6 +156,37 @@ export function SlicerPrintProfileSettings({
             <Num label="Small Top/Bottom Width" unit="mm" value={print.smallTopBottomWidth ?? 0} step={0.1} min={0} max={10} onChange={(v) => upd({ smallTopBottomWidth: v })} />
           </Tier>
         </Tier>
+        {isVisible('topBottomAdvanced') && <>
+          <SectionDivider label="Advanced" />
+          <Num label="Top Thickness" unit="mm" value={print.topThickness ?? 0.8} step={0.05} min={0} max={10} onChange={(v) => upd({ topThickness: v })} />
+          <Num label="Bottom Thickness" unit="mm" value={print.bottomThickness ?? 0.8} step={0.05} min={0} max={10} onChange={(v) => upd({ bottomThickness: v })} />
+          <Num label="Skin Overlap" unit="%" value={print.skinOverlapPercent ?? 10} step={1} min={0} max={100} onChange={(v) => upd({ skinOverlapPercent: v })} />
+          <Num label="Top Skin Expand Distance" unit="mm" value={print.topSkinExpandDistance ?? 0} step={0.1} min={0} max={10} onChange={(v) => upd({ topSkinExpandDistance: v })} />
+          <Num label="Bottom Skin Expand Distance" unit="mm" value={print.bottomSkinExpandDistance ?? 0} step={0.1} min={0} max={10} onChange={(v) => upd({ bottomSkinExpandDistance: v })} />
+          <Num label="Skin Removal Width" unit="mm" value={print.skinRemovalWidth ?? 0} step={0.05} min={0} max={5} onChange={(v) => upd({ skinRemovalWidth: v })} />
+          <Num label="Extra Skin Wall Count" value={print.extraSkinWallCount ?? 0} min={0} max={10} onChange={(v) => upd({ extraSkinWallCount: v })} />
+          <Check label="No Skin in Z Gaps" value={print.noSkinInZGaps ?? false} onChange={(v) => upd({ noSkinInZGaps: v })} />
+          <Sel label="Bottom Pattern (Initial Layer)" value={print.bottomPatternInitialLayer ?? 'lines'}
+            onChange={(v) => upd({ bottomPatternInitialLayer: v })}
+            options={[
+              { value: 'lines',      label: 'Lines' },
+              { value: 'concentric', label: 'Concentric' },
+              { value: 'zigzag',     label: 'Zigzag' },
+              { value: 'monotonic',  label: 'Monotonic' },
+            ]} />
+          <Check label="Iron Only Highest Layer" value={print.ironOnlyHighestLayer ?? false} onChange={(v) => upd({ ironOnlyHighestLayer: v })} />
+          <SectionDivider label="Top Surface Skin" />
+          <Num label="Top Surface Skin Line Width" unit="mm" value={print.topSurfaceSkinLineWidth ?? 0.4} step={0.01} min={0.1} max={2} onChange={(v) => upd({ topSurfaceSkinLineWidth: v })} />
+          <Sel label="Top Surface Skin Pattern" value={print.topSurfaceSkinPattern ?? 'lines'}
+            onChange={(v) => upd({ topSurfaceSkinPattern: v })}
+            options={[
+              { value: 'lines',       label: 'Lines' },
+              { value: 'concentric',  label: 'Concentric' },
+              { value: 'zigzag',      label: 'Zigzag' },
+            ]} />
+          <Num label="Top Surface Skin Expansion" unit="mm" value={print.topSurfaceSkinExpansion ?? 0} step={0.1} min={0} max={10} onChange={(v) => upd({ topSurfaceSkinExpansion: v })} />
+          <Num label="Top Surface Skin Flow" unit="%" value={print.topSurfaceSkinFlow ?? 100} step={1} min={0} max={200} onChange={(v) => upd({ topSurfaceSkinFlow: v })} />
+        </>}
       </SlicerSection>}
 
       {isVisible('infill') && <SlicerSection title="Infill" color="#fb923c" defaultOpen={true}>
@@ -157,6 +224,25 @@ export function SlicerPrintProfileSettings({
             <Num label="Lightning Overhang Angle" unit="°" value={print.lightningInfillOverhangAngle ?? 40} min={10} max={89} onChange={(v) => upd({ lightningInfillOverhangAngle: v })} />
           )}
         </Tier>
+        {isVisible('infillAdvanced') && <>
+          <SectionDivider label="Advanced" />
+          <Num label="Infill Line Distance (overrides density)" unit="mm" value={print.infillLineDistance ?? 0} step={0.05} min={0} max={20} onChange={(v) => upd({ infillLineDistance: v })} />
+          <Num label="Infill Layer Thickness" unit="mm" value={print.infillLayerThickness ?? 0} step={0.05} min={0} max={2} onChange={(v) => upd({ infillLayerThickness: v })} />
+          <Check label="Connect Infill Lines" value={print.connectInfillLines ?? false} onChange={(v) => upd({ connectInfillLines: v })} />
+          <Check label="Connect Infill Polygons" value={print.connectInfillPolygons ?? true} onChange={(v) => upd({ connectInfillPolygons: v })} />
+          <Num label="Infill Wipe Distance" unit="mm" value={print.infillWipeDistance ?? 0} step={0.1} min={0} max={10} onChange={(v) => upd({ infillWipeDistance: v })} />
+          <Num label="Infill Start Move Inwards" unit="mm" value={print.infillStartMoveInwardsLength ?? 0} step={0.1} min={0} max={5} onChange={(v) => upd({ infillStartMoveInwardsLength: v })} />
+          <Num label="Infill End Move Inwards" unit="mm" value={print.infillEndMoveInwardsLength ?? 0} step={0.1} min={0} max={5} onChange={(v) => upd({ infillEndMoveInwardsLength: v })} />
+          <Num label="Infill Overhang Angle" unit="°" value={print.infillOverhangAngle ?? 0} min={0} max={89} onChange={(v) => upd({ infillOverhangAngle: v })} />
+          <Num label="Gradual Infill Step Height" unit="mm" value={print.gradualInfillStepHeight ?? 1.5} step={0.1} min={0.1} max={20} onChange={(v) => upd({ gradualInfillStepHeight: v })} />
+          <Num label="Infill X Offset" unit="mm" value={print.infillXOffset ?? 0} step={0.1} min={-100} max={100} onChange={(v) => upd({ infillXOffset: v })} />
+          <Num label="Infill Y Offset" unit="mm" value={print.infillYOffset ?? 0} step={0.1} min={-100} max={100} onChange={(v) => upd({ infillYOffset: v })} />
+          <SectionDivider label="Lightning Infill" />
+          <Num label="Lightning Prune Angle" unit="°" value={print.lightningPruneAngle ?? 40} min={0} max={89} onChange={(v) => upd({ lightningPruneAngle: v })} />
+          <Num label="Lightning Straightening Angle" unit="°" value={print.lightningStraighteningAngle ?? 40} min={0} max={89} onChange={(v) => upd({ lightningStraighteningAngle: v })} />
+          <SectionDivider label="Cubic Subdivision" />
+          <Num label="Cubic Subdivision Shell" unit="mm" value={print.cubicSubdivisionShell ?? 0} step={0.5} min={0} max={20} onChange={(v) => upd({ cubicSubdivisionShell: v })} />
+        </>}
       </SlicerSection>}
 
       {isVisible('speed') && <SlicerSection title="Speed" color="#f43f5e" defaultOpen={false}>
@@ -460,28 +546,28 @@ export function SlicerPrintProfileSettings({
           <Check label="Enable Travel Acceleration" value={print.travelAccelerationEnabled ?? false} onChange={(v) => upd({ travelAccelerationEnabled: v })} />
           <Check label="Enable Travel Jerk" value={print.travelJerkEnabled ?? false} onChange={(v) => upd({ travelJerkEnabled: v })} />
         </Tier>
-        <Check label="Enable Acceleration Control" value={print.accelerationEnabled ?? false} onChange={(v) => upd({ accelerationEnabled: v })} />
+        <Check label="Enable Acceleration Control" value={print.accelerationEnabled ?? false} onChange={(v) => upd({ accelerationEnabled: v })} machineSourced={ms.has('accelerationEnabled')} />
         {(print.accelerationEnabled ?? false) && (<>
           <SectionDivider label="Acceleration (mm/s²)" />
-          <Num label="Print" unit="mm/s²" value={print.accelerationPrint ?? 3000} min={100} max={20000} onChange={(v) => upd({ accelerationPrint: v })} />
-          <Num label="Travel" unit="mm/s²" value={print.accelerationTravel ?? 3000} min={100} max={20000} onChange={(v) => upd({ accelerationTravel: v })} />
-          <Num label="Outer Wall" unit="mm/s²" value={print.accelerationWall ?? 1000} min={100} max={20000} onChange={(v) => upd({ accelerationWall: v })} />
+          <Num label="Print" unit="mm/s²" value={print.accelerationPrint ?? 3000} min={100} max={20000} onChange={(v) => upd({ accelerationPrint: v })} machineSourced={ms.has('accelerationPrint')} />
+          <Num label="Travel" unit="mm/s²" value={print.accelerationTravel ?? 3000} min={100} max={20000} onChange={(v) => upd({ accelerationTravel: v })} machineSourced={ms.has('accelerationTravel')} />
+          <Num label="Outer Wall" unit="mm/s²" value={print.accelerationWall ?? 1000} min={100} max={20000} onChange={(v) => upd({ accelerationWall: v })} machineSourced={ms.has('accelerationWall')} />
           <Tier level="expert">
             <Num label="Outer Wall (separate)" unit="mm/s²" value={print.accelerationOuterWall ?? (print.accelerationWall ?? 1000)} min={100} max={20000} onChange={(v) => upd({ accelerationOuterWall: v })} />
             <Num label="Inner Wall" unit="mm/s²" value={print.accelerationInnerWall ?? (print.accelerationWall ?? 1000)} min={100} max={20000} onChange={(v) => upd({ accelerationInnerWall: v })} />
             <Num label="Skirt/Brim" unit="mm/s²" value={print.accelerationSkirtBrim ?? (print.accelerationPrint ?? 3000)} min={100} max={20000} onChange={(v) => upd({ accelerationSkirtBrim: v })} />
             <Num label="Initial Layer" unit="mm/s²" value={print.accelerationInitialLayer ?? (print.accelerationPrint ?? 3000)} min={100} max={20000} onChange={(v) => upd({ accelerationInitialLayer: v })} />
           </Tier>
-          <Num label="Infill" unit="mm/s²" value={print.accelerationInfill ?? 3000} min={100} max={20000} onChange={(v) => upd({ accelerationInfill: v })} />
-          <Num label="Top/Bottom" unit="mm/s²" value={print.accelerationTopBottom ?? 1000} min={100} max={20000} onChange={(v) => upd({ accelerationTopBottom: v })} />
-          <Num label="Support" unit="mm/s²" value={print.accelerationSupport ?? 2000} min={100} max={20000} onChange={(v) => upd({ accelerationSupport: v })} />
+          <Num label="Infill" unit="mm/s²" value={print.accelerationInfill ?? 3000} min={100} max={20000} onChange={(v) => upd({ accelerationInfill: v })} machineSourced={ms.has('accelerationInfill')} />
+          <Num label="Top/Bottom" unit="mm/s²" value={print.accelerationTopBottom ?? 1000} min={100} max={20000} onChange={(v) => upd({ accelerationTopBottom: v })} machineSourced={ms.has('accelerationTopBottom')} />
+          <Num label="Support" unit="mm/s²" value={print.accelerationSupport ?? 2000} min={100} max={20000} onChange={(v) => upd({ accelerationSupport: v })} machineSourced={ms.has('accelerationSupport')} />
         </>)}
-        <Check label="Enable Jerk Control" value={print.jerkEnabled ?? false} onChange={(v) => upd({ jerkEnabled: v })} />
+        <Check label="Enable Jerk Control" value={print.jerkEnabled ?? false} onChange={(v) => upd({ jerkEnabled: v })} machineSourced={ms.has('jerkEnabled')} />
         {(print.jerkEnabled ?? false) && (<>
           <SectionDivider label="Jerk (mm/s)" />
-          <Num label="Print Jerk" unit="mm/s" value={print.jerkPrint ?? 10} min={1} max={30} onChange={(v) => upd({ jerkPrint: v })} />
-          <Num label="Travel Jerk" unit="mm/s" value={print.jerkTravel ?? 10} min={1} max={30} onChange={(v) => upd({ jerkTravel: v })} />
-          <Num label="Wall Jerk" unit="mm/s" value={print.jerkWall ?? 8} min={1} max={30} onChange={(v) => upd({ jerkWall: v })} />
+          <Num label="Print Jerk" unit="mm/s" value={print.jerkPrint ?? 10} min={1} max={30} onChange={(v) => upd({ jerkPrint: v })} machineSourced={ms.has('jerkPrint')} />
+          <Num label="Travel Jerk" unit="mm/s" value={print.jerkTravel ?? 10} min={1} max={30} onChange={(v) => upd({ jerkTravel: v })} machineSourced={ms.has('jerkTravel')} />
+          <Num label="Wall Jerk" unit="mm/s" value={print.jerkWall ?? 8} min={1} max={30} onChange={(v) => upd({ jerkWall: v })} machineSourced={ms.has('jerkWall')} />
           <Tier level="expert">
             <Num label="Outer Wall Jerk" unit="mm/s" value={print.jerkOuterWall ?? (print.jerkWall ?? 8)} min={1} max={30} onChange={(v) => upd({ jerkOuterWall: v })} />
             <Num label="Inner Wall Jerk" unit="mm/s" value={print.jerkInnerWall ?? (print.jerkWall ?? 8)} min={1} max={30} onChange={(v) => upd({ jerkInnerWall: v })} />
@@ -489,8 +575,8 @@ export function SlicerPrintProfileSettings({
             <Num label="Skirt/Brim Jerk" unit="mm/s" value={print.jerkSkirtBrim ?? (print.jerkPrint ?? 10)} min={1} max={30} onChange={(v) => upd({ jerkSkirtBrim: v })} />
             <Num label="Initial Layer Jerk" unit="mm/s" value={print.jerkInitialLayer ?? (print.jerkPrint ?? 10)} min={1} max={30} onChange={(v) => upd({ jerkInitialLayer: v })} />
           </Tier>
-          <Num label="Infill Jerk" unit="mm/s" value={print.jerkInfill ?? 10} min={1} max={30} onChange={(v) => upd({ jerkInfill: v })} />
-          <Num label="Top/Bottom Jerk" unit="mm/s" value={print.jerkTopBottom ?? 8} min={1} max={30} onChange={(v) => upd({ jerkTopBottom: v })} />
+          <Num label="Infill Jerk" unit="mm/s" value={print.jerkInfill ?? 10} min={1} max={30} onChange={(v) => upd({ jerkInfill: v })} machineSourced={ms.has('jerkInfill')} />
+          <Num label="Top/Bottom Jerk" unit="mm/s" value={print.jerkTopBottom ?? 8} min={1} max={30} onChange={(v) => upd({ jerkTopBottom: v })} machineSourced={ms.has('jerkTopBottom')} />
         </>)}
       </SlicerSection>}
 

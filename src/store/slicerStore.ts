@@ -12,33 +12,6 @@ import {
 import { normalizeRotationDegreesToRadians, normalizeScale } from '../utils/slicerTransforms';
 import { usePrinterStore } from './printerStore';
 
-const STORAGE_KEY = 'dzign3d-slicer-profiles';
-
-interface SavedSelections {
-  activePrinterProfileId: string;
-  activeMaterialProfileId: string;
-  activePrintProfileId: string;
-}
-
-function loadSavedSelections(): SavedSelections | null {
-  try {
-    const saved = localStorage.getItem(STORAGE_KEY);
-    if (saved) {
-      return JSON.parse(saved);
-    }
-  } catch {
-    // Invalid saved data, use defaults
-  }
-  return null;
-}
-
-function saveSelections(selections: SavedSelections): void {
-  try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(selections));
-  } catch {
-    // Storage unavailable
-  }
-}
 
 interface SlicerStore {
   // Profiles
@@ -280,18 +253,16 @@ function getSlicerWorker(onMessage: (e: MessageEvent) => void): Worker {
 // Kept so cancelSlice can forward the signal to the worker.
 let workerBusy = false;
 
-const savedSelections = loadSavedSelections();
-
 export const useSlicerStore = create<SlicerStore>()(persist((set, get) => ({
-  // Profiles
+  // Profiles — rehydrated from IDB on load; defaults used only on fresh install
   printerProfiles: DEFAULT_PRINTER_PROFILES,
   materialProfiles: DEFAULT_MATERIAL_PROFILES,
   printProfiles: DEFAULT_PRINT_PROFILES,
 
-  // Active selections (restore from localStorage or default to first)
-  activePrinterProfileId: savedSelections?.activePrinterProfileId ?? DEFAULT_PRINTER_PROFILES[0]?.id ?? '',
-  activeMaterialProfileId: savedSelections?.activeMaterialProfileId ?? DEFAULT_MATERIAL_PROFILES[0]?.id ?? '',
-  activePrintProfileId: savedSelections?.activePrintProfileId ?? DEFAULT_PRINT_PROFILES[0]?.id ?? '',
+  // Active selections — rehydrated from IDB; defaults used only on fresh install
+  activePrinterProfileId: DEFAULT_PRINTER_PROFILES[0]?.id ?? '',
+  activeMaterialProfileId: DEFAULT_MATERIAL_PROFILES[0]?.id ?? '',
+  activePrintProfileId: DEFAULT_PRINT_PROFILES[0]?.id ?? '',
 
   printerLastMaterial: {},
   printerLastPrint: {},
@@ -364,7 +335,6 @@ export const useSlicerStore = create<SlicerStore>()(persist((set, get) => ({
     const materialId = state.printerLastMaterial[id] ?? printerMaterials[0]?.id ?? state.activeMaterialProfileId;
     const printId = state.printerLastPrint[id] ?? printerPrints[0]?.id ?? state.activePrintProfileId;
     set({ activePrinterProfileId: id, activeMaterialProfileId: materialId, activePrintProfileId: printId });
-    saveSelections({ activePrinterProfileId: id, activeMaterialProfileId: materialId, activePrintProfileId: printId });
   },
 
   setActiveMaterialProfile: (id) => {
@@ -373,7 +343,6 @@ export const useSlicerStore = create<SlicerStore>()(persist((set, get) => ({
       activeMaterialProfileId: id,
       printerLastMaterial: { ...state.printerLastMaterial, [state.activePrinterProfileId]: id },
     });
-    saveSelections({ activePrinterProfileId: state.activePrinterProfileId, activeMaterialProfileId: id, activePrintProfileId: state.activePrintProfileId });
   },
 
   setActivePrintProfile: (id) => {
@@ -382,7 +351,6 @@ export const useSlicerStore = create<SlicerStore>()(persist((set, get) => ({
       activePrintProfileId: id,
       printerLastPrint: { ...state.printerLastPrint, [state.activePrinterProfileId]: id },
     });
-    saveSelections({ activePrinterProfileId: state.activePrinterProfileId, activeMaterialProfileId: state.activeMaterialProfileId, activePrintProfileId: id });
   },
 
   addPrinterProfile: (profile) => set((state) => ({
@@ -993,25 +961,56 @@ export const useSlicerStore = create<SlicerStore>()(persist((set, get) => ({
   name: 'dzign3d-slicer-plate',
   storage: idbStorage as unknown as PersistStorage<SlicerStore, unknown>,
 
-  // Only persist plate-related state — not ephemeral slice/preview/progress state
   partialize: ((state) => ({
+    // Profiles — user-managed, must survive page reload
+    printerProfiles: state.printerProfiles,
+    materialProfiles: state.materialProfiles,
+    printProfiles: state.printProfiles,
+
+    // Active selections
+    activePrinterProfileId: state.activePrinterProfileId,
+    activeMaterialProfileId: state.activeMaterialProfileId,
+    activePrintProfileId: state.activePrintProfileId,
+
+    // Per-printer last-used profile memory
+    printerLastMaterial: state.printerLastMaterial,
+    printerLastPrint: state.printerLastPrint,
+
+    // Plate objects (geometry serialized to plain JSON)
     plateObjects: state.plateObjects.map((obj) => ({
       ...obj,
-      // Serialize THREE.BufferGeometry to a plain JSON-safe object
       geometry: serializeGeom(obj.geometry),
     })),
     selectedPlateObjectId: state.selectedPlateObjectId,
     transformMode: state.transformMode,
   }) as unknown as SlicerStore) as (state: SlicerStore) => SlicerStore,
 
-  // After loading from IDB, reconstruct BufferGeometry objects
   onRehydrateStorage: () => (state) => {
-    if (!state?.plateObjects) return;
-    state.plateObjects = state.plateObjects.map((obj) => ({
-      ...obj,
-      geometry: obj.geometry && !(obj.geometry instanceof THREE.BufferGeometry)
-        ? deserializeGeom(obj.geometry as unknown as SerializedGeom)
-        : obj.geometry,
-    })) as PlateObject[];
+    if (!state) return;
+
+    // Restore plate geometry
+    if (state.plateObjects) {
+      state.plateObjects = state.plateObjects.map((obj) => ({
+        ...obj,
+        geometry: obj.geometry && !(obj.geometry instanceof THREE.BufferGeometry)
+          ? deserializeGeom(obj.geometry as unknown as SerializedGeom)
+          : obj.geometry,
+      })) as PlateObject[];
+    }
+
+    // If IDB had no profiles (fresh install or cleared storage), fall back to
+    // built-in defaults so the app is never left with an empty profile list.
+    if (!state.printerProfiles?.length)  state.printerProfiles  = DEFAULT_PRINTER_PROFILES;
+    if (!state.materialProfiles?.length) state.materialProfiles = DEFAULT_MATERIAL_PROFILES;
+    if (!state.printProfiles?.length)    state.printProfiles    = DEFAULT_PRINT_PROFILES;
+
+    // Ensure active IDs still point to existing profiles (they may have been
+    // deleted in another session or the saved ID may predate a default-reset).
+    const hasPrinter  = state.printerProfiles.some((p) => p.id === state.activePrinterProfileId);
+    const hasMaterial = state.materialProfiles.some((m) => m.id === state.activeMaterialProfileId);
+    const hasPrint    = state.printProfiles.some((p)    => p.id === state.activePrintProfileId);
+    if (!hasPrinter)  state.activePrinterProfileId  = state.printerProfiles[0]?.id  ?? '';
+    if (!hasMaterial) state.activeMaterialProfileId = state.materialProfiles[0]?.id ?? '';
+    if (!hasPrint)    state.activePrintProfileId    = state.printProfiles[0]?.id    ?? '';
   },
 }));

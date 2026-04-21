@@ -1,8 +1,10 @@
 import { useState } from 'react';
-import { X, Printer, Plus, Trash2, ChevronRight } from 'lucide-react';
+import { X, Printer, Plus, Trash2, ChevronRight, RefreshCw } from 'lucide-react';
 import { useSlicerStore } from '../../../../store/slicerStore';
+import { usePrinterStore } from '../../../../store/printerStore';
 import type { PrinterProfile } from '../../../../types/slicer';
 import { colors, sharedStyles } from '../../../../utils/theme';
+import { parseDuetConfig } from '../../../../utils/duetConfigParser';
 
 // ── shared primitives ─────────────────────────────────────────────────────────
 
@@ -244,14 +246,25 @@ export function SlicerPrinterManagerModal({ onClose }: { onClose: () => void }) 
   const activePrinterId  = useSlicerStore((s) => s.activePrinterProfileId);
   const setActivePrinter = useSlicerStore((s) => s.setActivePrinterProfile);
   const deletePrinter    = useSlicerStore((s) => s.deletePrinterProfile);
-  const createPrinter    = useSlicerStore((s) => s.createPrinterWithDefaults);
-  const updatePrinter    = useSlicerStore((s) => s.updatePrinterProfile);
+  const createPrinter         = useSlicerStore((s) => s.createPrinterWithDefaults);
+  const updatePrinter         = useSlicerStore((s) => s.updatePrinterProfile);
+  const updateMaterialProfile = useSlicerStore((s) => s.updateMaterialProfile);
+  const updatePrintProfile    = useSlicerStore((s) => s.updatePrintProfile);
+
+  // Connected Duet printers from the printer store
+  const duetPrinters     = usePrinterStore((s) => s.printers);
+  const printerService   = usePrinterStore((s) => s.service);
+  const printerConnected = usePrinterStore((s) => s.connected);
+  const activeDuetId     = usePrinterStore((s) => s.activePrinterId);
 
   const [selectedId, setSelectedId]   = useState(activePrinterId);
   const [tab, setTab]                 = useState<typeof TABS[number]>('Printer');
   const [addingName, setAddingName]   = useState('');
   const [showAdd, setShowAdd]         = useState(false);
   const [confirmDelete, setConfirmDelete] = useState<string | null>(null);
+  const [syncing, setSyncing]         = useState(false);
+  const [syncError, setSyncError]     = useState<string | null>(null);
+  const [selectedDuetId, setSelectedDuetId] = useState(activeDuetId);
 
   const selectedPrinter = printerProfiles.find((p) => p.id === selectedId) ?? printerProfiles[0];
 
@@ -267,6 +280,82 @@ export function SlicerPrinterManagerModal({ onClose }: { onClose: () => void }) 
     setSelectedId(newId);
     setAddingName('');
     setShowAdd(false);
+    setSyncError(null);
+  }
+
+  async function handleSyncFromDuet() {
+    const name = addingName.trim();
+    if (!name) return;
+    const service = printerService ?? usePrinterStore.getState().service;
+    if (!service) { setSyncError('No connected Duet printer'); return; }
+    setSyncing(true);
+    setSyncError(null);
+    try {
+      const readFile = async (path: string) => {
+        try { return await (await service.downloadFile(path)).text(); }
+        catch { return ''; }
+      };
+      const [configG, startG, stopG, overrideG, tool0G, tpre0G, tfree0G] = await Promise.all([
+        readFile('0:/sys/config.g'),
+        readFile('0:/sys/start.g'),
+        readFile('0:/sys/stop.g'),
+        readFile('0:/sys/config-override.g'),  // calibrated M92/M566/M201/M203 values from M500
+        readFile('0:/sys/tool0.g'),             // extruder start G-code (runs when T0 selected)
+        readFile('0:/sys/tpre0.g'),             // extruder prestart G-code
+        readFile('0:/sys/tfree0.g'),            // extruder end G-code (runs when T0 released)
+      ]);
+      const { profile, startGCode, endGCode, extruderStartGCode, extruderEndGCode, extruderPrestartGCode, materialPatch, printPatch } =
+        parseDuetConfig(configG, startG, stopG, overrideG, tool0G, tpre0G, tfree0G);
+
+      const duetPrinterName = duetPrinters.find((p) => p.id === selectedDuetId)?.name ?? '';
+      const finalName = name || duetPrinterName || 'Duet Printer';
+
+      createPrinter(finalName);
+      const newId = useSlicerStore.getState().activePrinterProfileId;
+      const existingProfile = useSlicerStore.getState().printerProfiles.find((p) => p.id === newId);
+      updatePrinter(newId, {
+        ...profile,
+        gcodeFlavorType: 'duet',
+        startGCode: startGCode || (existingProfile?.startGCode ?? ''),
+        endGCode:   endGCode   || (existingProfile?.endGCode   ?? ''),
+        ...(extruderStartGCode   ? { extruderStartGCode }   : {}),
+        ...(extruderEndGCode     ? { extruderEndGCode }     : {}),
+        ...(extruderPrestartGCode ? { extruderPrestartGCode } : {}),
+      });
+
+      // Apply material-profile patch (retraction, pressure advance)
+      if (Object.keys(materialPatch.fields).length > 0) {
+        const state = useSlicerStore.getState();
+        const defaultMaterialId = state.printerLastMaterial[newId]
+          ?? state.materialProfiles.find((m) => m.printerId === newId)?.id;
+        if (defaultMaterialId) {
+          updateMaterialProfile(defaultMaterialId, {
+            ...materialPatch.fields,
+            machineSourcedFields: materialPatch.machineSourcedFields,
+          });
+        }
+      }
+
+      // Apply print-profile patch (acceleration, jerk)
+      if (Object.keys(printPatch.fields).length > 0) {
+        const state = useSlicerStore.getState();
+        const defaultPrintId = state.printerLastPrint[newId]
+          ?? state.printProfiles.find((p) => p.printerId === newId)?.id;
+        if (defaultPrintId) {
+          updatePrintProfile(defaultPrintId, {
+            ...printPatch.fields,
+            machineSourcedFields: printPatch.machineSourcedFields,
+          });
+        }
+      }
+      setSelectedId(newId);
+      setAddingName('');
+      setShowAdd(false);
+    } catch (err) {
+      setSyncError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setSyncing(false);
+    }
   }
 
   function handleDelete(id: string) {
@@ -417,18 +506,57 @@ export function SlicerPrinterManagerModal({ onClose }: { onClose: () => void }) 
 
             {/* Add printer */}
             {showAdd ? (
-              <div style={{ padding: '8px 10px', borderTop: `1px solid ${colors.panelBorder}`, display: 'flex', flexDirection: 'column', gap: 5 }}>
+              <div style={{ padding: '8px 10px', borderTop: `1px solid ${colors.panelBorder}`, display: 'flex', flexDirection: 'column', gap: 6 }}>
                 <input
                   autoFocus
                   style={{ ...sharedStyles.input, width: '100%', boxSizing: 'border-box', fontSize: 12 }}
                   placeholder="Printer name…"
                   value={addingName}
-                  onChange={(e) => setAddingName(e.target.value)}
-                  onKeyDown={(e) => { if (e.key === 'Enter') handleCreate(); if (e.key === 'Escape') { setShowAdd(false); setAddingName(''); } }}
+                  onChange={(e) => { setAddingName(e.target.value); setSyncError(null); }}
+                  onKeyDown={(e) => { if (e.key === 'Enter') handleCreate(); if (e.key === 'Escape') { setShowAdd(false); setAddingName(''); setSyncError(null); } }}
                 />
+
+                {/* Duet sync row — only visible when a Duet is connected */}
+                {printerConnected && (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                    <div style={{ fontSize: 10, color: colors.textDim, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                      Sync from Duet
+                    </div>
+                    {duetPrinters.length > 1 && (
+                      <select
+                        value={selectedDuetId}
+                        onChange={(e) => setSelectedDuetId(e.target.value)}
+                        style={{ ...sharedStyles.select, width: '100%', fontSize: 11 }}
+                      >
+                        {duetPrinters.map((dp) => (
+                          <option key={dp.id} value={dp.id}>{dp.name}</option>
+                        ))}
+                      </select>
+                    )}
+                    <button
+                      onClick={handleSyncFromDuet}
+                      disabled={syncing || !addingName.trim()}
+                      style={{
+                        ...sharedStyles.btnBase,
+                        display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 5,
+                        fontSize: 11, width: '100%',
+                        opacity: (syncing || !addingName.trim()) ? 0.5 : 1,
+                        cursor: (syncing || !addingName.trim()) ? 'not-allowed' : 'pointer',
+                        color: colors.accent, borderColor: colors.accent,
+                      }}
+                    >
+                      <RefreshCw size={11} className={syncing ? 'spin' : undefined} />
+                      {syncing ? 'Reading config.g…' : 'Import from config.g'}
+                    </button>
+                    {syncError && (
+                      <div style={{ fontSize: 10, color: '#ef4444' }}>{syncError}</div>
+                    )}
+                  </div>
+                )}
+
                 <div style={{ display: 'flex', gap: 4 }}>
-                  <button onClick={handleCreate} style={{ ...sharedStyles.btnAccent, flex: 1, justifyContent: 'center', fontSize: 11 }}>Create</button>
-                  <button onClick={() => { setShowAdd(false); setAddingName(''); }} style={{ ...sharedStyles.btnBase, fontSize: 11 }}>✕</button>
+                  <button onClick={handleCreate} disabled={!addingName.trim()} style={{ ...sharedStyles.btnAccent, flex: 1, justifyContent: 'center', fontSize: 11, opacity: addingName.trim() ? 1 : 0.5 }}>Create</button>
+                  <button onClick={() => { setShowAdd(false); setAddingName(''); setSyncError(null); }} style={{ ...sharedStyles.btnBase, fontSize: 11 }}>✕</button>
                 </div>
               </div>
             ) : (

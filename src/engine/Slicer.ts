@@ -143,6 +143,7 @@ export class Slicer {
     let currentY = 0;
     let currentZ = 0;
     let isRetracted = false;
+    let extrudedSinceRetract = 0;
 
     const gcode: string[] = [];
 
@@ -255,6 +256,7 @@ export class Slicer {
           currentZ = hopZ;
         }
         isRetracted = true;
+        extrudedSinceRetract = 0;
       }
     };
 
@@ -313,9 +315,11 @@ export class Slicer {
       const avoidPad = (pp.travelAvoidDistance ?? 0) + (pp.insideTravelAvoidDistance ?? 0);
       if (avoidPad > 0) maxComb = Math.max(0, maxComb - avoidPad);
       const minTravel = pp.retractionMinTravel ?? 0;
+      const minExtrudeWindow = pp.minimumExtrusionDistanceWindow ?? 0;
       const shortTravel = !forceRetract && (
         (maxComb > 0 && dist < maxComb) ||
-        (minTravel > 0 && dist < minTravel)
+        (minTravel > 0 && dist < minTravel) ||
+        (minExtrudeWindow > 0 && extrudedSinceRetract < minExtrudeWindow)
       );
       if (!shortTravel) doRetract();
       // Cura-parity: travelAccelerationEnabled / travelJerkEnabled gate whether
@@ -351,6 +355,7 @@ export class Slicer {
       const e = calcExtrusion(dist, lineWidth, layerH);
       currentE += e;
       totalExtruded += e;
+      extrudedSinceRetract += e;
       let clampedSpeed = speed;
       if (maxFlowRate > 0 && lineWidth > 0 && layerH > 0) {
         const flowSpeedCap = maxFlowRate / (lineWidth * layerH);
@@ -731,12 +736,18 @@ export class Slicer {
       if (li === 0) {
         setAccel(pp.accelerationSkirtBrim ?? pp.accelerationInitialLayer, pp.accelerationPrint);
         setJerk(pp.jerkSkirtBrim ?? pp.jerkInitialLayer, pp.jerkPrint);
+        if (pp.adhesionType === 'raft') {
+          setAccel(pp.raftPrintAcceleration ?? pp.accelerationSkirtBrim ?? pp.accelerationInitialLayer, pp.accelerationPrint);
+          setJerk(pp.raftPrintJerk ?? pp.jerkSkirtBrim ?? pp.jerkInitialLayer, pp.jerkPrint);
+          if ((pp.raftFanSpeed ?? 0) > 0)
+            gcode.push(`M106 S${fanSArg(pp.raftFanSpeed!)} ; Raft fan`);
+        }
         const adhesionMoves = this.generateAdhesion(contours, pp, layerH, offsetX, offsetY);
         let layerTimeAdhesion = 0;
         for (const am of adhesionMoves) {
           // Travel to start
           travelTo(am.from.x, am.from.y);
-          layerTimeAdhesion += extrudeTo(am.to.x, am.to.y, am.speed, am.lineWidth, layerH);
+          layerTimeAdhesion += extrudeTo(am.to.x, am.to.y, am.speed, am.lineWidth, am.layerHeight ?? layerH);
           moves.push(am);
         }
         totalTime += layerTimeAdhesion;
@@ -1408,8 +1419,13 @@ export class Slicer {
               setJerk(isFirstLayer ? pp.jerkInitialLayer : pp.jerkInfill, pp.jerkPrint);
             }
             gcode.push(`; ${isSolid ? 'Solid fill' : 'Infill'}`);
-            // Sort infill lines to minimize travel
-            const sorted = this.sortInfillLines(infillLines);
+            // Sort infill lines to minimize travel.
+            // infillTravelOptimization: use greedy NN sort across endpoints
+            // (better inter-segment travel at O(n²) cost). Default boustrophedon
+            // is O(n) and better for dense solid layers; NN is better for sparse infill.
+            const sorted = (!isSolid && (pp.infillTravelOptimization ?? false))
+              ? this.sortInfillLinesNN(infillLines, currentX, currentY)
+              : this.sortInfillLines(infillLines);
             // Cura-parity: `connectInfillLines` bridges adjacent scan lines
             // with an extrusion instead of a travel. When the snake-ordered
             // lines share an endpoint within ~lineWidth, we emit a continuous
@@ -1550,6 +1566,7 @@ export class Slicer {
           offsetX,
           offsetY,
           offsetZ,
+          modelHeight,
           contours,
         );
         if (supportMoves.length > 0) {
@@ -2684,6 +2701,7 @@ export class Slicer {
     offsetX: number,
     offsetY: number,
     _offsetZ: number,
+    modelHeight: number,
     modelContours: Contour[],
   ): { moves: SliceMove[]; flowOverride?: number } {
     const pp = this.printProfile;
@@ -2786,7 +2804,8 @@ export class Slicer {
       // base by padding the bbox by one lineWidth. Keeps the support foot
       // more stable on sloped surfaces.
       if (layerIndex < stepLayers) {
-        const pad = pp.wallLineWidth;
+        const maxW = pp.supportStairStepMaxWidth ?? 0;
+        const pad = maxW > 0 ? Math.min(pp.wallLineWidth, maxW / 2) : pp.wallLineWidth;
         rawBbox = {
           minX: rawBbox.minX - pad,
           maxX: rawBbox.maxX + pad,
@@ -2794,6 +2813,25 @@ export class Slicer {
           maxY: rawBbox.maxY + pad,
         };
       }
+    }
+
+    // Cura-parity: Conical Support. When conicalSupportAngle > 0, the support
+    // base expands outward from the top (overhang) to the bottom (build plate)
+    // at the given angle, creating a cone-shaped structure. Approximated as
+    // bbox expansion proportional to distance below the model top: each layer
+    // gets extra clearance of tan(angle) * (modelHeight - layerZ).
+    const conicalAngle = (pp.enableConicalSupport ?? false) ? (pp.conicalSupportAngle ?? 0) : 0;
+    if (conicalAngle > 0 && modelHeight > 0) {
+      const conicalRad = (conicalAngle * Math.PI) / 180;
+      const expansion = Math.tan(conicalRad) * Math.max(0, modelHeight - layerZ);
+      const minWidth = (pp.conicalSupportMinWidth ?? 0) / 2;
+      const actualExp = Math.max(minWidth, expansion);
+      rawBbox = {
+        minX: rawBbox.minX - actualExp,
+        maxX: rawBbox.maxX + actualExp,
+        minY: rawBbox.minY - actualExp,
+        maxY: rawBbox.maxY + actualExp,
+      };
     }
 
     // Cura-parity: minimumSupportArea drops tiny support islands so the user
@@ -3106,11 +3144,19 @@ export class Slicer {
         // brimAvoidMargin: keep outward brim lines at least this far from inner
         // hole contours so the brim does not cover small holes.
         const brimAvoidMm = pp.brimAvoidMargin ?? 0;
+        // smartBrim: skip brim on large footprint outer contours — only small
+        // or thin shapes need adhesion help. Threshold is the area of a square
+        // with side = brimWidth * 6, so models wider than ~6× the brim width
+        // are considered well-adhered and skipped.
+        const smartBrimArea = (pp.smartBrim ?? false)
+          ? Math.pow(pp.brimWidth * 6, 2)
+          : Infinity;
         const brimLoops = Math.ceil(pp.brimWidth / lineWidth);
         for (let line = 0; line < brimLoops; line++) {
           const dist = brimGapMm + line * lineWidth;
           for (const contour of contours) {
             if (!contour.isOuter) continue;
+            if (Math.abs(contour.area) > smartBrimArea) continue;
             const brimContour = this.offsetContour(contour.points, -(dist + lineWidth));
             if (brimContour.length < 3) continue;
             // brimAvoidMargin: skip this brim line if any point is within
@@ -3182,6 +3228,7 @@ export class Slicer {
               new THREE.Vector2(minX - raftMargin, maxY + raftMargin),
             ];
         // ── BASE layer ──────────────────────────────────────────────────
+        const baseLH      = pp.raftBaseThickness;
         const baseLW      = pp.raftBaseLineWidth ?? lineWidth * 1.5;
         const baseSpeed   = pp.raftBaseSpeed ?? speed * 0.8;
         const baseSpacing = (pp.raftBaseLineSpacing ?? 0) > 0
@@ -3189,9 +3236,7 @@ export class Slicer {
           : baseLW / ((100 - (pp.raftBaseInfillOverlap ?? 0)) / 100 || 1);
         const baseFlowMul = (pp.raftFlow ?? 100) / 100;
         const baseLines   = this.generateScanLines(raftContour, 100, baseSpacing > 0 ? baseLW : baseLW, Math.PI / 2);
-        if ((pp.raftFanSpeed ?? 0) > 0) {
-          // Override fan for raft layers; will be restored by the regular fan ramp.
-        }
+        // raftFanSpeed is emitted before the raft moves in the main emit loop (li===0 block).
         for (const line of baseLines) {
           moves.push({
             type: 'raft',
@@ -3200,10 +3245,12 @@ export class Slicer {
             speed: baseSpeed,
             extrusion: 0,
             lineWidth: baseLW * baseFlowMul,
+            layerHeight: baseLH,
           });
         }
         // ── MIDDLE layers ───────────────────────────────────────────────
         const midCount   = pp.raftMiddleLayers ?? 0;
+        const midLH      = pp.raftMiddleThickness ?? pp.raftBaseThickness;
         const midLW      = pp.raftMiddleLineWidth ?? lineWidth;
         const midSpacing = (pp.raftMiddleLineSpacing ?? 0) > 0 ? pp.raftMiddleLineSpacing! : midLW;
         const midSpeed   = pp.raftBaseSpeed ? pp.raftBaseSpeed * 1.0625 : speed * 0.85;
@@ -3218,17 +3265,26 @@ export class Slicer {
               speed: midSpeed,
               extrusion: 0,
               lineWidth: midLW * baseFlowMul,
+              layerHeight: midLH,
             });
           }
         }
         // ── TOP / SURFACE layers ────────────────────────────────────────
         const topCount   = Math.max(1, pp.raftTopLayers ?? 2);
+        const topLH      = pp.raftTopThickness ?? pp.layerHeight;
         const topLW      = pp.raftTopLineWidth ?? lineWidth;
         const topSpacing = (pp.raftTopLineSpacing ?? 0) > 0 ? pp.raftTopLineSpacing! : topLW;
         const topSpeed   = speed * 0.9;
+        const monotonicTop = pp.monotonicRaftTopSurface ?? false;
         for (let tli = 0; tli < topCount; tli++) {
           const angle = Math.PI / 2 + tli * Math.PI / 3; // rotate to interlock
-          const topLines = this.generateScanLines(raftContour, 100, topLW, angle);
+          const rawTopLines = this.generateScanLines(raftContour, 100, topSpacing, angle);
+          // Default: boustrophedon (flip every other line for efficient travel).
+          // monotonicRaftTopSurface: keep all lines in the same direction for
+          // a more consistent surface finish at the cost of extra travel.
+          const topLines = monotonicTop
+            ? rawTopLines
+            : this.sortInfillLines(rawTopLines);
           for (const line of topLines) {
             moves.push({
               type: 'raft',
@@ -3237,6 +3293,7 @@ export class Slicer {
               speed: topSpeed,
               extrusion: 0,
               lineWidth: topLW * baseFlowMul,
+              layerHeight: topLH,
             });
           }
         }
@@ -3293,6 +3350,36 @@ export class Slicer {
     return lines.map((line, i) =>
       i % 2 === 0 ? line : { from: line.to, to: line.from },
     );
+  }
+
+  // Greedy nearest-neighbour infill sort (used when infillTravelOptimization is on).
+  // Considers both endpoints of each remaining line and flips the line to start
+  // from whichever end is closest to the current nozzle position.
+  private sortInfillLinesNN(
+    lines: { from: THREE.Vector2; to: THREE.Vector2 }[],
+    startX: number,
+    startY: number,
+  ): { from: THREE.Vector2; to: THREE.Vector2 }[] {
+    if (lines.length <= 1) return lines;
+    const remaining = lines.slice();
+    const result: { from: THREE.Vector2; to: THREE.Vector2 }[] = [];
+    let rx = startX, ry = startY;
+    while (remaining.length > 0) {
+      let bestIdx = 0, bestDist = Infinity, bestFlip = false;
+      for (let i = 0; i < remaining.length; i++) {
+        const { from, to } = remaining[i];
+        const df = Math.hypot(from.x - rx, from.y - ry);
+        const dt = Math.hypot(to.x - rx, to.y - ry);
+        if (df < bestDist) { bestDist = df; bestIdx = i; bestFlip = false; }
+        if (dt < bestDist) { bestDist = dt; bestIdx = i; bestFlip = true; }
+      }
+      const line = remaining.splice(bestIdx, 1)[0];
+      const ordered = bestFlip ? { from: line.to, to: line.from } : line;
+      result.push(ordered);
+      rx = ordered.to.x;
+      ry = ordered.to.y;
+    }
+    return result;
   }
 
   // =========================================================================

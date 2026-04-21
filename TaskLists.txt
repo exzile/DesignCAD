@@ -12,7 +12,6 @@
 # ============================================================================
 # Legend:
 #   [ ] = missing entirely (needs type + UI + engine)
-#   [x] = DONE this session
 #   [u] = type exists but no UI control
 #   [s] = type + UI exist but engine ignores (storage-only)
 #   [skip] = multi-extruder or irrelevant for single-nozzle — intentionally omitted
@@ -28,7 +27,7 @@
 - [s] Wall Transitioning Filter Distance (`wallTransitionFilterDistance`) — type + UI ✓; engine deferred
 - [s] Wall Transitioning Filter Margin (`wallTransitionFilterMargin`) — type + UI ✓; engine deferred
 - [s] wallTransitionLength, wallTransitionAngle — stored, engine wiring deferred
- 
+
 
 ## TOP / BOTTOM
 - [s] Top Surface Skin Layers (`topSurfaceSkinLayers`) — type + UI ✓; engine too complex
@@ -40,41 +39,27 @@
 - [s] Top Skin Removal Width (`topSkinRemovalWidth`) — type + UI ✓; engine deferred
 - [s] Bottom Skin Removal Width (`bottomSkinRemovalWidth`) — type + UI ✓; engine deferred
 - [s] Maximum Skin Angle for Expansion (`maxSkinAngleForExpansion`) — type only (deferred)
-- [s] Minimum Skin Width for Expansion (`minSkinWidthForExpansion`) — type only (deferred) 
+- [s] Minimum Skin Width for Expansion (`minSkinWidthForExpansion`) — type only (deferred)
 - [s] noSkinInZGaps — intentional no-op (inherent behavior)
 
-## INFILL 
-- [skip] Infill Support (`infillSupport`) — major feature; deferred 
+## INFILL
+- [skip] Infill Support (`infillSupport`) — major feature; deferred
 
 ## MATERIAL
 - [s] Top Surface Skin Flow (`topSurfaceSkinFlow`) — type + UI ✓; top-surface engine deferred
 
 ## SPEED
-- [x] Support Interface Speed (`supportInterfaceSpeed`) — wired as fallback for roof+floor layers ✓
 - [s] Flow Equalization Ratio (`flowEqualizationRatio`) — type + UI ✓; engine deferred
-
-## TRAVEL
-- [s] Minimum Extrusion Distance Window (`minimumExtrusionDistanceWindow`) — type + UI ✓; engine deferred
-- [s] Layer Start at Z Seam (`layerStartAtSeam`) — type + UI ✓; engine deferred
-
-## COOLING
-- [x] Initial Layers Build Volume Fan Speed (`initialLayersBuildVolumeFanSpeed`) — M106 P2 at start; transitions at fanDisableFirstLayers ✓
+ 
 
 ## SUPPORT
  - [s] Support Infill Density Multiplier Initial Layer — storage-only; deferred
 - [s] Support Distance Priority (`supportDistancePriority`) — type + UI ✓; engine deferred
-- [s] Support Stair Step Maximum Width (`supportStairStepMaxWidth`) — type + UI ✓; engine deferred
  - [s] Minimum Support Interface Area / Roof Area / Floor Area — storage-only; deferred
  - [s] Use Towers (`useTowers`) — type + UI ✓; engine deferred
 - [s] Tower Diameter / Tower Roof Angle — type + UI ✓; engine deferred
- 
 
-## BUILD PLATE ADHESION
-- [s] Smart Brim (`smartBrim`) — type + UI ✓; engine deferred 
-- [s] Raft Base Thickness / Middle Thickness / Top Thickness / Interface Z Offset — layer-height params; engine deferred
-- [s] Monotonic Raft Top Surface Order — type + UI ✓; engine deferred
-- [s] Remove Raft Inside Corners — type + UI ✓; engine deferred
-- [s] Raft Print Acceleration / Jerk / Fan Speed — type + UI ✓; engine deferred 
+ 
 
 ## MESH FIXES
 - [s] Remove All Holes (`removeAllHoles`) — type + UI exist; engine (mesh repair) deferred
@@ -82,9 +67,6 @@
 - [s] Merged Meshes Overlap (`mergedMeshesOverlap`) — storage-only (mesh pre-processing deferred)
 - [s] Remove Mesh Intersection (`removeMeshIntersection`) — storage-only (mesh pre-processing deferred)
 - [s] Alternate Mesh Removal (`alternateMeshRemoval`) — storage-only (mesh pre-processing deferred)
-- [s] Remove Empty First Layers (`removeEmptyFirstLayers`) — storage-only (engine deferred)
-- [s] Maximum Travel Resolution (`maxTravelResolution`) — type + UI exist; engine deferred
-- [s] Maximum Extrusion Area Deviation (`maxExtrusionAreaDeviation`) — storage-only (deferred) 
 
 ## SPECIAL MODES
 - [s] Smooth Spiralized Contours (`smoothSpiralizedContours`) — type + UI ✓; vase mode engine deferred
@@ -92,9 +74,7 @@
 - [s] Infill Mesh / Cutting Mesh / Support Mesh / Anti-Overhang Mesh — type scaffold + UI ✓; engine wiring deferred (per-object override system)
 
 ## EXPERIMENTAL
-- [s] Infill Travel Optimization (`infillTravelOptimization`) — type + UI ✓; engine deferred
 - [s] Break Up Support In Chunks (`breakUpSupportInChunks`) + Chunk Size + Chunk Line Count — type + UI ✓; engine deferred
-- [s] Conical Support Angle (`conicalSupportAngle`) + Conical Support Min Width — type + UI ✓; engine deferred
 - [s] Fuzzy Skin Outside Only (`fuzzySkinOutsideOnly`) — type + UI ✓; engine deferred (fuzzySkinsEnabled itself not yet wired)
 - [s] Adaptive Layers Topography Size (`adaptiveLayersTopographySize`) — type + UI ✓; engine deferred
 - [s] Minimum Layer Time with Overhang (`minLayerTimeWithOverhang`) — type + UI ✓; engine deferred
@@ -103,9 +83,6 @@
 - [s] Interlace Bridge Lines (`interlaceBridgeLines`) — type + UI ✓; engine deferred
 - [s] Bridge Has Multiple Layers (`bridgeHasMultipleLayers`) — type + UI ✓; engine deferred
 - [s] Bridge 2nd/3rd Skin Fan Speed (`bridgeFanSpeed2/3`) — type + UI ✓; engine deferred
-- [s] Retraction During Travel Move — implicit behavior; deferred
-- [s] Keep Retracting During Travel (`keepRetractingDuringTravel`) — type + UI ✓; engine deferred
-- [s] Prime During Travel Move (`primeDuringTravel`) — type + UI ✓; engine deferred
 
 - [skip] Wipe Nozzle Between Layers and all Wipe sub-params — multi-extruder feature
 - [skip] Flow Temperature Graph, Cross Infill Density Image — hardware/image-based; not applicable
