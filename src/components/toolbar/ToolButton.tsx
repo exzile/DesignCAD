@@ -71,7 +71,7 @@ export function ToolButton({ icon, label, tool, active, onClick, disabled, large
           {dropdown.map((item, i) => (
             <button
               key={i}
-              className="ribbon-dropdown-item"
+              className={`ribbon-dropdown-item${item.divider ? ' ribbon-dropdown-item--divider' : ''}`}
               onClick={() => { item.onClick(); setDropdownOpen(false); }}
             >
               {item.icon && <span className="ribbon-dropdown-item-icon">{item.icon}</span>}

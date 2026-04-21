@@ -51,6 +51,27 @@ export interface PrinterProfile {
   defaultJerk?: number;         // mm/s  — M205 X Y
   // Time estimation
   printTimeEstimationFactor?: number; // multiply computed print time by this factor (default 1.0)
+  // Build plate
+  buildPlateShape?: 'rectangular' | 'elliptic';
+  // Printhead clearance (gantry offsets from nozzle tip)
+  printheadMinX?: number;   // X min (negative = left of nozzle)
+  printheadMinY?: number;   // Y min (negative = towards back)
+  printheadMaxX?: number;   // X max (positive = right of nozzle)
+  printheadMaxY?: number;   // Y max (positive = towards front)
+  gantryHeight?: number;    // mm — vertical clearance of the printhead
+  // Multi-extruder
+  applyExtruderOffsets?: boolean;
+  startGCodeMustBeFirst?: boolean;
+  extruderOffsetX?: number;    // mm — nozzle X offset from primary
+  extruderOffsetY?: number;    // mm — nozzle Y offset from primary
+  coolingFanNumber?: number;   // fan index (0-based)
+  // Extruder G-code snippets
+  extruderPrestartGCode?: string;
+  extruderStartGCode?: string;
+  extruderEndGCode?: string;
+  extruderChangeDuration?: number;      // s
+  extruderStartGCodeDuration?: number;  // s
+  extruderEndGCodeDuration?: number;    // s
   // Start/end gcode templates
   startGCode: string;
   endGCode: string;
@@ -62,6 +83,7 @@ export interface PrinterProfile {
 
 export interface MaterialProfile {
   id: string;
+  printerId?: string;
   name: string;
   type: 'PLA' | 'ABS' | 'PETG' | 'TPU' | 'Nylon' | 'ASA' | 'PC' | 'PVA' | 'HIPS' | 'Custom';
   color: string; // hex color for preview
@@ -104,6 +126,7 @@ export interface MaterialProfile {
 
 export interface PrintProfile {
   id: string;
+  printerId?: string;
   name: string;
 
   // Layer settings

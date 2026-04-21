@@ -1,13 +1,16 @@
+import { useState } from 'react';
 import {
   Box, AlignCenter, X, MousePointer2,
-  Printer, Diamond, Layers, Eye, Download,
+  Printer, Diamond, Layers, Eye, Download, Settings2,
 } from 'lucide-react';
 import { useCADStore } from '../../store/cadStore';
 import { useSlicerStore } from '../../store/slicerStore';
 import { usePrinterStore } from '../../store/printerStore';
+import { DEFAULT_PRINTER_PROFILES } from '../../types/slicer';
 import { NON_BODY_FEATURE_TYPES } from '../slicer/slicerFeatureTypes';
 import { RibbonSection } from './FlyoutMenu';
 import { ToolButton } from './ToolButton';
+import { SlicerPrinterManagerModal } from '../slicer/workspace/modals/SlicerPrinterManagerModal';
 
 // Prepare ribbon — a single flat row of sections. Previously split across
 // four sub-tabs (PLATE / PROFILES / SLICE / EXPORT), they now live side by
@@ -35,8 +38,16 @@ export function RibbonPrepareTab() {
   const activePrinterId      = useSlicerStore((s) => s.activePrinterProfileId);
   const activeMaterialId     = useSlicerStore((s) => s.activeMaterialProfileId);
 
+  const [showPrinterModal, setShowPrinterModal] = useState(false);
+
+  const defaultPrinterId = DEFAULT_PRINTER_PROFILES[0]?.id;
   const activePrinterName = printerProfiles.find((p) => p.id === activePrinterId)?.name ?? 'Printer';
   const activeMaterialName = materialProfiles.find((m) => m.id === activeMaterialId)?.name ?? 'Material';
+
+  // Only show materials belonging to the active printer
+  const printerMaterials = materialProfiles.filter(
+    (m) => (m.printerId ?? defaultPrinterId) === activePrinterId,
+  );
 
   // ── Build plate actions ──────────────────────────────────────────────────
   const addableFeatures = features.filter((f) =>
@@ -95,18 +106,24 @@ export function RibbonPrepareTab() {
         <ToolButton icon={<MousePointer2 size={ICON_LG} />} label="Select" tool="select" large colorClass="icon-blue" />
       </RibbonSection>
 
-      {/* Profile pickers — each large button opens the edit modal for that
-          profile kind; the dropdown lets you switch the active profile. */}
       <RibbonSection title="PROFILES">
         <ToolButton
           icon={<Printer size={ICON_LG} />}
           label={activePrinterName}
-          onClick={() => useSlicerStore.getState().setSettingsPanel('printer')}
-          dropdown={printerProfiles.length > 0 ? printerProfiles.map((p) => ({
-            label: p.name,
-            icon: <Printer size={12} />,
-            onClick: () => useSlicerStore.getState().setActivePrinterProfile(p.id),
-          })) : undefined}
+          onClick={() => setShowPrinterModal(true)}
+          dropdown={[
+            ...printerProfiles.map((p) => ({
+              label: p.name,
+              icon: <Printer size={12} />,
+              onClick: () => useSlicerStore.getState().setActivePrinterProfile(p.id),
+            })),
+            {
+              label: 'Manage Printers…',
+              icon: <Settings2 size={12} />,
+              onClick: () => setShowPrinterModal(true),
+              divider: true,
+            },
+          ]}
           large
           colorClass="icon-blue"
         />
@@ -114,7 +131,7 @@ export function RibbonPrepareTab() {
           icon={<Diamond size={ICON_LG} />}
           label={activeMaterialName}
           onClick={() => useSlicerStore.getState().setSettingsPanel('material')}
-          dropdown={materialProfiles.length > 0 ? materialProfiles.map((m) => ({
+          dropdown={printerMaterials.length > 0 ? printerMaterials.map((m) => ({
             label: m.name,
             icon: <Diamond size={12} />,
             onClick: () => useSlicerStore.getState().setActiveMaterialProfile(m.id),
@@ -183,6 +200,8 @@ export function RibbonPrepareTab() {
           colorClass="icon-green"
         />
       </RibbonSection>
+
+      {showPrinterModal && <SlicerPrinterManagerModal onClose={() => setShowPrinterModal(false)} />}
     </>
   );
 }

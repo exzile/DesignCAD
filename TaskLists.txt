@@ -5,26 +5,7 @@
 # Post-completion: bugs fixed and additional gaps catalogued below.
 # ============================================================================
 
-## Slicer engine bugs fixed (post-completion audit)
 
-1. Brim offset direction — was inward, fixed to outward (negative offset)
-2. Support emission inside model — break instead of flag, fixed with boolean
-3. offsetContour spike lines — added maxReach clamp (10× offset + 1mm)
-4. Raft top layer default — ?? 1 → ?? 2 to match UI default
-5. Grid infill rotation — was fixed 0°/90°, now alternates with 45° offset per layer
-6. Triangle infill rotation — was fixed angles, now cycles 3 rotations per layer
-7. Fan off at end — M107 was not emitted before end G-code
-8. Cubic infill — was emitting only 1 angle/layer, now emits all 3 interlocked sets
-9. infillOverlap not applied — regular infill region was not expanded by infillOverlap %
-10. supportSpeed hardcoded — was pp.printSpeed * 0.8, now uses pp.supportSpeed with fallback
-
-## Dialog redesign — Advanced Settings Visibility ✓ DONE
-
-- [x] Basic/Advanced/Expert level selector in settings panel header
-- [x] `Tier` wrapper component — filters fields by detail level
-- [x] `meetsLevel()` in slicerVisibilityStore — persisted to localStorage
-- [x] All sections annotated: Quality, Walls, Top/Bottom, Infill, Speed, Travel,
-      Cooling, Support, Adhesion
 
 # ============================================================================
 # MISSING SETTINGS — full Cura gap analysis (all sections)
@@ -37,149 +18,63 @@
 #   [skip] = multi-extruder or irrelevant for single-nozzle — intentionally omitted
 # ============================================================================
 
-## QUALITY — Line Widths
-- [x] Skirt/Brim Line Width (`skirtBrimLineWidth`) — type + UI + engine ✓
-- [x] Support Line Width (`supportLineWidth`) — type + UI + engine ✓
-- [x] Support Interface Line Width (`supportInterfaceLineWidth`) — type + UI ✓
-- [x] Support Roof Line Width (`supportRoofLineWidth`) — type + UI ✓
-- [x] Support Floor Line Width (`supportFloorLineWidth`) — type + UI ✓
 
 ## WALLS
 - [s] Print Thin Walls (`printThinWalls`) — bool; type + UI ✓; engine too complex
 - [s] Minimum Feature Size (`minFeatureSize`) — mm; type + UI ✓; engine too complex
 - [s] Minimum Thin Wall Line Width (`minThinWallLineWidth`) — mm; type + UI ✓; engine too complex
-- [x] Outer Wall Inset (`outerWallInset`) — mm; type + UI + engine ✓
-- [s] Optimize Wall Printing Order (`optimizeWallOrder`) — type + UI ✓; engine deferred
 - [s] Minimum Even Wall Line Width (`minEvenWallLineWidth`) — type + UI ✓; engine deferred
-- [s] Hole Horizontal Expansion Max Diameter (`holeHorizontalExpansionMaxDiameter`) — type + UI ✓; engine deferred
-- [s] Wall Distribution Count (`wallDistributionCount`) — type + UI ✓; engine too complex
+ - [s] Wall Distribution Count (`wallDistributionCount`) — type + UI ✓; engine too complex
 - [s] Wall Transitioning Filter Distance (`wallTransitionFilterDistance`) — type + UI ✓; engine deferred
 - [s] Wall Transitioning Filter Margin (`wallTransitionFilterMargin`) — type + UI ✓; engine deferred
 - [s] wallTransitionLength, wallTransitionAngle — stored, engine wiring deferred
-- [s] minOddWallLineWidth — stored, engine wiring deferred
+ 
 
 ## TOP / BOTTOM
 - [s] Top Surface Skin Layers (`topSurfaceSkinLayers`) — type + UI ✓; engine too complex
 - [s] Top Surface Skin Line Width / Pattern / Expansion / Flow — type + UI ✓; engine deferred
 - [s] Bottom Surface Skin Layers (`bottomSurfaceSkinLayers`) — type + UI ✓; engine too complex
-- [x] Initial Bottom Layers (`initialBottomLayers`) — dense first bottom; type + UI + engine ✓
 - [s] Connect Top/Bottom Polygons (`connectTopBottomPolygons`) — type + UI ✓; engine too complex
-- [x] Top/Bottom Line Directions (`topBottomLineDirections`) — angle list cycled per layer; type + engine ✓
 - [s] Small Top/Bottom Width (`smallTopBottomWidth`) — type + UI ✓; engine deferred
-- [x] Ironing Pattern (`ironingPattern`) — lines / concentric / zigzag; type + UI + engine ✓
-- [x] Ironing Inset (`ironingInset`) — mm; keep ironing away from walls; type + UI + engine ✓
 - [s] Monotonic Ironing Order (`monotonicIroningOrder`) — type + UI ✓; engine deferred
 - [s] Top Skin Removal Width (`topSkinRemovalWidth`) — type + UI ✓; engine deferred
 - [s] Bottom Skin Removal Width (`bottomSkinRemovalWidth`) — type + UI ✓; engine deferred
 - [s] Maximum Skin Angle for Expansion (`maxSkinAngleForExpansion`) — type only (deferred)
-- [s] Minimum Skin Width for Expansion (`minSkinWidthForExpansion`) — type only (deferred)
-- [s] bottomPatternInitialLayer — stored, not wired (engine always uses topBottomPattern)
-- [s] ironOnlyHighestLayer — stored, engine wiring deferred
+- [s] Minimum Skin Width for Expansion (`minSkinWidthForExpansion`) — type only (deferred) 
 - [s] noSkinInZGaps — intentional no-op (inherent behavior)
 
-## INFILL
-- [x] Randomize Infill Start (`randomInfillStart`) — engine + UI ✓
-- [x] Infill Line Multiplier (`multiplyInfill`) — repeat each line N times; engine wired ✓
-- [s] Cubic Subdivision Shell (`cubicSubdivisionShell`) — type + UI ✓; engine deferred
-- [x] Minimum Infill Area (`minInfillArea`) — mm²; skip infill in tiny regions; type + UI + engine ✓
-- [skip] Infill Support (`infillSupport`) — major feature; deferred
-- [x] Lightning Infill Overhang Angle (`lightningInfillOverhangAngle`) — type + UI + engine ✓
-- [x] Infill Start Move Inwards Length (`infillStartMoveInwardsLength`) — type + UI + engine ✓
-- [x] Infill End Move Inwards Length (`infillEndMoveInwardsLength`) — type + UI + engine ✓
-- [x] infillLineDirections — engine wired; overrides pattern angle per layer at the call site ✓
-- [s] infillWipeDistance — stored; engine wiring deferred
-- [s] infillLayerThickness — stored; engine wiring deferred
+## INFILL 
+- [skip] Infill Support (`infillSupport`) — major feature; deferred 
 
 ## MATERIAL
-- [x] Build Volume Temperature — already implemented as `chamberTemp` (M141) ✓
-- [x] Initial Printing Temperature (`initialPrintingTemperature`) — preheat before print ✓
-- [x] Final Printing Temperature (`finalPrintingTemperature`) — cooldown at end ✓
-- [x] Shrinkage Compensation XY (`shrinkageCompensationXY`) — % scale; counteract warping ✓
-- [x] Shrinkage Compensation Z (`shrinkageCompensationZ`) — % scale vertical; scales all layer Z positions + layerH ✓
-- [x] Enable Linear Advance (`linearAdvanceEnabled`) + Factor (`linearAdvanceFactor`) — emits M900 ✓
-- [x] Material Maximum Flow Rate (`maxFlowRate`) — mm³/s; type + UI + engine ✓
 - [s] Top Surface Skin Flow (`topSurfaceSkinFlow`) — type + UI ✓; top-surface engine deferred
-- [x] Initial Layer Outer/Inner Wall Flow / Bottom Flow — type + UI + engine ✓
-- [s] Support Roof Flow / Support Floor Flow — type + UI ✓; engine deferred
-- [x] initialLayerFlow — engine wired; calcExtrusion multiplied by per-layer flow factor ✓
 
 ## SPEED
-- [x] Bottom Surface Speed (`bottomSpeed`) — separate from topSpeed ✓
-- [x] Support Infill Speed (`supportInfillSpeed`) — separate from supportSpeed; type + UI + engine ✓
-- [s] Support Interface Speed (`supportInterfaceSpeed`) — type + UI ✓; no interface layer engine yet
-- [s] Support Roof Speed / Support Floor Speed — type + UI ✓; engine deferred
-- [x] Initial Layer Travel Speed (`initialLayerTravelSpeed`) — separate from firstLayerSpeed ✓
-- [x] Number of Slower Layers (`numberOfSlowerLayers`) — ramp speed over N layers from start ✓
+- [x] Support Interface Speed (`supportInterfaceSpeed`) — wired as fallback for roof+floor layers ✓
 - [s] Flow Equalization Ratio (`flowEqualizationRatio`) — type + UI ✓; engine deferred
-- [x] Enable Travel Acceleration (`travelAccelerationEnabled`) — type + UI + engine ✓
-- [x] Enable Travel Jerk (`travelJerkEnabled`) — type + UI + engine ✓
-- [x] Outer Wall Acceleration (`accelerationOuterWall`) — type + UI + engine ✓
-- [x] Inner Wall Acceleration (`accelerationInnerWall`) — type + UI + engine ✓
-- [x] Skirt/Brim Acceleration (`accelerationSkirtBrim`) — type + UI + engine ✓
-- [x] Initial Layer Acceleration (`accelerationInitialLayer`) — type + UI + engine ✓
-- [x] Outer Wall Jerk (`jerkOuterWall`) — type + UI + engine ✓
-- [x] Inner Wall Jerk (`jerkInnerWall`) — type + UI + engine ✓
-- [x] Support Jerk (`jerkSupport`) — type + UI + engine ✓
-- [x] Skirt/Brim Jerk (`jerkSkirtBrim`) — type + UI + engine ✓
-- [x] Initial Layer Jerk (`jerkInitialLayer`) — type + UI + engine ✓
 
 ## TRAVEL
-- [x] Retraction Retract Speed (`retractionRetractSpeed`) — separate retract speed ✓
-- [x] Retraction Prime Speed (`retractionPrimeSpeed`) — separate unretract speed ✓
 - [s] Minimum Extrusion Distance Window (`minimumExtrusionDistanceWindow`) — type + UI ✓; engine deferred
-- [x] Layer Start X/Y (`layerStartX`, `layerStartY`) — fixed layer-start position ✓
 - [s] Layer Start at Z Seam (`layerStartAtSeam`) — type + UI ✓; engine deferred
 
 ## COOLING
-- [x] Cooling Fan Enable (`coolingFanEnabled`) — gates all M106 emission ✓
-- [x] Regular Fan Speed at Height (`regularFanSpeedAtHeight`) — mm; height-based trigger; type + UI + engine ✓
-- [x] Small Layer Printing Temperature (`smallLayerPrintingTemperature`) — reduce temp on short layers ✓
-- [x] Build Volume Fan Speed at Height (`buildVolumeFanSpeedAtHeight`) — type + UI + engine ✓
-- [s] Initial Layers Build Volume Fan Speed (`initialLayersBuildVolumeFanSpeed`) — type + UI ✓; engine deferred
+- [x] Initial Layers Build Volume Fan Speed (`initialLayersBuildVolumeFanSpeed`) — M106 P2 at start; transitions at fanDisableFirstLayers ✓
 
 ## SUPPORT
-- [x] Support Wall Line Count (`supportWallLineCount`) — type + UI + engine ✓
-- [s] Support Interface Wall Line Count / Roof / Floor wall counts — type + UI ✓; engine deferred
-- [x] Initial Layer Support Line Distance (`initialLayerSupportLineDistance`) — type + UI + engine ✓
-- [s] Support Infill Density Multiplier Initial Layer — storage-only; deferred
-- [x] Support Infill Line Directions (`supportInfillLineDirections`) — type + UI + engine ✓
-- [x] Support Top Distance (`supportTopDistance`) — type + UI + engine ✓
+ - [s] Support Infill Density Multiplier Initial Layer — storage-only; deferred
 - [s] Support Distance Priority (`supportDistancePriority`) — type + UI ✓; engine deferred
-- [x] Minimum Support X/Y Distance (`minSupportXYDistance`) — type + UI + engine ✓
 - [s] Support Stair Step Maximum Width (`supportStairStepMaxWidth`) — type + UI ✓; engine deferred
-- [x] Gradual Support Infill Steps (`gradualSupportSteps`) — type + UI + engine ✓
-- [x] Gradual Support Infill Step Height (`gradualSupportStepHeight`) — type + UI + engine ✓
-- [x] Minimum Support Area (`minimumSupportArea`) — already wired in engine ✓; UI via existing control
-- [s] Support Interface Thickness (`supportInterfaceThickness`) — type + UI ✓; engine deferred
-- [s] Support Roof Thickness / Floor Thickness — type + UI ✓; engine deferred
-- [s] Support Roof Density / Roof Line Distance — type + UI ✓; engine deferred
-- [s] Support Floor Density / Floor Line Distance — type + UI ✓; engine deferred
-- [s] Support Roof Pattern / Floor Pattern — type + UI ✓; engine deferred
-- [s] Minimum Support Interface Area / Roof Area / Floor Area — storage-only; deferred
-- [s] Support Interface Horizontal Expansion / Roof / Floor — storage-only; deferred
-- [s] Support Interface Line Directions / Roof / Floor — type + UI ✓; engine deferred
-- [x] Fan Speed Override (`supportFanSpeedOverride`) — type + UI + engine ✓
-- [s] Use Towers (`useTowers`) — type + UI ✓; engine deferred
+ - [s] Minimum Support Interface Area / Roof Area / Floor Area — storage-only; deferred
+ - [s] Use Towers (`useTowers`) — type + UI ✓; engine deferred
 - [s] Tower Diameter / Tower Roof Angle — type + UI ✓; engine deferred
-- [x] Tree Support (major feature) — branch/trunk params, placement, all tree-specific settings ✓
-- [s] connectSupportLines, connectSupportZigZags — stored; engine wiring deferred
-- [s] supportStairStepHeight, supportStairStepMinSlope — stored; engine wiring deferred
-- [s] supportInfillLayerThickness — stored; engine wiring deferred
+ 
 
 ## BUILD PLATE ADHESION
-- [x] Enable Prime Blob (`primeBlobEnable`) — type + UI + engine ✓
-- [x] Skirt/Brim Minimum Length (`skirtBrimMinLength`) — mm; extend skirt to meet minimum ✓
-- [x] Brim Distance (`brimGap`) — mm gap between brim and model; engine wired ✓
-- [x] Brim Avoid Margin (`brimAvoidMargin`) — type + UI + engine ✓
-- [s] Smart Brim (`smartBrim`) — type + UI ✓; engine deferred
-- [s] Raft Base Thickness / Base Line Spacing / Base Infill Overlap — type + UI ✓; engine deferred
-- [s] Raft Middle Layers / Middle Thickness / Middle Spacing / Interface Z Offset — type + UI ✓; engine deferred
-- [s] Raft Top Layer Thickness / Top Line Width / Top Spacing / Surface Z Offset — type + UI ✓; engine deferred
+- [s] Smart Brim (`smartBrim`) — type + UI ✓; engine deferred 
+- [s] Raft Base Thickness / Middle Thickness / Top Thickness / Interface Z Offset — layer-height params; engine deferred
 - [s] Monotonic Raft Top Surface Order — type + UI ✓; engine deferred
 - [s] Remove Raft Inside Corners — type + UI ✓; engine deferred
-- [s] Raft Print Acceleration / Jerk / Fan Speed / Flow — type + UI ✓; engine deferred
-- [x] Initial Layer Z Overlap (`initialLayerZOverlap`) — type + UI + engine ✓
-- [s] raftExtraMargin, raftSmoothing, raftWallCount — stored; engine wiring deferred
+- [s] Raft Print Acceleration / Jerk / Fan Speed — type + UI ✓; engine deferred 
 
 ## MESH FIXES
 - [s] Remove All Holes (`removeAllHoles`) — type + UI exist; engine (mesh repair) deferred
@@ -189,56 +84,33 @@
 - [s] Alternate Mesh Removal (`alternateMeshRemoval`) — storage-only (mesh pre-processing deferred)
 - [s] Remove Empty First Layers (`removeEmptyFirstLayers`) — storage-only (engine deferred)
 - [s] Maximum Travel Resolution (`maxTravelResolution`) — type + UI exist; engine deferred
-- [s] Maximum Extrusion Area Deviation (`maxExtrusionAreaDeviation`) — storage-only (deferred)
-- [s] fluidMotionEnable, fluidMotionAngle, fluidMotionSmallDistance — stored; engine deferred
+- [s] Maximum Extrusion Area Deviation (`maxExtrusionAreaDeviation`) — storage-only (deferred) 
 
 ## SPECIAL MODES
 - [s] Smooth Spiralized Contours (`smoothSpiralizedContours`) — type + UI ✓; vase mode engine deferred
-- [x] Relative Extrusion (`relativeExtrusion`) — emit M83 instead of M82; delta E in all moves ✓
 - [s] Minimal Mold Width (`minMoldWidth`) — type + UI ✓; engine deferred
 - [s] Infill Mesh / Cutting Mesh / Support Mesh / Anti-Overhang Mesh — type scaffold + UI ✓; engine wiring deferred (per-object override system)
 
 ## EXPERIMENTAL
 - [s] Infill Travel Optimization (`infillTravelOptimization`) — type + UI ✓; engine deferred
-- [x] Minimum Polygon Circumference (`minPolygonCircumference`) — mm; skip tiny polygons ✓
 - [s] Break Up Support In Chunks (`breakUpSupportInChunks`) + Chunk Size + Chunk Line Count — type + UI ✓; engine deferred
-- [x] Draft Shield Limitation (`draftShieldLimitation`) — type + UI + engine ✓
-- [x] Draft Shield Height (`draftShieldHeight`) — type + UI + engine ✓
-- [x] Coasting Speed (`coastingSpeed`) — type + UI + engine already wired ✓
-- [x] Minimum Volume Before Coasting (`minVolumeBeforeCoasting`) — type + UI + engine ✓
 - [s] Conical Support Angle (`conicalSupportAngle`) + Conical Support Min Width — type + UI ✓; engine deferred
-- [s] Fuzzy Skin Outside Only (`fuzzySkinOutsideOnly`) — type + UI ✓; engine deferred
-- [x] Flow Rate Compensation Factor (`flowRateCompensationFactor`) — type + UI + engine ✓
+- [s] Fuzzy Skin Outside Only (`fuzzySkinOutsideOnly`) — type + UI ✓; engine deferred (fuzzySkinsEnabled itself not yet wired)
 - [s] Adaptive Layers Topography Size (`adaptiveLayersTopographySize`) — type + UI ✓; engine deferred
-- [x] Overhanging Wall Angle (`overhangingWallAngle`) — type + UI + engine already wired ✓
 - [s] Minimum Layer Time with Overhang (`minLayerTimeWithOverhang`) — type + UI ✓; engine deferred
-- [x] Overhanging Wall Speeds (`overhangingWallSpeed`) — type + UI + engine already wired ✓
 - [s] Enable Bridge Settings (`bridgeSettingsEnabled`) — type + UI ✓; engine deferred
-- [x] Bridge Fan Speed (`bridgeFanSpeed`) — type + UI already existed ✓
 - [s] Bridge Skin Density (`bridgeSkinDensity`) — type + UI ✓; engine deferred
 - [s] Interlace Bridge Lines (`interlaceBridgeLines`) — type + UI ✓; engine deferred
 - [s] Bridge Has Multiple Layers (`bridgeHasMultipleLayers`) — type + UI ✓; engine deferred
 - [s] Bridge 2nd/3rd Skin Fan Speed (`bridgeFanSpeed2/3`) — type + UI ✓; engine deferred
-- [x] Small Hole Max Size (`smallHoleMaxSize`) — type + UI + engine ✓
-- [x] Alternate Wall Directions (`alternateWallDirections`) — type + UI + engine already wired ✓
 - [s] Retraction During Travel Move — implicit behavior; deferred
 - [s] Keep Retracting During Travel (`keepRetractingDuringTravel`) — type + UI ✓; engine deferred
 - [s] Prime During Travel Move (`primeDuringTravel`) — type + UI ✓; engine deferred
-- [x] Scarf Seam Start Speed Ratio (`scarfSeamStartSpeedRatio`) — type + UI + engine ✓
-- [s] scarfSeamLength, scarfSeamStartHeight, scarfSeamStepLength — stored; needs UI + engine wire
-- [s] overhangingWallSpeed — stored; needs engine wire
+
 - [skip] Wipe Nozzle Between Layers and all Wipe sub-params — multi-extruder feature
 - [skip] Flow Temperature Graph, Cross Infill Density Image — hardware/image-based; not applicable
 
 ## PRINTER SETTINGS
-- [x] Firmware Retraction (`firmwareRetraction`) — emit G10/G11 instead of E-move retraction ✓
-- [x] Print Time Estimation Factor (`printTimeEstimationFactor`) — scale factor to calibrate time estimates ✓
-- [x] Wait for Build Plate Heatup (`waitForBuildPlate`) — bool; M190 vs M140 ✓
-- [x] Wait for Nozzle Heatup (`waitForNozzle`) — bool; M109 vs M104 ✓
-- [x] Scale Fan Speed to 0-1 (`scaleFanSpeedTo01`) — some firmware uses 0.0-1.0 range for M106 ✓
-- [x] Maximum Speed X/Y/Z/E (`maxSpeedX/Y/Z/E`) — per-axis speed limits; emits M203 ✓
-- [x] Maximum Acceleration X/Y/Z/E (`maxAccelX/Y/Z/E`) — per-axis accel limits; emits M201 ✓
-- [x] Default Acceleration / Default X-Y Jerk (`defaultAcceleration`, `defaultJerk`) — emits M204/M205 ✓
 - [skip] Machine Type, Material Type/Brand, Nozzle geometry, Steps/mm, Endstops, Extruder-sharing params — hardware-only fields stored in firmware, not relevant to G-code output
 
 ## DUAL EXTRUSION

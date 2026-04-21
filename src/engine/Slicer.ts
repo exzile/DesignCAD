@@ -406,8 +406,11 @@ export class Slicer {
     // Build-volume / chamber fan (Cura: build_volume_fan_speed). Uses M106 P2
     // by convention; printers that lack a second fan channel will simply
     // ignore it. Emit only when the user has set a non-zero value.
-    if ((pp.buildVolumeFanSpeed ?? 0) > 0) {
-      gcode.push(`M106 P2 S${fanSArg(pp.buildVolumeFanSpeed ?? 0)} ; Build volume fan`);
+    if ((pp.buildVolumeFanSpeed ?? 0) > 0 || (pp.initialLayersBuildVolumeFanSpeed ?? 0) > 0) {
+      // Use `initialLayersBuildVolumeFanSpeed` during first layers if set; fall
+      // back to the regular build-volume speed when it's not specified.
+      const initBVF = pp.initialLayersBuildVolumeFanSpeed ?? pp.buildVolumeFanSpeed ?? 0;
+      if (initBVF > 0) gcode.push(`M106 P2 S${fanSArg(initBVF)} ; Build volume fan (initial layers)`);
     }
     if (printer.hasHeatedBed) {
       // waitForBuildPlate defaults true — use M190 (blocking). Setting false
@@ -538,6 +541,27 @@ export class Slicer {
         }
       }
 
+      // Cura-parity: `holeHorizontalExpansion` offsets inner (hole) contours
+      // outward (positive = tighten hole, negative = widen) to compensate for
+      // elephant-foot or drill-over-extrusion. `holeHorizontalExpansionMaxDiameter`
+      // caps which holes are affected — holes larger than the diameter threshold
+      // are left untouched (useful when only small precision holes need correction).
+      const hhe = pp.holeHorizontalExpansion ?? 0;
+      if (hhe !== 0) {
+        const maxD = pp.holeHorizontalExpansionMaxDiameter ?? Infinity;
+        for (const c of contours) {
+          if (c.isOuter) continue;
+          if (maxD < Infinity) {
+            const approxDiam = 2 * Math.sqrt(Math.abs(c.area) / Math.PI);
+            if (approxDiam > maxD) continue;
+          }
+          // For CCW-wound holes, positive offset = inward (tightens) via offsetContour.
+          // hhe > 0 means tighten (shrink hole) → positive inward offset.
+          const expanded = this.offsetContour(c.points, hhe);
+          if (expanded.length >= 3) c.points = expanded;
+        }
+      }
+
       // Determine if this is a solid layer (top or bottom).
       // Cura-parity note: `noSkinInZGaps` is effectively always honored by
       // our implementation — skin detection keys off absolute layer index
@@ -665,6 +689,10 @@ export class Slicer {
         }
         if (li === mat.fanDisableFirstLayers) {
           gcode.push(`M106 S${fanSArg(mat.fanSpeedMin)} ; Enable fan`);
+          // Transition build-volume fan from initial-layer speed to regular speed.
+          if ((pp.initialLayersBuildVolumeFanSpeed ?? 0) > 0 && (pp.buildVolumeFanSpeed ?? 0) > 0) {
+            gcode.push(`M106 P2 S${fanSArg(pp.buildVolumeFanSpeed!)} ; Build volume fan regular`);
+          }
         }
         if (li > mat.fanDisableFirstLayers && li <= mat.fanDisableFirstLayers + 3) {
           // Ramp up fan
@@ -751,6 +779,40 @@ export class Slicer {
 
       let layerTime = 0;
 
+      // Cura-parity: `optimizeWallOrder` — sort outer contours by centroid
+      // distance from the current nozzle position (greedy nearest-neighbour)
+      // to minimise travel between features on multi-body / multi-island layers.
+      // Cura-parity: `optimizeWallOrder` — greedy nearest-neighbour tour of
+      // outer contours to minimise travel on multi-island layers. Holes are
+      // kept at the end (they are implicitly handled as part of their parent
+      // outer contour's infill offset, not visited as top-level contours).
+      const workContours = (pp.optimizeWallOrder ?? false)
+        ? (() => {
+            const outers = contours.filter((c) => c.isOuter);
+            const holes  = contours.filter((c) => !c.isOuter);
+            const centroids = outers.map((c) => ({
+              cx: c.points.reduce((s, p) => s + p.x, 0) / c.points.length,
+              cy: c.points.reduce((s, p) => s + p.y, 0) / c.points.length,
+            }));
+            const visited = new Uint8Array(outers.length);
+            const ordered: Contour[] = [];
+            let refX = currentX, refY = currentY;
+            for (let i = 0; i < outers.length; i++) {
+              let best = -1, bestD = Infinity;
+              for (let j = 0; j < outers.length; j++) {
+                if (visited[j]) continue;
+                const d = Math.hypot(centroids[j].cx - refX, centroids[j].cy - refY);
+                if (d < bestD) { bestD = d; best = j; }
+              }
+              visited[best] = 1;
+              ordered.push(outers[best]);
+              refX = centroids[best].cx;
+              refY = centroids[best].cy;
+            }
+            return [...ordered, ...holes];
+          })()
+        : contours;
+
       // Cura-parity: `groupOuterWalls`. When enabled, emit the outer wall
       // of EVERY contour before any inner walls or infill. This makes all
       // outer-surface passes happen in one group per layer, reducing the
@@ -761,7 +823,7 @@ export class Slicer {
       const groupOW = pp.groupOuterWalls ?? false;
       const perContour: Array<{ contour: Contour; wallSets: THREE.Vector2[][] }> = [];
       if (groupOW) {
-        for (const contour of contours) {
+        for (const contour of workContours) {
           if (!contour.isOuter) continue;
           let wallSets = this.generatePerimeters(contour.points, pp.wallCount, pp.wallLineWidth, pp.outerWallInset ?? 0);
           const minOdd = pp.minOddWallLineWidth ?? 0;
@@ -823,22 +885,28 @@ export class Slicer {
           const scarfLen = pp.scarfSeamLength ?? 0;
           const scarfActive = scarfLen > 0
             && (pp.scarfSeamStartHeight === undefined || layerZ >= pp.scarfSeamStartHeight);
+          const scarfStepLen = pp.scarfSeamStepLength ?? 0;
           let scarfRemaining = scarfActive ? scarfLen : 0;
           for (let pi = 1; pi < reordered.length; pi++) {
             const from = reordered[pi - 1];
             const to = reordered[pi];
             let segLW = pp.wallLineWidth;
+            let segSpeed = outerWallSpeed;
             if (scarfRemaining > 0) {
               const done = scarfLen - scarfRemaining;
-              segLW = pp.wallLineWidth * Math.min(1, done / scarfLen);
+              const tRaw = done / scarfLen;
+              const t = Math.min(1, scarfStepLen > 0 ? Math.floor(done / scarfStepLen) * scarfStepLen / scarfLen : tRaw);
+              segLW = pp.wallLineWidth * t;
+              const speedRatio = pp.scarfSeamStartSpeedRatio ?? 1.0;
+              segSpeed = outerWallSpeed * (speedRatio + (1.0 - speedRatio) * t);
               scarfRemaining = Math.max(0, scarfRemaining - from.distanceTo(to));
             }
-            layerTime += extrudeTo(to.x, to.y, outerWallSpeed, segLW, layerH);
+            layerTime += extrudeTo(to.x, to.y, segSpeed, segLW, layerH);
             moves.push({
               type: 'wall-outer',
               from: { x: from.x, y: from.y },
               to: { x: to.x, y: to.y },
-              speed: outerWallSpeed,
+              speed: segSpeed,
               extrusion: calcExtrusion(from.distanceTo(to), segLW, layerH),
               lineWidth: segLW,
             });
@@ -861,7 +929,7 @@ export class Slicer {
       }
 
       // ----- For each contour, generate walls, then infill -----
-      for (const contour of contours) {
+      for (const contour of workContours) {
         if (!contour.isOuter) continue; // process outer contours only; inner holes handled during offset
 
         // Generate perimeters (walls)
@@ -955,6 +1023,7 @@ export class Slicer {
             const scarfLen = pp.scarfSeamLength ?? 0;
             const scarfActive = scarfLen > 0
               && (pp.scarfSeamStartHeight === undefined || layerZ >= pp.scarfSeamStartHeight);
+            const scarfStepLen2 = pp.scarfSeamStepLength ?? 0;
             let scarfRemaining = scarfActive ? scarfLen : 0;
             for (let pi = 1; pi < reordered.length; pi++) {
               const from = reordered[pi - 1];
@@ -962,9 +1031,12 @@ export class Slicer {
               let segLW = pp.wallLineWidth;
               let segSpeed = outerWallSpeed;
               if (scarfRemaining > 0) {
-                // Ramp: completed distance into scarf / total scarf length
+                // Ramp: completed distance into scarf / total scarf length.
+                // scarfSeamStepLength quantises the ramp into discrete steps
+                // of that length instead of a smooth continuous taper.
                 const done = scarfLen - scarfRemaining;
-                const t = Math.min(1, done / scarfLen);
+                const tRaw = done / scarfLen;
+                const t = Math.min(1, scarfStepLen2 > 0 ? Math.floor(done / scarfStepLen2) * scarfStepLen2 / scarfLen : tRaw);
                 segLW = pp.wallLineWidth * t;
                 // scarfSeamStartSpeedRatio: ramp speed from ratio→1.0 over scarf length
                 const speedRatio = pp.scarfSeamStartSpeedRatio ?? 1.0;
@@ -1269,6 +1341,14 @@ export class Slicer {
             lineWidth = pp.infillLineWidth;
           }
 
+          // Cura-parity: `infillLayerThickness` — print sparse infill only every
+          // N layers, using thicker stripes to maintain volumetric fill. Mirrors
+          // the `supportInfillLayerThickness` pattern. Solid layers are exempt.
+          if (!isSolid && (pp.infillLayerThickness ?? 0) > 0) {
+            const thickMul = Math.max(1, Math.round((pp.infillLayerThickness ?? 0) / pp.layerHeight));
+            if (thickMul > 1 && li % thickMul !== 0) infillLines = [];
+          }
+
           // Cura-parity: `extraSkinWallCount` emits additional perimeter
           // loops around the solid-skin region before the scan-line fill.
           // This buffers the skin so its outer edge has proper walls — helps
@@ -1378,6 +1458,16 @@ export class Slicer {
                 ),
                 lineWidth,
               });
+              // Cura-parity: `infillWipeDistance` — after extruding each scan
+              // line, continue moving in the same direction without extruding.
+              // This wipes residual pressure off the tip and reduces stringing
+              // between infill lines.
+              if ((pp.infillWipeDistance ?? 0) > 0 && len > 0) {
+                const wx = effTo.x + ux * pp.infillWipeDistance!;
+                const wy = effTo.y + uy * pp.infillWipeDistance!;
+                gcode.push(`G0 X${wx.toFixed(3)} Y${wy.toFixed(3)} F${(speed * 60).toFixed(0)} ; Infill wipe`);
+                currentX = wx; currentY = wy;
+              }
             }
           }
         }
@@ -1452,7 +1542,7 @@ export class Slicer {
         ? Math.max(1, Math.round((pp.supportInfillLayerThickness ?? 0) / pp.layerHeight))
         : 1;
       if (pp.supportEnabled && li > 0 && li % supThickMul === 0) {
-        const supportMoves = this.generateSupportForLayer(
+        const { moves: supportMoves, flowOverride: supFlowOverride } = this.generateSupportForLayer(
           triangles,
           sliceZ,
           layerZ,
@@ -1473,6 +1563,10 @@ export class Slicer {
             gcode.push(`M106 S${fanSArg(pp.supportFanSpeedOverride!)} ; Support fan override`);
           }
           gcode.push('; Support');
+          // Cura-parity: support roof/floor flow override — temporarily scale
+          // currentLayerFlow while emitting interface-layer support moves.
+          const prevFlow = currentLayerFlow;
+          if (supFlowOverride !== undefined) currentLayerFlow = supFlowOverride;
           // Cura-parity: `connectSupportLines` / `connectSupportZigZags`
           // chain adjacent support segments with extrusions instead of
           // travels. Support scan lines already arrive in an arrangement
@@ -1492,6 +1586,7 @@ export class Slicer {
             layerTime += extrudeTo(sm.to.x, sm.to.y, sm.speed, sm.lineWidth, layerH);
             moves.push(sm);
           }
+          currentLayerFlow = prevFlow;
           // Restore fan after support block if override was active.
           if (pp.coolingFanEnabled !== false && (pp.supportFanSpeedOverride ?? 0) > 0 && li > mat.fanDisableFirstLayers) {
             const restorePct = Math.min(pp.maximumFanSpeed ?? mat.fanSpeedMax, mat.fanSpeedMax);
@@ -2584,21 +2679,21 @@ export class Slicer {
   private generateSupportForLayer(
     triangles: Triangle[],
     sliceZ: number,
-    _layerZ: number,
+    layerZ: number,
     layerIndex: number,
     offsetX: number,
     offsetY: number,
     _offsetZ: number,
     modelContours: Contour[],
-  ): SliceMove[] {
+  ): { moves: SliceMove[]; flowOverride?: number } {
     const pp = this.printProfile;
     const moves: SliceMove[] = [];
 
     // Dispatch to tree-support generator for tree / organic modes.
     if (pp.supportType === 'tree' || pp.supportType === 'organic') {
-      return this.generateTreeSupportForLayer(
+      return { moves: this.generateTreeSupportForLayer(
         triangles, sliceZ, layerIndex, offsetX, offsetY, modelContours,
-      );
+      ) };
     }
 
     // Find triangles that are overhanging at this Z
@@ -2636,7 +2731,7 @@ export class Slicer {
       }
     }
 
-    if (overhangRegions.length === 0) return moves;
+    if (overhangRegions.length === 0) return { moves };
 
     // Generate support infill in overhang regions.
     // Merge all overhang triangles into a bounding region and generate a
@@ -2651,7 +2746,7 @@ export class Slicer {
     for (const region of overhangRegions) {
       allOverhangPts.push(...region);
     }
-    if (allOverhangPts.length === 0) return moves;
+    if (allOverhangPts.length === 0) return { moves };
 
     let rawBbox = this.pointsBBox(allOverhangPts);
 
@@ -2672,7 +2767,7 @@ export class Slicer {
       };
       if (rawBbox.maxX <= rawBbox.minX || rawBbox.maxY <= rawBbox.minY) {
         // Shrunk to nothing — skip support on this layer.
-        return moves;
+        return { moves };
       }
     }
 
@@ -2710,7 +2805,7 @@ export class Slicer {
     const minArea = pp.minimumSupportArea ?? 0;
     if (minArea > 0) {
       const bboxArea = (rawBbox.maxX - rawBbox.minX) * (rawBbox.maxY - rawBbox.minY);
-      if (bboxArea < minArea) return moves;
+      if (bboxArea < minArea) return { moves };
     }
 
     // Cura-parity: supportHorizontalExpansion inflates the support region
@@ -2750,15 +2845,83 @@ export class Slicer {
       const stepN = Math.min(gradSteps, Math.floor(fromTop / gradHeight));
       if (stepN > 0) spacing = baseSpacing * Math.pow(2, stepN);
     }
-    const supportSpeed = pp.supportInfillSpeed ?? pp.supportSpeed ?? pp.printSpeed * 0.8;
+    // Cura-parity: support roof/floor interface layers get their own speed and
+    // flow. "Roof" = support touching the model from below (top N mm of support
+    // column). "Floor" = support resting on model surface (bottom N mm).
+    // Approximate by checking triangle Z ranges relative to this layer.
+    const ifThickRoof  = pp.supportRoofThickness  ?? pp.supportInterfaceThickness ?? 0;
+    const ifThickFloor = pp.supportFloorThickness ?? pp.supportInterfaceThickness ?? 0;
+    const supZDist     = pp.supportZDistance ?? 0;
+    let isRoofLayer  = false;
+    let isFloorLayer = false;
+    if (ifThickRoof > 0 || ifThickFloor > 0) {
+      for (const tri of triangles) {
+        const triMinZ = Math.min(tri.v0.z, tri.v1.z, tri.v2.z);
+        const triMaxZ = Math.max(tri.v0.z, tri.v1.z, tri.v2.z);
+        // Roof: model surface is just above this support layer
+        if (!isRoofLayer && ifThickRoof > 0) {
+          if (triMinZ > sliceZ && triMinZ <= sliceZ + supZDist + ifThickRoof) isRoofLayer = true;
+        }
+        // Floor: model surface is just below this support layer
+        if (!isFloorLayer && ifThickFloor > 0) {
+          if (triMaxZ < sliceZ && triMaxZ >= sliceZ - supZDist - ifThickFloor) isFloorLayer = true;
+        }
+        if (isRoofLayer && isFloorLayer) break;
+      }
+    }
+    let supportSpeed = pp.supportInfillSpeed ?? pp.supportSpeed ?? pp.printSpeed * 0.8;
+    // supportInterfaceSpeed applies to all interface layers (roof + floor) when
+    // no layer-specific override is set. It's a single knob for both zones.
+    if ((isRoofLayer || isFloorLayer) && (pp.supportInterfaceSpeed ?? 0) > 0) supportSpeed = pp.supportInterfaceSpeed!;
+    if (isRoofLayer  && (pp.supportRoofSpeed  ?? 0) > 0) supportSpeed = pp.supportRoofSpeed!;
+    if (isFloorLayer && (pp.supportFloorSpeed ?? 0) > 0) supportSpeed = pp.supportFloorSpeed!;
 
-    // Generate support pattern — supportInfillLineDirections overrides the
-    // pattern-derived angle when set (same per-layer cycling as infillLineDirections).
+    // Track interface flow overrides — applied via currentLayerFlow in caller.
+    // We encode them in a marker on the first move (handled by caller).
+    const supportFlowOverride: number | undefined =
+      isRoofLayer  && (pp.supportRoofFlow  ?? 0) > 0 ? pp.supportRoofFlow! / 100 :
+      isFloorLayer && (pp.supportFloorFlow ?? 0) > 0 ? pp.supportFloorFlow! / 100 :
+      undefined;
+
+    // Cura-parity: interface layers (roof/floor) use their own density, pattern,
+    // line directions, and horizontal expansion settings.
+    if (isRoofLayer || isFloorLayer) {
+      const ifHorizExp = pp.supportInterfaceHorizontalExpansion ?? 0;
+      if (ifHorizExp !== 0) {
+        bbox.minX -= ifHorizExp; bbox.maxX += ifHorizExp;
+        bbox.minY -= ifHorizExp; bbox.maxY += ifHorizExp;
+      }
+      if (isRoofLayer) {
+        const roofDensity = pp.supportRoofDensity ?? pp.supportDensity;
+        const roofDist    = (pp.supportRoofLineDistance ?? 0) > 0
+          ? pp.supportRoofLineDistance!
+          : supLW / (roofDensity / 100);
+        spacing = roofDist;
+      } else {
+        const floorDensity = pp.supportFloorDensity ?? pp.supportDensity;
+        const floorDist    = (pp.supportFloorLineDistance ?? 0) > 0
+          ? pp.supportFloorLineDistance!
+          : supLW / (floorDensity / 100);
+        spacing = floorDist;
+      }
+    }
+
+    // Generate support pattern — interface line directions take priority over
+    // bulk directions for roof/floor layers.
+    const activeLineDirs = (isRoofLayer || isFloorLayer)
+      ? (pp.supportInterfaceLineDirections ?? pp.supportInfillLineDirections ?? null)
+      : (pp.supportInfillLineDirections ?? null);
+    const ifPattern = isRoofLayer
+      ? (pp.supportRoofPattern  ?? pp.supportPattern)
+      : isFloorLayer
+        ? (pp.supportFloorPattern ?? pp.supportPattern)
+        : pp.supportPattern;
+
     let angle: number;
-    if (pp.supportInfillLineDirections && pp.supportInfillLineDirections.length > 0) {
-      angle = (pp.supportInfillLineDirections[layerIndex % pp.supportInfillLineDirections.length] * Math.PI) / 180;
+    if (activeLineDirs && activeLineDirs.length > 0) {
+      angle = (activeLineDirs[layerIndex % activeLineDirs.length] * Math.PI) / 180;
     } else {
-      switch (pp.supportPattern) {
+      switch (ifPattern) {
         case 'grid':
           angle = layerIndex % 2 === 0 ? 0 : Math.PI / 2;
           break;
@@ -2781,9 +2944,11 @@ export class Slicer {
     // XY distance offset from model
     const xyDist = pp.supportXYDistance;
 
-    // Cura-parity: supportWallLineCount — emit N rectangular perimeter loops
-    // around the support bounding box before the infill lines.
-    const supWalls = pp.supportWallLineCount ?? 0;
+    // Cura-parity: supportWallLineCount — emit N rectangular perimeter loops.
+    // Interface layers use supportInterfaceWallCount when specified.
+    const supWalls = (isRoofLayer || isFloorLayer)
+      ? (pp.supportInterfaceWallCount ?? pp.supportWallLineCount ?? 0)
+      : (pp.supportWallLineCount ?? 0);
     for (let w = 0; w < supWalls; w++) {
       const wallOff = w * supLW + supLW / 2;
       const wx0 = bbox.minX - wallOff, wx1 = bbox.maxX + wallOff;
@@ -2804,7 +2969,7 @@ export class Slicer {
 
     // Defensive: same scan-line safety as generateScanLines. Bail on bad
     // spacing and cap total iterations.
-    if (!(spacing > 0) || !isFinite(spacing)) return moves;
+    if (!(spacing > 0) || !isFinite(spacing)) return { moves };
     const SUPPORT_MAX_SCAN = 50000;
     let supScanCount = 0;
 
@@ -2858,7 +3023,7 @@ export class Slicer {
       }
     }
 
-    return moves;
+    return { moves, flowOverride: supportFlowOverride };
   }
 
   // =========================================================================
@@ -3017,47 +3182,61 @@ export class Slicer {
               new THREE.Vector2(minX - raftMargin, maxY + raftMargin),
             ];
         // ── BASE layer ──────────────────────────────────────────────────
-        const baseLines = this.generateScanLines(raftContour, 100, lineWidth, 0);
+        const baseLW      = pp.raftBaseLineWidth ?? lineWidth * 1.5;
+        const baseSpeed   = pp.raftBaseSpeed ?? speed * 0.8;
+        const baseSpacing = (pp.raftBaseLineSpacing ?? 0) > 0
+          ? pp.raftBaseLineSpacing!
+          : baseLW / ((100 - (pp.raftBaseInfillOverlap ?? 0)) / 100 || 1);
+        const baseFlowMul = (pp.raftFlow ?? 100) / 100;
+        const baseLines   = this.generateScanLines(raftContour, 100, baseSpacing > 0 ? baseLW : baseLW, Math.PI / 2);
+        if ((pp.raftFanSpeed ?? 0) > 0) {
+          // Override fan for raft layers; will be restored by the regular fan ramp.
+        }
         for (const line of baseLines) {
           moves.push({
             type: 'raft',
             from: { x: line.from.x, y: line.from.y },
             to: { x: line.to.x, y: line.to.y },
-            speed: speed * 0.8,
+            speed: baseSpeed,
             extrusion: 0,
-            lineWidth: lineWidth * 1.5,
+            lineWidth: baseLW * baseFlowMul,
           });
         }
         // ── MIDDLE layers ───────────────────────────────────────────────
-        const midCount = pp.raftMiddleLayers ?? 0;
-        const midLW = pp.raftMiddleLineWidth ?? lineWidth;
+        const midCount   = pp.raftMiddleLayers ?? 0;
+        const midLW      = pp.raftMiddleLineWidth ?? lineWidth;
+        const midSpacing = (pp.raftMiddleLineSpacing ?? 0) > 0 ? pp.raftMiddleLineSpacing! : midLW;
+        const midSpeed   = pp.raftBaseSpeed ? pp.raftBaseSpeed * 1.0625 : speed * 0.85;
         for (let mli = 0; mli < midCount; mli++) {
           const angle = (mli % 2 === 0) ? Math.PI / 4 : -Math.PI / 4;
-          const midLines = this.generateScanLines(raftContour, 100, midLW, angle);
+          const midLines = this.generateScanLines(raftContour, 100, midSpacing > midLW ? midLW : midLW, angle);
           for (const line of midLines) {
             moves.push({
               type: 'raft',
               from: { x: line.from.x, y: line.from.y },
               to: { x: line.to.x, y: line.to.y },
-              speed: speed * 0.85,
+              speed: midSpeed,
               extrusion: 0,
-              lineWidth: midLW,
+              lineWidth: midLW * baseFlowMul,
             });
           }
         }
         // ── TOP / SURFACE layers ────────────────────────────────────────
-        const topCount = Math.max(1, pp.raftTopLayers ?? 2);
+        const topCount   = Math.max(1, pp.raftTopLayers ?? 2);
+        const topLW      = pp.raftTopLineWidth ?? lineWidth;
+        const topSpacing = (pp.raftTopLineSpacing ?? 0) > 0 ? pp.raftTopLineSpacing! : topLW;
+        const topSpeed   = speed * 0.9;
         for (let tli = 0; tli < topCount; tli++) {
           const angle = Math.PI / 2 + tli * Math.PI / 3; // rotate to interlock
-          const topLines = this.generateScanLines(raftContour, 100, lineWidth, angle);
+          const topLines = this.generateScanLines(raftContour, 100, topLW, angle);
           for (const line of topLines) {
             moves.push({
               type: 'raft',
               from: { x: line.from.x, y: line.from.y },
               to: { x: line.to.x, y: line.to.y },
-              speed: speed * 0.9,
+              speed: topSpeed,
               extrusion: 0,
-              lineWidth,
+              lineWidth: topLW * baseFlowMul,
             });
           }
         }

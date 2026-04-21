@@ -51,6 +51,10 @@ interface SlicerStore {
   activeMaterialProfileId: string;
   activePrintProfileId: string;
 
+  // Per-printer last-used profile IDs (so switching printers restores context)
+  printerLastMaterial: Record<string, string>;
+  printerLastPrint: Record<string, string>;
+
   // Plate objects (models on build plate)
   plateObjects: PlateObject[];
   selectedPlateObjectId: string | null;
@@ -94,6 +98,7 @@ interface SlicerStore {
   addPrinterProfile: (profile: PrinterProfile) => void;
   updatePrinterProfile: (id: string, updates: Partial<PrinterProfile>) => void;
   deletePrinterProfile: (id: string) => void;
+  createPrinterWithDefaults: (name: string) => void;
   addMaterialProfile: (profile: MaterialProfile) => void;
   updateMaterialProfile: (id: string, updates: Partial<MaterialProfile>) => void;
   deleteMaterialProfile: (id: string) => void;
@@ -288,6 +293,9 @@ export const useSlicerStore = create<SlicerStore>()(persist((set, get) => ({
   activeMaterialProfileId: savedSelections?.activeMaterialProfileId ?? DEFAULT_MATERIAL_PROFILES[0]?.id ?? '',
   activePrintProfileId: savedSelections?.activePrintProfileId ?? DEFAULT_PRINT_PROFILES[0]?.id ?? '',
 
+  printerLastMaterial: {},
+  printerLastPrint: {},
+
   // Plate objects
   plateObjects: [],
   selectedPlateObjectId: null,
@@ -345,33 +353,36 @@ export const useSlicerStore = create<SlicerStore>()(persist((set, get) => ({
   // --- Profile management ---
 
   setActivePrinterProfile: (id) => {
-    set({ activePrinterProfileId: id });
     const state = get();
-    saveSelections({
-      activePrinterProfileId: id,
-      activeMaterialProfileId: state.activeMaterialProfileId,
-      activePrintProfileId: state.activePrintProfileId,
-    });
+    // Restore this printer's last-used material and print profiles
+    const printerMaterials = state.materialProfiles.filter(
+      (m) => (m.printerId ?? DEFAULT_PRINTER_PROFILES[0]?.id) === id,
+    );
+    const printerPrints = state.printProfiles.filter(
+      (p) => (p.printerId ?? DEFAULT_PRINTER_PROFILES[0]?.id) === id,
+    );
+    const materialId = state.printerLastMaterial[id] ?? printerMaterials[0]?.id ?? state.activeMaterialProfileId;
+    const printId = state.printerLastPrint[id] ?? printerPrints[0]?.id ?? state.activePrintProfileId;
+    set({ activePrinterProfileId: id, activeMaterialProfileId: materialId, activePrintProfileId: printId });
+    saveSelections({ activePrinterProfileId: id, activeMaterialProfileId: materialId, activePrintProfileId: printId });
   },
 
   setActiveMaterialProfile: (id) => {
-    set({ activeMaterialProfileId: id });
     const state = get();
-    saveSelections({
-      activePrinterProfileId: state.activePrinterProfileId,
+    set({
       activeMaterialProfileId: id,
-      activePrintProfileId: state.activePrintProfileId,
+      printerLastMaterial: { ...state.printerLastMaterial, [state.activePrinterProfileId]: id },
     });
+    saveSelections({ activePrinterProfileId: state.activePrinterProfileId, activeMaterialProfileId: id, activePrintProfileId: state.activePrintProfileId });
   },
 
   setActivePrintProfile: (id) => {
-    set({ activePrintProfileId: id });
     const state = get();
-    saveSelections({
-      activePrinterProfileId: state.activePrinterProfileId,
-      activeMaterialProfileId: state.activeMaterialProfileId,
+    set({
       activePrintProfileId: id,
+      printerLastPrint: { ...state.printerLastPrint, [state.activePrinterProfileId]: id },
     });
+    saveSelections({ activePrinterProfileId: state.activePrinterProfileId, activeMaterialProfileId: state.activeMaterialProfileId, activePrintProfileId: id });
   },
 
   addPrinterProfile: (profile) => set((state) => ({
@@ -386,13 +397,73 @@ export const useSlicerStore = create<SlicerStore>()(persist((set, get) => ({
 
   deletePrinterProfile: (id) => set((state) => {
     const filtered = state.printerProfiles.filter((p) => p.id !== id);
-    const newState: Partial<SlicerStore> = { printerProfiles: filtered };
-    // If we deleted the active profile, select the first remaining
+    const newState: Partial<SlicerStore> = {
+      printerProfiles: filtered,
+      materialProfiles: state.materialProfiles.filter((m) => m.printerId !== id),
+      printProfiles: state.printProfiles.filter((p) => p.printerId !== id),
+    };
     if (state.activePrinterProfileId === id && filtered.length > 0) {
       newState.activePrinterProfileId = filtered[0].id;
     }
     return newState;
   }),
+
+  createPrinterWithDefaults: (name) => {
+    const printerId = `printer-${Date.now()}`;
+    const materialId = `${printerId}-pla`;
+    const printId = `${printerId}-standard`;
+    const defaultPrint = DEFAULT_PRINT_PROFILES[0];
+    const newPrinter: PrinterProfile = {
+      id: printerId,
+      name,
+      buildVolume: { x: 220, y: 220, z: 250 },
+      nozzleDiameter: 0.4,
+      nozzleCount: 1,
+      filamentDiameter: 1.75,
+      hasHeatedBed: true,
+      hasHeatedChamber: false,
+      maxNozzleTemp: 280,
+      maxBedTemp: 110,
+      maxSpeed: 200,
+      maxAcceleration: 2000,
+      originCenter: false,
+      gcodeFlavorType: 'marlin',
+      startGCode: 'G28 ; Home all axes\nG29 ; Bed leveling\n',
+      endGCode: 'M104 S0 ; Turn off hotend\nM140 S0 ; Turn off bed\nG28 X0 ; Park\n',
+    };
+    const newMaterial: MaterialProfile = {
+      id: materialId,
+      printerId,
+      name: 'PLA',
+      type: 'PLA',
+      color: '#4fc3f7',
+      nozzleTemp: 210,
+      nozzleTempFirstLayer: 215,
+      bedTemp: 60,
+      bedTempFirstLayer: 65,
+      chamberTemp: 0,
+      fanSpeedMin: 100,
+      fanSpeedMax: 100,
+      fanDisableFirstLayers: 1,
+      retractionDistance: 0.8,
+      retractionSpeed: 45,
+      retractionZHop: 0,
+      flowRate: 1.0,
+      density: 1.24,
+      costPerKg: 20,
+    };
+    const newPrint: PrintProfile = { ...defaultPrint, id: printId, printerId, name: 'Standard Quality' };
+    set((state) => ({
+      printerProfiles: [...state.printerProfiles, newPrinter],
+      materialProfiles: [...state.materialProfiles, newMaterial],
+      printProfiles: [...state.printProfiles, newPrint],
+      activePrinterProfileId: printerId,
+      activeMaterialProfileId: materialId,
+      activePrintProfileId: printId,
+      printerLastMaterial: { ...state.printerLastMaterial, [printerId]: materialId },
+      printerLastPrint: { ...state.printerLastPrint, [printerId]: printId },
+    }));
+  },
 
   addMaterialProfile: (profile) => set((state) => ({
     materialProfiles: [...state.materialProfiles, profile],

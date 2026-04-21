@@ -24,7 +24,7 @@ export interface ToolButtonProps {
   disabled?: boolean;
   large?: boolean;
   colorClass?: string;
-  dropdown?: { label: string; onClick: () => void; icon?: React.ReactNode }[];
+  dropdown?: { label: string; onClick: () => void; icon?: React.ReactNode; divider?: boolean }[];
 }
 
 export interface MenuItem {
