@@ -104,7 +104,6 @@
 - [s] Adaptive Layers core wiring (`adaptiveLayersEnabled`, `adaptiveLayersMaxVariation`, `adaptiveLayersVariationStep`) - UI exists; engine still uses uniform layer heights
 - [s] Spiralize / Vase Mode (`spiralizeContour`) - UI exists; engine still slices as standard layered toolpaths
 - [s] Master/per-feature line width wiring (`lineWidth`, `outerWallLineWidth`, `topBottomLineWidth`) - UI exists, but engine semantics do not yet match Cura
-- [s] Outer Wall First (`outerWallFirst`) - type + UI exist; wall ordering logic not wired in engine
 - [s] Support Roof / Floor toggles (`supportRoofEnable`, `supportFloorEnable`) - UI exists; engine does not honor enable/disable state
 
 

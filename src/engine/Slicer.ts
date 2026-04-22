@@ -63,11 +63,16 @@ interface GeneratedPerimeters {
   walls: THREE.Vector2[][];
   lineWidths: number[];
   outerCount: number;
-  /** Innermost hole wall loops (one per original contained hole) — passed
+  /** Innermost hole wall loops (one per original contained hole) ? passed
    *  into the infill pipeline so scan lines pair intersections across holes
    *  correctly and don't fill across open cavities. */
   innermostHoles: THREE.Vector2[][];
+  /** Full printable regions at the deepest surviving wall depth. This can be
+   *  multiple disjoint polygons around holes/concavities, which the infill
+   *  generator must respect instead of assuming a single contour+holes shape. */
+  infillRegions: Array<{ contour: THREE.Vector2[]; holes: THREE.Vector2[][] }>;
 }
+
 
 // ---------------------------------------------------------------------------
 // Slicer
@@ -508,21 +513,7 @@ export class Slicer {
       const dx = x - currentX;
       const dy = y - currentY;
       const dist = Math.sqrt(dx * dx + dy * dy);
-      const forceRetract = (pp.avoidPrintedParts ?? false) || (pp.avoidSupports ?? false);
-      let maxComb = pp.maxCombDistanceNoRetract ?? 0;
-      // Apply avoid-distance padding — the travel must be even shorter
-      // than (maxComb - avoidDist) to skip retract when the user has
-      // asked for a conservative buffer around parts/supports.
-      const avoidPad = (pp.travelAvoidDistance ?? 0) + (pp.insideTravelAvoidDistance ?? 0);
-      if (avoidPad > 0) maxComb = Math.max(0, maxComb - avoidPad);
-      const minTravel = pp.retractionMinTravel ?? 0;
-      const minExtrudeWindow = pp.minimumExtrusionDistanceWindow ?? 0;
-      const shortTravel = !forceRetract && (
-        (maxComb > 0 && dist < maxComb) ||
-        (minTravel > 0 && dist < minTravel) ||
-        (minExtrudeWindow > 0 && extrudedSinceRetract < minExtrudeWindow)
-      );
-      if (!shortTravel) doRetract();
+      if (this.shouldRetractOnTravel(dist, extrudedSinceRetract, pp)) doRetract();
       // Cura-parity: travelAccelerationEnabled / travelJerkEnabled gate whether
       // M204/M205 are emitted for travel segments (separate from print segments).
       if (pp.travelAccelerationEnabled ?? pp.accelerationEnabled) {
@@ -1251,6 +1242,7 @@ export class Slicer {
           if ((pp.alternateWallDirections ?? false) && li % 2 === 1) {
             reordered = [reordered[0], ...reordered.slice(1).reverse()];
           }
+          reordered = this.simplifyClosedContour(reordered, Math.max(0.015, outerWallLineWidth * 0.05));
           setAccel(isFirstLayer ? pp.accelerationInitialLayer : (pp.accelerationOuterWall ?? pp.accelerationWall), pp.accelerationPrint);
           setJerk(isFirstLayer ? pp.jerkInitialLayer : (pp.jerkOuterWall ?? pp.jerkWall), pp.jerkPrint);
           travelTo(reordered[0].x, reordered[0].y);
@@ -1334,7 +1326,7 @@ export class Slicer {
 
         // Outer wall — skipped here when `groupOuterWalls` already emitted
         // them in the layer-wide pre-pass above.
-        if (!groupOW && wallSets.length > 0) {
+        if (!groupOW && wallSets.length > 0 && pp.outerWallFirst) {
           // initialLayerOuterWallFlow: override flow on the first layer only.
           if (isFirstLayer && pp.initialLayerOuterWallFlow != null) {
             currentLayerFlow = pp.initialLayerOuterWallFlow / 100;
@@ -1390,6 +1382,7 @@ export class Slicer {
             if ((pp.alternateWallDirections ?? false) && li % 2 === 1) {
               reordered = [reordered[0], ...reordered.slice(1).reverse()];
             }
+            reordered = this.simplifyClosedContour(reordered, Math.max(0.015, outerWallLineWidth * 0.05));
 
             setAccel(isFirstLayer ? pp.accelerationInitialLayer : (pp.accelerationOuterWall ?? pp.accelerationWall), pp.accelerationPrint);
             setJerk(isFirstLayer ? pp.jerkInitialLayer : (pp.jerkOuterWall ?? pp.jerkWall), pp.jerkPrint);
@@ -1516,9 +1509,9 @@ export class Slicer {
           currentLayerFlow = pp.initialLayerInnerWallFlow / 100;
         }
         for (let wi = 1; wi < wallSets.length; wi++) {
-          const innerWall = wallSets[wi];
-          if (innerWall.length < 2) continue;
           const innerWallLineWidth = wallLineWidths[wi] ?? innerLW;
+          const innerWall = this.simplifyClosedContour(wallSets[wi], Math.max(0.015, innerWallLineWidth * 0.05));
+          if (innerWall.length < 2) continue;
           setAccel(isFirstLayer ? pp.accelerationInitialLayer : (pp.accelerationInnerWall ?? pp.accelerationWall), pp.accelerationPrint);
           setJerk(isFirstLayer ? pp.jerkInitialLayer : (pp.jerkInnerWall ?? pp.jerkWall), pp.jerkPrint);
           travelTo(innerWall[0].x, innerWall[0].y);
@@ -1556,6 +1549,131 @@ export class Slicer {
         currentLayerFlow = (isFirstLayer && (pp.initialLayerFlow ?? 0) > 0)
           ? (pp.initialLayerFlow! / 100) : 1.0;
 
+        if (!groupOW && wallSets.length > 0 && !pp.outerWallFirst) {
+          if (isFirstLayer && pp.initialLayerOuterWallFlow != null) {
+            currentLayerFlow = pp.initialLayerOuterWallFlow / 100;
+          }
+          const outerWall = wallSets[0];
+          if (outerWall.length >= 2) {
+            const outerWallLineWidth = wallLineWidths[0] ?? pp.wallLineWidth;
+            const seamIdx = this.findSeamPosition(outerWall, pp, li, currentX, currentY);
+            let reordered = this.reorderFromIndex(outerWall, seamIdx);
+            if (pp.fluidMotionEnable && reordered.length >= 3) {
+              const fmAngle = ((pp.fluidMotionAngle ?? 15) * Math.PI) / 180;
+              const fmSmall = pp.fluidMotionSmallDistance ?? 0.01;
+              const smoothed: THREE.Vector2[] = [];
+              for (let i = 0; i < reordered.length; i++) {
+                const prev = reordered[(i - 1 + reordered.length) % reordered.length];
+                const curr = reordered[i];
+                const next = reordered[(i + 1) % reordered.length];
+                const d1 = prev.distanceTo(curr);
+                const d2 = next.distanceTo(curr);
+                if (d1 < fmSmall || d2 < fmSmall) { smoothed.push(curr); continue; }
+                const v1 = new THREE.Vector2().subVectors(prev, curr).normalize();
+                const v2 = new THREE.Vector2().subVectors(next, curr).normalize();
+                const angleBetween = Math.acos(Math.max(-1, Math.min(1, v1.dot(v2))));
+                const turn = Math.PI - angleBetween;
+                if (turn > fmAngle) {
+                  const off = Math.min(d1, d2) * 0.25;
+                  smoothed.push(new THREE.Vector2(curr.x - v1.x * -off, curr.y - v1.y * -off));
+                  smoothed.push(curr);
+                  smoothed.push(new THREE.Vector2(curr.x - v2.x * -off, curr.y - v2.y * -off));
+                } else {
+                  smoothed.push(curr);
+                }
+              }
+              reordered = smoothed;
+            }
+            if ((pp.alternateWallDirections ?? false) && li % 2 === 1) {
+              reordered = [reordered[0], ...reordered.slice(1).reverse()];
+            }
+            reordered = this.simplifyClosedContour(reordered, Math.max(0.015, outerWallLineWidth * 0.05));
+
+            setAccel(isFirstLayer ? pp.accelerationInitialLayer : (pp.accelerationOuterWall ?? pp.accelerationWall), pp.accelerationPrint);
+            setJerk(isFirstLayer ? pp.jerkInitialLayer : (pp.jerkOuterWall ?? pp.jerkWall), pp.jerkPrint);
+            travelTo(reordered[0].x, reordered[0].y);
+            gcode.push(`; Outer wall`);
+            const scarfLen = pp.scarfSeamLength ?? 0;
+            const scarfActive = scarfLen > 0
+              && (pp.scarfSeamStartHeight === undefined || layerZ >= pp.scarfSeamStartHeight);
+            const scarfStepLen2 = pp.scarfSeamStepLength ?? 0;
+            let scarfRemaining = scarfActive ? scarfLen : 0;
+            for (let pi = 1; pi < reordered.length; pi++) {
+              const from = reordered[pi - 1];
+              const to = reordered[pi];
+              let segLW = outerWallLineWidth;
+              let segSpeed = outerWallSpeed;
+              if (scarfRemaining > 0) {
+                const done = scarfLen - scarfRemaining;
+                const tRaw = done / scarfLen;
+                const t = Math.min(1, scarfStepLen2 > 0 ? Math.floor(done / scarfStepLen2) * scarfStepLen2 / scarfLen : tRaw);
+                segLW = outerWallLineWidth * t;
+                const speedRatio = pp.scarfSeamStartSpeedRatio ?? 1.0;
+                segSpeed = outerWallSpeed * (speedRatio + (1.0 - speedRatio) * t);
+                scarfRemaining = Math.max(0, scarfRemaining - from.distanceTo(to));
+              }
+              layerTime += extrudeTo(to.x, to.y, segSpeed, segLW, layerH);
+              moves.push({
+                type: 'wall-outer',
+                from: { x: from.x, y: from.y },
+                to: { x: to.x, y: to.y },
+                speed: segSpeed,
+                extrusion: calcExtrusion(from.distanceTo(to), segLW, layerH),
+                lineWidth: segLW,
+              });
+            }
+            if (reordered.length > 2) {
+              const lastPt = reordered[reordered.length - 1];
+              const firstPt = reordered[0];
+              const segLen = lastPt.distanceTo(firstPt);
+              const coastVol = pp.coastingEnabled ? (pp.coastingVolume ?? 0) : 0;
+              const minCoastVol = pp.minVolumeBeforeCoasting ?? 0;
+              const loopVol = minCoastVol > 0
+                ? (() => {
+                    let perim = segLen;
+                    for (let ri = 1; ri < reordered.length - 1; ri++) {
+                      perim += reordered[ri].distanceTo(reordered[ri + 1]);
+                    }
+                    return perim * pp.wallLineWidth * layerH;
+                  })()
+                : Infinity;
+              const coastDist = coastVol > 0 && loopVol >= minCoastVol
+                ? coastVol / (outerWallLineWidth * layerH)
+                : 0;
+              if (coastDist > 0 && segLen > coastDist + 1e-3) {
+                const t = 1 - coastDist / segLen;
+                const midX = lastPt.x + (firstPt.x - lastPt.x) * t;
+                const midY = lastPt.y + (firstPt.y - lastPt.y) * t;
+                layerTime += extrudeTo(midX, midY, outerWallSpeed, outerWallLineWidth, layerH);
+                moves.push({
+                  type: 'wall-outer',
+                  from: { x: lastPt.x, y: lastPt.y },
+                  to: { x: midX, y: midY },
+                  speed: outerWallSpeed,
+                  extrusion: calcExtrusion(segLen * t, outerWallLineWidth, layerH),
+                  lineWidth: outerWallLineWidth,
+                });
+                const coastSpeed = outerWallSpeed * ((pp.coastingSpeed ?? 90) / 100);
+                gcode.push(`G0 X${firstPt.x.toFixed(3)} Y${firstPt.y.toFixed(3)} F${(coastSpeed * 60).toFixed(0)} ; Coast`);
+                currentX = firstPt.x;
+                currentY = firstPt.y;
+              } else {
+                layerTime += extrudeTo(firstPt.x, firstPt.y, outerWallSpeed, outerWallLineWidth, layerH);
+                moves.push({
+                  type: 'wall-outer',
+                  from: { x: lastPt.x, y: lastPt.y },
+                  to: { x: firstPt.x, y: firstPt.y },
+                  speed: outerWallSpeed,
+                  extrusion: calcExtrusion(segLen, outerWallLineWidth, layerH),
+                  lineWidth: outerWallLineWidth,
+                });
+              }
+            }
+          }
+          currentLayerFlow = (isFirstLayer && (pp.initialLayerFlow ?? 0) > 0)
+            ? (pp.initialLayerFlow! / 100) : 1.0;
+        }
+
         // ----- Infill / solid fill -----
         // Infill boundary is the innermost OUTER wall (wallSets slice
         // [0..outerCount)), NOT any hole wall. Using a hole wall here would
@@ -1565,7 +1683,14 @@ export class Slicer {
         const innermostWall = adaptiveOuterFilled
           ? []
           : outerWallCount > 0 ? wallSets[outerWallCount - 1] : contour.points;
-        if (innermostWall.length >= 3) {
+        const infillRegions = adaptiveOuterFilled
+          ? []
+          : (exWalls.infillRegions.length > 0
+              ? exWalls.infillRegions
+              : (innermostWall.length >= 3
+                  ? [{ contour: innermostWall, holes: infillHoles }]
+                  : []));
+        if (infillRegions.length > 0) {
           let infillLines: { from: THREE.Vector2; to: THREE.Vector2 }[] = [];
           let infillMoveType: SliceMove['type'];
           let speed: number;
@@ -1912,7 +2037,16 @@ export class Slicer {
               }
 
               const fromDist = Math.hypot(effFrom.x - currentX, effFrom.y - currentY);
-              if (connect && idx > 0 && fromDist < connectTol) {
+              const canConnectInfill = connect
+                && idx > 0
+                && fromDist < connectTol
+                && this.segmentInsideMaterial(
+                  new THREE.Vector2(currentX, currentY),
+                  effFrom,
+                  innermostWall,
+                  infillHoles,
+                );
+              if (canConnectInfill) {
                 // Close enough to the previous segment's end — extrude the
                 // bridge instead of traveling.
                 layerTime += extrudeTo(effFrom.x, effFrom.y, thisSpeed, thisLineWidth, layerH);
@@ -2921,7 +3055,7 @@ export class Slicer {
       lineWidths.push(p.lineWidths[i] ?? this.printProfile.wallLineWidth);
       if (i < p.outerCount) outerCount++;
     }
-    return { walls, lineWidths, outerCount, innermostHoles: p.innermostHoles };
+    return { walls, lineWidths, outerCount, innermostHoles: p.innermostHoles, infillRegions: p.infillRegions };
   }
 
   /**
@@ -3007,6 +3141,7 @@ export class Slicer {
     const outerLineWidths: number[] = [];
     const holeLineWidths: number[] = [];
     let lastInnermostHoles: THREE.Vector2[][] = [];
+    let lastInfillRegions: Array<{ contour: THREE.Vector2[]; holes: THREE.Vector2[][] }> = [];
 
     for (let w = 0; w < wallCount; w++) {
       const nominalOffset = w * lineWidth + lineWidth / 2 + (w === 0 ? outerWallInset : 0);
@@ -3063,6 +3198,7 @@ export class Slicer {
                 }
               }
               if (best.holesAtDepth.length > 0) lastInnermostHoles = best.holesAtDepth;
+              lastInfillRegions = this.multiPolygonToRegions(best.result);
             }
           }
         }
@@ -3120,6 +3256,7 @@ export class Slicer {
         }
       }
       if (thisDepthHoles.length > 0) lastInnermostHoles = thisDepthHoles;
+      lastInfillRegions = this.multiPolygonToRegions(result);
     }
 
     return {
@@ -3127,6 +3264,7 @@ export class Slicer {
       lineWidths: [...outerLineWidths, ...holeLineWidths],
       outerCount: outerLoops.length,
       innermostHoles: lastInnermostHoles,
+      infillRegions: lastInfillRegions,
     };
   }
 
@@ -3207,6 +3345,84 @@ export class Slicer {
     if (Math.abs(originalArea) < 0.1) return []; // collapsed
 
     return cleaned;
+  }
+
+
+  private shouldRetractOnTravel(
+    dist: number,
+    extrudedSinceRetract: number,
+    pp: PrintProfile,
+  ): boolean {
+    const forceRetract = (pp.avoidPrintedParts ?? false) || (pp.avoidSupports ?? false);
+    let maxComb = pp.maxCombDistanceNoRetract ?? 0;
+    const avoidPad = (pp.travelAvoidDistance ?? 0) + (pp.insideTravelAvoidDistance ?? 0);
+    if (avoidPad > 0) maxComb = Math.max(0, maxComb - avoidPad);
+    const minTravel = pp.retractionMinTravel ?? 0;
+    const shortByDistance = !forceRetract && (
+      (maxComb > 0 && dist < maxComb) ||
+      (minTravel > 0 && dist < minTravel)
+    );
+    if (shortByDistance) return false;
+
+    const minExtrudeWindow = pp.minimumExtrusionDistanceWindow ?? 0;
+    if (minExtrudeWindow > 0 && extrudedSinceRetract < minExtrudeWindow && !forceRetract) {
+      const longTravelFloor = Math.max(maxComb, minTravel, pp.wallLineWidth * 4, 2);
+      if (dist < longTravelFloor) return false;
+    }
+
+    return true;
+  }
+
+  private simplifyClosedContour(points: THREE.Vector2[], tolerance: number): THREE.Vector2[] {
+    if (points.length <= 3 || !(tolerance > 0)) return points.slice();
+
+    const deduped: THREE.Vector2[] = [];
+    for (const pt of points) {
+      const prev = deduped[deduped.length - 1];
+      if (!prev || prev.distanceTo(pt) > tolerance * 0.25) deduped.push(pt);
+    }
+    if (deduped.length > 1 && deduped[0].distanceTo(deduped[deduped.length - 1]) <= tolerance * 0.25) {
+      deduped.pop();
+    }
+    if (deduped.length <= 3) return deduped;
+
+    const simplified = deduped.slice();
+    let changed = true;
+    let guard = 0;
+    while (changed && simplified.length > 3 && guard++ < deduped.length * 4) {
+      changed = false;
+      for (let i = 0; i < simplified.length; i++) {
+        const prev = simplified[(i - 1 + simplified.length) % simplified.length];
+        const curr = simplified[i];
+        const next = simplified[(i + 1) % simplified.length];
+        if (prev.distanceTo(curr) <= tolerance * 0.25 || curr.distanceTo(next) <= tolerance * 0.25) {
+          simplified.splice(i, 1);
+          changed = true;
+          break;
+        }
+        if (this.distancePointToSegment2D(curr, prev, next) <= tolerance) {
+          simplified.splice(i, 1);
+          changed = true;
+          break;
+        }
+      }
+    }
+    return simplified;
+  }
+
+  private distancePointToSegment2D(
+    p: THREE.Vector2,
+    a: THREE.Vector2,
+    b: THREE.Vector2,
+  ): number {
+    const abx = b.x - a.x;
+    const aby = b.y - a.y;
+    const lenSq = abx * abx + aby * aby;
+    if (lenSq <= 1e-12) return p.distanceTo(a);
+    const t = Math.max(0, Math.min(1, ((p.x - a.x) * abx + (p.y - a.y) * aby) / lenSq));
+    const projX = a.x + abx * t;
+    const projY = a.y + aby * t;
+    return Math.hypot(p.x - projX, p.y - projY);
   }
 
   private lineLineIntersection2D(
@@ -3537,6 +3753,12 @@ export class Slicer {
         for (const t of hi) intersections.push(t);
       }
       intersections.sort((a, b) => a - b);
+      const deduped: number[] = [];
+      for (const t of intersections) {
+        if (deduped.length === 0 || Math.abs(t - deduped[deduped.length - 1]) > 1e-5) {
+          deduped.push(t);
+        }
+      }
 
       // Precompute direction once per scan line — avoids allocating 4 Vector2
       // objects per intersection pair on complex infill (measurable ~5-10%
@@ -3545,14 +3767,16 @@ export class Slicer {
       const dirY = p2.y - p1.y;
 
       // Pair intersections into segments
-      for (let i = 0; i + 1 < intersections.length; i += 2) {
-        const t1 = intersections[i];
-        const t2 = intersections[i + 1];
+      for (let i = 0; i + 1 < deduped.length; i += 2) {
+        const t1 = deduped[i];
+        const t2 = deduped[i + 1];
         const start = new THREE.Vector2(p1.x + dirX * t1, p1.y + dirY * t1);
         const end   = new THREE.Vector2(p1.x + dirX * t2, p1.y + dirY * t2);
         const dx = end.x - start.x;
         const dy = end.y - start.y;
-        if (dx * dx + dy * dy > 0.01) {
+        const mid = new THREE.Vector2((start.x + end.x) / 2, (start.y + end.y) / 2);
+        const midInsideHole = holes.some((hole) => hole.length >= 3 && this.pointInContour(mid, hole));
+        if (dx * dx + dy * dy > 0.01 && this.pointInContour(mid, contour) && !midInsideHole) {
           results.push({ from: start, to: end });
         }
       }
@@ -4337,32 +4561,35 @@ export class Slicer {
         // perimeter of all skirt lines reaches the minimum length. This ensures
         // the nozzle primes enough material regardless of model footprint size.
         const minLen = pp.skirtBrimMinLength ?? 0;
+        const outerContours = contours.filter((contour) => contour.isOuter);
         let totalSkirtLen = 0;
         let skirtLine = 0;
         while (skirtLine < pp.skirtLines || (minLen > 0 && totalSkirtLen < minLen)) {
           const dist = pp.skirtDistance + skirtLine * lineWidth;
-          const w = (maxX - minX) + 2 * dist;
-          const h = (maxY - minY) + 2 * dist;
-          const loopPerim = 2 * (w + h);
-          totalSkirtLen += loopPerim;
-          const corners = [
-            new THREE.Vector2(minX - dist, minY - dist),
-            new THREE.Vector2(maxX + dist, minY - dist),
-            new THREE.Vector2(maxX + dist, maxY + dist),
-            new THREE.Vector2(minX - dist, maxY + dist),
-          ];
-          for (let i = 0; i < corners.length; i++) {
-            const from = corners[i];
-            const to = corners[(i + 1) % corners.length];
-            moves.push({
-              type: 'skirt',
-              from: { x: from.x, y: from.y },
-              to: { x: to.x, y: to.y },
-              speed,
-              extrusion: 0,
-              lineWidth,
-            });
+          const skirtOffset = dist + lineWidth * 0.5;
+          let emittedLoop = false;
+          for (const contour of outerContours) {
+            const skirtContour = this.simplifyClosedContour(
+              this.offsetContour(contour.points, -skirtOffset),
+              Math.max(0.01, lineWidth * 0.05),
+            );
+            if (skirtContour.length < 3) continue;
+            emittedLoop = true;
+            for (let i = 0; i < skirtContour.length; i++) {
+              const from = skirtContour[i];
+              const to = skirtContour[(i + 1) % skirtContour.length];
+              totalSkirtLen += from.distanceTo(to);
+              moves.push({
+                type: 'skirt',
+                from: { x: from.x, y: from.y },
+                to: { x: to.x, y: to.y },
+                speed,
+                extrusion: 0,
+                lineWidth,
+              });
+            }
           }
+          if (!emittedLoop) break;
           skirtLine++;
           if (skirtLine > 100) break; // safety cap
         }
@@ -4696,6 +4923,33 @@ export class Slicer {
       }
     }
     return inside;
+  }
+
+  private segmentInsideMaterial(
+    from: THREE.Vector2,
+    to: THREE.Vector2,
+    contour: THREE.Vector2[],
+    holes: THREE.Vector2[][] = [],
+  ): boolean {
+    const inMaterial = (p: THREE.Vector2): boolean => {
+      if (!this.pointInContour(p, contour)) return false;
+      for (const hole of holes) {
+        if (hole.length >= 3 && this.pointInContour(p, hole)) return false;
+      }
+      return true;
+    };
+
+    if (!inMaterial(from) || !inMaterial(to)) return false;
+    const samples = 5;
+    for (let i = 1; i < samples; i++) {
+      const t = i / samples;
+      const p = new THREE.Vector2(
+        from.x + (to.x - from.x) * t,
+        from.y + (to.y - from.y) * t,
+      );
+      if (!inMaterial(p)) return false;
+    }
+    return true;
   }
 
   private contourBBox(contour: THREE.Vector2[]): BBox2 {

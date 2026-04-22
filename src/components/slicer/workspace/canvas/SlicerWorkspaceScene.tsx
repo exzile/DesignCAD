@@ -320,7 +320,7 @@ function LayerLines({
       ? layer.moves.slice(0, currentLayerMoveCount)
       : layer.moves;
 
-    type Bucket = { mids: number[]; dirs: number[]; lens: number[]; lws: number[]; cols: number[] };
+    type Bucket = { mids: number[]; dirs: number[]; lens: number[]; lws: number[]; heights: number[]; cols: number[] };
     const byType = new Map<string, Bucket>();
     const travPos: number[] = [];
 
@@ -368,12 +368,14 @@ function LayerLines({
       const renderToX = move.to.x - dirX * trimEnd;
       const renderToY = move.to.y - dirY * trimEnd;
 
-      if (!byType.has(move.type)) byType.set(move.type, { mids: [], dirs: [], lens: [], lws: [], cols: [] });
+      if (!byType.has(move.type)) byType.set(move.type, { mids: [], dirs: [], lens: [], lws: [], heights: [], cols: [] });
       const b = byType.get(move.type)!;
-      b.mids.push((renderFromX + renderToX) / 2, (renderFromY + renderToY) / 2, layer.z - layerHeight / 2);
+      const beadHeight = Math.max(0.02, Math.min(layerHeight * 0.45, (move.lineWidth ?? 0.4) * 0.45));
+      b.mids.push((renderFromX + renderToX) / 2, (renderFromY + renderToY) / 2, layer.z - beadHeight / 2);
       b.dirs.push(dirX, dirY);
       b.lens.push(renderLen);
       b.lws.push(move.lineWidth ?? 0.4);
+      b.heights.push(beadHeight);
 
       let col: THREE.Color;
       if (colorMode === 'type') {
@@ -387,7 +389,7 @@ function LayerLines({
     }
 
     const meshList: Array<{ mesh: THREE.InstancedMesh; type: string }> = [];
-    for (const [type, { mids, dirs, lens, lws, cols }] of byType) {
+    for (const [type, { mids, dirs, lens, lws, heights, cols }] of byType) {
       const count = lens.length;
       if (count === 0) continue;
       // Lambert gives each bead visible top/side shading under the scene's
@@ -400,7 +402,7 @@ function LayerLines({
         const angle = Math.atan2(dirs[i * 2 + 1], dirs[i * 2]);
         _quat.setFromAxisAngle(_zAxis, angle);
         _pos3.set(mids[i * 3], mids[i * 3 + 1], mids[i * 3 + 2]);
-        _scl3.set(lens[i], lws[i] * PREVIEW_LINE_SCALE, layerHeight);
+        _scl3.set(lens[i], lws[i] * PREVIEW_LINE_SCALE, heights[i]);
         _mat4.compose(_pos3, _quat, _scl3);
         mesh.setMatrixAt(i, _mat4);
         col3.setRGB(cols[i * 3], cols[i * 3 + 1], cols[i * 3 + 2]);

@@ -200,7 +200,7 @@ export interface PrintProfile {
   skirtBrimMinLength?: number;   // mm — keep adding skirt loops until total perimeter >= this
 
   // Wall behavior
-  outerWallFirst: boolean;       // print outer before inner (better surface, less ooze)
+  outerWallFirst: boolean;       // wired — print outer before inner (better surface, less ooze)
   alternateExtraWall: boolean;   // add extra wall every other layer for stronger prints
 
   // Infill advanced
