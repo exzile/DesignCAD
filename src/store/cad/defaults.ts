@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 
 import type { SketchPlane } from '../../types/cad';
-import type { ExtrudeDirection, ExtrudeOperation } from './types';
+import type { ExtrudeDirection, ExtrudeOperation } from '../../types/cad-extrude.types';
 
 // Plane normals consistent with the visual selector (Three.js Y-up):
 //   XY = horizontal ground plane  -> normal points UP    = (0, 1, 0)

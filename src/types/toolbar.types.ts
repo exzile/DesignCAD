@@ -1,5 +1,3 @@
-// Shared types for toolbar subcomponents
-
 export type Workspace = 'design' | 'prepare' | 'printer';
 
 export type DesignTab = 'solid' | 'surface' | 'mesh' | 'form' | 'manage' | 'utilities';
@@ -18,7 +16,7 @@ export interface TabDef {
 export interface ToolButtonProps {
   icon: React.ReactNode;
   label: string;
-  tool?: import('../../types/cad').Tool;
+  tool?: import('./cad').Tool;
   active?: boolean;
   onClick?: () => void;
   disabled?: boolean;

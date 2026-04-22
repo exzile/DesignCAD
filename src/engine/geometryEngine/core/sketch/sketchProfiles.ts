@@ -1,0 +1,683 @@
+import * as THREE from 'three';
+import polygonClipping, { type MultiPolygon as PCMultiPolygon, type Ring as PCRing } from 'polygon-clipping';
+import type { Sketch, SketchEntity, SketchPoint } from '../../../../types/cad';
+import { getSketchAxes as getSketchAxesUtil } from '../../planeUtils';
+
+const BOUNDARY_TYPES = new Set([
+  'line', 'arc', 'spline', 'ellipse', 'elliptical-arc', 'polygon',
+]);
+
+const CLOSED_PRIMITIVE_TYPES = new Set([
+  'rectangle', 'circle', 'ellipse', 'polygon',
+]);
+
+export function getSketchProfileCentroid(sketch: Sketch, profileIndex?: number): THREE.Vector3 | null {
+  const { t1, t2 } = getSketchAxesUtil(sketch);
+  const origin = sketch.planeOrigin;
+  const allShapes = entitiesToShapes(sketch.entities, (p) => {
+    const d = new THREE.Vector3(p.x - origin.x, p.y - origin.y, p.z - origin.z);
+    return { u: d.dot(t1), v: d.dot(t2) };
+  });
+  const shapes = profileIndex === undefined
+    ? allShapes
+    : (allShapes[profileIndex] ? [allShapes[profileIndex]] : []);
+  if (shapes.length === 0) return null;
+
+  const box = new THREE.Box2();
+  for (const shape of shapes) {
+    for (const point of shape.getPoints(32)) box.expandByPoint(point);
+  }
+  if (box.isEmpty()) return null;
+
+  const center2 = box.getCenter(new THREE.Vector2());
+  return origin.clone().addScaledVector(t1, center2.x).addScaledVector(t2, center2.y);
+}
+
+export function createSketchProfileMesh(
+  sketch: Sketch,
+  material: THREE.Material,
+  profileIndex?: number,
+): THREE.Mesh | null {
+  const { t1, t2 } = getSketchAxesUtil(sketch);
+  const normal = sketch.planeNormal.clone().normalize();
+  const origin = sketch.planeOrigin;
+  const project = (p: SketchPoint) => {
+    const d = new THREE.Vector3(p.x - origin.x, p.y - origin.y, p.z - origin.z);
+    return { u: d.dot(t1), v: d.dot(t2) };
+  };
+
+  let shapes: THREE.Shape[];
+  if (profileIndex === undefined) {
+    shapes = entitiesToShapes(sketch.entities, project);
+  } else {
+    const flat = sketchToProfileShapesFlat(sketch);
+    const outer = flat[profileIndex];
+    if (!outer) return null;
+    shapes = [outer];
+  }
+  if (shapes.length === 0) return null;
+
+  const rawGeometry = new THREE.ShapeGeometry(shapes);
+  const nonIndexed = rawGeometry.toNonIndexed();
+  rawGeometry.dispose();
+  const filtered = removeSliverTriangles2D(nonIndexed, 0.002);
+  nonIndexed.dispose();
+
+  const positionCount = (filtered.attributes.position as THREE.BufferAttribute).count;
+  let geometry = filtered;
+  if (positionCount < 3) {
+    filtered.dispose();
+    const retry = new THREE.ShapeGeometry(shapes);
+    geometry = retry.toNonIndexed();
+    retry.dispose();
+  }
+
+  const mesh = new THREE.Mesh(geometry, material);
+  const basis = new THREE.Matrix4().makeBasis(t1, t2, normal);
+  mesh.quaternion.setFromRotationMatrix(basis);
+  mesh.position.copy(origin);
+  return mesh;
+}
+
+export function createProfileSketch(sketch: Sketch, profileIndex: number): Sketch | null {
+  const flatShapes = sketchToProfileShapesFlat(sketch);
+  const shape = flatShapes[profileIndex];
+  if (!shape) return null;
+
+  const { t1, t2 } = getSketchAxesUtil(sketch);
+  const origin = sketch.planeOrigin;
+
+  const toSketchPoints = (raw: THREE.Vector2[]): SketchPoint[] | null => {
+    const points = [...raw];
+    if (points.length >= 2 && points[points.length - 1].distanceTo(points[0]) <= 1e-5) points.pop();
+    if (points.length < 3) return null;
+    return points.map((point) => ({
+      id: crypto.randomUUID(),
+      x: origin.x + t1.x * point.x + t2.x * point.y,
+      y: origin.y + t1.y * point.x + t2.y * point.y,
+      z: origin.z + t1.z * point.x + t2.z * point.y,
+    }));
+  };
+
+  const outerPoints = toSketchPoints(shape.getPoints(64));
+  if (!outerPoints) return null;
+
+  const holeEntities: SketchEntity[] = [];
+  const appendHole = (holePoints2D: THREE.Vector2[]) => {
+    const sketchPoints = toSketchPoints(holePoints2D);
+    if (!sketchPoints) return;
+    for (let i = 0; i < sketchPoints.length; i++) {
+      const next = (i + 1) % sketchPoints.length;
+      holeEntities.push({
+        id: crypto.randomUUID(),
+        type: 'line',
+        points: [sketchPoints[i], sketchPoints[next]],
+      });
+    }
+  };
+
+  if (shape.holes.length > 0) {
+    for (const hole of shape.holes) appendHole(hole.getPoints(64));
+  } else {
+    const pointInPoly = (point: THREE.Vector2, poly: THREE.Vector2[]): boolean => {
+      let inside = false;
+      for (let i = 0, j = poly.length - 1; i < poly.length; j = i++) {
+        const xi = poly[i].x;
+        const yi = poly[i].y;
+        const xj = poly[j].x;
+        const yj = poly[j].y;
+        if (((yi > point.y) !== (yj > point.y)) &&
+            (point.x < ((xj - xi) * (point.y - yi)) / (yj - yi) + xi)) {
+          inside = !inside;
+        }
+      }
+      return inside;
+    };
+
+    const polyArea = (points: THREE.Vector2[]): number => {
+      let area = 0;
+      for (let i = 0, j = points.length - 1; i < points.length; j = i++) {
+        area += points[i].x * points[j].y - points[j].x * points[i].y;
+      }
+      return Math.abs(area) * 0.5;
+    };
+
+    const outerPoly2D = shape.getPoints(64);
+    const outerArea = polyArea(outerPoly2D);
+    for (let i = 0; i < flatShapes.length; i++) {
+      if (i === profileIndex) continue;
+      const other = flatShapes[i];
+      if (other.holes.length > 0) continue;
+      const otherPoints = other.getPoints(64);
+      if (polyArea(otherPoints) >= outerArea) continue;
+      const cx = otherPoints.reduce((sum, point) => sum + point.x, 0) / otherPoints.length;
+      const cy = otherPoints.reduce((sum, point) => sum + point.y, 0) / otherPoints.length;
+      if (!pointInPoly(new THREE.Vector2(cx, cy), outerPoly2D)) continue;
+      appendHole(otherPoints);
+    }
+  }
+
+  const entities: SketchEntity[] = [];
+  for (let i = 0; i < outerPoints.length; i++) {
+    const next = (i + 1) % outerPoints.length;
+    entities.push({
+      id: crypto.randomUUID(),
+      type: 'line',
+      points: [outerPoints[i], outerPoints[next]],
+    });
+  }
+  entities.push(...holeEntities);
+
+  return {
+    ...sketch,
+    id: `${sketch.id}::profile-${profileIndex}`,
+    name: `${sketch.name} • Profile ${profileIndex + 1}`,
+    entities,
+    constraints: [],
+    dimensions: [],
+    fullyConstrained: false,
+  };
+}
+
+export function sketchToShapes(sketch: Sketch): THREE.Shape[] {
+  const { t1, t2 } = getSketchAxesUtil(sketch);
+  const origin = sketch.planeOrigin;
+  return entitiesToShapes(sketch.entities, (p) => {
+    const d = new THREE.Vector3(p.x - origin.x, p.y - origin.y, p.z - origin.z);
+    return { u: d.dot(t1), v: d.dot(t2) };
+  });
+}
+
+export function sketchToProfileShapesFlat(sketch: Sketch): THREE.Shape[] {
+  const { t1, t2 } = getSketchAxesUtil(sketch);
+  const origin = sketch.planeOrigin;
+  const rawShapes = entitiesToShapes(
+    sketch.entities,
+    (p) => {
+      const d = new THREE.Vector3(p.x - origin.x, p.y - origin.y, p.z - origin.z);
+      return { u: d.dot(t1), v: d.dot(t2) };
+    },
+    { nestHoles: false },
+  );
+
+  const atomic = computeAtomicRegions(rawShapes);
+  if (atomic.length === 0) return rawShapes;
+
+  const shapeSignature = (shape: THREE.Shape) => {
+    const points = shape.getPoints(48);
+    let area = 0;
+    let cx = 0;
+    let cy = 0;
+    for (let i = 0, j = points.length - 1; i < points.length; j = i++) {
+      area += points[i].x * points[j].y - points[j].x * points[i].y;
+    }
+    area = Math.abs(area) * 0.5;
+    for (const point of points) {
+      cx += point.x;
+      cy += point.y;
+    }
+    cx /= points.length;
+    cy /= points.length;
+    return { area, cx, cy };
+  };
+
+  const sameShape = (
+    a: ReturnType<typeof shapeSignature>,
+    b: ReturnType<typeof shapeSignature>,
+  ): boolean => {
+    const scale = Math.max(a.area, b.area, 1e-6);
+    if (Math.abs(a.area - b.area) / scale > 0.01) return false;
+    const dist = Math.hypot(a.cx - b.cx, a.cy - b.cy);
+    return dist < 0.01 * Math.sqrt(scale);
+  };
+
+  const originalSignatures = rawShapes.map(shapeSignature);
+  const combined: THREE.Shape[] = [...rawShapes];
+  for (const atom of atomic) {
+    const atomSignature = shapeSignature(atom);
+    if (originalSignatures.some((signature) => sameShape(signature, atomSignature))) continue;
+    combined.push(atom);
+  }
+  return combined;
+}
+
+export function sketchToShape(sketch: Sketch): THREE.Shape | null {
+  const shapes = sketchToShapes(sketch);
+  return shapes.length > 0 ? shapes[0] : null;
+}
+
+export function isSketchClosedProfile(sketch: Sketch): boolean {
+  if (sketch.entities.length === 0) return false;
+  const shapes = sketchToShapes(sketch);
+  if (shapes.length === 0) return false;
+
+  return shapes.every((shape) => {
+    const points = shape.getPoints(64);
+    if (points.length < 3) return false;
+    const first = points[0];
+    const last = points[points.length - 1];
+    return first.distanceTo(last) <= 1e-4;
+  });
+}
+
+export function entitiesToShapes(
+  entities: SketchEntity[],
+  project: (p: SketchPoint) => { u: number; v: number },
+  opts: { nestHoles?: boolean } = {},
+): THREE.Shape[] {
+  const { nestHoles = true } = opts;
+  const shapes: THREE.Shape[] = [];
+  const tolerance = 1e-3;
+
+  const getEntityEndpoints = (entity: SketchEntity): [{ u: number; v: number }, { u: number; v: number }] | null => {
+    if (entity.type === 'line' || entity.type === 'spline') {
+      if (entity.points.length < 2) return null;
+      return [project(entity.points[0]), project(entity.points[entity.points.length - 1])];
+    }
+    if (entity.type === 'arc') {
+      if (entity.points.length < 1 || !entity.radius) return null;
+      const c = project(entity.points[0]);
+      const sa = entity.startAngle ?? 0;
+      const ea = entity.endAngle ?? Math.PI;
+      return [
+        { u: c.u + Math.cos(sa) * entity.radius, v: c.v + Math.sin(sa) * entity.radius },
+        { u: c.u + Math.cos(ea) * entity.radius, v: c.v + Math.sin(ea) * entity.radius },
+      ];
+    }
+    if (entity.type === 'elliptical-arc') {
+      if (entity.points.length < 1 || !entity.majorRadius || !entity.minorRadius) return null;
+      const c = project(entity.points[0]);
+      const rot = entity.rotation ?? 0;
+      const sa = entity.startAngle ?? 0;
+      const ea = entity.endAngle ?? Math.PI;
+      const cos = Math.cos(rot);
+      const sin = Math.sin(rot);
+      const start = () => {
+        const sx = entity.majorRadius! * Math.cos(sa);
+        const sy = entity.minorRadius! * Math.sin(sa);
+        return { u: c.u + cos * sx - sin * sy, v: c.v + sin * sx + cos * sy };
+      };
+      const end = () => {
+        const ex = entity.majorRadius! * Math.cos(ea);
+        const ey = entity.minorRadius! * Math.sin(ea);
+        return { u: c.u + cos * ex - sin * ey, v: c.v + sin * ex + cos * ey };
+      };
+      return [start(), end()];
+    }
+    return null;
+  };
+
+  const chainable: { entity: SketchEntity; endpoints: [{ u: number; v: number }, { u: number; v: number }] }[] = [];
+
+  for (const entity of entities) {
+    if (CLOSED_PRIMITIVE_TYPES.has(entity.type)) {
+      const shape = entitiesToShape([entity], project);
+      if (shape) shapes.push(shape);
+    } else if (BOUNDARY_TYPES.has(entity.type)) {
+      const endpoints = getEntityEndpoints(entity);
+      if (endpoints) chainable.push({ entity, endpoints });
+    }
+  }
+
+  const used = new Set<number>();
+  const ptClose = (a: { u: number; v: number }, b: { u: number; v: number }) =>
+    Math.hypot(a.u - b.u, a.v - b.v) <= tolerance;
+
+  for (let seed = 0; seed < chainable.length; seed++) {
+    if (used.has(seed)) continue;
+    const chain: SketchEntity[] = [chainable[seed].entity];
+    let chainStart = chainable[seed].endpoints[0];
+    let chainEnd = chainable[seed].endpoints[1];
+    used.add(seed);
+
+    let extended = true;
+    while (extended) {
+      extended = false;
+      for (let i = 0; i < chainable.length; i++) {
+        if (used.has(i)) continue;
+        const endpoints = chainable[i].endpoints;
+        if (ptClose(chainEnd, endpoints[0])) {
+          chain.push(chainable[i].entity);
+          chainEnd = endpoints[1];
+          used.add(i);
+          extended = true;
+        } else if (ptClose(chainStart, endpoints[1])) {
+          chain.unshift(chainable[i].entity);
+          chainStart = endpoints[0];
+          used.add(i);
+          extended = true;
+        }
+      }
+    }
+
+    if (chain.length > 0 && ptClose(chainStart, chainEnd)) {
+      const shape = entitiesToShape(chain, project);
+      if (shape) shapes.push(shape);
+    }
+  }
+
+  if (!nestHoles || shapes.length < 2) return shapes;
+
+  const shapeArea = (points: THREE.Vector2[]): number => {
+    let area = 0;
+    for (let i = 0, j = points.length - 1; i < points.length; j = i++) {
+      area += points[i].x * points[j].y - points[j].x * points[i].y;
+    }
+    return Math.abs(area) / 2;
+  };
+
+  const pointInPoly = (point: THREE.Vector2, poly: THREE.Vector2[]): boolean => {
+    let inside = false;
+    for (let i = 0, j = poly.length - 1; i < poly.length; j = i++) {
+      const xi = poly[i].x;
+      const yi = poly[i].y;
+      const xj = poly[j].x;
+      const yj = poly[j].y;
+      if (((yi > point.y) !== (yj > point.y)) &&
+          (point.x < ((xj - xi) * (point.y - yi)) / (yj - yi) + xi)) {
+        inside = !inside;
+      }
+    }
+    return inside;
+  };
+
+  const sampleDensity = 48;
+  const data = shapes.map((shape) => {
+    const points = shape.getPoints(sampleDensity);
+    const area = shapeArea(points);
+    const cx = points.reduce((sum, point) => sum + point.x, 0) / points.length;
+    const cy = points.reduce((sum, point) => sum + point.y, 0) / points.length;
+    return { shape, area, points, centroid: new THREE.Vector2(cx, cy) };
+  });
+
+  data.sort((a, b) => b.area - a.area);
+  const absorbed = new Array(data.length).fill(false);
+
+  for (let i = 1; i < data.length; i++) {
+    if (absorbed[i]) continue;
+    const inner = data[i];
+    let parentIdx = -1;
+    for (let j = i - 1; j >= 0; j--) {
+      if (absorbed[j]) continue;
+      if (pointInPoly(inner.centroid, data[j].points)) {
+        parentIdx = j;
+        break;
+      }
+    }
+    if (parentIdx >= 0) {
+      data[parentIdx].shape.holes.push(inner.shape);
+      absorbed[i] = true;
+    }
+  }
+
+  return data.filter((_, i) => !absorbed[i]).map((item) => item.shape);
+}
+
+function computeAtomicRegions(shapes: THREE.Shape[]): THREE.Shape[] {
+  if (shapes.length <= 1) return shapes;
+
+  const segments = 64;
+  const tolerance = 1e-6;
+
+  const shapeToMultiPolygon = (shape: THREE.Shape): PCMultiPolygon => {
+    const points = shape.getPoints(segments);
+    if (points.length < 3) return [];
+    const ring: PCRing = points.map((point) => [point.x, point.y] as [number, number]);
+    const first = ring[0];
+    const last = ring[ring.length - 1];
+    if (Math.abs(first[0] - last[0]) > tolerance || Math.abs(first[1] - last[1]) > tolerance) {
+      ring.push([first[0], first[1]]);
+    }
+    return [[ring]];
+  };
+
+  const polygons = shapes.map(shapeToMultiPolygon).filter((mp) => mp.length > 0);
+  if (polygons.length <= 1) return shapes;
+
+  let atoms: PCMultiPolygon[] = [polygons[0]];
+  let runningUnion: PCMultiPolygon = polygons[0];
+
+  for (let i = 1; i < polygons.length; i++) {
+    const polygon = polygons[i];
+    const newAtoms: PCMultiPolygon[] = [];
+
+    for (const atom of atoms) {
+      try {
+        const inter = polygonClipping.intersection(atom, polygon);
+        if (inter.length > 0) newAtoms.push(inter);
+      } catch {}
+      try {
+        const diff = polygonClipping.difference(atom, polygon);
+        if (diff.length > 0) newAtoms.push(diff);
+      } catch {}
+    }
+
+    try {
+      const onlyPolygon = polygonClipping.difference(polygon, runningUnion);
+      if (onlyPolygon.length > 0) newAtoms.push(onlyPolygon);
+    } catch {}
+
+    try {
+      runningUnion = polygonClipping.union(runningUnion, polygon);
+    } catch {}
+
+    if (newAtoms.length > 0) atoms = newAtoms;
+  }
+
+  const simplifyRing = (ring: PCRing): THREE.Vector2[] => {
+    const n = ring.length;
+    const endDupe =
+      n >= 2 &&
+      Math.abs(ring[0][0] - ring[n - 1][0]) <= tolerance &&
+      Math.abs(ring[0][1] - ring[n - 1][1]) <= tolerance;
+    const raw = endDupe ? ring.slice(0, -1) : ring;
+    if (raw.length < 3) return [];
+
+    const deduped: [number, number][] = [];
+    for (const point of raw) {
+      const last = deduped[deduped.length - 1];
+      if (!last || Math.hypot(point[0] - last[0], point[1] - last[1]) > 1e-5) {
+        deduped.push([point[0], point[1]]);
+      }
+    }
+    if (deduped.length < 3) return [];
+
+    const minTurn = Math.sin(0.5 * Math.PI / 180);
+    const keep: THREE.Vector2[] = [];
+    for (let i = 0; i < deduped.length; i++) {
+      const prev = deduped[(i - 1 + deduped.length) % deduped.length];
+      const curr = deduped[i];
+      const next = deduped[(i + 1) % deduped.length];
+      const ax = curr[0] - prev[0];
+      const ay = curr[1] - prev[1];
+      const bx = next[0] - curr[0];
+      const by = next[1] - curr[1];
+      const la = Math.hypot(ax, ay);
+      const lb = Math.hypot(bx, by);
+      if (la < 1e-9 || lb < 1e-9) continue;
+      const sinTheta = Math.abs(ax * by - ay * bx) / (la * lb);
+      if (sinTheta > minTurn) keep.push(new THREE.Vector2(curr[0], curr[1]));
+    }
+    return keep.length >= 3 ? keep : [];
+  };
+
+  const result: THREE.Shape[] = [];
+  for (const atom of atoms) {
+    for (const poly of atom) {
+      if (!poly.length) continue;
+      const outerPoints = simplifyRing(poly[0]);
+      if (outerPoints.length < 3) continue;
+      const shape = new THREE.Shape(outerPoints);
+      for (let i = 1; i < poly.length; i++) {
+        const holePoints = simplifyRing(poly[i]);
+        if (holePoints.length < 3) continue;
+        shape.holes.push(new THREE.Path(holePoints));
+      }
+      result.push(shape);
+    }
+  }
+
+  return result.length > 0 ? result : shapes;
+}
+
+export function entitiesToShape(
+  entities: SketchEntity[],
+  project: (p: SketchPoint) => { u: number; v: number },
+): THREE.Shape | null {
+  const shape = new THREE.Shape();
+  let hasContent = false;
+
+  for (const entity of entities) {
+    switch (entity.type) {
+      case 'line': {
+        if (entity.points.length >= 2) {
+          const a = project(entity.points[0]);
+          const b = project(entity.points[1]);
+          if (!hasContent) {
+            shape.moveTo(a.u, a.v);
+            hasContent = true;
+          }
+          shape.lineTo(b.u, b.v);
+        }
+        break;
+      }
+      case 'rectangle': {
+        if (entity.points.length >= 2) {
+          const p1 = project(entity.points[0]);
+          const p2 = project(entity.points[1]);
+          shape.moveTo(p1.u, p1.v);
+          shape.lineTo(p2.u, p1.v);
+          shape.lineTo(p2.u, p2.v);
+          shape.lineTo(p1.u, p2.v);
+          shape.lineTo(p1.u, p1.v);
+          hasContent = true;
+        }
+        break;
+      }
+      case 'circle': {
+        if (entity.points.length >= 1 && entity.radius) {
+          const c = project(entity.points[0]);
+          const path = new THREE.Path();
+          path.absarc(c.u, c.v, entity.radius, 0, Math.PI * 2, false);
+          shape.setFromPoints(path.getPoints(64));
+          hasContent = true;
+        }
+        break;
+      }
+      case 'arc': {
+        if (entity.points.length >= 1 && entity.radius) {
+          const c = project(entity.points[0]);
+          if (!hasContent) {
+            const sa = entity.startAngle || 0;
+            shape.moveTo(c.u + Math.cos(sa) * entity.radius, c.v + Math.sin(sa) * entity.radius);
+            hasContent = true;
+          }
+          shape.absarc(c.u, c.v, entity.radius, entity.startAngle || 0, entity.endAngle || Math.PI, false);
+        }
+        break;
+      }
+      case 'spline': {
+        if (entity.points.length >= 2) {
+          const first = project(entity.points[0]);
+          if (!hasContent) {
+            shape.moveTo(first.u, first.v);
+            hasContent = true;
+          }
+          for (let i = 1; i < entity.points.length; i++) {
+            const point = project(entity.points[i]);
+            shape.lineTo(point.u, point.v);
+          }
+        }
+        break;
+      }
+      case 'ellipse': {
+        if (entity.points.length >= 1 && entity.majorRadius && entity.minorRadius) {
+          const c = project(entity.points[0]);
+          const rot = entity.rotation ?? 0;
+          const path = new THREE.Path();
+          path.absellipse(c.u, c.v, entity.majorRadius, entity.minorRadius, 0, Math.PI * 2, false, rot);
+          shape.setFromPoints(path.getPoints(64));
+          hasContent = true;
+        }
+        break;
+      }
+      case 'elliptical-arc': {
+        if (entity.points.length >= 1 && entity.majorRadius && entity.minorRadius) {
+          const c = project(entity.points[0]);
+          const rot = entity.rotation ?? 0;
+          const sa = entity.startAngle ?? 0;
+          const ea = entity.endAngle ?? Math.PI;
+          if (!hasContent) {
+            const cos = Math.cos(rot);
+            const sin = Math.sin(rot);
+            const sx = entity.majorRadius * Math.cos(sa);
+            const sy = entity.minorRadius * Math.sin(sa);
+            shape.moveTo(c.u + cos * sx - sin * sy, c.v + sin * sx + cos * sy);
+            hasContent = true;
+          }
+          shape.absellipse(c.u, c.v, entity.majorRadius, entity.minorRadius, sa, ea, false, rot);
+        }
+        break;
+      }
+      case 'polygon': {
+        const sides = entity.sides ?? 6;
+        if (entity.points.length >= 2 && sides >= 3) {
+          const center = project(entity.points[0]);
+          const edge = project(entity.points[1]);
+          const radius = Math.hypot(edge.u - center.u, edge.v - center.v);
+          for (let i = 0; i <= sides; i++) {
+            const angle = (Math.PI * 2 * i) / sides - Math.PI / 2;
+            const u = center.u + radius * Math.cos(angle);
+            const v = center.v + radius * Math.sin(angle);
+            if (i === 0) shape.moveTo(u, v);
+            else shape.lineTo(u, v);
+          }
+          hasContent = true;
+        }
+        break;
+      }
+    }
+  }
+
+  return hasContent ? shape : null;
+}
+
+function removeSliverTriangles2D(
+  geometry: THREE.BufferGeometry,
+  qualityThreshold = 0.02,
+): THREE.BufferGeometry {
+  const pos = geometry.attributes.position as THREE.BufferAttribute;
+  const count = pos.count;
+  const a = new THREE.Vector3();
+  const b = new THREE.Vector3();
+  const c = new THREE.Vector3();
+  const ab = new THREE.Vector3();
+  const ac = new THREE.Vector3();
+  const bc = new THREE.Vector3();
+  const cross = new THREE.Vector3();
+  const normalizer = 4 * Math.sqrt(3);
+
+  const nextPositions: number[] = [];
+  for (let i = 0; i < count; i += 3) {
+    a.fromBufferAttribute(pos, i);
+    b.fromBufferAttribute(pos, i + 1);
+    c.fromBufferAttribute(pos, i + 2);
+    ab.subVectors(b, a);
+    ac.subVectors(c, a);
+    bc.subVectors(c, b);
+    cross.crossVectors(ab, ac);
+    const area = cross.length() * 0.5;
+    const ss = ab.lengthSq() + ac.lengthSq() + bc.lengthSq();
+    const q = ss > 1e-12 ? (normalizer * area) / ss : 0;
+    if (q < qualityThreshold) continue;
+    for (let k = 0; k < 3; k++) {
+      a.fromBufferAttribute(pos, i + k);
+      nextPositions.push(a.x, a.y, a.z);
+    }
+  }
+
+  const result = new THREE.BufferGeometry();
+  result.setAttribute('position', new THREE.Float32BufferAttribute(nextPositions, 3));
+  result.computeVertexNormals();
+  return result;
+}

@@ -1,7 +1,7 @@
 import * as React from 'react';
 import { useMemo, useEffect } from 'react';
 import * as THREE from 'three';
-import type { LayerGeometryData } from './types';
+import type { LayerGeometryData } from '../../../../types/slicer-preview.types';
 
 interface LayerMeshProps {
   data: LayerGeometryData;

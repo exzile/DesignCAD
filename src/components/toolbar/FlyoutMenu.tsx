@@ -1,7 +1,7 @@
 import { useRef, useState, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { ChevronDown, ChevronRight, Check } from 'lucide-react';
-import type { MenuItem } from './toolbar.types';
+import type { MenuItem } from '../../types/toolbar.types';
 
 // ─── Flyout Sub-Menu Item ─────────────────────────────────────────────────
 

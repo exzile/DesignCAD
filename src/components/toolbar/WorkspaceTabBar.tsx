@@ -1,6 +1,6 @@
 import * as React from 'react';
 import { ChevronDown, X } from 'lucide-react';
-import type { Workspace, RibbonTab, TabDef } from './toolbar.types';
+import type { Workspace, RibbonTab, TabDef } from '../../types/toolbar.types';
 
 const designTabs: TabDef[] = [
   { id: 'solid', label: 'SOLID', color: 'var(--tab-solid)' },

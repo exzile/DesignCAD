@@ -3,7 +3,7 @@ import type { Feature, FeatureGroup, FormCage, FormElementType, FormSelection, I
 import type { InsertComponentParams } from '../../components/dialogs/assembly/InsertComponentDialog';
 import type { DirectEditParams } from '../../components/dialogs/solid/DirectEditDialog';
 import type { TextureExtrudeParams } from '../../components/dialogs/solid/TextureExtrudeDialog';
-import type { ExtrudeDirection, ExtrudeOperation } from './types';
+import type { ExtrudeDirection, ExtrudeOperation } from '../../types/cad-extrude.types';
 
 export interface CADState {
   // Tool state
@@ -1082,6 +1082,6 @@ export interface CADState {
 }
 
 // Plane normals consistent with the visual selector (Three.js Y-up):
-//   XY = horizontal ground plane  → normal points UP   = (0, 1, 0)
-//   XZ = vertical front plane     → normal points FWD  = (0, 0, 1)
-//   YZ = vertical side plane      → normal points RIGHT = (1, 0, 0)
+//   XY = horizontal ground plane  -> normal points UP   = (0, 1, 0)
+//   XZ = vertical front plane     -> normal points FWD  = (0, 0, 1)
+//   YZ = vertical side plane      -> normal points RIGHT = (1, 0, 0)

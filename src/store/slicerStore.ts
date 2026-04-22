@@ -10,10 +10,11 @@ import {
   DEFAULT_PRINTER_PROFILES, DEFAULT_MATERIAL_PROFILES, DEFAULT_PRINT_PROFILES,
 } from '../types/slicer';
 import { normalizeRotationDegreesToRadians, normalizeScale } from '../utils/slicerTransforms';
-import { usePrinterStore } from './printerStore';
+import { createPreviewActions } from './slicer/actions/preview';
+import { deserializeGeom, idbStorage, isBufferGeometry, serializeGeom, type SerializedGeom } from './slicer/persistence';
 
 
-interface SlicerStore {
+export interface SlicerStore {
   // Profiles
   printerProfiles: PrinterProfile[];
   materialProfiles: MaterialProfile[];
@@ -128,112 +129,6 @@ interface SlicerStore {
   setTransformMode: (mode: 'move' | 'scale' | 'rotate' | 'mirror' | 'settings') => void;
 }
 
-// =============================================================================
-// Geometry serialization — THREE.BufferGeometry <-> plain JSON-safe object
-// =============================================================================
-// Only position and index are serialized — normals are recomputed on load,
-// and UVs are not used by the slicer. This avoids 2–3× large Array.from
-// copies that caused GC pauses and near-OOM on big meshes.
-//
-// partialize() runs on every zustand state update, so we cache the result in
-// a WeakMap keyed on the geometry object. Array.from is only called once per
-// geometry; subsequent calls are O(1) map lookups. The WeakMap entry is
-// automatically collected when the geometry is GC'd.
-const MAX_PERSIST_VERTS = 500_000;
-const geomSerializeCache = new WeakMap<THREE.BufferGeometry, SerializedGeom | null>();
-
-interface SerializedGeom {
-  position: number[];
-  index?: number[];
-}
-
-function serializeGeom(geom: THREE.BufferGeometry | null | undefined): SerializedGeom | null {
-  if (!geom?.attributes?.position) return null;
-  if (geomSerializeCache.has(geom)) return geomSerializeCache.get(geom)!;
-  const posArray = geom.attributes.position.array as Float32Array;
-  if (posArray.length / 3 > MAX_PERSIST_VERTS) {
-    geomSerializeCache.set(geom, null);
-    return null;
-  }
-  try {
-    const out: SerializedGeom = {
-      position: Array.from(posArray),
-    };
-    if (geom.index) out.index = Array.from(geom.index.array as Uint16Array | Uint32Array);
-    geomSerializeCache.set(geom, out);
-    return out;
-  } catch {
-    geomSerializeCache.set(geom, null);
-    return null;
-  }
-}
-
-function isBufferGeometry(geometry: unknown): geometry is THREE.BufferGeometry {
-  if (geometry instanceof THREE.BufferGeometry) return true;
-  return !!geometry &&
-    typeof geometry === 'object' &&
-    (geometry as { isBufferGeometry?: boolean }).isBufferGeometry === true;
-}
-
-function deserializeGeom(data: SerializedGeom): THREE.BufferGeometry {
-  const g = new THREE.BufferGeometry();
-  g.setAttribute('position', new THREE.Float32BufferAttribute(data.position, 3));
-  if (data.index) g.setIndex(new THREE.BufferAttribute(new Uint32Array(data.index), 1));
-  g.computeVertexNormals();
-  g.computeBoundingBox();
-  return g;
-}
-
-// =============================================================================
-// IndexedDB storage adapter (no 5 MB limit — handles large geometry arrays)
-// =============================================================================
-function openSlicerDB(): Promise<IDBDatabase> {
-  return new Promise((resolve, reject) => {
-    const req = indexedDB.open('dzign3d-slicer', 1);
-    req.onupgradeneeded = () => req.result.createObjectStore('kv');
-    req.onsuccess = () => resolve(req.result);
-    req.onerror   = () => reject(req.error);
-  });
-}
-
-const idbStorage = {
-  getItem: async (name: string): Promise<string | null> => {
-    try {
-      const db = await openSlicerDB();
-      return new Promise((resolve) => {
-        const tx  = db.transaction('kv', 'readonly');
-        const req = tx.objectStore('kv').get(name);
-        req.onsuccess = () => { db.close(); resolve(req.result ?? null); };
-        req.onerror   = () => { db.close(); resolve(null); };
-      });
-    } catch { return null; }
-  },
-  setItem: async (name: string, value: string): Promise<void> => {
-    try {
-      const db = await openSlicerDB();
-      return new Promise((resolve, reject) => {
-        const tx = db.transaction('kv', 'readwrite');
-        tx.objectStore('kv').put(value, name);
-        tx.oncomplete = () => { db.close(); resolve(); };
-        tx.onerror    = () => { db.close(); reject(tx.error); };
-      });
-    } catch { /* storage unavailable — silently skip */ }
-  },
-  removeItem: async (name: string): Promise<void> => {
-    try {
-      const db = await openSlicerDB();
-      // Wait for the delete transaction to commit before closing the db —
-      // synchronous close after .delete() can abort the tx so the value
-      // silently persists.
-      await new Promise<void>((resolve, reject) => {
-        const tx = db.transaction('kv', 'readwrite');
-        tx.objectStore('kv').delete(name);
-        tx.oncomplete = () => { db.close(); resolve(); };
-        tx.onerror    = () => { db.close(); reject(tx.error); };
-      });
-    } catch { /* ignore */ }
-  },
-};
 
 // =============================================================================
 // Persistent Web Worker — created once, reused across slice operations
@@ -880,104 +775,7 @@ export const useSlicerStore = create<SlicerStore>()(persist((set, get) => ({
 
   setSliceProgress: (progress) => set({ sliceProgress: progress }),
 
-  // --- Preview ---
-
-  setPreviewMode: (mode) => set({ previewMode: mode }),
-  setPreviewLayer: (layer) => set((s) => ({
-    previewLayer: Math.max(s.previewLayerStart, Math.min(layer, s.previewLayerMax)),
-  })),
-  setPreviewLayerStart: (layer) => set((s) => ({
-    previewLayerStart: Math.max(0, Math.min(layer, s.previewLayer)),
-  })),
-  setPreviewLayerRange: (start, end) => set((s) => {
-    const clampedStart = Math.max(0, Math.min(start, s.previewLayerMax));
-    const clampedEnd = Math.max(clampedStart, Math.min(end, s.previewLayerMax));
-    return { previewLayerStart: clampedStart, previewLayer: clampedEnd };
-  }),
-  setPreviewShowTravel: (show) => set({ previewShowTravel: show }),
-  setPreviewShowRetractions: (show) => set({ previewShowRetractions: show }),
-  setPreviewColorMode: (mode) => set({ previewColorMode: mode }),
-  togglePreviewType: (type) => set((s) => ({
-    previewHiddenTypes: s.previewHiddenTypes.includes(type)
-      ? s.previewHiddenTypes.filter((t) => t !== type)
-      : [...s.previewHiddenTypes, type],
-  })),
-  setPreviewColorSchemeOpen: (open) => set({ previewColorSchemeOpen: open }),
-
-  // --- Simulation ---
-
-  setPreviewSimEnabled: (on) => set((s) => ({
-    previewSimEnabled: on,
-    // Auto-pause when simulation is disabled.
-    previewSimPlaying: on ? s.previewSimPlaying : false,
-  })),
-  setPreviewSimPlaying: (playing) => set({ previewSimPlaying: playing }),
-  setPreviewSimSpeed: (speed) => set({ previewSimSpeed: Math.max(0.1, speed) }),
-  setPreviewSimTime: (t) => set((s) => {
-    const total = s.sliceResult?.printTime ?? 0;
-    return { previewSimTime: Math.max(0, total > 0 ? Math.min(t, total) : t) };
-  }),
-  advancePreviewSimTime: (delta) => set((s) => {
-    const total = s.sliceResult?.printTime ?? 0;
-    let next = s.previewSimTime + delta;
-    let playing = s.previewSimPlaying;
-    if (total > 0 && next >= total) { next = total; playing = false; }
-    return { previewSimTime: next, previewSimPlaying: playing };
-  }),
-  resetPreviewSim: () => set({ previewSimTime: 0, previewSimPlaying: false }),
-
-  // --- Printability ---
-
-  runPrintabilityCheck: async () => {
-    const { checkPrintability } = await import('../engine/PrintabilityCheck');
-    const s = get();
-    const printer = s.getActivePrinterProfile();
-    const print = s.getActivePrintProfile();
-    if (!printer || !print) return;
-    const report = checkPrintability(s.plateObjects, printer, print);
-    set({ printabilityReport: report });
-  },
-
-  clearPrintabilityReport: () => set({ printabilityReport: null }),
-  setPrintabilityHighlight: (on) => set({ printabilityHighlight: on }),
-
-  // --- Export ---
-
-  downloadGCode: () => {
-    const { sliceResult } = get();
-    if (!sliceResult?.gcode) return;
-
-    const blob = new Blob([sliceResult.gcode], { type: 'text/plain' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = 'output.gcode';
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    URL.revokeObjectURL(url);
-  },
-
-  sendToPrinter: async () => {
-    const { sliceResult } = get();
-    if (!sliceResult?.gcode) return;
-
-    const printerStore = usePrinterStore.getState();
-    if (!printerStore.connected || !printerStore.service) {
-      throw new Error('Printer not connected');
-    }
-
-    const filename = 'output.gcode';
-    const blob = new Blob([sliceResult.gcode], { type: 'text/plain' });
-    const file = new File([blob], filename, { type: 'text/plain' });
-
-    await printerStore.uploadFile(file);
-  },
-
-  // --- UI ---
-
-  setSettingsPanel: (panel) => set({ settingsPanel: panel }),
-  setTransformMode: (mode) => set({ transformMode: mode }),
+  ...createPreviewActions({ set, get }),
 }),
 {
   name: 'dzign3d-slicer-plate',

@@ -2,7 +2,7 @@ import { useRef, useState, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { ChevronDown } from 'lucide-react';
 import { useCADStore } from '../../store/cadStore';
-import type { ToolButtonProps } from './toolbar.types';
+import type { ToolButtonProps } from '../../types/toolbar.types';
 
 export function ToolButton({ icon, label, tool, active, onClick, disabled, large, colorClass, dropdown }: ToolButtonProps) {
   const activeTool = useCADStore((s) => s.activeTool);

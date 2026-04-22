@@ -8,7 +8,7 @@ import {
 import { useCADStore } from '../../store/cadStore';
 import { RibbonSection } from './FlyoutMenu';
 import { ToolButton } from './ToolButton';
-import type { MenuItem } from './toolbar.types';
+import type { MenuItem } from '../../types/toolbar.types';
 import type { RefObject } from 'react';
 
 interface RibbonSolidTabProps {

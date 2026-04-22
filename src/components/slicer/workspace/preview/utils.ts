@@ -7,7 +7,7 @@ import {
   FLOW_LOW_COLOR,
   FLOW_HIGH_COLOR,
 } from './constants';
-import type { LayerGeometryData } from './types';
+import type { LayerGeometryData } from '../../../../types/slicer-preview.types';
 
 function lerpColor(a: THREE.Color, b: THREE.Color, t: number): THREE.Color {
   return a.clone().lerp(b, t);

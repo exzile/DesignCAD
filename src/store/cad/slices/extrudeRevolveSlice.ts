@@ -2,7 +2,7 @@ import * as THREE from 'three';
 import type { Feature, Sketch, SketchEntity, SketchPoint } from '../../../types/cad';
 import { GeometryEngine } from '../../../engine/GeometryEngine';
 import { EXTRUDE_DEFAULTS, REVOLVE_DEFAULTS } from '../defaults';
-import type { ExtrudeDirection, ExtrudeOperation } from '../types';
+import type { ExtrudeDirection, ExtrudeOperation } from '../../../types/cad-extrude.types';
 import { useComponentStore } from '../../componentStore';
 import type { CADSliceContext } from '../sliceContext';
 import type { CADState } from '../state';

@@ -13,7 +13,7 @@ import { createHistoryAndDocumentSlice } from './cad/slices/historyAndDocumentSl
 import { createAdvancedSolidAndMeshOpsSlice } from './cad/slices/advancedSolidAndMeshOpsSlice';
 
 export type { CADState } from './cad/state';
-export type { ExtrudeDirection, ExtrudeOperation } from './cad/types';
+export type { ExtrudeDirection, ExtrudeOperation } from '../types/cad-extrude.types';
 export { deserializeFeature, serializeFeature } from './cad/persistence';
 
 export const useCADStore = create<CADState>()(

@@ -1,0 +1,149 @@
+import * as THREE from 'three';
+
+export function splitByConnectedComponents(
+  geometry: THREE.BufferGeometry,
+  tolerance = 1e-4,
+): THREE.BufferGeometry[] {
+  const positions = geometry.attributes.position as THREE.BufferAttribute | undefined;
+  if (!positions || positions.count === 0) return [geometry];
+
+  const indices = geometry.index;
+  const triCount = indices ? indices.count / 3 : positions.count / 3;
+  if (triCount === 0) return [geometry];
+
+  const normals = geometry.attributes.normal as THREE.BufferAttribute | undefined;
+  const uvs = geometry.attributes.uv as THREE.BufferAttribute | undefined;
+  const inverseTolerance = 1 / tolerance;
+  const canonicalOf: number[] = new Array(positions.count);
+  const keyToCanonical = new Map<string, number>();
+
+  const keyFor = (vertexIndex: number): string => {
+    const x = Math.round(positions.getX(vertexIndex) * inverseTolerance);
+    const y = Math.round(positions.getY(vertexIndex) * inverseTolerance);
+    const z = Math.round(positions.getZ(vertexIndex) * inverseTolerance);
+    return `${x}|${y}|${z}`;
+  };
+
+  for (let i = 0; i < positions.count; i++) {
+    const key = keyFor(i);
+    let canonical = keyToCanonical.get(key);
+    if (canonical === undefined) {
+      canonical = keyToCanonical.size;
+      keyToCanonical.set(key, canonical);
+    }
+    canonicalOf[i] = canonical;
+  }
+
+  const parent = new Int32Array(keyToCanonical.size);
+  for (let i = 0; i < parent.length; i++) parent[i] = i;
+
+  const find = (value: number): number => {
+    let root = value;
+    while (parent[root] !== root) root = parent[root];
+    while (parent[value] !== root) {
+      const next = parent[value];
+      parent[value] = root;
+      value = next;
+    }
+    return root;
+  };
+
+  const union = (a: number, b: number): void => {
+    const rootA = find(a);
+    const rootB = find(b);
+    if (rootA !== rootB) parent[rootA] = rootB;
+  };
+
+  const getTri = (triangleIndex: number): [number, number, number] => {
+    if (indices) {
+      return [
+        indices.getX(triangleIndex * 3),
+        indices.getX(triangleIndex * 3 + 1),
+        indices.getX(triangleIndex * 3 + 2),
+      ];
+    }
+    return [triangleIndex * 3, triangleIndex * 3 + 1, triangleIndex * 3 + 2];
+  };
+
+  for (let triangleIndex = 0; triangleIndex < triCount; triangleIndex++) {
+    const [a, b, c] = getTri(triangleIndex);
+    union(canonicalOf[a], canonicalOf[b]);
+    union(canonicalOf[b], canonicalOf[c]);
+  }
+
+  const trianglesByComponent = new Map<number, number[]>();
+  for (let triangleIndex = 0; triangleIndex < triCount; triangleIndex++) {
+    const [a] = getTri(triangleIndex);
+    const root = find(canonicalOf[a]);
+    if (!trianglesByComponent.has(root)) trianglesByComponent.set(root, []);
+    trianglesByComponent.get(root)!.push(triangleIndex);
+  }
+  if (trianglesByComponent.size <= 1) return [geometry];
+
+  const result = Array.from(trianglesByComponent.values(), (triangles) => {
+    const componentPositions: number[] = [];
+    const componentNormals: number[] = [];
+    const componentUvs: number[] = [];
+
+    for (const triangleIndex of triangles) {
+      for (const vertexIndex of getTri(triangleIndex)) {
+        componentPositions.push(
+          positions.getX(vertexIndex),
+          positions.getY(vertexIndex),
+          positions.getZ(vertexIndex),
+        );
+        if (normals) {
+          componentNormals.push(
+            normals.getX(vertexIndex),
+            normals.getY(vertexIndex),
+            normals.getZ(vertexIndex),
+          );
+        }
+        if (uvs) componentUvs.push(uvs.getX(vertexIndex), uvs.getY(vertexIndex));
+      }
+    }
+
+    const component = new THREE.BufferGeometry();
+    component.setAttribute('position', new THREE.Float32BufferAttribute(componentPositions, 3));
+    if (normals) component.setAttribute('normal', new THREE.Float32BufferAttribute(componentNormals, 3));
+    if (uvs) component.setAttribute('uv', new THREE.Float32BufferAttribute(componentUvs, 2));
+    if (!normals) component.computeVertexNormals();
+    return component;
+  });
+
+  const bounds = new THREE.Box3();
+  const center = new THREE.Vector3();
+  const centroids = result.map((component) => {
+    bounds.setFromBufferAttribute(component.attributes.position as THREE.BufferAttribute);
+    bounds.getCenter(center);
+    return { x: center.x, y: center.y, z: center.z };
+  });
+
+  return result
+    .map((_, index) => index)
+    .sort((a, b) => {
+      const centroidA = centroids[a];
+      const centroidB = centroids[b];
+      if (Math.abs(centroidA.x - centroidB.x) > 1e-4) return centroidA.x - centroidB.x;
+      if (Math.abs(centroidA.y - centroidB.y) > 1e-4) return centroidA.y - centroidB.y;
+      return centroidA.z - centroidB.z;
+    })
+    .map((index) => result[index]);
+}
+
+export function bakeMeshWorldGeometry(mesh: THREE.Mesh): THREE.BufferGeometry {
+  mesh.updateMatrixWorld(true);
+  const geometry = mesh.geometry.clone();
+  geometry.applyMatrix4(mesh.matrixWorld);
+  return geometry;
+}
+
+export function extractMeshGeometry(mesh: THREE.Mesh | THREE.Group): THREE.BufferGeometry | null {
+  if (mesh instanceof THREE.Mesh) return mesh.geometry.clone();
+
+  let found: THREE.BufferGeometry | null = null;
+  mesh.traverse((child) => {
+    if (!found && child instanceof THREE.Mesh) found = child.geometry.clone();
+  });
+  return found;
+}
