@@ -1220,7 +1220,7 @@ export class Slicer {
           const outerWall = wallSets[0];
           if (outerWall.length < 2) continue;
           const outerWallLineWidth = wallLineWidths[0] ?? pp.wallLineWidth;
-          const seamIdx = this.findSeamPosition(outerWall, pp, li);
+          const seamIdx = this.findSeamPosition(outerWall, pp, li, currentX, currentY);
           let reordered = this.reorderFromIndex(outerWall, seamIdx);
           if (pp.fluidMotionEnable && reordered.length >= 3) {
             const fmAngle = ((pp.fluidMotionAngle ?? 15) * Math.PI) / 180;
@@ -1346,8 +1346,9 @@ export class Slicer {
             // takes precedence over our legacy `zSeamAlignment` when set
             // and unlocks 'user_specified' (X/Y) + 'back' which pp.zSeamX/Y
             // can feed. The resolveSeamMode helper below maps between the
-            // two unions.
-            const seamIdx = this.findSeamPosition(outerWall, pp, li);
+            // two unions. `currentX/Y` feeds the 'shortest' mode so we pick
+            // the point closest to wherever the nozzle just was.
+            const seamIdx = this.findSeamPosition(outerWall, pp, li, currentX, currentY);
             let reordered = this.reorderFromIndex(outerWall, seamIdx);
             // Cura-parity: `fluidMotionEnable` smooths outer-wall paths by
             // inserting a midpoint at every corner sharper than
@@ -2972,7 +2973,63 @@ export class Slicer {
     for (let w = 0; w < wallCount; w++) {
       const nominalOffset = w * lineWidth + lineWidth / 2 + (w === 0 ? outerWallInset : 0);
       const nominalDepth = computeDepth(nominalOffset);
-      if (!nominalDepth) break;
+
+      // Arachne sub-nominal centerline wall: when even the FIRST wall at the
+      // nominal half-linewidth offset won't fit, the feature is narrower than
+      // a full line. Cura/Orca's Arachne beading strategy handles this by
+      // emitting a single centerline wall at the actual feature width, down
+      // to `minWallLineWidth`. We binary-search for the largest offset that
+      // still produces a valid ring (i.e., the "centerline" of the feature),
+      // then emit one thin wall there. Without this, thin ribs/walls under
+      // `lineWidth` are silently dropped from the print.
+      if (!nominalDepth) {
+        if (w === 0 && (this.printProfile.thinWallDetection ?? false)) {
+          const minLW = this.printProfile.minWallLineWidth ?? lineWidth * 0.5;
+          const minOffset = outerWallInset + Math.max(0, minLW / 2);
+          // Only attempt the centerline wall if there's any room between the
+          // outer inset and the nominal half-linewidth offset where a thinner
+          // wall could fit.
+          if (minOffset < nominalOffset) {
+            let lo = minOffset;
+            let hi = nominalOffset;
+            let best: ReturnType<typeof computeDepth> = null;
+            // Try the low end first — if even minOffset fails, the feature
+            // is genuinely too thin and we skip (as before).
+            const minTrial = computeDepth(minOffset);
+            if (minTrial) {
+              best = minTrial;
+              lo = minOffset;
+              for (let iter = 0; iter < 18; iter++) {
+                const mid = (lo + hi) / 2;
+                const trial = computeDepth(mid);
+                if (trial) { lo = mid; best = trial; }
+                else { hi = mid; }
+              }
+              const widened = Math.max(minLW, 2 * Math.max(0, lo - outerWallInset));
+              // Emit this single centerline wall and STOP — there's no room
+              // for more walls on a sub-nominal feature.
+              for (const poly of best.result) {
+                if (poly.length > 0) {
+                  const loop = fromRing(poly[0]);
+                  if (loop.length >= 3) {
+                    outerLoops.push(loop);
+                    outerLineWidths.push(widened);
+                  }
+                }
+                for (let i = 1; i < poly.length; i++) {
+                  const loop = fromRing(poly[i]);
+                  if (loop.length >= 3) {
+                    holeLoops.push(loop);
+                    holeLineWidths.push(widened);
+                  }
+                }
+              }
+              if (best.holesAtDepth.length > 0) lastInnermostHoles = best.holesAtDepth;
+            }
+          }
+        }
+        break;
+      }
 
       let result = nominalDepth.result;
       let thisDepthHoles = nominalDepth.holesAtDepth;
@@ -3142,6 +3199,12 @@ export class Slicer {
     pp: PrintProfile,
     // eslint-disable-next-line @typescript-eslint/no-unused-vars
     _layerIndex: number,
+    // Current nozzle XY (bed-centered coordinates). When provided, the
+    // 'shortest' mode picks the contour vertex closest to this point,
+    // minimising travel between features. Without it, 'shortest' falls back
+    // to index 0 for backward compatibility.
+    nozzleX?: number,
+    nozzleY?: number,
   ): number {
     if (contour.length === 0) return 0;
 
@@ -3222,6 +3285,13 @@ export class Slicer {
 
       case 'shortest':
       default:
+        // Cura-parity: pick the contour vertex closest to the nozzle's
+        // current position, minimising the travel distance from whatever
+        // just finished printing. Falls back to index 0 when the caller
+        // didn't thread in a position (e.g. first wall of the first layer).
+        if (nozzleX !== undefined && nozzleY !== undefined) {
+          return this.closestPointIndex(contour, new THREE.Vector2(nozzleX, nozzleY));
+        }
         return 0;
     }
   }

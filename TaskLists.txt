@@ -115,3 +115,79 @@
 - [s] Post-template mode restoration - arbitrary printer start G-code can leave motion/extrusion modes dirty unless the slicer reasserts them
 - [s] `startGCodeMustBeFirst` contract - printer profiles that require the template first need explicit ordering support in the emitter
 - [s] Start G-code XYZE state sync - slicer travel/retract bookkeeping should follow explicit moves/resets performed by printer start G-code
+
+
+# ============================================================================
+# SLICER ENGINE UPGRADES - deferred (multi-session investments)
+# ============================================================================
+# Captured 2026-04-21 after a session that landed the P0/P1/P2 Clipper stack,
+# adaptive layers, bridge detection, per-region overhang, hole-aware infill
+# (scan + curve), closing-radius mesh repair, normal-direction mesh repair,
+# Arachne thin-wall detection + sub-nominal centerline walls, and z-seam
+# shortest-mode nozzle threading. The items below are the remaining
+# high-impact wins that need multi-session commitment.
+# ============================================================================
+
+## ARACHNE - full variable-width wall generation
+- [ ] Per-segment variable line width within a single wall loop (tapered
+      features like airfoil tips currently print with uniform widened line
+      but the tip should taper. Requires: sample wall loop edges, probe
+      local feature width per sample, emit sub-segments with varying
+      lineWidth, threaded through scarf/fluid-motion/coasting code paths.
+      See Cura's `BeadingStrategy` hierarchy; expect 2-3 days.)
+- [ ] Bead-gradient transitions (smooth interpolation between differing
+      bead widths across a feature; skeleton-walk from medial axis).
+- [ ] Full medial-axis beading for complex thin features
+      (branching ribs, Y/T-junctions). Requires Voronoi or offset-based
+      skeleton extraction.
+
+## SUPPORTS - quality improvements
+- [ ] Tree support branching logic improvements - current implementation
+      is linear; Cura-style tree supports need graph-based branch growth,
+      branch merging, and collision avoidance with the model.
+- [ ] Support interface (roof/floor) quality - thicker dedicated interface
+      bands with different pattern/density from the support body, gated
+      properly by supportRoofEnable/supportFloorEnable toggles (see the
+      [s] items above for partial wiring).
+- [ ] Automatic support placement refinement - overhang detection already
+      computes shadow triangles; add progressive support-pillar placement
+      based on stability metric, not just "everything overhanging gets a
+      pillar".
+- [ ] Tree support collision with walls - currently tree branches can
+      clip into walls at near-vertical overhangs.
+
+## PARALLELISM
+- [ ] Worker-pool parallelism across layers - current slicer runs
+      single-threaded in one Web Worker. Big models (1000+ layers) spend
+      most of the time in the per-layer triangle-plane intersection and
+      polygon-clipping calls. Splitting layers across a Worker pool
+      (navigator.hardwareConcurrency workers) should give ~3-4x speedup
+      on modern CPUs. Requires: make Slicer instance state per-worker,
+      serialise geometry once and share via SharedArrayBuffer or
+      postMessage-transfer, collect per-layer SliceResult slices in order.
+
+## Z-SEAM - further work beyond shortest-mode
+- [ ] Layer-to-layer seam continuity - currently each layer's
+      findSeamPosition runs independently, so on a model with multiple
+      convex corners of similar sharpness the seam can jump between them
+      layer-to-layer (visible as a zig-zag seam line). Memoize last
+      layer's seam XY and prefer vertices within some tolerance.
+- [ ] Seam hiding on overhangs - when a seam would land on an unsupported
+      overhang, shift it to the nearest supported vertex so the seam
+      doesn't cause a visible sag.
+- [ ] User-specified XY+radius tolerance - currently zSeamX/Y is a hard
+      target; adding a radius lets users say "anywhere within 2mm of this
+      point" so the seam can still snap to a nearby sharp corner.
+
+## CALIBRATION (partially shipped by Codex)
+- [ ] Flow calibration tower - generates a tower with stepped flow rates
+      per Z band so users can read-off the best flow for their material.
+- [ ] PA / linear-advance calibration pattern
+- [ ] Temperature tower with descending setpoints per band
+
+## MISC
+- [ ] Variable infill density in user-marked regions (paint-on infill)
+- [ ] Custom post-processing scripts (user plugin hooks in G-code pipeline)
+- [ ] Multi-material / multi-extruder support - currently single-nozzle
+      only. Would require tool-change G-code, prime tower, ooze shield.
+- [ ] Non-planar slicing - print on curved beds or 5-axis surfaces.
