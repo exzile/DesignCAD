@@ -1,26 +1,7 @@
 import type {
-  MaterialProfile,
-  PrinterProfile,
-  PrintProfile,
-} from '../../../types/slicer';
+  LayerControlOptions,
+} from '../../../types/slicer-pipeline-layer-controls.types';
 import { fanSpeedToCommandArg } from '../gcode/startEnd';
-
-export interface LayerControlFlags {
-  regularFanHeightFired: boolean;
-  buildVolumeFanHeightFired: boolean;
-}
-
-export interface LayerControlOptions {
-  gcode: string[];
-  layerIndex: number;
-  totalLayers: number;
-  layerZ: number;
-  previousLayerTime: number;
-  printer: PrinterProfile;
-  material: MaterialProfile;
-  print: PrintProfile;
-  flags: LayerControlFlags;
-}
 
 export function applyLayerStartControls({
   gcode,

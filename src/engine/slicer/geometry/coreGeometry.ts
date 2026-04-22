@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import type { Box3 } from 'three';
-import type { Contour, Segment, Triangle } from '../types';
+import type { Contour, Segment, Triangle } from '../../../types/slicer-pipeline.types';
 
 function weldTriangleVertices(triangles: Triangle[]): void {
   const GRID = 1e-3;

@@ -1,20 +1,8 @@
 import * as THREE from 'three';
 
 import type { PrintProfile, SliceMove } from '../../../types/slicer';
-import type { BBox2, Contour, Triangle } from '../types';
-
-interface SupportDeps {
-  pointInContour: (pt: THREE.Vector2, contour: THREE.Vector2[]) => boolean;
-  pointsBBox: (points: THREE.Vector2[]) => BBox2;
-  generateScanLines: (
-    contour: THREE.Vector2[],
-    density: number,
-    lineWidth: number,
-    angle: number,
-    phaseOffset?: number,
-    holes?: THREE.Vector2[][],
-  ) => { from: THREE.Vector2; to: THREE.Vector2 }[];
-}
+import type { SupportDeps } from '../../../types/slicer-pipeline-deps.types';
+import type { Contour, Triangle } from '../../../types/slicer-pipeline.types';
 
 function mergeTreeAnchors(
   anchors: { cx: number; cy: number; topZ: number }[],

@@ -14,7 +14,7 @@
 import { useMemo, useEffect } from 'react';
 import * as THREE from 'three';
 import { useCADStore } from '../../../store/cadStore';
-import { SubdivisionEngine } from '../../../engine/SubdivisionEngine';
+import { SubdivisionEngine } from '../../../engine/subdivisionEngine/SubdivisionEngine';
 import type { FormCage } from '../../../types/cad';
 
 // ─── Materials (per-instance, not shared module-level, so we can dispose them) ──

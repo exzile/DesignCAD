@@ -1,21 +1,8 @@
 import * as THREE from 'three';
 
 import type { PrintProfile, SliceMove } from '../../../types/slicer';
-import type { Contour } from '../types';
-
-interface AdhesionDeps {
-  simplifyClosedContour: (points: THREE.Vector2[], tolerance: number) => THREE.Vector2[];
-  offsetContour: (contour: THREE.Vector2[], offset: number) => THREE.Vector2[];
-  generateScanLines: (
-    contour: THREE.Vector2[],
-    density: number,
-    lineWidth: number,
-    angle: number,
-    phaseOffset?: number,
-    holes?: THREE.Vector2[][],
-  ) => { from: THREE.Vector2; to: THREE.Vector2 }[];
-  sortInfillLines: (lines: { from: THREE.Vector2; to: THREE.Vector2 }[]) => { from: THREE.Vector2; to: THREE.Vector2 }[];
-}
+import type { AdhesionDeps } from '../../../types/slicer-pipeline-deps.types';
+import type { Contour } from '../../../types/slicer-pipeline.types';
 
 export function generateAdhesion(
   contours: Contour[],

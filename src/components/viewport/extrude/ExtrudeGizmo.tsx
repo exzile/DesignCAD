@@ -2,7 +2,7 @@ import { useMemo, useEffect, useRef, useCallback } from 'react';
 import { useThree, useFrame, type ThreeEvent } from '@react-three/fiber';
 import * as THREE from 'three';
 import { useCADStore } from '../../../store/cadStore';
-import { setGizmoDragActive } from '../ExtrudeTool';
+import { setGizmoDragActive } from '../tools/ExtrudeTool';
 import { GeometryEngine } from '../../../engine/GeometryEngine';
 import type { Sketch } from '../../../types/cad';
 import {

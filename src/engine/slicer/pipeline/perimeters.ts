@@ -2,13 +2,8 @@ import * as THREE from 'three';
 import polygonClipping, { type MultiPolygon as PCMultiPolygon, type Ring as PCRing } from 'polygon-clipping';
 
 import type { PrintProfile } from '../../../types/slicer';
-import type { Contour, GeneratedPerimeters, InfillRegion } from '../types';
-
-interface PerimeterDeps {
-  offsetContour: (contour: THREE.Vector2[], offset: number) => THREE.Vector2[];
-  signedArea: (points: THREE.Vector2[]) => number;
-  multiPolygonToRegions: (mp: PCMultiPolygon) => InfillRegion[];
-}
+import type { PerimeterDeps } from '../../../types/slicer-pipeline-deps.types';
+import type { Contour, GeneratedPerimeters, InfillRegion } from '../../../types/slicer-pipeline.types';
 
 function toRing(pts: THREE.Vector2[]): PCRing {
   const ring: PCRing = pts.map((p) => [p.x, p.y] as [number, number]);

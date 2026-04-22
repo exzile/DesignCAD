@@ -3,26 +3,14 @@ import type {
   PrinterProfile,
   PrintProfile,
 } from '../../../types/slicer';
+import type { StartupOptions } from '../../../types/slicer-gcode-startup.types';
 import { resolveGCodeTemplate } from './runtime';
 import {
   dedupeStartGCode,
   fanSpeedToCommandArg,
   restorePostStartModes,
   syncStateFromGCode,
-  type StartEndMachineState,
 } from './startEnd';
-
-export type SlicerGCodeFlavor = 'marlin' | 'reprap' | 'duet' | 'klipper';
-
-export interface StartupOptions {
-  gcode: string[];
-  printer: PrinterProfile;
-  material: MaterialProfile;
-  print: PrintProfile;
-  relativeExtrusion: boolean;
-  flavor: SlicerGCodeFlavor;
-  startEndState: StartEndMachineState;
-}
 
 export function appendHeaderPlaceholders(
   gcode: string[],

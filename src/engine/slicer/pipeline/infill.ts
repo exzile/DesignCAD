@@ -1,19 +1,9 @@
 import * as THREE from 'three';
 import polygonClipping, { type MultiPolygon as PCMultiPolygon, type Ring as PCRing } from 'polygon-clipping';
 import type { PrintProfile } from '../../../types/slicer';
-import type { BBox2, InfillRegion } from '../types';
-
-export interface InfillLine {
-  from: THREE.Vector2;
-  to: THREE.Vector2;
-}
-
-interface InfillDeps {
-  contourBBox: (contour: THREE.Vector2[]) => BBox2;
-  pointInContour: (point: THREE.Vector2, contour: THREE.Vector2[]) => boolean;
-  lineContourIntersections: (p1: THREE.Vector2, p2: THREE.Vector2, contour: THREE.Vector2[]) => number[];
-  offsetContour: (contour: THREE.Vector2[], offset: number) => THREE.Vector2[];
-}
+import type { InfillDeps } from '../../../types/slicer-pipeline-deps.types';
+import type { InfillLine } from '../../../types/slicer-pipeline-infill.types';
+import type { InfillRegion } from '../../../types/slicer-pipeline.types';
 
 function pcRingToV2(ring: PCRing): THREE.Vector2[] {
   const pts: THREE.Vector2[] = [];

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import * as THREE from 'three';
-import { Slicer } from '../engine/Slicer';
+import { Slicer } from '../engine/slicer/Slicer';
 import {
   DEFAULT_MATERIAL_PROFILES,
   DEFAULT_PRINTER_PROFILES,

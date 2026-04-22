@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 
-import type { BBox2 } from '../types';
+import type { BBox2 } from '../../../types/slicer-pipeline.types';
 
 export function signedArea(points: THREE.Vector2[]): number {
   let area = 0;

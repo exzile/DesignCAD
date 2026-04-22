@@ -2,14 +2,9 @@ import type {
   MaterialProfile,
   PrinterProfile,
 } from '../../../types/slicer';
+import type { FinalizedGCodeStats } from '../../../types/slicer-gcode-footer.types';
 import { resolveGCodeTemplate } from './runtime';
 import { dedupeEndGCode } from './startEnd';
-
-export interface FinalizedGCodeStats {
-  estimatedTime: number;
-  filamentWeight: number;
-  filamentCost: number;
-}
 
 export function appendEndGCode(
   gcode: string[],

@@ -1,0 +1,110 @@
+import * as THREE from 'three';
+import type { SlicerGCodeFlavor, StartEndMachineState } from '../../../../../types/slicer-gcode.types';
+import { GCodeEmitter } from '../../../gcode/emitter';
+import { appendHeaderPlaceholders, appendStartGCode } from '../../../gcode/startup';
+
+export function prepareSliceRun(pipeline: any, geometries: { geometry: THREE.BufferGeometry; transform: THREE.Matrix4 }[]) {
+  const pp = pipeline.printProfile;
+  const mat = pipeline.materialProfile;
+  const printer = pipeline.printerProfile;
+  const flavor: SlicerGCodeFlavor = printer.gcodeFlavorType ?? 'marlin';
+
+  pipeline.cancelled = false;
+  pipeline.reportProgress('preparing', 0, 0, 0, 'Extracting triangles...');
+
+  const triangles = pipeline.extractTriangles(geometries);
+  if (triangles.length === 0) throw new Error('No triangles found in provided geometry.');
+
+  const modelBBox = pipeline.computeBBox(triangles);
+  const modelHeight = modelBBox.max.z - modelBBox.min.z;
+  const bedCenterX = printer.originCenter ? 0 : printer.buildVolume.x / 2;
+  const bedCenterY = printer.originCenter ? 0 : printer.buildVolume.y / 2;
+  const modelCenterX = (modelBBox.min.x + modelBBox.max.x) / 2;
+  const modelCenterY = (modelBBox.min.y + modelBBox.max.y) / 2;
+  const offsetX = bedCenterX - modelCenterX;
+  const offsetY = bedCenterY - modelCenterY;
+  const offsetZ = -modelBBox.min.z;
+  const zScale = 1 + (mat.shrinkageCompensationZ ?? 0) / 100;
+
+  let layerZs: number[];
+  if (pp.adaptiveLayersEnabled) {
+    layerZs = pipeline.computeAdaptiveLayerZs(
+      triangles,
+      modelHeight,
+      pp.firstLayerHeight,
+      pp.layerHeight,
+      pp.adaptiveLayersMaxVariation,
+      pp.adaptiveLayersVariationStep,
+      zScale,
+    );
+  } else {
+    layerZs = [];
+    let z = pp.firstLayerHeight;
+    while (z <= modelHeight + 0.0001) {
+      layerZs.push(z * zScale);
+      z += pp.layerHeight;
+    }
+  }
+
+  const totalLayers = layerZs.length;
+  if (totalLayers === 0) throw new Error('Model too thin to slice at the given layer height.');
+
+  const solidBottom = pp.bottomThickness && pp.bottomThickness > 0
+    ? Math.max(1, Math.ceil(pp.bottomThickness / pp.layerHeight))
+    : pp.bottomLayers;
+  const solidTop = pp.topThickness && pp.topThickness > 0
+    ? Math.max(1, Math.ceil(pp.topThickness / pp.layerHeight))
+    : pp.topLayers;
+
+  const gcode: string[] = [];
+  const relativeE = pp.relativeExtrusion ?? false;
+  const emitter = new GCodeEmitter({
+    gcode,
+    printer,
+    material: mat,
+    print: pp,
+    flavor,
+    relativeExtrusion: relativeE,
+  });
+
+  appendHeaderPlaceholders(gcode, printer, mat, pp);
+  appendStartGCode({
+    gcode,
+    printer,
+    material: mat,
+    print: pp,
+    relativeExtrusion: relativeE,
+    flavor,
+    startEndState: emitter.startEndState as StartEndMachineState,
+  });
+
+  return {
+    pp,
+    mat,
+    printer,
+    flavor,
+    triangles,
+    modelBBox,
+    modelHeight,
+    bedCenterX,
+    bedCenterY,
+    offsetX,
+    offsetY,
+    offsetZ,
+    layerZs,
+    totalLayers,
+    solidBottom,
+    solidTop,
+    gcode,
+    emitter,
+    relativeE,
+    layerControlFlags: {
+      regularFanHeightFired: false,
+      buildVolumeFanHeightFired: false,
+    },
+    prevLayerMaterial: [] as any[],
+    bridgeFanActive: false,
+    sliceLayers: [] as any[],
+    totalTime: 0,
+  };
+}

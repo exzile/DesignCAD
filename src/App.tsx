@@ -93,7 +93,7 @@ import { FilletDialog } from './components/dialogs/solid/FilletDialog';
 import { ChamferDialog } from './components/dialogs/solid/ChamferDialog';
 import DirectEditDialog from './components/dialogs/solid/DirectEditDialog';
 import TextureExtrudeDialog from './components/dialogs/solid/TextureExtrudeDialog';
-import ReplaceFacePanel from './components/viewport/ReplaceFacePanel';
+import ReplaceFacePanel from './components/viewport/panels/ReplaceFacePanel';
 import { DecalDialog } from './components/dialogs/insert/DecalDialog';
 import { AttachedCanvasDialog } from './components/dialogs/insert/AttachedCanvasDialog';
 import { FastenerDialog } from './components/dialogs/insert/FastenerDialog';

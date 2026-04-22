@@ -5,7 +5,7 @@
 // and posts back progress and the final result.
 
 import * as THREE from 'three';
-import { Slicer } from '../engine/Slicer';
+import { Slicer } from '../engine/slicer/Slicer';
 import type { SliceProgress, SliceResult } from '../types/slicer';
 
 interface RawGeometry {

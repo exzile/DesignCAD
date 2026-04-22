@@ -1,4 +1,4 @@
-import type { Triangle } from '../types';
+import type { Triangle } from '../../../types/slicer-pipeline.types';
 
 export function computeAdaptiveLayerZs(
   triangles: Triangle[],
