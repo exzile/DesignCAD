@@ -1,31 +1,6 @@
 import * as THREE from 'three';
-
-export interface FaceDef {
-  name: string;
-  normal: [number, number, number];
-  up: [number, number, number];
-  position: [number, number, number];
-  rotation: [number, number, number];
-  size: [number, number];
-}
-
-export interface EdgeDef {
-  name: string;
-  /** Midpoint of the two adjacent face-normals (normalised later) */
-  direction: [number, number, number];
-  up: [number, number, number];
-  position: [number, number, number];
-  rotation: [number, number, number];
-  size: [number, number];
-}
-
-export interface CornerDef {
-  name: string;
-  direction: [number, number, number];
-  up: [number, number, number];
-  position: [number, number, number];
-  size: number;
-}
+import type { FaceDef, EdgeDef, CornerDef } from '../../../../types/viewcube-defs.types';
+export type { FaceDef, EdgeDef, CornerDef } from '../../../../types/viewcube-defs.types';
 
 export const CUBE_SIZE = 1.6;
 export const HALF = CUBE_SIZE / 2;

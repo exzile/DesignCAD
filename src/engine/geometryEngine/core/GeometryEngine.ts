@@ -1,6 +1,4 @@
 import * as THREE from 'three';
-import { mergeVertices } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
-import { SimplifyModifier } from 'three/examples/jsm/modifiers/SimplifyModifier.js';
 import type { Sketch, SketchEntity, SketchPlane } from '../../../types/cad';
 import {
   computePlaneAxesFromNormal as computePlaneAxesFromNormalUtil,
@@ -73,6 +71,11 @@ import {
   extractMeshGeometry as extractMeshGeometryImpl,
   splitByConnectedComponents as splitByConnectedComponentsImpl,
 } from './mesh/meshGeometry';
+import {
+  remesh as remeshImpl,
+  removeFaceAndHeal as removeFaceAndHealImpl,
+  shellMesh as shellMeshImpl,
+} from './mesh/meshEditing';
 import {
   csgIntersect as csgIntersectImpl,
   csgSubtract as csgSubtractImpl,
@@ -772,137 +775,13 @@ export class GeometryEngine {
 
   // ── MSH1 — Remesh ────────────────────────────────────────────────────────
   static remesh(mesh: THREE.Mesh, mode: 'refine' | 'coarsen', iterations: number): THREE.Mesh {
-    if (mode === 'refine') {
-      let geom = mesh.geometry.clone().toNonIndexed();
-      for (let iter = 0; iter < iterations; iter++) {
-        const pos = geom.attributes.position as THREE.BufferAttribute;
-        const newVerts: number[] = [];
-        for (let i = 0; i < pos.count; i += 3) {
-          const a = new THREE.Vector3().fromBufferAttribute(pos, i);
-          const b = new THREE.Vector3().fromBufferAttribute(pos, i + 1);
-          const c = new THREE.Vector3().fromBufferAttribute(pos, i + 2);
-          const ab = a.clone().add(b).multiplyScalar(0.5);
-          const bc = b.clone().add(c).multiplyScalar(0.5);
-          const ca = c.clone().add(a).multiplyScalar(0.5);
-          for (const [x, y, z] of [[a, ab, ca], [ab, b, bc], [ca, bc, c], [ab, bc, ca]] as [THREE.Vector3, THREE.Vector3, THREE.Vector3][]) {
-            newVerts.push(x.x, x.y, x.z, y.x, y.y, y.z, z.x, z.y, z.z);
-          }
-        }
-        geom = new THREE.BufferGeometry();
-        geom.setAttribute('position', new THREE.BufferAttribute(new Float32Array(newVerts), 3));
-      }
-      geom.computeVertexNormals();
-      const result = new THREE.Mesh(geom, mesh.material);
-      result.userData = { ...mesh.userData };
-      return result;
-    } else {
-      // Coarsen → decimate via quadric edge-collapse (three.js SimplifyModifier).
-      // Previous implementation called smoothMesh instead, which only perturbed
-      // vertex positions and never reduced triangle count — the feature
-      // silently did the wrong thing.
-      //
-      // Remove 20% of triangles per iteration, clamped to a minimum triangle
-      // count so we never collapse the mesh to nothing. SimplifyModifier
-      // requires a merged (indexed) geometry; non-indexed input has every
-      // vertex duplicated at triangle seams which blocks edge collapse.
-      const srcNI = mesh.geometry.clone();
-      const merged = srcNI.index ? srcNI : mergeVertices(srcNI, 1e-4);
-      if (!srcNI.index) srcNI.dispose();
-      const modifier = new SimplifyModifier();
-      let cur = merged;
-      for (let iter = 0; iter < iterations; iter++) {
-        const pos = cur.attributes.position as THREE.BufferAttribute;
-        const vertCount = pos.count;
-        // Target 20% reduction, but keep at least 60 vertices so we don't
-        // obliterate the mesh on a large iteration count.
-        const remove = Math.max(0, Math.min(vertCount - 60, Math.floor(vertCount * 0.2)));
-        if (remove < 3) break; // nothing meaningful left to simplify
-        const next = modifier.modify(cur, remove);
-        if (cur !== merged) cur.dispose();
-        cur = next;
-      }
-      cur.computeVertexNormals();
-      // `merged` and `cur` may be the same reference on iter-0 early-break.
-      if (cur === merged) {
-        const result = new THREE.Mesh(cur, mesh.material);
-        result.userData = { ...mesh.userData };
-        return result;
-      }
-      merged.dispose();
-      const result = new THREE.Mesh(cur, mesh.material);
-      result.userData = { ...mesh.userData };
-      return result;
-    }
+    return remeshImpl(mesh, mode, iterations);
   }
 
   // ── PL1 — Boss ───────────────────────────────────────────────────────────
   // ── SLD10 — Shell ────────────────────────────────────────────────────────
   static shellMesh(mesh: THREE.Mesh, thickness: number, direction: 'inward' | 'outward' | 'symmetric'): THREE.Mesh {
-    const inwardDist = direction === 'outward' ? 0 : -thickness;
-
-    // Get outer geometry (clone of original) and weld coincident vertices.
-    // Shelling MUST use welded vertices so the offset is applied using each
-    // position's averaged normal, not a per-triangle face normal. The old
-    // implementation called `toNonIndexed()` first → every triangle kept its
-    // own copy of every shared corner vertex, and `computeVertexNormals`
-    // then gave each triangle its own face normal (not averaged). Offsetting
-    // along those opens seams between adjacent triangles — the classic
-    // "torn shell" failure mode. Merging vertices up front fixes it.
-    let outerGeom = mesh.geometry.clone();
-    outerGeom.applyMatrix4(mesh.matrixWorld);
-    // Drop pre-existing normals so mergeVertices can unify by position alone.
-    outerGeom.deleteAttribute('normal');
-    outerGeom = mergeVertices(outerGeom, 1e-4);
-    outerGeom.computeVertexNormals();
-
-    // Build inner shell: offset every unique welded vertex along its
-    // averaged normal. Because the geometry is indexed with shared corner
-    // vertices, every triangle sharing a corner sees the same offset and
-    // the shell stays watertight.
-    const innerGeom = outerGeom.clone();
-    const innerPos = innerGeom.attributes.position as THREE.BufferAttribute;
-    const innerNorm = innerGeom.attributes.normal as THREE.BufferAttribute;
-    for (let i = 0; i < innerPos.count; i++) {
-      const nx = innerNorm.getX(i), ny = innerNorm.getY(i), nz = innerNorm.getZ(i);
-      innerPos.setXYZ(i,
-        innerPos.getX(i) + nx * inwardDist,
-        innerPos.getY(i) + ny * inwardDist,
-        innerPos.getZ(i) + nz * inwardDist,
-      );
-    }
-    innerPos.needsUpdate = true;
-
-    // Flip inner shell winding — reverse each triangle's index order.
-    if (innerGeom.index) {
-      const idx = innerGeom.index;
-      for (let i = 0; i < idx.count; i += 3) {
-        const a = idx.getX(i + 1);
-        idx.setX(i + 1, idx.getX(i + 2));
-        idx.setX(i + 2, a);
-      }
-      idx.needsUpdate = true;
-    }
-    innerGeom.computeVertexNormals();
-
-    // Merge outer + inner into one non-indexed geometry (simpler than
-    // concatenating two indexed geometries with offset indices).
-    const outerNI = outerGeom.toNonIndexed();
-    const innerNI = innerGeom.toNonIndexed();
-    outerGeom.dispose();
-    innerGeom.dispose();
-    const outerArr = outerNI.attributes.position.array as Float32Array;
-    const innerArr = innerNI.attributes.position.array as Float32Array;
-    const combined = new Float32Array(outerArr.length + innerArr.length);
-    combined.set(outerArr, 0);
-    combined.set(innerArr, outerArr.length);
-    outerNI.dispose();
-    innerNI.dispose();
-    const geom = new THREE.BufferGeometry();
-    geom.setAttribute('position', new THREE.BufferAttribute(combined, 3));
-    geom.computeVertexNormals();
-    const result = new THREE.Mesh(geom, mesh.material);
-    result.userData = { ...mesh.userData };
-    return result;
+    return shellMeshImpl(mesh, thickness, direction);
   }
 
   // ── SLD11 — Draft ────────────────────────────────────────────────────────
@@ -915,46 +794,9 @@ export class GeometryEngine {
     mesh: THREE.Mesh,
     faceNormal: THREE.Vector3,
     faceCentroid: THREE.Vector3,
-    // `normalTolRad` is the maximum angular difference (in radians) between a
-    // triangle's normal and the target face normal for it to count as
-    // "coplanar". The previous default of 0.1 was applied as `dot > 1 - 0.1`,
-    // i.e. cos(θ) > 0.9 → any triangle within ~26° matched, which on a
-    // curved fillet collected every triangle of the fillet and deleted too
-    // much. 2° matches real flat faces without catching adjacent curvature.
     normalTolRad: number = 2 * Math.PI / 180,
   ): THREE.Mesh {
-    const geom = mesh.geometry.clone().toNonIndexed();
-    geom.applyMatrix4(mesh.matrixWorld);
-    const pos = geom.attributes.position as THREE.BufferAttribute;
-    const n = faceNormal.clone().normalize();
-    const cosMin = Math.cos(normalTolRad);
-    // Test "same plane" by comparing the plane-equation offset (n·p = d) of
-    // each triangle to the target face's offset. This is the correct planar-
-    // coplanarity test — previous centroid-distance check was scaled by the
-    // mesh bounding sphere and was too tight for geometries whose face spans
-    // most of the bounding box (a simple box's +Y face triangle centroids
-    // sit ~sqrt(2) from the face centroid, far beyond 5% of the radius).
-    if (!geom.boundingSphere) geom.computeBoundingSphere();
-    const planeTol = Math.max(0.01, (geom.boundingSphere?.radius ?? 1) * 0.02);
-    const planeOffset = n.dot(faceCentroid);
-
-    const keptVerts: number[] = [];
-    for (let i = 0; i < pos.count; i += 3) {
-      const a = new THREE.Vector3().fromBufferAttribute(pos, i);
-      const b = new THREE.Vector3().fromBufferAttribute(pos, i + 1);
-      const c = new THREE.Vector3().fromBufferAttribute(pos, i + 2);
-      const triN = new THREE.Vector3().crossVectors(b.clone().sub(a), c.clone().sub(a)).normalize();
-      const triCen = a.clone().add(b).add(c).divideScalar(3);
-      const sameNormal = triN.dot(n) > cosMin;
-      const samePlane = Math.abs(n.dot(triCen) - planeOffset) < planeTol;
-      if (sameNormal && samePlane) continue;
-      keptVerts.push(a.x, a.y, a.z, b.x, b.y, b.z, c.x, c.y, c.z);
-    }
-
-    const tempGeom = new THREE.BufferGeometry();
-    tempGeom.setAttribute('position', new THREE.BufferAttribute(new Float32Array(keptVerts), 3));
-    const tempMesh = new THREE.Mesh(tempGeom, mesh.material);
-    return this.makeClosedMesh(tempMesh);
+    return removeFaceAndHealImpl(mesh, faceNormal, faceCentroid, normalTolRad);
   }
 
   // ── MSH9 — Mesh Align ────────────────────────────────────────────────────

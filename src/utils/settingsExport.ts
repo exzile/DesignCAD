@@ -12,6 +12,9 @@
 
 import { updateDuetPrefs, type DuetPrefs } from './duetPrefs';
 import { useCADStore } from '../store/cadStore';
+import type { ImportResult } from '../types/settings-io.types';
+
+export type { ImportResult } from '../types/settings-io.types';
 import { usePrinterStore } from '../store/printerStore';
 import { useSlicerStore } from '../store/slicerStore';
 import { useThemeStore } from '../store/themeStore';
@@ -143,13 +146,6 @@ export function downloadSettings(): void {
 // ---------------------------------------------------------------------------
 // Import
 // ---------------------------------------------------------------------------
-
-export interface ImportResult {
-  ok: boolean;
-  appliedSections: string[];
-  warnings: string[];
-  error?: string;
-}
 
 export function applySettings(raw: unknown): ImportResult {
   const result: ImportResult = { ok: false, appliedSections: [], warnings: [] };

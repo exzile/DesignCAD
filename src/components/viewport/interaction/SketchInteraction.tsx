@@ -1,15 +1,17 @@
 import { useEffect, useRef, useState, useCallback } from 'react';
 import { useThree, useFrame } from '@react-three/fiber';
-import { Html } from '@react-three/drei';
 import * as THREE from 'three';
 import { useCADStore } from '../../../store/cadStore';
 import { useThemeStore } from '../../../store/themeStore';
 import { GeometryEngine } from '../../../engine/GeometryEngine';
-import type { SketchPoint, SketchEntity, ConstraintType, SketchConstraint } from '../../../types/cad';
+import type { SketchPoint } from '../../../types/cad';
 import { commitSketchTool } from './sketchInteraction/commitTool';
 import { renderSketchPreview } from './sketchInteraction/previewTool';
 import { loadDefaultFont, fontPathToSegments } from '../../../utils/sketchTextUtil';
-import { DimensionEngine } from '../../../engine/DimensionEngine';
+import { useSketchProjectionTools } from './sketchInteraction/hooks/useSketchProjectionTools';
+import { useSketchDimensionTool } from './sketchInteraction/hooks/useSketchDimensionTool';
+import { useSketchConstraintTool } from './sketchInteraction/hooks/useSketchConstraintTool';
+import { SketchInteractionHud } from './sketchInteraction/SketchInteractionHud';
 
 export default function SketchInteraction() {
   const { camera, gl, raycaster, scene } = useThree();
@@ -59,12 +61,10 @@ export default function SketchInteraction() {
   const dimensionToleranceMode = useCADStore((s) => s.dimensionToleranceMode);
   const dimensionToleranceUpper = useCADStore((s) => s.dimensionToleranceUpper);
   const dimensionToleranceLower = useCADStore((s) => s.dimensionToleranceLower);
-  const pendingDimensionEntityIds = useCADStore((s) => s.pendingDimensionEntityIds);
   const addPendingDimensionEntity = useCADStore((s) => s.addPendingDimensionEntity);
   const addSketchDimension = useCADStore((s) => s.addSketchDimension);
   const cancelDimensionTool = useCADStore((s) => s.cancelDimensionTool);
   // D52: Constraint tool state
-  const constraintSelection = useCADStore((s) => s.constraintSelection);
   const addToConstraintSelection = useCADStore((s) => s.addToConstraintSelection);
   const clearConstraintSelection = useCADStore((s) => s.clearConstraintSelection);
   const addSketchConstraint = useCADStore((s) => s.addSketchConstraint);
@@ -343,6 +343,49 @@ export default function SketchInteraction() {
     if (hit) return snapToGrid(intersection);
     return null;
   }, [camera, gl, raycaster, getSketchPlane, snapToGrid]);
+
+  useSketchProjectionTools({
+    activeTool,
+    activeSketch,
+    camera,
+    gl,
+    raycaster,
+    scene,
+    addSketchEntity,
+    setStatusMessage,
+    projectLiveLink,
+    cancelSketchProjectSurfaceTool,
+  });
+
+  useSketchDimensionTool({
+    activeTool,
+    activeSketch,
+    activeDimensionType,
+    dimensionOffset,
+    dimensionDrivenMode,
+    dimensionOrientation,
+    dimensionToleranceMode,
+    dimensionToleranceUpper,
+    dimensionToleranceLower,
+    addPendingDimensionEntity,
+    addSketchDimension,
+    cancelDimensionTool,
+    getWorldPoint,
+    setStatusMessage,
+    gl,
+  });
+
+  useSketchConstraintTool({
+    activeTool,
+    activeSketch,
+    addToConstraintSelection,
+    clearConstraintSelection,
+    addSketchConstraint,
+    setActiveTool,
+    getWorldPoint,
+    setStatusMessage,
+    gl,
+  });
 
   useEffect(() => {
     if (!activeSketch || activeTool === 'select') return;
@@ -848,622 +891,6 @@ export default function SketchInteraction() {
     // burned CPU and silently dropped events arriving mid-teardown.
   }, [activeSketch, activeTool, getWorldPoint, findSnapCandidate, addSketchEntity, replaceSketchEntities, cycleEntityLinetype, setStatusMessage, polygonSides, filletRadius, chamferDist1, chamferDist2, chamferAngle, tangentCircleRadius, conicRho, blendCurveMode, camera, gl, raycaster, sketch3DMode, setSketch3DActivePlane, scene]);
 
-  // D14: Project / Include Geometry — pick a solid face, project its boundary onto the sketch plane
-  useEffect(() => {
-    if (!activeSketch || activeTool !== 'sketch-project') return;
-    if (!gl || !camera || !raycaster) return;
-
-    const _mouse = new THREE.Vector2();
-
-    const collectMeshes = (): THREE.Mesh[] => {
-      const out: THREE.Mesh[] = [];
-      scene.traverse((obj) => {
-        const m = obj as THREE.Mesh;
-        if (m.isMesh && obj.userData?.pickable) out.push(m);
-      });
-      return out;
-    };
-
-    const handleMove = (e: PointerEvent) => {
-      const rect = gl.domElement.getBoundingClientRect();
-      _mouse.set(
-        ((e.clientX - rect.left) / rect.width) * 2 - 1,
-        -((e.clientY - rect.top) / rect.height) * 2 + 1,
-      );
-      raycaster.setFromCamera(_mouse, camera);
-      const hits = raycaster.intersectObjects(collectMeshes(), false);
-      if (hits.length > 0 && hits[0].faceIndex !== undefined) {
-        setStatusMessage(projectLiveLink
-          ? 'Click a face to include geometry (live-linked)'
-          : 'Click a face to project geometry (one-time)');
-      } else {
-        setStatusMessage('Project: hover over a solid face to project its outline');
-      }
-    };
-
-    const handleClick = (e: MouseEvent) => {
-      if (e.button !== 0) return;
-      const rect = gl.domElement.getBoundingClientRect();
-      _mouse.set(
-        ((e.clientX - rect.left) / rect.width) * 2 - 1,
-        -((e.clientY - rect.top) / rect.height) * 2 + 1,
-      );
-      raycaster.setFromCamera(_mouse, camera);
-      const hits = raycaster.intersectObjects(collectMeshes(), false);
-      if (!hits.length || hits[0].faceIndex === undefined) return;
-
-      const hit = hits[0];
-      const result = GeometryEngine.computeCoplanarFaceBoundary(hit.object as THREE.Mesh, hit.faceIndex!);
-      if (!result || result.boundary.length < 2) return;
-
-      // Project each boundary point onto the active sketch plane
-      const origin = activeSketch.planeOrigin;
-      const normal = activeSketch.planeNormal.clone().normalize();
-
-      const projectToSketchPlane = (pt: THREE.Vector3): THREE.Vector3 => {
-        // Remove the component along the plane normal (project onto plane)
-        const diff = pt.clone().sub(origin);
-        const dist = diff.dot(normal);
-        return pt.clone().sub(normal.clone().multiplyScalar(dist));
-      };
-
-      const projectedPts = result.boundary.map(projectToSketchPlane);
-
-      // Build line entities from consecutive projected points (closed loop)
-      const pts = [...projectedPts, projectedPts[0]]; // close the loop
-      for (let i = 0; i < pts.length - 1; i++) {
-        const a = pts[i];
-        const b = pts[i + 1];
-        if (a.distanceTo(b) < 0.001) continue; // skip degenerate segments
-        const entity: SketchEntity = {
-          id: crypto.randomUUID(),
-          type: 'line',
-          linked: projectLiveLink, // D45: true = Include (live-link), false = Project (one-time copy)
-          points: [
-            { id: crypto.randomUUID(), x: a.x, y: a.y, z: a.z },
-            { id: crypto.randomUUID(), x: b.x, y: b.y, z: b.z },
-          ],
-        };
-        addSketchEntity(entity);
-      }
-      setStatusMessage(`Projected ${projectedPts.length} points onto sketch — use Break Link to detach`);
-    };
-
-    const canvas = gl.domElement;
-    canvas.addEventListener('pointermove', handleMove);
-    canvas.addEventListener('click', handleClick);
-    return () => {
-      canvas.removeEventListener('pointermove', handleMove);
-      canvas.removeEventListener('click', handleClick);
-    };
-  }, [activeTool, activeSketch, gl, camera, raycaster, scene, addSketchEntity, setStatusMessage, projectLiveLink]);
-
-  // S3: Intersection Curve — click a solid face, compute the plane/mesh intersection, add as line entities
-  useEffect(() => {
-    if (!activeSketch || activeTool !== 'sketch-intersect') return;
-    if (!gl || !camera || !raycaster) return;
-
-    const _mouse = new THREE.Vector2();
-
-    const collectMeshes = (): THREE.Mesh[] => {
-      const out: THREE.Mesh[] = [];
-      scene.traverse((obj) => {
-        const m = obj as THREE.Mesh;
-        if (m.isMesh && obj.userData?.pickable) out.push(m);
-      });
-      return out;
-    };
-
-    const handleMove = (e: PointerEvent) => {
-      const rect = gl.domElement.getBoundingClientRect();
-      _mouse.set(
-        ((e.clientX - rect.left) / rect.width) * 2 - 1,
-        -((e.clientY - rect.top) / rect.height) * 2 + 1,
-      );
-      raycaster.setFromCamera(_mouse, camera);
-      const hits = raycaster.intersectObjects(collectMeshes(), false);
-      if (hits.length > 0) {
-        setStatusMessage('Click to create intersection curve with sketch plane');
-      } else {
-        setStatusMessage('Intersect: hover over a solid face');
-      }
-    };
-
-    const handleClick = (e: MouseEvent) => {
-      if (e.button !== 0) return;
-      const rect = gl.domElement.getBoundingClientRect();
-      _mouse.set(
-        ((e.clientX - rect.left) / rect.width) * 2 - 1,
-        -((e.clientY - rect.top) / rect.height) * 2 + 1,
-      );
-      raycaster.setFromCamera(_mouse, camera);
-      const hits = raycaster.intersectObjects(collectMeshes(), false);
-      if (!hits.length) return;
-
-      const mesh = hits[0].object as THREE.Mesh;
-      const normal = activeSketch.planeNormal.clone().normalize();
-      const origin = activeSketch.planeOrigin.clone();
-      const sketchPlane = new THREE.Plane().setFromNormalAndCoplanarPoint(normal, origin);
-
-      const polylines = GeometryEngine.computePlaneIntersectionCurve(mesh, sketchPlane);
-      if (!polylines.length) {
-        setStatusMessage('No intersection found with sketch plane');
-        return;
-      }
-
-      let segCount = 0;
-      for (const polyline of polylines) {
-        for (let i = 0; i < polyline.length - 1; i++) {
-          const a = polyline[i];
-          const b = polyline[i + 1];
-          if (a.distanceTo(b) < 0.001) continue;
-          const entity: SketchEntity = {
-            id: crypto.randomUUID(),
-            type: 'line',
-            points: [
-              { id: crypto.randomUUID(), x: a.x, y: a.y, z: a.z },
-              { id: crypto.randomUUID(), x: b.x, y: b.y, z: b.z },
-            ],
-          };
-          addSketchEntity(entity);
-          segCount++;
-        }
-      }
-      setStatusMessage(`Intersection curve added: ${segCount} segment${segCount !== 1 ? 's' : ''}`);
-    };
-
-    const canvas = gl.domElement;
-    canvas.addEventListener('pointermove', handleMove);
-    canvas.addEventListener('click', handleClick);
-    return () => {
-      canvas.removeEventListener('pointermove', handleMove);
-      canvas.removeEventListener('click', handleClick);
-    };
-  }, [activeTool, activeSketch, gl, camera, raycaster, scene, addSketchEntity, setStatusMessage]);
-
-  // D46: Project to Surface — click a body face, project all sketch line entities onto that mesh surface
-  useEffect(() => {
-    if (!activeSketch || activeTool !== 'sketch-project-surface') return;
-    if (!gl || !camera || !raycaster) return;
-
-    const _mouse = new THREE.Vector2();
-
-    const collectMeshes = (): THREE.Mesh[] => {
-      const out: THREE.Mesh[] = [];
-      scene.traverse((obj) => {
-        const m = obj as THREE.Mesh;
-        if (m.isMesh && obj.userData?.pickable) out.push(m);
-      });
-      return out;
-    };
-
-    const handleMove = (e: PointerEvent) => {
-      const rect = gl.domElement.getBoundingClientRect();
-      _mouse.set(
-        ((e.clientX - rect.left) / rect.width) * 2 - 1,
-        -((e.clientY - rect.top) / rect.height) * 2 + 1,
-      );
-      raycaster.setFromCamera(_mouse, camera);
-      const hits = raycaster.intersectObjects(collectMeshes(), false);
-      if (hits.length > 0) {
-        setStatusMessage('Click to project sketch curves onto this surface');
-      } else {
-        setStatusMessage('Project to Surface: hover over a body face');
-      }
-    };
-
-    const handleClick = (e: MouseEvent) => {
-      if (e.button !== 0) return;
-      const rect = gl.domElement.getBoundingClientRect();
-      _mouse.set(
-        ((e.clientX - rect.left) / rect.width) * 2 - 1,
-        -((e.clientY - rect.top) / rect.height) * 2 + 1,
-      );
-      raycaster.setFromCamera(_mouse, camera);
-      const hits = raycaster.intersectObjects(collectMeshes(), false);
-      if (!hits.length) return;
-
-      const mesh = hits[0].object as THREE.Mesh;
-
-      let segCount = 0;
-      for (const entity of activeSketch.entities) {
-        if (entity.type !== 'line') continue;
-        if (entity.points.length < 2) continue;
-
-        // Extract 3D endpoint positions
-        const pts3d = entity.points.map(
-          (p) => new THREE.Vector3(p.x, p.y, p.z),
-        );
-
-        // Project endpoints onto mesh surface
-        const projected = GeometryEngine.projectPointsOntoMesh(pts3d, mesh);
-
-        // Discretize along surface to follow curvature
-        const refined = GeometryEngine.discretizeCurveOnSurface(projected, mesh, 0.5, 3);
-
-        // Build line entities from the refined polyline
-        for (let i = 0; i < refined.length - 1; i++) {
-          const a = refined[i];
-          const b = refined[i + 1];
-          if (a.distanceTo(b) < 0.001) continue;
-          const newEntity: SketchEntity = {
-            id: crypto.randomUUID(),
-            type: 'line',
-            points: [
-              { id: crypto.randomUUID(), x: a.x, y: a.y, z: a.z },
-              { id: crypto.randomUUID(), x: b.x, y: b.y, z: b.z },
-            ],
-          };
-          addSketchEntity(newEntity);
-          segCount++;
-        }
-      }
-
-      setStatusMessage(`Projected ${segCount} segment${segCount !== 1 ? 's' : ''} onto surface`);
-      cancelSketchProjectSurfaceTool();
-    };
-
-    const canvas = gl.domElement;
-    canvas.addEventListener('pointermove', handleMove);
-    canvas.addEventListener('click', handleClick);
-    return () => {
-      canvas.removeEventListener('pointermove', handleMove);
-      canvas.removeEventListener('click', handleClick);
-    };
-  }, [activeTool, activeSketch, gl, camera, raycaster, scene, addSketchEntity, setStatusMessage, cancelSketchProjectSurfaceTool]);
-
-  // D28: Dimension tool — click-to-place interaction
-  useEffect(() => {
-    if (!activeSketch || activeTool !== 'dimension') return;
-    if (!gl) return;
-
-    // Get 2D sketch-space coords from a 3D world point using sketch axes
-    const { t1, t2 } = GeometryEngine.getSketchAxes(activeSketch);
-    const origin = activeSketch.planeOrigin;
-    const to2D = (wp: THREE.Vector3): { x: number; y: number } => {
-      const d = wp.clone().sub(origin);
-      return { x: d.dot(t1), y: d.dot(t2) };
-    };
-
-    // Find the closest sketch entity to a given 3D world point (within 2 model units)
-    const ENTITY_PICK_RADIUS = 2;
-    const findNearestEntity = (worldPt: THREE.Vector3): typeof activeSketch.entities[0] | null => {
-      let best: typeof activeSketch.entities[0] | null = null;
-      let bestDist = ENTITY_PICK_RADIUS;
-      for (const e of activeSketch.entities) {
-        if (e.type === 'line' || e.type === 'construction-line' || e.type === 'centerline') {
-          if (e.points.length < 2) continue;
-          const a = new THREE.Vector3(e.points[0].x, e.points[0].y, e.points[0].z);
-          const b = new THREE.Vector3(e.points[e.points.length - 1].x, e.points[e.points.length - 1].y, e.points[e.points.length - 1].z);
-          // Distance from worldPt to the line segment a→b
-          const ab = b.clone().sub(a);
-          const abLen = ab.length();
-          if (abLen < 1e-8) continue;
-          const t = Math.max(0, Math.min(1, worldPt.clone().sub(a).dot(ab) / (abLen * abLen)));
-          const closest = a.clone().add(ab.clone().multiplyScalar(t));
-          const d = worldPt.distanceTo(closest);
-          if (d < bestDist) { bestDist = d; best = e; }
-        } else if (e.type === 'circle' || e.type === 'arc') {
-          if (e.points.length < 1 || !e.radius) continue;
-          const center = new THREE.Vector3(e.points[0].x, e.points[0].y, e.points[0].z);
-          // Distance from worldPt to the circle/arc perimeter
-          const distToCenter = worldPt.distanceTo(center);
-          const d = Math.abs(distToCenter - e.radius);
-          if (d < bestDist) { bestDist = d; best = e; }
-        }
-      }
-      return best;
-    };
-
-    const handleClick = (e: MouseEvent) => {
-      if (e.button !== 0) return;
-      const worldPt = getWorldPoint(e);
-      if (!worldPt) return;
-
-      if (activeDimensionType === 'angular') {
-        setStatusMessage('Angular dimensions coming soon');
-        return;
-      }
-
-      if (activeDimensionType === 'linear') {
-        const entity = findNearestEntity(worldPt);
-        if (!entity) {
-          setStatusMessage('Dimension: click closer to a line entity');
-          return;
-        }
-
-        const currentPending = useCADStore.getState().pendingDimensionEntityIds;
-
-        if (currentPending.length === 0) {
-          // First click — register first entity
-          addPendingDimensionEntity(entity.id);
-          setStatusMessage('Dimension: click a second line or point to complete');
-          return;
-        }
-
-        // Second click — complete dimension
-        const firstId = currentPending[0];
-        const firstEntity = activeSketch.entities.find((en) => en.id === firstId);
-        const secondEntity = entity;
-
-        if (!firstEntity || firstEntity.points.length < 2) {
-          setStatusMessage('Dimension: first entity is invalid, please try again');
-          useCADStore.setState({ pendingDimensionEntityIds: [] });
-          return;
-        }
-
-        // Use endpoints of the first entity as the measurement points
-        const p1World = new THREE.Vector3(firstEntity.points[0].x, firstEntity.points[0].y, firstEntity.points[0].z);
-        const p2World = new THREE.Vector3(
-          firstEntity.points[firstEntity.points.length - 1].x,
-          firstEntity.points[firstEntity.points.length - 1].y,
-          firstEntity.points[firstEntity.points.length - 1].z,
-        );
-        const p1 = to2D(p1World);
-        const p2 = to2D(p2World);
-
-        const dim = DimensionEngine.computeLinearDimension(p1, p2, dimensionOffset);
-
-        addSketchDimension({
-          id: crypto.randomUUID(),
-          type: 'linear',
-          entityIds: [firstId, secondEntity.id],
-          value: dim.value,
-          position: dim.textPosition,
-          driven: dimensionDrivenMode,
-          orientation: dimensionOrientation,
-          ...(dimensionToleranceMode !== 'none' && { toleranceUpper: dimensionToleranceUpper, toleranceLower: dimensionToleranceLower }),
-        });
-
-        useCADStore.setState({ pendingDimensionEntityIds: [] });
-        setStatusMessage(`Linear dimension added: ${dim.value.toFixed(2)}`);
-        return;
-      }
-
-      if (activeDimensionType === 'radial') {
-        const entity = findNearestEntity(worldPt);
-        if (!entity || (entity.type !== 'circle' && entity.type !== 'arc') || !entity.radius) {
-          setStatusMessage('Dimension: click on a circle or arc');
-          return;
-        }
-        const center = entity.points[0];
-        const startAngle = entity.startAngle ?? 0;
-        const endAngle = entity.endAngle ?? (2 * Math.PI);
-        const cx2d = to2D(new THREE.Vector3(center.x, center.y, center.z));
-        const dim = DimensionEngine.computeArcLengthDimension(cx2d.x, cx2d.y, entity.radius, startAngle, endAngle, dimensionOffset);
-
-        addSketchDimension({
-          id: crypto.randomUUID(),
-          type: 'radial',
-          entityIds: [entity.id],
-          value: entity.radius,
-          position: dim.textPosition,
-          driven: dimensionDrivenMode,
-          ...(dimensionToleranceMode !== 'none' && { toleranceUpper: dimensionToleranceUpper, toleranceLower: dimensionToleranceLower }),
-        });
-        setStatusMessage(`Radial dimension added: r=${entity.radius.toFixed(2)}`);
-        return;
-      }
-
-      if (activeDimensionType === 'diameter') {
-        const entity = findNearestEntity(worldPt);
-        if (!entity || entity.type !== 'circle' || !entity.radius) {
-          setStatusMessage('Dimension: click on a circle');
-          return;
-        }
-        const center = entity.points[0];
-        const cx2d = to2D(new THREE.Vector3(center.x, center.y, center.z));
-        const dim = DimensionEngine.computeDiameterDimension(cx2d.x, cx2d.y, entity.radius, 0);
-
-        addSketchDimension({
-          id: crypto.randomUUID(),
-          type: 'diameter',
-          entityIds: [entity.id],
-          value: dim.value,
-          position: dim.textPosition,
-          driven: dimensionDrivenMode,
-          ...(dimensionToleranceMode !== 'none' && { toleranceUpper: dimensionToleranceUpper, toleranceLower: dimensionToleranceLower }),
-        });
-        setStatusMessage(`Diameter dimension added: ⌀${dim.value.toFixed(2)}`);
-        return;
-      }
-
-      if (activeDimensionType === 'arc-length') {
-        const entity = findNearestEntity(worldPt);
-        if (!entity || (entity.type !== 'arc' && entity.type !== 'circle') || !entity.radius) {
-          setStatusMessage('Arc Length: click on an arc or circle');
-          return;
-        }
-        const center = entity.points[0];
-        const cx2d = to2D(new THREE.Vector3(center.x, center.y, center.z));
-        const startAngle = entity.startAngle ?? 0;
-        const endAngle = entity.endAngle ?? (2 * Math.PI);
-        const dim = DimensionEngine.computeArcLengthDimension(cx2d.x, cx2d.y, entity.radius, startAngle, endAngle, dimensionOffset);
-
-        addSketchDimension({
-          id: crypto.randomUUID(),
-          type: 'arc-length',
-          entityIds: [entity.id],
-          value: dim.value,
-          position: dim.textPosition,
-          driven: dimensionDrivenMode,
-          ...(dimensionToleranceMode !== 'none' && { toleranceUpper: dimensionToleranceUpper, toleranceLower: dimensionToleranceLower }),
-        });
-        setStatusMessage(`Arc length dimension added: ${dim.value.toFixed(2)}`);
-        return;
-      }
-
-      if (activeDimensionType === 'aligned') {
-        const entity = findNearestEntity(worldPt);
-        if (!entity) {
-          setStatusMessage('Aligned: click closer to a line entity');
-          return;
-        }
-
-        const currentPending = useCADStore.getState().pendingDimensionEntityIds;
-
-        if (currentPending.length === 0) {
-          addPendingDimensionEntity(entity.id);
-          setStatusMessage('Aligned: click a second entity to complete');
-          return;
-        }
-
-        const firstId = currentPending[0];
-        const firstEntity = activeSketch.entities.find((en) => en.id === firstId);
-        const secondEntity = entity;
-
-        if (!firstEntity || firstEntity.points.length < 2) {
-          setStatusMessage('Aligned: first entity is invalid, please try again');
-          useCADStore.setState({ pendingDimensionEntityIds: [] });
-          return;
-        }
-
-        const p1World = new THREE.Vector3(firstEntity.points[0].x, firstEntity.points[0].y, firstEntity.points[0].z);
-        const p2World = new THREE.Vector3(
-          firstEntity.points[firstEntity.points.length - 1].x,
-          firstEntity.points[firstEntity.points.length - 1].y,
-          firstEntity.points[firstEntity.points.length - 1].z,
-        );
-        const p1 = to2D(p1World);
-        const p2 = to2D(p2World);
-
-        const dim = DimensionEngine.computeAlignedDimension(p1, p2, dimensionOffset);
-
-        addSketchDimension({
-          id: crypto.randomUUID(),
-          type: 'aligned',
-          entityIds: [firstId, secondEntity.id],
-          value: dim.value,
-          position: dim.textPosition,
-          driven: dimensionDrivenMode,
-          ...(dimensionToleranceMode !== 'none' && { toleranceUpper: dimensionToleranceUpper, toleranceLower: dimensionToleranceLower }),
-        });
-
-        useCADStore.setState({ pendingDimensionEntityIds: [] });
-        setStatusMessage(`Aligned dimension added: ${dim.value.toFixed(2)}`);
-        return;
-      }
-    };
-
-    const handleKeyDown = (ev: KeyboardEvent) => {
-      if (ev.key === 'Escape') cancelDimensionTool();
-    };
-
-    const canvas = gl.domElement;
-    canvas.addEventListener('click', handleClick);
-    window.addEventListener('keydown', handleKeyDown);
-    return () => {
-      canvas.removeEventListener('click', handleClick);
-      window.removeEventListener('keydown', handleKeyDown);
-    };
-  }, [activeTool, activeSketch, activeDimensionType, dimensionOffset, dimensionDrivenMode, dimensionOrientation, dimensionToleranceMode, dimensionToleranceUpper, dimensionToleranceLower, pendingDimensionEntityIds, addPendingDimensionEntity, addSketchDimension, cancelDimensionTool, getWorldPoint, setStatusMessage, gl]);
-
-  // D52: Constraint tools — click N entities → apply constraint
-  useEffect(() => {
-    if (!activeSketch || !activeTool.startsWith('constrain-')) return;
-    if (!gl) return;
-
-    const constraintType = activeTool.replace('constrain-', '') as ConstraintType;
-
-    // How many entity clicks are needed before applying the constraint
-    const getRequiredCount = (type: ConstraintType): number => {
-      switch (type) {
-        case 'horizontal':
-        case 'vertical':
-        case 'fix':
-          return 1;
-        case 'symmetric':
-          return 3; // axis entity + 2 mirrored entities
-        default:
-          return 2; // coincident, parallel, perpendicular, equal, collinear, tangent, concentric, midpoint, curvature
-      }
-    };
-    const required = getRequiredCount(constraintType);
-
-    // Find closest sketch entity to a world point (same logic as D28)
-    const ENTITY_PICK_RADIUS = 2;
-    const findNearestEntity = (worldPt: THREE.Vector3): SketchEntity | null => {
-      let best: SketchEntity | null = null;
-      let bestDist = ENTITY_PICK_RADIUS;
-      for (const e of activeSketch.entities) {
-        if (e.type === 'line' || e.type === 'construction-line' || e.type === 'centerline') {
-          if (e.points.length < 2) continue;
-          const a = new THREE.Vector3(e.points[0].x, e.points[0].y, e.points[0].z);
-          const b = new THREE.Vector3(e.points[e.points.length - 1].x, e.points[e.points.length - 1].y, e.points[e.points.length - 1].z);
-          const ab = b.clone().sub(a);
-          const abLen = ab.length();
-          if (abLen < 1e-8) continue;
-          const t = Math.max(0, Math.min(1, worldPt.clone().sub(a).dot(ab) / (abLen * abLen)));
-          const closest = a.clone().add(ab.clone().multiplyScalar(t));
-          const d = worldPt.distanceTo(closest);
-          if (d < bestDist) { bestDist = d; best = e; }
-        } else if (e.type === 'circle' || e.type === 'arc') {
-          if (e.points.length < 1 || !e.radius) continue;
-          const center = new THREE.Vector3(e.points[0].x, e.points[0].y, e.points[0].z);
-          const d = Math.abs(worldPt.distanceTo(center) - e.radius);
-          if (d < bestDist) { bestDist = d; best = e; }
-        }
-      }
-      return best;
-    };
-
-    const handleClick = (ev: MouseEvent) => {
-      if (ev.button !== 0) return;
-      const worldPt = getWorldPoint(ev);
-      if (!worldPt) return;
-
-      const entity = findNearestEntity(worldPt);
-      if (!entity) {
-        setStatusMessage(`${constraintType}: click closer to a sketch entity`);
-        return;
-      }
-
-      // Avoid re-selecting the same entity twice (unless it's a self-referential constraint)
-      const currentSelection = useCADStore.getState().constraintSelection;
-      if (currentSelection.includes(entity.id)) {
-        setStatusMessage(`${constraintType}: entity already selected, click a different one`);
-        return;
-      }
-
-      const newSelection = [...currentSelection, entity.id];
-
-      if (newSelection.length < required) {
-        // Need more clicks
-        addToConstraintSelection(entity.id);
-        const remaining = required - newSelection.length;
-        setStatusMessage(`${constraintType}: ${remaining} more entity click${remaining > 1 ? 's' : ''} needed`);
-        return;
-      }
-
-      // We have enough — apply the constraint
-      const constraint: SketchConstraint = {
-        id: crypto.randomUUID(),
-        type: constraintType,
-        entityIds: newSelection,
-        // SK-A9: offset constraint stores the user-specified distance
-        ...(constraintType === 'offset' ? { value: useCADStore.getState().constraintOffsetValue } : {}),
-      };
-      addSketchConstraint(constraint);
-      clearConstraintSelection();
-      // Keep tool active for placing more constraints of the same type
-    };
-
-    const handleKeyDown = (kev: KeyboardEvent) => {
-      if (kev.key === 'Escape') {
-        clearConstraintSelection();
-        setActiveTool('select');
-      }
-    };
-
-    const canvas = gl.domElement;
-    canvas.addEventListener('click', handleClick);
-    window.addEventListener('keydown', handleKeyDown);
-    return () => {
-      canvas.removeEventListener('click', handleClick);
-      window.removeEventListener('keydown', handleKeyDown);
-    };
-  }, [activeTool, activeSketch, constraintSelection, addToConstraintSelection, clearConstraintSelection, addSketchConstraint, setActiveTool, getWorldPoint, setStatusMessage, gl]);
-
   // Preview of current drawing operation
   useFrame(({ invalidate }) => {
     if (!previewRef.current) return;
@@ -1491,167 +918,17 @@ export default function SketchInteraction() {
   // Cursor crosshair at mouse position
   if (!mousePos || !activeSketch) return null;
 
-  // Live dimension labels for drawing tools (D64)
-  const showLineDims =
-    (activeTool === 'line' || activeTool === 'construction-line' || activeTool === 'centerline' || activeTool === 'midpoint-line')
-    && drawingPoints.length >= 1
-    && mousePos !== null;
-  let lineLengthText = '';
-  let lineAngleText = '';
-  let lineMidpoint: THREE.Vector3 | null = null;
-  let lineAnglePos: THREE.Vector3 | null = null;
-  let lineDeltaText = '';
-  if (showLineDims) {
-    const startPt = drawingPoints[0];
-    const startVec = new THREE.Vector3(startPt.x, startPt.y, startPt.z);
-    const delta = activeTool === 'midpoint-line'
-      ? mousePos.clone().sub(startVec).multiplyScalar(2)
-      : mousePos.clone().sub(startVec);
-    const len = delta.length();
-    const { t1, t2 } = activeSketch
-      ? GeometryEngine.getSketchAxes(activeSketch)
-      : GeometryEngine.getPlaneAxes('XZ');
-    const angRad = Math.atan2(delta.dot(t2), delta.dot(t1));
-    const angDeg = (angRad * 180) / Math.PI;
-    const du = delta.dot(t1);
-    const dv = delta.dot(t2);
-    lineLengthText = `${len.toFixed(3)} ${units}`;
-    lineAngleText = `${Math.abs(angDeg).toFixed(1)}°`;
-    lineDeltaText = `Δ ${du.toFixed(2)}, ${dv.toFixed(2)}`;
-    lineMidpoint = startVec.clone().add(mousePos).multiplyScalar(0.5);
-    const arcRadiusHUD = Math.min(len * 0.25, 1.5);
-    const midAng = angRad / 2;
-    lineAnglePos = startVec.clone()
-      .addScaledVector(t1, Math.cos(midAng) * arcRadiusHUD * 1.9)
-      .addScaledVector(t2, Math.sin(midAng) * arcRadiusHUD * 1.9);
-  }
-
-  // Live radius HUD for circle / arc tools
-  const showRadiusHUD = (activeTool === 'circle' || activeTool === 'circle-2point' || activeTool === 'arc')
-    && drawingPoints.length >= 1
-    && mousePos !== null;
-  let radiusHUDText = '';
-  let radiusHUDPos: THREE.Vector3 | null = null;
-  if (showRadiusHUD) {
-    const centerPt = drawingPoints[0];
-    const centerVec = new THREE.Vector3(centerPt.x, centerPt.y, centerPt.z);
-    let r = 0;
-    if (activeTool === 'circle-2point') {
-      r = mousePos.distanceTo(centerVec) / 2;
-    } else {
-      r = mousePos.distanceTo(centerVec);
-    }
-    radiusHUDText = `r=${r.toFixed(3)} ${units}`;
-    radiusHUDPos = centerVec.clone().add(mousePos).multiplyScalar(0.5);
-  }
-
-  // Shared label styles (themed via themeColors)
-  const baseLabelStyle: React.CSSProperties = {
-    pointerEvents: 'none',
-    userSelect: 'none',
-    fontFamily: 'system-ui, -apple-system, "Segoe UI", sans-serif',
-    fontSize: '11px',
-    fontWeight: 500,
-    whiteSpace: 'nowrap',
-    background: themeColors.bgPanel,
-    color: themeColors.textPrimary,
-    border: `1px solid ${themeColors.border}`,
-    borderRadius: '3px',
-    padding: '3px 7px',
-    boxShadow: '0 1px 3px rgba(0,0,0,0.15)',
-  };
-  const lengthLabelStyle: React.CSSProperties = {
-    ...baseLabelStyle,
-    borderColor: themeColors.accent,
-    color: themeColors.textPrimary,
-    background: themeColors.bgPanel,
-  };
-  const cursorLabelStyle: React.CSSProperties = {
-    ...baseLabelStyle,
-    background: 'transparent',
-    border: 'none',
-    boxShadow: 'none',
-    color: themeColors.textSecondary,
-    transform: 'translate(20px, -22px)',
-  };
-  const deltaLabelStyle: React.CSSProperties = {
-    ...baseLabelStyle,
-    background: 'transparent',
-    border: 'none',
-    boxShadow: 'none',
-    fontSize: '10px',
-    color: themeColors.textMuted,
-    transform: 'translate(20px, 4px)',
-  };
-
   return (
-    <>
-      <group ref={previewRef}>
-        {/* Crosshair cursor */}
-        <group position={mousePos}>
-          <mesh>
-            <ringGeometry args={[0.3, 0.4, 16]} />
-            <meshBasicMaterial color={0xff6600} />
-          </mesh>
-        </group>
-      </group>
-
-      {/* Live dimension overlays (D64) — outside previewRef so useFrame doesn't strip them */}
-      {showLineDims && lineMidpoint && lineAnglePos && (
-        <>
-          <Html position={lineMidpoint} center zIndexRange={[100, 0]} style={{ pointerEvents: 'none' }}>
-            <div style={lengthLabelStyle}>{lineLengthText}</div>
-          </Html>
-          <Html position={lineAnglePos} center zIndexRange={[100, 0]} style={{ pointerEvents: 'none' }}>
-            <div style={baseLabelStyle}>{lineAngleText}</div>
-          </Html>
-          <Html position={mousePos} zIndexRange={[100, 0]} style={{ pointerEvents: 'none' }}>
-            <div style={cursorLabelStyle}>Specify next point</div>
-          </Html>
-          <Html position={mousePos} zIndexRange={[100, 0]} style={{ pointerEvents: 'none' }}>
-            <div style={deltaLabelStyle}>{lineDeltaText}</div>
-          </Html>
-        </>
-      )}
-      {showRadiusHUD && radiusHUDPos && (
-        <Html position={radiusHUDPos} center zIndexRange={[100, 0]} style={{ pointerEvents: 'none' }}>
-          <div style={lengthLabelStyle}>{radiusHUDText}</div>
-        </Html>
-      )}
-      {/* D65: Snap indicator glyph — shown when cursor is snapping to an entity */}
-      {snapTarget && mousePos && (
-        <Html position={mousePos} center zIndexRange={[300, 0]} style={{ pointerEvents: 'none' }}>
-          {snapTarget.type === 'endpoint' && (
-            <div style={{ width: 10, height: 10, border: '2px solid #f97316', transform: 'rotate(45deg)', pointerEvents: 'none' }} />
-          )}
-          {snapTarget.type === 'midpoint' && (
-            <div style={{ width: 0, height: 0, borderLeft: '6px solid transparent', borderRight: '6px solid transparent', borderBottom: '11px solid #f97316', pointerEvents: 'none' }} />
-          )}
-          {snapTarget.type === 'center' && (
-            <div style={{ width: 10, height: 10, borderRadius: '50%', border: '2px solid #f97316', pointerEvents: 'none' }} />
-          )}
-          {snapTarget.type === 'intersection' && (
-            <div style={{ width: 12, height: 12, position: 'relative', pointerEvents: 'none' }}>
-              <div style={{ position: 'absolute', top: 5, left: 0, width: 12, height: 2, background: '#f97316', transform: 'rotate(45deg)', transformOrigin: 'center' }} />
-              <div style={{ position: 'absolute', top: 5, left: 0, width: 12, height: 2, background: '#f97316', transform: 'rotate(-45deg)', transformOrigin: 'center' }} />
-            </div>
-          )}
-          {/* NAV-24: perpendicular snap — right-angle symbol */}
-          {snapTarget.type === 'perpendicular' && (
-            <div style={{ width: 12, height: 12, position: 'relative', pointerEvents: 'none' }}>
-              <div style={{ position: 'absolute', bottom: 0, left: 0, width: 6, height: 2, background: '#cc88ff' }} />
-              <div style={{ position: 'absolute', bottom: 0, left: 0, width: 2, height: 8, background: '#cc88ff' }} />
-            </div>
-          )}
-          {/* NAV-24: tangent snap — small circle with tangent line */}
-          {snapTarget.type === 'tangent' && (
-            <div style={{ width: 12, height: 12, position: 'relative', pointerEvents: 'none' }}>
-              <div style={{ position: 'absolute', top: 1, left: 1, width: 10, height: 10, borderRadius: '50%', border: '2px solid #ff88cc' }} />
-              <div style={{ position: 'absolute', top: -2, left: 5, width: 2, height: 16, background: '#ff88cc', transform: 'rotate(0deg)' }} />
-            </div>
-          )}
-        </Html>
-      )}
-    </>
+    <group ref={previewRef}>
+      <SketchInteractionHud
+        mousePos={mousePos}
+        activeSketch={activeSketch}
+        activeTool={activeTool}
+        drawingPoints={drawingPoints}
+        units={units}
+        themeColors={themeColors}
+        snapTarget={snapTarget}
+      />
+    </group>
   );
 }

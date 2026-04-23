@@ -1,11 +1,8 @@
 // Help content for slicer settings
 // Each setting can have: brief (hover tooltip), detailed (modal description), and imageUrl (optional)
 
-export interface SettingHelp {
-  brief: string; // Short hover tooltip (50-80 chars)
-  detailed: string; // Full description (paragraph)
-  imageUrl?: string; // Optional image URL demonstrating the effect
-}
+import type { SettingHelp } from '../types/settings-help.types';
+export type { SettingHelp } from '../types/settings-help.types';
 
 export const SETTINGS_HELP: Record<string, SettingHelp> = {
   // Layer Height

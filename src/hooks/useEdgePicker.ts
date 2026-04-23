@@ -12,6 +12,8 @@
 import { useEffect, useRef } from 'react';
 import { useThree } from '@react-three/fiber';
 import * as THREE from 'three';
+import type { EdgePickResult, UseEdgePickerOptions } from '../types/edge-picker.types';
+export type { EdgePickResult, UseEdgePickerOptions } from '../types/edge-picker.types';
 
 // ---------------------------------------------------------------------------
 // Module-level scratch — no per-event allocation
@@ -48,41 +50,6 @@ function closestPointOnSegment(
   const t = Math.max(0, Math.min(1, _ap.dot(_ab) / lenSq));
   out.copy(a).addScaledVector(_ab, t);
   return out;
-}
-
-// ---------------------------------------------------------------------------
-// Public types
-// ---------------------------------------------------------------------------
-
-export interface EdgePickResult {
-  mesh: THREE.Mesh;
-  faceIndex: number;
-  /** World-space position of the first edge vertex. */
-  edgeVertexA: THREE.Vector3;
-  /** World-space position of the second edge vertex. */
-  edgeVertexB: THREE.Vector3;
-  /** Geometry (position attribute) index of edgeVertexA. */
-  edgeVertexIndexA: number;
-  /** Geometry (position attribute) index of edgeVertexB. */
-  edgeVertexIndexB: number;
-  /** World-space midpoint of the edge. */
-  midpoint: THREE.Vector3;
-  /** Normalized world-space direction from A to B. */
-  direction: THREE.Vector3;
-}
-
-export interface UseEdgePickerOptions {
-  /** When false the hook detaches all listeners and clears hover state. */
-  enabled: boolean;
-  /** Called each pointer-move. null means "no edge under cursor". */
-  onHover?: (result: EdgePickResult | null) => void;
-  /** Called on left-click when an edge is hit. */
-  onClick?: (result: EdgePickResult) => void;
-  /**
-   * Optional mesh filter. Return true to include the mesh in raycasting.
-   * If omitted, all meshes with userData.pickable === true are included.
-   */
-  filter?: (mesh: THREE.Mesh) => boolean;
 }
 
 // ---------------------------------------------------------------------------

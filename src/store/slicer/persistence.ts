@@ -1,12 +1,10 @@
 import * as THREE from 'three';
+import type { SerializedGeom } from '../../types/slicer-persistence.types';
+
+export type { SerializedGeom } from '../../types/slicer-persistence.types';
 
 const MAX_PERSIST_VERTS = 500_000;
 const geomSerializeCache = new WeakMap<THREE.BufferGeometry, SerializedGeom | null>();
-
-export interface SerializedGeom {
-  position: number[];
-  index?: number[];
-}
 
 export function serializeGeom(geometry: THREE.BufferGeometry | null | undefined): SerializedGeom | null {
   if (!geometry?.attributes?.position) return null;

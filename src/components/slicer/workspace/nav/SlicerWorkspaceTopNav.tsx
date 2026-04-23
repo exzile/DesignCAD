@@ -1,6 +1,6 @@
 import { Layers, Puzzle } from 'lucide-react';
-
-export type SlicerPage = 'prepare' | 'plugins';
+import type { SlicerPage } from '../../../../types/slicer-nav.types';
+export type { SlicerPage } from '../../../../types/slicer-nav.types';
 
 export function SlicerWorkspaceTopNav({
   currentPage,

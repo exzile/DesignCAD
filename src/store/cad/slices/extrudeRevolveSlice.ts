@@ -470,7 +470,7 @@ export function createExtrudeRevolveSlice({ set, get }: CADSliceContext) {
       // mesh here solely to count connected components, and register one
       // body per piece. The extra ids are stored on the feature so the
       // renderer can match a split geometry → bodies by index.
-      let extraBodyIds: string[] = [];
+      const extraBodyIds: string[] = [];
       if (effectiveOperation === 'new-body') {
         const componentStore = useComponentStore.getState();
         componentId = componentStore.activeComponentId ?? componentStore.rootComponentId;

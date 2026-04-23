@@ -16,39 +16,8 @@
 import * as THREE from 'three';
 import type { PlateObject, PrinterProfile, PrintProfile } from '../types/slicer';
 import { normalizeRotationRadians, normalizeScale } from '../utils/slicerTransforms';
-
-export type IssueKind =
-  | 'overhang'
-  | 'off-plate'
-  | 'tiny-features'
-  | 'no-geometry'
-  | 'missing-supports';
-
-export interface Issue {
-  kind: IssueKind;
-  severity: 'info' | 'warning' | 'error';
-  message: string;
-  /** Triangle indices (into the geometry's index buffer, or 3-vertex groups
-   *  when un-indexed) that participate in the issue. */
-  triangles?: number[];
-}
-
-export interface ObjectReport {
-  objectId: string;
-  objectName: string;
-  issues: Issue[];
-  /** Union of all triangles implicated in any issue — used for highlighting. */
-  highlightedTriangles: Set<number>;
-}
-
-export interface PrintabilityReport {
-  objects: ObjectReport[];
-  totals: {
-    errors: number;
-    warnings: number;
-    info: number;
-  };
-}
+import type { Issue, PrintabilityReport } from '../types/printability.types';
+export type { IssueKind, Issue, ObjectReport, PrintabilityReport } from '../types/printability.types';
 
 const EPS = 1e-4;
 

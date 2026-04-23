@@ -1,14 +1,1 @@
-import type { SlicerStore } from '../slicerStore';
-
-export type SlicerStoreSet = (
-  partial:
-    | Partial<SlicerStore>
-    | ((state: SlicerStore) => Partial<SlicerStore>)
-) => void;
-
-export type SlicerStoreGet = () => SlicerStore;
-
-export type SlicerStoreApi = {
-  get: SlicerStoreGet;
-  set: SlicerStoreSet;
-};
+export type { SlicerStoreSet, SlicerStoreGet, SlicerStoreApi } from '../../types/slicer-store-api.types';

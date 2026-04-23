@@ -3,20 +3,8 @@
  * Diameters in mm. Pitch in mm (ISO) or TPI converted as needed.
  */
 
-export type HoleStandard = 'ISO' | 'ANSI' | 'NPT' | 'custom';
-
-export interface HoleSizeEntry {
-  /** Display label (e.g. "M6", "#10-24", "1/2 NPT") */
-  label: string;
-  /** Nominal (tap/pilot) diameter in mm */
-  tapDiameter: number;
-  /** Clearance drill diameter in mm (slip fit) */
-  clearanceDiameter: number;
-  /** Thread pitch in mm (0 if not threaded) */
-  pitch: number;
-  /** Typical blind depth for 1.5× diameter engagement */
-  recommendedDepth: number;
-}
+import type { HoleStandard, HoleSizeEntry } from '../../../types/hole-presets.types';
+export type { HoleStandard, HoleSizeEntry } from '../../../types/hole-presets.types';
 
 // ── ISO Metric (M-series, coarse thread) ─────────────────────────────────────
 export const ISO_SIZES: HoleSizeEntry[] = [

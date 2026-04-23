@@ -35,13 +35,12 @@ export const SETTINGS_SECTIONS = [
   // gear modal controls their visibility instead of per-section toggles.
 ] as const;
 
-export type SettingsSectionId = typeof SETTINGS_SECTIONS[number]['id'];
+export type { SettingsSectionId, DetailLevel } from '../types/slicer-visibility.types';
+import type { SettingsSectionId, DetailLevel } from '../types/slicer-visibility.types';
 
 const DEFAULTS: Record<string, boolean> = Object.fromEntries(
   SETTINGS_SECTIONS.map((s) => [s.id, s.defaultOn]),
 );
-
-export type DetailLevel = 'basic' | 'advanced' | 'expert';
 const LEVEL_RANK: Record<DetailLevel, number> = { basic: 0, advanced: 1, expert: 2 };
 
 interface SlicerVisibilityStore {

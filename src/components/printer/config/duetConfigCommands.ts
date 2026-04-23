@@ -5,13 +5,8 @@
 // 'config'. The insert dropdown filters commands down to the current file's
 // kind so the user only sees commands that make sense in context.
 
-export type ConfigFileKind =
-  | 'config'
-  | 'bed'
-  | 'homing'
-  | 'lifecycle'
-  | 'toolchange'
-  | 'other';
+import type { ConfigFileKind } from '../../../types/duet-config-commands.types';
+export type { ConfigFileKind } from '../../../types/duet-config-commands.types';
 
 export function detectFileKind(path: string): ConfigFileKind {
   const name = path.split('/').pop() ?? '';

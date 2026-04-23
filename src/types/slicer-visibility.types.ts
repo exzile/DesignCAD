@@ -1,0 +1,25 @@
+export type SettingsSectionId =
+  | 'printer'
+  | 'material'
+  | 'printProfile'
+  | 'quality'
+  | 'walls'
+  | 'topBottom'
+  | 'infill'
+  | 'speed'
+  | 'travel'
+  | 'cooling'
+  | 'support'
+  | 'adhesion'
+  | 'specialModes'
+  | 'experimental'
+  | 'acceleration'
+  | 'meshFixes'
+  | 'compensation'
+  | 'flow'
+  | 'bridging'
+  | 'smallFeatures'
+  | 'primeTower'
+  | 'modifierMeshes';
+
+export type DetailLevel = 'basic' | 'advanced' | 'expert';

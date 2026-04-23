@@ -1,8 +1,5 @@
-export interface Vec3 {
-  x: number;
-  y: number;
-  z: number;
-}
+export type { Vec3 } from '../types/slicer-transforms.types';
+import type { Vec3 } from '../types/slicer-transforms.types';
 
 const ZERO: Vec3 = { x: 0, y: 0, z: 0 };
 const ONE: Vec3 = { x: 1, y: 1, z: 1 };

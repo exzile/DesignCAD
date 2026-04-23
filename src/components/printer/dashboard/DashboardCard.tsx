@@ -1,6 +1,6 @@
 import type { ReactNode, DragEvent, MouseEvent } from 'react';
 import { GripVertical, ChevronLeft, ChevronRight } from 'lucide-react';
-import type { PanelId } from '../../../store/dashboardLayoutStore';
+import type { PanelId } from '../../../types/dashboard-layout.types';
 
 interface Props {
   id: PanelId;

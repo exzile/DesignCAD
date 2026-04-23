@@ -4,18 +4,16 @@ import {
   DEFAULT_PREFS,
   readLegacyDuetPrefs,
 } from '../../utils/duetPrefs';
-import type { PrintHistoryEntry } from '../printerStore';
+import type { PrintHistoryEntry } from '../../types/printer.types';
+import type { LoadedPrinterState } from '../../types/printer-persistence.types';
+
+export type { LoadedPrinterState } from '../../types/printer-persistence.types';
 
 const LEGACY_CONFIG_KEY = 'dzign3d-duet-config';
 const PRINTERS_KEY = 'dzign3d-printers';
 const ACTIVE_PRINTER_KEY = 'dzign3d-active-printer';
 const TIMESTAMP_RE = /^(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2})\s+(.*)$/;
 const DURATION_RE = /(\d+):(\d{2}):(\d{2})/;
-
-export interface LoadedPrinterState {
-  printers: SavedPrinter[];
-  activePrinterId: string;
-}
 
 export function genPrinterId(): string {
   return `printer-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;

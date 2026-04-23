@@ -1,300 +1,24 @@
 import { useState, useRef, useCallback, useEffect, useMemo } from 'react';
 import './DuetFileManager.css';
 import {
-  Folder,
-  File,
   Upload,
   FolderPlus,
   RefreshCw,
-  Play,
-  FlaskConical,
-  Download,
-  Pencil,
   Trash2,
   ChevronRight,
-  ArrowUpDown,
-  ArrowUp,
-  ArrowDown,
   Loader2,
   X,
-  Image,
-  FileCode,
   Search,
-  ListPlus,
 } from 'lucide-react';
 import { usePrinterStore } from '../../store/printerStore';
-import type { DuetFileInfo, DuetGCodeFileInfo } from '../../types/duet';
+import type { DuetFileInfo } from '../../types/duet';
 import DuetFileEditor from './DuetFileEditor';
 import { addToQueue } from './jobStatus/printQueueUtils';
-import { formatDurationWords, formatFileSize, formatFilamentLength } from '../../utils/printerFormat';
-
-// ---------------------------------------------------------------------------
-// Helpers
-// ---------------------------------------------------------------------------
-
-function formatDate(dateStr: string): string {
-  if (!dateStr) return '--';
-  try {
-    const d = new Date(dateStr);
-    if (isNaN(d.getTime())) return dateStr;
-    return d.toLocaleDateString(undefined, {
-      year: 'numeric',
-      month: 'short',
-      day: 'numeric',
-      hour: '2-digit',
-      minute: '2-digit',
-    });
-  } catch {
-    return dateStr;
-  }
-}
-
-const formatDuration = (seconds: number | undefined | null) => formatDurationWords(seconds, '--', true);
-const formatFilament = (mm: number) => formatFilamentLength(mm, '--');
-
-function isGCodeFile(name: string): boolean {
-  const lower = name.toLowerCase();
-  return lower.endsWith('.gcode') || lower.endsWith('.g') || lower.endsWith('.nc');
-}
-
-function isEditableFile(name: string): boolean {
-  const lower = name.toLowerCase();
-  return (
-    lower.endsWith('.g') ||
-    lower.endsWith('.gcode') ||
-    lower.endsWith('.cfg') ||
-    lower.endsWith('.csv') ||
-    lower.endsWith('.json') ||
-    lower.endsWith('.nc')
-  );
-}
-
-// File manager directory tabs
-interface FileTab {
-  id: string;
-  label: string;
-  directory: string;
-}
-
-const FILE_TABS: FileTab[] = [
-  { id: 'gcodes', label: 'G-Code Files', directory: '0:/gcodes' },
-  { id: 'sys', label: 'System', directory: '0:/sys' },
-  { id: 'filaments', label: 'Filaments', directory: '0:/filaments' },
-];
-
-type SortField = 'name' | 'size' | 'date';
-type SortDir = 'asc' | 'desc';
-
-function sortFiles(files: DuetFileInfo[], field: SortField, dir: SortDir): DuetFileInfo[] {
-  const sorted = [...files];
-  sorted.sort((a, b) => {
-    // Directories always come first
-    if (a.type !== b.type) return a.type === 'd' ? -1 : 1;
-
-    let cmp = 0;
-    switch (field) {
-      case 'name':
-        cmp = a.name.localeCompare(b.name, undefined, { sensitivity: 'base' });
-        break;
-      case 'size':
-        cmp = a.size - b.size;
-        break;
-      case 'date':
-        cmp = new Date(a.date).getTime() - new Date(b.date).getTime();
-        break;
-    }
-    return dir === 'asc' ? cmp : -cmp;
-  });
-  return sorted;
-}
-
-
-// ---------------------------------------------------------------------------
-// Sub-components
-// ---------------------------------------------------------------------------
-
-function SortIcon({ field, current, dir }: { field: SortField; current: SortField; dir: SortDir }) {
-  if (field !== current) return <ArrowUpDown size={12} style={{ opacity: 0.3 }} />;
-  return dir === 'asc' ? <ArrowUp size={12} /> : <ArrowDown size={12} />;
-}
-
-interface RenameDialogProps {
-  currentName: string;
-  onConfirm: (newName: string) => void;
-  onCancel: () => void;
-}
-
-function RenameDialog({ currentName, onConfirm, onCancel }: RenameDialogProps) {
-  const [value, setValue] = useState(currentName);
-  return (
-    <div className="duet-file-mgr__dialog-overlay" onClick={onCancel}>
-      <div className="duet-file-mgr__dialog" onClick={(e) => e.stopPropagation()}>
-        <div className="duet-file-mgr__dialog-title">Rename</div>
-        <input
-          className="duet-file-mgr__dialog-input"
-          value={value}
-          onChange={(e) => setValue(e.target.value)}
-          onKeyDown={(e) => {
-            if (e.key === 'Enter' && value.trim()) onConfirm(value.trim());
-            if (e.key === 'Escape') onCancel();
-          }}
-          autoFocus
-        />
-        <div className="duet-file-mgr__dialog-btns">
-          <button className="duet-file-mgr__dialog-btn" onClick={onCancel}>Cancel</button>
-          <button
-            className="duet-file-mgr__dialog-btn--primary"
-            onClick={() => value.trim() && onConfirm(value.trim())}
-          >
-            Rename
-          </button>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-interface NewFolderDialogProps {
-  onConfirm: (name: string) => void;
-  onCancel: () => void;
-}
-
-function NewFolderDialog({ onConfirm, onCancel }: NewFolderDialogProps) {
-  const [value, setValue] = useState('');
-  return (
-    <div className="duet-file-mgr__dialog-overlay" onClick={onCancel}>
-      <div className="duet-file-mgr__dialog" onClick={(e) => e.stopPropagation()}>
-        <div className="duet-file-mgr__dialog-title">New Folder</div>
-        <input
-          className="duet-file-mgr__dialog-input"
-          value={value}
-          onChange={(e) => setValue(e.target.value)}
-          placeholder="Folder name"
-          onKeyDown={(e) => {
-            if (e.key === 'Enter' && value.trim()) onConfirm(value.trim());
-            if (e.key === 'Escape') onCancel();
-          }}
-          autoFocus
-        />
-        <div className="duet-file-mgr__dialog-btns">
-          <button className="duet-file-mgr__dialog-btn" onClick={onCancel}>Cancel</button>
-          <button
-            className="duet-file-mgr__dialog-btn--primary"
-            onClick={() => value.trim() && onConfirm(value.trim())}
-          >
-            Create
-          </button>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function FileInfoPanel({
-  fileInfo,
-  onClose,
-}: {
-  fileInfo: DuetGCodeFileInfo;
-  onClose: () => void;
-}) {
-  const service = usePrinterStore((s) => s.service);
-  const [thumbnailSrc, setThumbnailSrc] = useState<string | null>(null);
-  const [thumbnailLoading, setThumbnailLoading] = useState(false);
-
-  // Fetch the largest thumbnail when file info changes
-  useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect
-    setThumbnailSrc(null);
-    if (!service || !fileInfo.thumbnails || fileInfo.thumbnails.length === 0) return;
-
-    // Pick the largest thumbnail by area
-    const largest = [...fileInfo.thumbnails].sort(
-      (a, b) => b.width * b.height - a.width * a.height,
-    )[0];
-
-    let cancelled = false;
-    setThumbnailLoading(true);
-
-    service
-      .getThumbnail(fileInfo.fileName, largest.offset)
-      .then((dataUrl) => {
-        if (!cancelled && dataUrl) setThumbnailSrc(dataUrl);
-      })
-      .catch(() => {})
-      .finally(() => {
-        if (!cancelled) setThumbnailLoading(false);
-      });
-
-    return () => {
-      cancelled = true;
-    };
-  }, [service, fileInfo.fileName, fileInfo.thumbnails]);
-
-  const rows: [string, string][] = [
-    ['File', fileInfo.fileName.split('/').pop() || fileInfo.fileName],
-    ['Size', formatFileSize(fileInfo.size)],
-    ['Generated by', fileInfo.generatedBy || '--'],
-    ['Object height', fileInfo.height > 0 ? `${fileInfo.height} mm` : '--'],
-    ['Layer height', fileInfo.layerHeight > 0 ? `${fileInfo.layerHeight} mm` : '--'],
-    ['First layer', fileInfo.firstLayerHeight > 0 ? `${fileInfo.firstLayerHeight} mm` : '--'],
-    ['Layers', fileInfo.numLayers > 0 ? String(fileInfo.numLayers) : '--'],
-    ['Print time (slicer)', formatDuration(fileInfo.printTime)],
-    ['Simulated time', formatDuration(fileInfo.simulatedTime)],
-    ['Last modified', formatDate(fileInfo.lastModified)],
-  ];
-
-  // Filament per extruder
-  if (fileInfo.filament && fileInfo.filament.length > 0) {
-    fileInfo.filament.forEach((mm, i) => {
-      const label = fileInfo.filament.length === 1 ? 'Filament' : `Filament E${i}`;
-      rows.push([label, formatFilament(mm)]);
-    });
-  }
-
-  return (
-    <div className="duet-file-mgr__info-panel">
-      <button className="duet-file-mgr__close-info-btn" onClick={onClose} title="Close info panel">
-        <X size={14} />
-      </button>
-
-      {/* Thumbnail display */}
-      {fileInfo.thumbnails && fileInfo.thumbnails.length > 0 && (
-        <div className="duet-file-mgr__thumbnail-center">
-          {thumbnailLoading ? (
-            <div className="duet-file-mgr__thumbnail-loading">
-              <Loader2 size={16} className="spin" />
-              Loading preview...
-            </div>
-          ) : thumbnailSrc ? (
-            <img
-              src={thumbnailSrc}
-              alt="G-code thumbnail"
-              className="duet-file-mgr__thumbnail"
-            />
-          ) : (
-            <>
-              <Image size={48} style={{ color: 'var(--border-strong)' }} />
-              <div className="duet-file-mgr__thumbnail-caption">
-                Thumbnail ({fileInfo.thumbnails[0].width}x{fileInfo.thumbnails[0].height})
-              </div>
-            </>
-          )}
-        </div>
-      )}
-
-      <div className="duet-file-mgr__info-panel-title">
-        {fileInfo.fileName.split('/').pop() || fileInfo.fileName}
-      </div>
-
-      {rows.map(([label, value]) => (
-        <div key={label} className="duet-file-mgr__info-row">
-          <span className="duet-file-mgr__info-label">{label}</span>
-          <span className="duet-file-mgr__info-value">{value}</span>
-        </div>
-      ))}
-    </div>
-  );
-}
+import { FileInfoPanel } from './duetFileManager/FileInfoPanel';
+import { NewFolderDialog, RenameDialog } from './duetFileManager/dialogs';
+import { FILE_TABS, isGCodeFile, sortFiles } from './duetFileManager/helpers';
+import type { SortDir, SortField } from './duetFileManager/helpers';
+import { FileTable } from './duetFileManager/FileTable';
 
 // ---------------------------------------------------------------------------
 // Main Component
@@ -802,152 +526,26 @@ export default function DuetFileManager() {
               {searchQuery ? `No files matching "${searchQuery}"` : 'This folder is empty'}
             </div>
           ) : (
-            <table className="duet-file-mgr__table">
-              <thead>
-                <tr>
-                  <th className="duet-file-mgr__th" style={{ width: 30 }}>
-                    <input
-                      type="checkbox"
-                      className="duet-file-mgr__checkbox"
-                      checked={allFilesChecked}
-                      onChange={handleToggleAll}
-                      title="Select all files"
-                    />
-                  </th>
-                  <th className="duet-file-mgr__th" style={{ width: 30 }}></th>
-                  <th className="duet-file-mgr__th" onClick={() => handleSort('name')}>
-                    <div className="duet-file-mgr__th-content">
-                      Name <SortIcon field="name" current={sortField} dir={sortDir} />
-                    </div>
-                  </th>
-                  <th className="duet-file-mgr__th" style={{ width: 90 }} onClick={() => handleSort('size')}>
-                    <div className="duet-file-mgr__th-content">
-                      Size <SortIcon field="size" current={sortField} dir={sortDir} />
-                    </div>
-                  </th>
-                  <th className="duet-file-mgr__th" style={{ width: 160 }} onClick={() => handleSort('date')}>
-                    <div className="duet-file-mgr__th-content">
-                      Modified <SortIcon field="date" current={sortField} dir={sortDir} />
-                    </div>
-                  </th>
-                  <th className="duet-file-mgr__th duet-file-mgr__th--no-sort" style={{ width: 150 }}>Actions</th>
-                </tr>
-              </thead>
-              <tbody>
-                {sortedFiles.map((item) => {
-                  const isDir = item.type === 'd';
-                  const isSelected = selectedName === item.name;
-                  const isGCode = !isDir && isGCodeFile(item.name);
-
-                  return (
-                    <tr
-                      key={item.name}
-                      className={`duet-file-mgr__row${isSelected ? ' is-selected' : ''}`}
-                      onClick={() => handleRowClick(item)}
-                    >
-                      {/* Checkbox (files only) */}
-                      <td className="duet-file-mgr__td" onClick={(e) => e.stopPropagation()}>
-                        {!isDir && (
-                          <input
-                            type="checkbox"
-                            className="duet-file-mgr__checkbox"
-                            checked={checkedFiles.has(item.name)}
-                            onChange={() => handleToggleCheck(item.name)}
-                          />
-                        )}
-                      </td>
-
-                      {/* Icon */}
-                      <td className="duet-file-mgr__td">
-                        {isDir ? (
-                          <Folder size={16} className="duet-file-mgr__icon--dir" />
-                        ) : (
-                          <File size={16} className="duet-file-mgr__icon--file" />
-                        )}
-                      </td>
-
-                      {/* Name */}
-                      <td className="duet-file-mgr__td">
-                        <span className={isDir ? 'duet-file-mgr__name--dir' : 'duet-file-mgr__name--file'}>{item.name}</span>
-                      </td>
-
-                      {/* Size */}
-                      <td className="duet-file-mgr__td duet-file-mgr__td--muted">
-                        {isDir ? '--' : formatFileSize(item.size)}
-                      </td>
-
-                      {/* Modified */}
-                      <td className="duet-file-mgr__td duet-file-mgr__td--muted duet-file-mgr__td--small">
-                        {formatDate(item.date)}
-                      </td>
-
-                      {/* Actions */}
-                      <td className="duet-file-mgr__td" onClick={(e) => e.stopPropagation()}>
-                        <div className="duet-file-mgr__actions">
-                          {isGCode && (
-                            <>
-                              <button
-                                className="duet-file-mgr__action-btn"
-                                title="Start print"
-                                onClick={() => handlePrint(item)}
-                              >
-                                <Play size={14} className="duet-file-mgr__icon--play" />
-                              </button>
-                              <button
-                                className="duet-file-mgr__action-btn"
-                                title="Add to print queue"
-                                onClick={() => handleQueue(item)}
-                              >
-                                <ListPlus size={14} className="duet-file-mgr__icon--simulate" />
-                              </button>
-                              <button
-                                className="duet-file-mgr__action-btn"
-                                title="Simulate"
-                                onClick={() => handleSimulate(item)}
-                              >
-                                <FlaskConical size={14} className="duet-file-mgr__icon--simulate" />
-                              </button>
-                            </>
-                          )}
-                          {!isDir && isEditableFile(item.name) && (
-                            <button
-                              className="duet-file-mgr__action-btn"
-                              title="Edit file"
-                              onClick={() => handleEditFile(item)}
-                            >
-                              <FileCode size={14} className="duet-file-mgr__icon--edit" />
-                            </button>
-                          )}
-                          {!isDir && (
-                            <button
-                              className="duet-file-mgr__action-btn"
-                              title="Download"
-                              onClick={() => handleDownload(item)}
-                            >
-                              <Download size={14} className="duet-file-mgr__icon--download" />
-                            </button>
-                          )}
-                          <button
-                            className="duet-file-mgr__action-btn"
-                            title="Rename"
-                            onClick={() => setRenameTarget(item)}
-                          >
-                            <Pencil size={14} />
-                          </button>
-                          <button
-                            className="duet-file-mgr__action-btn"
-                            title="Delete"
-                            onClick={() => handleDelete(item)}
-                          >
-                            <Trash2 size={14} className="duet-file-mgr__icon--delete" />
-                          </button>
-                        </div>
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
+            <FileTable
+              allFilesChecked={allFilesChecked}
+              checkedFiles={checkedFiles}
+              currentDirectory={currentDirectory}
+              selectedName={selectedName}
+              sortField={sortField}
+              sortDir={sortDir}
+              sortedFiles={sortedFiles}
+              onSort={handleSort}
+              onToggleAll={handleToggleAll}
+              onToggleCheck={handleToggleCheck}
+              onRowClick={handleRowClick}
+              onPrint={handlePrint}
+              onQueue={handleQueue}
+              onSimulate={handleSimulate}
+              onEdit={handleEditFile}
+              onDownload={handleDownload}
+              onRename={setRenameTarget}
+              onDelete={handleDelete}
+            />
           )}
         </div>
 

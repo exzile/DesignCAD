@@ -1,55 +1,6 @@
 import * as THREE from 'three';
-
-export interface SlicerSettings {
-  // Layer settings
-  layerHeight: number;         // mm (typical: 0.2)
-  firstLayerHeight: number;    // mm (typical: 0.3)
-
-  // Extrusion
-  nozzleDiameter: number;      // mm (typical: 0.4)
-  filamentDiameter: number;    // mm (typical: 1.75)
-  extrusionMultiplier: number; // (typical: 1.0)
-
-  // Temperatures
-  nozzleTemp: number;          // C (typical: 200-220 for PLA)
-  bedTemp: number;             // C (typical: 60 for PLA)
-
-  // Speed (mm/min)
-  printSpeed: number;          // mm/s (typical: 50)
-  firstLayerSpeed: number;     // mm/s (typical: 25)
-  travelSpeed: number;         // mm/s (typical: 150)
-
-  // Infill
-  infillDensity: number;       // 0-100%
-  infillPattern: 'lines' | 'grid' | 'triangles' | 'gyroid';
-
-  // Shell
-  wallCount: number;           // (typical: 2-3)
-  topLayers: number;           // (typical: 3-4)
-  bottomLayers: number;        // (typical: 3-4)
-
-  // Support
-  supportEnabled: boolean;
-  supportAngle: number;        // degrees (typical: 45)
-  supportDensity: number;      // 0-100%
-
-  // Bed
-  bedSizeX: number;            // mm
-  bedSizeY: number;            // mm
-  bedSizeZ: number;            // mm
-
-  // Retraction
-  retractionDistance: number;   // mm (typical: 5)
-  retractionSpeed: number;     // mm/s (typical: 45)
-
-  // Skirt/Brim
-  skirtLines: number;          // (typical: 2)
-  brimWidth: number;           // mm (0 = disabled)
-
-  // Fan
-  fanSpeed: number;            // 0-100%
-  fanStartLayer: number;       // (typical: 2)
-}
+import type { SlicerSettings, PrintEstimate } from '../types/gcode-generator.types';
+export type { SlicerSettings, PrintEstimate } from '../types/gcode-generator.types';
 
 export const DEFAULT_SLICER_SETTINGS: SlicerSettings = {
   layerHeight: 0.2,
@@ -620,12 +571,4 @@ export class GCodeGenerator {
 
 interface MeshTriangle {
   vertices: [THREE.Vector3, THREE.Vector3, THREE.Vector3];
-}
-
-export interface PrintEstimate {
-  layerCount: number;
-  filamentLengthMm: number;
-  filamentWeightG: number;
-  estimatedTimeMinutes: number;
-  dimensions: { x: number; y: number; z: number };
 }

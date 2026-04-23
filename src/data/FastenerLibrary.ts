@@ -1,16 +1,5 @@
-export type FastenerType = 'hex-bolt' | 'socket-cap' | 'flat-head' | 'button-head' | 'hex-nut' | 'washer';
-export type FastenerStandard = 'metric' | 'imperial';
-
-export interface FastenerSpec {
-  type: FastenerType;
-  standard: FastenerStandard;
-  size: string;         // e.g. "M6", "1/4-20"
-  diameter: number;     // shank diameter in mm
-  headDiameter: number; // across-flats (hex) or outer diameter
-  headHeight: number;
-  pitch?: number;       // thread pitch in mm
-  lengths: number[];    // available lengths in mm
-}
+import type { FastenerSpec } from '../types/fastener.types';
+export type { FastenerType, FastenerStandard, FastenerSpec } from '../types/fastener.types';
 
 export const FASTENER_LIBRARY: FastenerSpec[] = [
   // Metric hex bolts

@@ -1,5 +1,8 @@
 ﻿import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
+import type { PanelId, SpacerId, LayoutItem, ColSpan } from '../types/dashboard-layout.types';
+
+export type { PanelId, SpacerId, LayoutItem, ColSpan } from '../types/dashboard-layout.types';
 
 export const PANEL_IDS = [
   'tools',
@@ -21,16 +24,8 @@ export const PANEL_IDS = [
   'filament-sensors',
 ] as const;
 
-export type PanelId = (typeof PANEL_IDS)[number];
-
-// Spacer placeholder — encodes its column span in the ID, e.g. '__spacer_6'
-export type SpacerId = `__spacer_${number}`;
-export type LayoutItem = PanelId | SpacerId;
 export function isSpacerId(id: string): id is SpacerId { return id.startsWith('__spacer_'); }
 export function spacerSpan(id: SpacerId): number { return parseInt(id.slice(9), 10); }
-
-// Valid column spans in a 12-column grid
-export type ColSpan = 3 | 4 | 6 | 8 | 12;
 export const VALID_SPANS: ColSpan[] = [3, 4, 6, 8, 12];
 
 const DEFAULT_ORDER: PanelId[] = [

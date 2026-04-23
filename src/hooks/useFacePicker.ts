@@ -16,38 +16,14 @@ import { useEffect, useRef } from 'react';
 import { useThree } from '@react-three/fiber';
 import * as THREE from 'three';
 import { GeometryEngine } from '../engine/GeometryEngine';
+import type { FacePickResult, UseFacePickerOptions } from '../types/face-picker.types';
+export type { FacePickResult, UseFacePickerOptions } from '../types/face-picker.types';
 
 // ---------------------------------------------------------------------------
 // Module-level scratch — never allocated inside event handlers
 // ---------------------------------------------------------------------------
 const _mouse = new THREE.Vector2();
 const _checkedMeshes = new Set<THREE.Mesh>();
-
-// ---------------------------------------------------------------------------
-// Public types
-// ---------------------------------------------------------------------------
-
-export interface FacePickResult {
-  mesh: THREE.Mesh;
-  faceIndex: number;
-  boundary: THREE.Vector3[];
-  normal: THREE.Vector3;
-  centroid: THREE.Vector3;
-}
-
-export interface UseFacePickerOptions {
-  /** When false the hook detaches all listeners and clears hover state. */
-  enabled: boolean;
-  /** Called each pointer-move. null means "no face under cursor". */
-  onHover?: (result: FacePickResult | null) => void;
-  /** Called on left-click when a face is hit. */
-  onClick?: (result: FacePickResult) => void;
-  /**
-   * Optional mesh filter. Return true to include the mesh in raycasting.
-   * If omitted, all meshes with userData.pickable === true are included.
-   */
-  filter?: (mesh: THREE.Mesh) => boolean;
-}
 
 // ---------------------------------------------------------------------------
 // Hook

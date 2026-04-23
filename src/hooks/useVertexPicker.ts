@@ -14,6 +14,8 @@
 import { useEffect, useRef } from 'react';
 import { useThree } from '@react-three/fiber';
 import * as THREE from 'three';
+import type { VertexPickResult, UseVertexPickerOptions } from '../types/vertex-picker.types';
+export type { VertexPickResult, UseVertexPickerOptions } from '../types/vertex-picker.types';
 
 // ---------------------------------------------------------------------------
 // Module-level scratch — no per-event allocation
@@ -28,32 +30,6 @@ const _ndc = new THREE.Vector3();
 // ---------------------------------------------------------------------------
 // Public types
 // ---------------------------------------------------------------------------
-
-export interface VertexPickResult {
-  mesh: THREE.Mesh;
-  vertexIndex: number;
-  /** World-space position of the picked vertex. */
-  position: THREE.Vector3;
-}
-
-export interface UseVertexPickerOptions {
-  /** When false the hook detaches all listeners and clears hover state. */
-  enabled: boolean;
-  /** Called each pointer-move. null means "no vertex close enough". */
-  onHover?: (result: VertexPickResult | null) => void;
-  /** Called on left-click when a vertex is within range. */
-  onClick?: (result: VertexPickResult) => void;
-  /**
-   * Maximum screen-space distance in pixels to accept a vertex hit.
-   * Defaults to 10.
-   */
-  maxDistance?: number;
-  /**
-   * Optional mesh filter. Return true to include the mesh in raycasting.
-   * If omitted, all meshes with userData.pickable === true are included.
-   */
-  filter?: (mesh: THREE.Mesh) => boolean;
-}
 
 // ---------------------------------------------------------------------------
 // Internal: pick nearest vertex from a face hit

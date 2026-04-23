@@ -14,40 +14,8 @@
 const LEGACY_PREFS_KEY = 'dzign3d-duet-prefs';
 const LEGACY_AUTO_RECONNECT_KEY = 'dzign3d-duet-autoreconnect';
 
-export type Units = 'metric' | 'imperial';
-export type NotifSeverity = 'info' | 'warning' | 'error';
-export type TemperatureUnit = 'C' | 'F';
-export type DateFormat = 'relative' | 'absolute';
-
-export interface CustomButton {
-  id: string;
-  label: string;
-  gcode: string;
-}
-
-export interface DuetPrefs {
-  // General
-  units: Units;
-  webcamUrl: string;
-  // Behaviour
-  confirmToolChange: boolean;
-  silentPrompts: boolean;
-  autoReconnect: boolean;
-  reconnectInterval: number;
-  maxRetries: number;
-  // Notifications
-  toastDurationMs: number;
-  notificationsSound: boolean;
-  notifMinSeverity: NotifSeverity;
-  // Sound alerts
-  soundAlertOnComplete: boolean;
-  // Temperature display
-  temperatureUnit: TemperatureUnit;
-  // Date display
-  dateFormat: DateFormat;
-  // Custom dashboard buttons
-  customButtons: CustomButton[];
-}
+export type { Units, NotifSeverity, TemperatureUnit, DateFormat, CustomButton, DuetPrefs } from '../types/duet-prefs.types';
+import type { DuetPrefs } from '../types/duet-prefs.types';
 
 export const DEFAULT_PREFS: DuetPrefs = {
   units: 'metric',

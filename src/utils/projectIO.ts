@@ -24,10 +24,10 @@ import {
   buildExportPayload,
   applySettings,
   type ExportedSettings,
-  type ImportResult,
 } from './settingsExport';
+import type { BundleSlice, ImportResult } from '../types/settings-io.types';
 
-export type BundleSlice = 'cad' | 'slicer' | 'printer' | 'theme';
+export type { BundleSlice };
 
 // Chromium-only: the File System Access API lets us hold on to a user-picked
 // file and rewrite it without re-prompting. Typed locally so the project
@@ -148,13 +148,13 @@ function mergeSlice(
   return merged;
 }
 
-// ---------------------------------------------------------------------------
-// Open
-// ---------------------------------------------------------------------------
-
 export interface OpenResult extends ImportResult {
   filename?: string;
 }
+
+// ---------------------------------------------------------------------------
+// Open
+// ---------------------------------------------------------------------------
 
 /**
  * Prompt for a .dzn file and apply all sections. Remembers the file handle

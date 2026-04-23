@@ -10,8 +10,9 @@ import { usePrinterStore } from '../../store/printerStore';
 import { useThemeStore } from '../../store/themeStore';
 import {
   openBundle, saveBundleAs, saveBundleSlice,
-  useProjectFileStore, type BundleSlice,
+  useProjectFileStore,
 } from '../../utils/projectIO';
+import type { BundleSlice } from '../../types/settings-io.types';
 
 import type { RefObject, ChangeEvent } from 'react';
 

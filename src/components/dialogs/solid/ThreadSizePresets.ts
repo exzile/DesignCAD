@@ -5,18 +5,8 @@
  * Sources: ISO 68-1, ASME B1.1, ASME B1.20.1
  */
 
-export type ThreadStandard = 'iso-metric' | 'ansi-unified' | 'npt';
-
-export interface ThreadSizeEntry {
-  /** Display label / designation (e.g. "M6x1.0", "1/4-20", "1/2 NPT") */
-  designation: string;
-  /** Nominal outer diameter in mm */
-  diameter: number;
-  /** Thread pitch in mm (for ANSI/NPT this is converted from TPI) */
-  pitch: number;
-  /** Default tolerance class (e.g. "6H" for internal ISO, "2A"/"2B" for ANSI) */
-  defaultClass: string;
-}
+import type { ThreadStandard, ThreadSizeEntry } from '../../../types/thread-presets.types';
+export type { ThreadStandard, ThreadSizeEntry } from '../../../types/thread-presets.types';
 
 // ── ISO Metric (mm) ──────────────────────────────────────────────────────────
 // Coarse pitch series — ISO 261 standard nominal diameters
