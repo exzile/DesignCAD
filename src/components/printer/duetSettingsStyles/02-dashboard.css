@@ -1,0 +1,378 @@
+/* =============================================================================
+   Machine page (ds-* namespace)
+   ============================================================================= */
+
+/* â”€â”€ Board hero card â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
+.ds-machine-hero {
+  position: relative;
+  border-radius: 10px;
+  padding: 16px 18px;
+  background:
+    linear-gradient(135deg, rgba(120,130,240,0.10), rgba(70,190,180,0.06) 65%),
+    var(--bg-elevated);
+  border: 1px solid var(--border);
+  overflow: hidden;
+}
+
+.ds-machine-hero::before {
+  content: '';
+  position: absolute;
+  top: -40%;
+  right: -10%;
+  width: 280px;
+  height: 280px;
+  background: radial-gradient(circle, rgba(120,140,240,0.10) 0%, transparent 60%);
+  pointer-events: none;
+}
+
+.ds-machine-hero-head {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding-bottom: 14px;
+  border-bottom: 1px solid var(--border);
+  margin-bottom: 14px;
+}
+
+.ds-machine-hero-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 42px;
+  height: 42px;
+  border-radius: 10px;
+  background: linear-gradient(135deg, rgba(120,130,240,0.25), rgba(120,130,240,0.08));
+  border: 1px solid rgba(120,130,240,0.3);
+  color: var(--accent);
+  flex-shrink: 0;
+}
+
+.ds-machine-hero-title {
+  flex: 1;
+  min-width: 0;
+}
+
+.ds-machine-hero-name {
+  font-size: 16px;
+  font-weight: 700;
+  color: var(--text-primary);
+  letter-spacing: 0.2px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.ds-machine-hero-fw {
+  margin-top: 2px;
+  font-size: 12px;
+  color: var(--text-muted);
+  font-family: 'JetBrains Mono', 'Consolas', monospace;
+}
+
+.ds-machine-hero-fw strong {
+  color: var(--text-primary);
+  font-weight: 600;
+}
+
+.ds-machine-hero-date {
+  opacity: 0.7;
+}
+
+/* â”€â”€ Status pill (shared) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
+.ds-status-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 3px 9px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.3px;
+  text-transform: uppercase;
+  border: 1px solid transparent;
+  flex-shrink: 0;
+}
+
+.ds-status-pill--sm {
+  padding: 2px 7px;
+  font-size: 10px;
+  letter-spacing: 0.2px;
+}
+
+.ds-status-pill--ok {
+  color: rgb(110,220,150);
+  background: rgba(80,200,130,0.12);
+  border-color: rgba(80,200,130,0.35);
+}
+
+.ds-status-pill--warn {
+  color: rgb(240,190,100);
+  background: rgba(232,184,75,0.12);
+  border-color: rgba(232,184,75,0.35);
+}
+
+.ds-status-pill--off {
+  color: rgba(200,200,220,0.55);
+  background: rgba(255,255,255,0.04);
+  border-color: rgba(255,255,255,0.1);
+}
+
+.ds-status-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: currentColor;
+  box-shadow: 0 0 8px currentColor;
+}
+
+/* â”€â”€ Metric grid inside hero â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
+.ds-metric-grid {
+  position: relative;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(130px, 1fr));
+  gap: 8px;
+}
+
+.ds-metric {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 9px 12px;
+  border-radius: 8px;
+  background: rgba(255,255,255,0.03);
+  border: 1px solid rgba(255,255,255,0.06);
+  transition: background 0.15s, border-color 0.15s;
+}
+
+.ds-metric:hover {
+  background: rgba(255,255,255,0.06);
+  border-color: rgba(255,255,255,0.12);
+}
+
+.ds-metric--warn {
+  background: rgba(232,184,75,0.08);
+  border-color: rgba(232,184,75,0.35);
+}
+
+.ds-metric-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 6px;
+  background: rgba(120,130,240,0.12);
+  color: var(--accent);
+  flex-shrink: 0;
+}
+
+.ds-metric--warn .ds-metric-icon {
+  background: rgba(232,184,75,0.15);
+  color: rgb(240,200,110);
+}
+
+.ds-metric-body {
+  flex: 1;
+  min-width: 0;
+}
+
+.ds-metric-label {
+  font-size: 10px;
+  font-weight: 600;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.ds-metric-value {
+  margin-top: 2px;
+  font-size: 16px;
+  font-weight: 700;
+  color: var(--text-primary);
+  font-family: 'JetBrains Mono', 'Consolas', monospace;
+  line-height: 1.1;
+}
+
+.ds-metric-value small {
+  font-size: 11px;
+  opacity: 0.6;
+  margin-left: 2px;
+  font-weight: 600;
+}
+
+/* â”€â”€ Section title row with count badge â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
+.ds-section-title-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.ds-section-count {
+  margin-left: auto;
+  padding: 1px 8px;
+  border-radius: 999px;
+  background: rgba(120,130,240,0.14);
+  border: 1px solid rgba(120,130,240,0.3);
+  color: var(--accent);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.3px;
+}
+
+.ds-empty-hint {
+  font-size: 12px;
+  color: var(--text-muted);
+  padding: 14px 8px;
+  text-align: center;
+  border: 1px dashed var(--border);
+  border-radius: 6px;
+}
+
+/* â”€â”€ Axes grid â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
+.ds-axes-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+  gap: 10px;
+}
+
+.ds-axis-card {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 12px 14px;
+  border-radius: 8px;
+  background: var(--bg-input);
+  border: 1px solid var(--border);
+  transition: border-color 0.15s, transform 0.15s;
+}
+
+.ds-axis-card:hover {
+  border-color: rgba(120,130,240,0.35);
+  transform: translateY(-1px);
+}
+
+.ds-axis-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.ds-axis-letter {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 28px;
+  height: 28px;
+  padding: 0 9px;
+  border-radius: 7px;
+  background: linear-gradient(135deg, rgba(120,130,240,0.25), rgba(120,130,240,0.1));
+  color: var(--accent);
+  font-family: 'JetBrains Mono', 'Consolas', monospace;
+  font-size: 15px;
+  font-weight: 700;
+  border: 1px solid rgba(120,130,240,0.35);
+}
+
+/* â”€â”€ Axis range bar â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
+.ds-axis-range {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.ds-axis-range-bar {
+  position: relative;
+  width: 100%;
+  height: 6px;
+  border-radius: 3px;
+  background: rgba(255,255,255,0.05);
+  border: 1px solid rgba(255,255,255,0.04);
+}
+
+.ds-axis-range-fill {
+  position: absolute;
+  top: 0;
+  left: 0;
+  height: 100%;
+  border-radius: 3px;
+  background: linear-gradient(90deg, rgba(120,130,240,0.5), rgba(120,130,240,0.9));
+}
+
+.ds-axis-range-marker {
+  position: absolute;
+  top: 50%;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: var(--accent);
+  border: 2px solid var(--bg-panel);
+  transform: translate(-50%, -50%);
+  box-shadow: 0 0 10px rgba(120,130,240,0.6);
+}
+
+.ds-axis-range-labels {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 10px;
+  font-family: 'JetBrains Mono', 'Consolas', monospace;
+  color: var(--text-muted);
+}
+
+.ds-axis-range-current {
+  color: var(--text-primary);
+  font-weight: 600;
+}
+
+/* â”€â”€ Axis stats row â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
+.ds-axis-stats {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 6px;
+  padding-top: 8px;
+  border-top: 1px solid var(--border);
+}
+
+.ds-axis-stat {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 6px 8px;
+  border-radius: 6px;
+  background: rgba(255,255,255,0.02);
+  border: 1px solid rgba(255,255,255,0.04);
+  color: var(--text-muted);
+  min-width: 0;
+}
+
+.ds-axis-stat svg {
+  opacity: 0.55;
+}
+
+.ds-axis-stat-label {
+  font-size: 9px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: var(--text-muted);
+}
+
+.ds-axis-stat-value {
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--text-primary);
+  font-family: 'JetBrains Mono', 'Consolas', monospace;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.ds-axis-stat-value small {
+  font-size: 9px;
+  font-weight: 600;
+  opacity: 0.55;
+  margin-left: 2px;
+}
+

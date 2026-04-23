@@ -1,0 +1,473 @@
+/* =================================================================
+   Tool Selector panel  (ts-* namespace)
+   ================================================================= */
+
+.ts-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 10px;
+}
+
+.ts-empty {
+  text-align: center;
+  font-size: 11px;
+  color: rgba(180,180,200,0.35);
+  padding: 10px 0 4px;
+}
+
+.ts-deselect-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  height: 26px;
+  padding: 0 9px;
+  border-radius: 5px;
+  border: 1px solid rgba(220,80,80,0.3);
+  background: rgba(220,80,80,0.08);
+  color: #e06060;
+  font-size: 10px;
+  font-weight: 600;
+  font-family: inherit;
+  cursor: pointer;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  transition: background 0.12s, border-color 0.12s;
+}
+
+.ts-deselect-btn:hover {
+  background: rgba(220,80,80,0.18);
+  border-color: rgba(220,80,80,0.55);
+}
+
+.ts-tool-card {
+  background: transparent;
+  border-left: 3px solid rgba(155,155,200,0.3);
+  border-radius: 0 7px 7px 0;
+  padding: 9px 12px 9px 11px;
+  margin-bottom: 8px;
+  transition: border-color 0.2s;
+}
+
+.ts-tool-card--active {
+  border-left-color: rgba(100,160,255,0.85);
+}
+
+.ts-card-header {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  margin-bottom: 9px;
+}
+
+.ts-select-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  height: 28px;
+  min-width: 38px;
+  padding: 0 8px;
+  border-radius: 6px;
+  border: 1px solid rgba(255,255,255,0.1);
+  background: rgba(255,255,255,0.05);
+  color: rgba(200,200,220,0.7);
+  font-size: 11px;
+  font-weight: 700;
+  font-family: inherit;
+  cursor: pointer;
+  transition: background 0.12s, border-color 0.12s, color 0.12s;
+}
+
+.ts-select-btn:hover {
+  background: rgba(100,160,255,0.12);
+  border-color: rgba(100,160,255,0.35);
+  color: #8ab8ff;
+}
+
+.ts-select-btn--active {
+  background: rgba(100,160,255,0.2);
+  border-color: rgba(100,160,255,0.65);
+  color: #8ab8ff;
+  box-shadow: 0 0 0 1px rgba(100,160,255,0.2);
+}
+
+.ts-tool-name {
+  font-size: 12px;
+  font-weight: 600;
+  flex: 1;
+  color: rgba(220,220,235,0.9);
+}
+
+.ts-state-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 10px;
+  font-weight: 600;
+  color: var(--ts-state-color, rgba(180,180,200,0.5));
+  text-transform: capitalize;
+}
+
+.ts-state-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--ts-state-color, rgba(180,180,200,0.35));
+  box-shadow: 0 0 5px var(--ts-state-color, transparent);
+  flex-shrink: 0;
+}
+
+.ts-section { margin-bottom: 8px; }
+
+.ts-section-label {
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.6px;
+  text-transform: uppercase;
+  color: rgba(180,180,200,0.4);
+  margin-bottom: 5px;
+}
+
+.ts-heater-grid {
+  display: grid;
+  grid-template-columns: 52px 70px 68px 68px;
+  gap: 4px 6px;
+  align-items: center;
+  font-size: 11px;
+}
+
+.ts-heater-col-hdr {
+  font-size: 9px;
+  color: rgba(180,180,200,0.38);
+  font-weight: 600;
+}
+
+.ts-heater-name {
+  font-weight: 600;
+  color: var(--ts-heater-color, rgba(200,200,220,0.7));
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 11px;
+}
+
+.ts-heater-state-dot {
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: var(--ts-heater-state, rgba(180,180,200,0.3));
+  flex-shrink: 0;
+}
+
+.ts-heater-current {
+  font-weight: 700;
+  font-family: monospace;
+  font-size: 12px;
+  color: rgba(220,220,235,0.9);
+}
+
+.ts-input {
+  background: rgba(0,0,0,0.25);
+  border: 1px solid rgba(255,255,255,0.1);
+  border-radius: 5px;
+  color: rgba(220,220,235,0.9);
+  padding: 4px 6px;
+  font-size: 11px;
+  font-family: monospace;
+  outline: none;
+  width: 62px;
+  transition: border-color 0.12s;
+  -moz-appearance: textfield;
+}
+
+.ts-input::-webkit-outer-spin-button,
+.ts-input::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
+
+.ts-input:focus { border-color: rgba(100,160,255,0.5); }
+
+.ts-offsets { display: flex; gap: 6px; flex-wrap: wrap; }
+
+.ts-offset-chip {
+  background: rgba(0,0,0,0.2);
+  border: 1px solid rgba(255,255,255,0.07);
+  border-radius: 4px;
+  padding: 2px 8px;
+  font-size: 11px;
+  font-family: monospace;
+}
+
+.ts-offset-axis { color: rgba(180,180,200,0.5); }
+.ts-offset-val  { font-weight: 600; }
+
+.ts-filament-row { display: flex; align-items: center; gap: 6px; }
+
+.ts-select {
+  flex: 1;
+  background: rgba(0,0,0,0.25);
+  border: 1px solid rgba(255,255,255,0.1);
+  border-radius: 5px;
+  color: rgba(220,220,235,0.9);
+  padding: 4px 7px;
+  font-size: 11px;
+  font-family: inherit;
+  outline: none;
+  cursor: pointer;
+  transition: border-color 0.12s;
+}
+
+.ts-select:focus { border-color: rgba(100,160,255,0.5); }
+
+.ts-unload-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  height: 26px;
+  padding: 0 9px;
+  border-radius: 5px;
+  border: 1px solid rgba(220,80,80,0.25);
+  background: rgba(220,80,80,0.08);
+  color: #e06060;
+  font-size: 10px;
+  font-weight: 600;
+  font-family: inherit;
+  cursor: pointer;
+  transition: background 0.12s, border-color 0.12s;
+}
+
+.ts-unload-btn:hover {
+  background: rgba(220,80,80,0.18);
+  border-color: rgba(220,80,80,0.5);
+}
+
+.ts-unload-btn:disabled { opacity: 0.3; cursor: not-allowed; }
+
+.ts-assigned-row { display: flex; gap: 12px; flex-wrap: wrap; font-size: 11px; }
+
+.ts-assigned-item { display: flex; align-items: center; gap: 4px; color: rgba(180,180,200,0.45); }
+
+.ts-assigned-label { color: rgba(180,180,200,0.4); }
+.ts-assigned-val   { color: rgba(210,210,230,0.7); font-weight: 500; }
+
+/* ---- Material preset bar ---- */
+.ts-presets {
+  display: flex;
+  gap: 4px;
+  flex-wrap: wrap;
+  margin-bottom: 10px;
+  padding-bottom: 10px;
+  border-bottom: 1px solid rgba(255,255,255,0.05);
+}
+.ts-preset-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  height: 26px;
+  padding: 0 9px;
+  border-radius: 5px;
+  border: 1px solid var(--ts-preset-color, rgba(255,255,255,0.1));
+  background: color-mix(in srgb, var(--ts-preset-color, rgba(255,255,255,0.05)) 12%, transparent);
+  color: var(--ts-preset-color, rgba(210,210,230,0.8));
+  font-size: 10px;
+  font-weight: 700;
+  font-family: inherit;
+  cursor: pointer;
+  transition: background 0.12s, transform 0.07s;
+  letter-spacing: 0.03em;
+}
+.ts-preset-btn:hover {
+  background: color-mix(in srgb, var(--ts-preset-color, rgba(255,255,255,0.1)) 22%, transparent);
+}
+.ts-preset-btn:active { transform: scale(0.96); }
+.ts-preset-name { font-weight: 700; }
+.ts-preset-temp {
+  font-family: monospace;
+  font-weight: 500;
+  opacity: 0.7;
+  font-size: 9px;
+}
+.ts-preset-btn--cool {
+  --ts-preset-color: rgb(120,180,240);
+}
+
+/* ---- Heat progress bar (spans full heater-grid row) ---- */
+.ts-heatbar {
+  grid-column: 1 / -1;
+  height: 3px;
+  border-radius: 2px;
+  background: rgba(0,0,0,0.3);
+  overflow: hidden;
+  margin: 0 0 4px;
+}
+.ts-heatbar-fill {
+  height: 100%;
+  background: linear-gradient(90deg, rgb(59,130,246), rgb(239,68,68));
+  border-radius: 2px;
+  transition: width 0.4s ease;
+}
+.ts-heatbar--off .ts-heatbar-fill { display: none; }
+.ts-heatbar--ready .ts-heatbar-fill {
+  background: rgb(34,197,94);
+  box-shadow: 0 0 6px rgba(34,197,94,0.5);
+}
+.ts-heatbar--heating .ts-heatbar-fill {
+  animation: ts-heat-pulse 1.5s ease-in-out infinite;
+}
+.ts-heatbar--cooling .ts-heatbar-fill {
+  background: linear-gradient(90deg, rgb(100,160,255), rgb(180,200,255));
+  opacity: 0.55;
+}
+@keyframes ts-heat-pulse {
+  0%, 100% { opacity: 1; filter: brightness(1); }
+  50% { opacity: 0.7; filter: brightness(1.25); }
+}
+
+
+
+.duet-dash-section-title-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.duet-dash-heater-grid {
+  display: grid;
+  grid-template-columns: 120px 80px 80px 80px 1fr 40px;
+  gap: 6px 8px;
+  align-items: center;
+  font-size: 12px;
+  margin-bottom: 12px;
+}
+
+.duet-dash-heater-col {
+  color: var(--text-muted);
+  font-size: 10px;
+}
+
+.duet-dash-heater-label {
+  font-weight: 500;
+  color: var(--duet-heater-color);
+}
+
+.duet-dash-heater-current {
+  font-weight: 600;
+}
+
+.duet-dash-tempbar-wrap {
+  height: 8px;
+  border-radius: 4px;
+  background: var(--bg-input);
+  overflow: hidden;
+  position: relative;
+}
+
+.duet-dash-heater-state {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: var(--duet-heater-state);
+  box-shadow: var(--duet-heater-glow);
+  margin: 0 auto;
+}
+
+.duet-dash-tempchart {
+  width: 100%;
+  height: auto;
+  max-height: 160px;
+}
+
+.temp-chart-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 3px 12px;
+  padding: 5px 10px 6px;
+  border-top: 1px solid var(--border-light);
+}
+
+.temp-legend-item {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 10px;
+}
+
+.temp-legend-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  box-shadow: 0 0 4px currentColor;
+}
+
+.temp-legend-name {
+  color: var(--text-secondary);
+  letter-spacing: 0.2px;
+}
+
+.temp-legend-val {
+  font-weight: 600;
+  color: var(--text-primary);
+  font-variant-numeric: tabular-nums;
+}
+
+.duet-dash-root {
+  height: 100%;
+  overflow: auto;
+  padding: 16px;
+}
+
+.duet-dash-layout {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+  max-width: 1400px;
+  margin: 0 auto;
+}
+
+.duet-dash-col {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.duet-dash-span-full {
+  grid-column: 1 / -1;
+}
+
+.duet-dash-atx-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.duet-dash-atx-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.duet-dash-macro-list { display: flex; flex-wrap: wrap; gap: 6px; } /* legacy - unused */
+
+.duet-dash-error-banner {
+  background: rgba(239, 68, 68, 0.15);
+  border: 1px solid;
+  border-radius: 6px;
+  padding: 8px 14px;
+  margin-bottom: 12px;
+  font-size: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.duet-dash-error-dismiss {
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-size: 16px;
+  line-height: 1;
+}
+
+.duet-dash-tools-header-row { display: flex; align-items: center; justify-content: space-between; } /* legacy */
+
+/* tool card styles moved to ts-* namespace */
+

@@ -1,0 +1,57 @@
+/* ===== Sketch Ribbon — compact uniform 2-row grid ===== */
+
+/*
+  .sk-grid  — 2 rows, auto columns, fills left→right then wraps to row 2
+  Each button: horizontal (icon left, label right), 26px tall
+  Result: two tidy rows that fit cleanly in the ribbon height
+*/
+.sk-grid {
+  display: grid;
+  grid-template-rows: 1fr 1fr;
+  grid-auto-flow: column;
+  gap: 1px;
+  align-items: center;
+}
+
+/* Single-column variant for CONFIGURE / INSPECT / INSERT / SELECT */
+.sk-grid.sk-grid-1col {
+  grid-template-rows: repeat(2, 26px);
+  grid-auto-columns: 1fr;
+}
+
+/* Override ribbon-button sizing inside sk-grid */
+.sk-grid .ribbon-button {
+  height: 26px;
+  min-width: 80px;
+  flex-direction: row;
+  justify-content: flex-start;
+  gap: 5px;
+  padding: 0 8px;
+  border-radius: 3px;
+}
+
+.sk-grid .ribbon-button-icon {
+  height: 16px;
+  width: 16px;
+  flex-shrink: 0;
+}
+
+.sk-grid .ribbon-button-label {
+  font-size: 9.5px;
+  text-transform: none;
+  letter-spacing: 0;
+  text-align: left;
+}
+
+/* Ensure the sketch ribbon section content aligns to center vertically */
+.sketch-ribbon .ribbon-section-content {
+  align-items: center;
+  padding: 0;
+}
+
+/* Sketch ribbon doesn't need the padding-top that normal ribbon has */
+.sketch-ribbon {
+  padding-top: 2px;
+  padding-bottom: 0;
+}
+

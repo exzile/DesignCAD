@@ -1,0 +1,230 @@
+/* Ribbon Content Area (icon groups) */
+.ribbon-content {
+  display: flex;
+  align-items: stretch;
+  padding: 4px 8px;
+  min-height: 76px;
+  background: var(--bg-toolbar);
+  gap: 0;
+  overflow: hidden;
+  flex-wrap: nowrap;
+}
+
+/* Ribbon Section (labeled group) */
+.ribbon-section {
+  display: flex;
+  flex-direction: column;
+  border-right: 1px solid var(--border-light);
+  padding: 0 8px;
+  flex-shrink: 0;
+  position: relative;
+}
+
+.ribbon-section:last-child {
+  border-right: none;
+}
+
+.ribbon-section-content {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  flex: 1;
+  padding-bottom: 2px;
+}
+
+.ribbon-section-label {
+  font-size: 9px;
+  color: var(--text-muted);
+  text-align: center;
+  text-transform: uppercase;
+  letter-spacing: 0.8px;
+  font-weight: 600;
+  padding: 2px 0;
+  border-top: 1px solid var(--border-light);
+  white-space: nowrap;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: default;
+}
+
+/* Ribbon Buttons */
+.ribbon-button {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  padding: 3px 7px;
+  border: 1px solid transparent;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: all 0.12s ease;
+  min-width: 44px;
+  height: 52px;  /* compact default — works for sketch mode */
+  position: relative;
+}
+
+/* Large variant — used in non-sketch tabs for bigger primary tools */
+.ribbon-button.large {
+  min-width: 52px;
+  height: 60px;
+}
+
+.ribbon-button:hover {
+  background: var(--bg-hover);
+  border-color: var(--border-light);
+  color: var(--text-primary);
+}
+
+.ribbon-button.active {
+  background: var(--bg-active);
+  border-color: var(--accent);
+  color: var(--accent);
+  animation: ribbon-tool-active-pulse 1.4s ease-in-out infinite;
+}
+
+@keyframes ribbon-tool-active-pulse {
+  0%,
+  100% {
+    box-shadow: 0 0 0 0 rgba(0, 120, 215, 0.28);
+    transform: translateY(0);
+  }
+  50% {
+    box-shadow: 0 0 0 4px rgba(0, 120, 215, 0.08);
+    transform: translateY(-1px);
+  }
+}
+
+.ribbon-button.disabled {
+  opacity: 0.3;
+  pointer-events: none;
+}
+
+.ribbon-button-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 26px;
+}
+
+.ribbon-button.large .ribbon-button-icon {
+  height: 32px;
+}
+
+/* Icon color classes (Fusion 360 colorful icons) */
+.icon-blue { color: #0078d7; }
+.icon-orange { color: #ff6b00; }
+.icon-green { color: #4caf50; }
+.icon-purple { color: #7b1fa2; }
+.icon-teal { color: #00897b; }
+.icon-red { color: #f44336; }
+.icon-gray { color: #757575; }
+
+/* Active state overrides icon color to accent */
+.ribbon-button.active .ribbon-button-icon {
+  color: var(--accent);
+}
+
+.ribbon-button-label {
+  font-size: 9px;
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
+  white-space: nowrap;
+  line-height: 1.1;
+  text-align: center;
+  color: var(--text-secondary);
+}
+
+.ribbon-button.active .ribbon-button-label {
+  color: var(--accent);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ribbon-button.active {
+    animation: none;
+  }
+}
+
+.ribbon-dropdown-arrow {
+  position: absolute;
+  bottom: 2px;
+  right: 2px;
+  color: var(--text-muted);
+  cursor: pointer;
+}
+
+.ribbon-dropdown-arrow:hover {
+  color: var(--text-secondary);
+}
+
+/* Stacked buttons (2 small buttons vertically) */
+.ribbon-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.ribbon-stack .ribbon-button {
+  height: 28px;
+  min-width: 76px;
+  flex-direction: row;
+  gap: 5px;
+  padding: 2px 8px;
+  justify-content: flex-start;
+}
+
+.ribbon-stack .ribbon-button-icon {
+  height: 18px;
+}
+
+.ribbon-stack .ribbon-button-label {
+  font-size: 9px;
+}
+
+/* Dropdown Menu */
+.ribbon-dropdown-menu {
+  position: fixed;
+  z-index: 10000;
+  min-width: 200px;
+  background: var(--bg-primary);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 4px 0;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.15);
+}
+
+.ribbon-dropdown-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 8px 14px;
+  border: none;
+  background: transparent;
+  color: var(--text-primary);
+  font-size: 12px;
+  cursor: pointer;
+  text-align: left;
+  transition: background 0.1s;
+}
+
+.ribbon-dropdown-item:hover {
+  background: var(--bg-hover);
+}
+
+.ribbon-dropdown-item--divider {
+  border-top: 1px solid var(--border);
+  margin-top: 2px;
+  color: var(--accent);
+}
+
+.ribbon-dropdown-item-icon {
+  display: flex;
+  align-items: center;
+  color: var(--accent);
+}
+

@@ -1,0 +1,226 @@
+/* ─── Toolbar.css ─────────────────────────────────────────────────────────
+   Co-located styles for Toolbar and its subcomponents.
+   Plain CSS (no modules). All classes use kebab-case.
+   ──────────────────────────────────────────────────────────────────────── */
+
+/* Disabled state for quick-access undo / redo buttons */
+.ribbon-quick-btn-disabled {
+  opacity: 0.5;
+  pointer-events: none;
+}
+/* ===== Ribbon Toolbar ===== */
+.ribbon-toolbar {
+  display: flex;
+  flex-direction: column;
+  background: var(--bg-toolbar);
+  border-bottom: 1px solid var(--border);
+  user-select: none;
+}
+
+/* Quick Access Bar (top row - title bar) */
+.ribbon-quick-access {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  height: 30px;
+  padding: 0 8px;
+  background: var(--bg-secondary);
+  border-bottom: 1px solid var(--border-light);
+}
+
+.ribbon-quick-left,
+.ribbon-quick-right {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
+
+.ribbon-quick-center {
+  position: absolute;
+  left: 50%;
+  transform: translateX(-50%);
+}
+
+.ribbon-title {
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--text-muted);
+  letter-spacing: 0.3px;
+}
+
+.ribbon-quick-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 24px;
+  border: none;
+  border-radius: 3px;
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+  transition: all 0.12s;
+}
+
+.ribbon-quick-btn:hover {
+  background: var(--bg-hover);
+  color: var(--text-secondary);
+}
+
+.ribbon-quick-btn.connected {
+  color: var(--success);
+}
+
+.ribbon-quick-btn.user-btn {
+  color: var(--accent);
+}
+
+.ribbon-quick-divider {
+  width: 1px;
+  height: 14px;
+  background: var(--border-light);
+  margin: 0 4px;
+}
+
+/* ── File menu ── */
+.file-menu-root {
+  position: relative;
+}
+
+.file-menu-btn {
+  display: flex;
+  align-items: center;
+  height: 24px;
+  padding: 0 10px;
+  border: none;
+  border-radius: 3px;
+  background: transparent;
+  color: var(--text-muted);
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  letter-spacing: 0.3px;
+  transition: background 0.12s, color 0.12s;
+}
+
+.file-menu-btn:hover,
+.file-menu-btn.open {
+  background: var(--accent);
+  color: #fff;
+}
+
+.file-menu-dropdown {
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 0;
+  z-index: 9999;
+  min-width: 200px;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  box-shadow: 0 6px 20px rgba(0,0,0,0.28);
+  padding: 4px 0;
+}
+
+.file-menu-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 7px 14px;
+  border: none;
+  background: transparent;
+  color: var(--text-secondary);
+  font-size: 13px;
+  cursor: pointer;
+  text-align: left;
+  transition: background 0.1s;
+}
+
+.file-menu-item:hover {
+  background: var(--bg-hover);
+  color: var(--text-primary);
+}
+
+.file-menu-shortcut {
+  margin-left: auto;
+  font-size: 11px;
+  color: var(--text-muted);
+}
+
+.file-menu-separator {
+  height: 1px;
+  background: var(--border-light);
+  margin: 3px 0;
+}
+
+/* ── New-document confirmation modal ── */
+.new-doc-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 99999;
+  background: rgba(0, 0, 0, 0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.new-doc-modal {
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  box-shadow: 0 12px 40px rgba(0,0,0,0.4);
+  padding: 24px 28px 20px;
+  min-width: 340px;
+  max-width: 420px;
+}
+
+.new-doc-title {
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--text-primary);
+  margin-bottom: 10px;
+}
+
+.new-doc-body {
+  font-size: 13px;
+  color: var(--text-muted);
+  line-height: 1.5;
+  margin-bottom: 20px;
+}
+
+.new-doc-actions {
+  display: flex;
+  gap: 8px;
+  justify-content: flex-end;
+}
+
+.new-doc-btn {
+  padding: 6px 16px;
+  border-radius: 4px;
+  border: none;
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: opacity 0.12s;
+}
+
+.new-doc-btn:hover { opacity: 0.85; }
+
+.new-doc-btn-save {
+  background: var(--accent);
+  color: #fff;
+}
+
+.new-doc-btn-discard {
+  background: #c0392b;
+  color: #fff;
+}
+
+.new-doc-btn-cancel {
+  background: var(--bg-hover);
+  color: var(--text-secondary);
+  border: 1px solid var(--border);
+}
+
+/* ── Workspace Selector + Tab Row ── */

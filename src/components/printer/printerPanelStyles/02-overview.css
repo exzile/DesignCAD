@@ -1,0 +1,377 @@
+/* ===== Duet Notifications ===== */
+.duet-toast-stack {
+  position: fixed;
+  bottom: 16px;
+  right: 16px;
+  z-index: 2000;
+  display: flex;
+  flex-direction: column-reverse;
+  gap: 8px;
+  max-width: 360px;
+  pointer-events: none;
+}
+
+.duet-toast {
+  background: var(--duet-toast-bg);
+  border: 1px solid var(--duet-toast-border);
+  border-radius: 8px;
+  padding: 10px 14px;
+  font-size: 12px;
+  color: var(--duet-toast-text);
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  pointer-events: auto;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4);
+  font-family: 'Inter', 'Segoe UI', sans-serif;
+  animation: duetToastSlideIn 0.2s ease-out;
+}
+
+.duet-toast-message {
+  flex: 1;
+  line-height: 1.4;
+}
+
+.duet-toast-close {
+  background: none;
+  border: none;
+  color: var(--duet-toast-text);
+  cursor: pointer;
+  padding: 2px;
+  display: flex;
+  align-items: center;
+  opacity: 0.7;
+  flex-shrink: 0;
+}
+
+.duet-toast-close:hover {
+  opacity: 1;
+}
+
+@keyframes duetToastSlideIn {
+  from {
+    opacity: 0;
+    transform: translateX(20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+/* ===== Duet Custom Buttons ===== */
+.duet-custom-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 12px;
+}
+
+.duet-custom-empty {
+  color: var(--text-muted);
+  font-size: 12px;
+  text-align: center;
+  padding: 12px 0;
+}
+
+.duet-custom-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(110px, 1fr));
+  gap: 8px;
+}
+
+.duet-custom-item {
+  position: relative;
+}
+
+.duet-custom-btn {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  padding: 10px 8px;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  color: var(--text-primary);
+  font-size: 12px;
+  font-weight: 600;
+  min-height: 58px;
+  width: 100%;
+  cursor: pointer;
+}
+
+.duet-custom-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.duet-custom-btn-label {
+  text-align: center;
+  line-height: 1.2;
+}
+
+.duet-custom-overlay-actions {
+  position: absolute;
+  top: 2px;
+  right: 2px;
+  display: flex;
+  gap: 2px;
+}
+
+.duet-custom-editor {
+  margin-top: 12px;
+  padding: 12px;
+  background: var(--bg-elevated);
+  border-radius: 6px;
+  border: 1px solid var(--border);
+}
+
+.duet-custom-fields {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.duet-custom-field-actions {
+  display: flex;
+  gap: 6px;
+  justify-content: flex-end;
+}
+
+/* ===== Duet Status ===== */
+.duet-status-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: 10px;
+  padding: 12px;
+  align-items: start;
+}
+
+.duet-status-flag {
+  font-weight: 600;
+}
+
+.duet-status-dim {
+  color: var(--text-muted);
+}
+
+.duet-status-mono {
+  font-family: monospace;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.duet-status-flag.success {
+  color: var(--success);
+}
+
+.duet-status-flag.danger {
+  color: var(--error);
+}
+
+.duet-status-block {
+  margin-bottom: 12px;
+}
+
+.duet-status-board-title {
+  font-weight: 600;
+  font-size: 13px;
+  margin-bottom: 4px;
+}
+
+.duet-status-row-gap {
+  margin-bottom: 4px;
+}
+
+/* ===== Duet Dashboard ===== */
+/* =================================================================
+   Machine Status header  (ms-* namespace)
+   ================================================================= */
+
+.ms-root { display: flex; flex-direction: column; gap: 7px; }
+
+.ms-status-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.ms-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  border-radius: 20px;
+  border: 1px solid;
+  padding: 5px 14px 5px 10px;
+}
+
+.ms-status-text {
+  font-size: 13px;
+  font-weight: 700;
+  text-transform: capitalize;
+  color: var(--ms-color, rgba(200,200,220,0.85));
+  letter-spacing: 0.02em;
+}
+
+.ms-uptime {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 11px;
+  color: rgba(180,180,200,0.5);
+  font-family: monospace;
+}
+
+.ms-board-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+  color: rgba(180,180,200,0.45);
+}
+
+.ms-board-name { font-weight: 600; color: rgba(200,200,220,0.6); }
+.ms-sep        { color: rgba(180,180,200,0.25); }
+.ms-firmware   { font-family: monospace; }
+
+/* =================================================================
+   Fan Control panel  (fan-* namespace)
+   ================================================================= */
+
+.fan-empty {
+  text-align: center;
+  font-size: 11px;
+  color: rgba(180,180,200,0.35);
+  padding: 10px 0 4px;
+}
+
+.fan-card {
+  background: transparent;
+  border-left: 3px solid rgba(56,189,210,0.75);
+  border-radius: 0 7px 7px 0;
+  padding: 9px 12px 9px 11px;
+  margin-bottom: 8px;
+}
+
+.fan-header {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  margin-bottom: 8px;
+}
+
+.fan-name {
+  font-size: 12px;
+  font-weight: 600;
+  flex: 1;
+  color: rgba(220,220,235,0.9);
+}
+
+.fan-rpm {
+  font-size: 10px;
+  font-weight: 600;
+  color: rgba(56,189,210,0.85);
+  background: rgba(56,189,210,0.1);
+  border: 1px solid rgba(56,189,210,0.25);
+  border-radius: 4px;
+  padding: 1px 6px;
+  font-family: monospace;
+}
+
+.fan-pct {
+  font-size: 14px;
+  font-weight: 700;
+  font-family: monospace;
+  color: rgba(220,220,235,0.9);
+  min-width: 38px;
+  text-align: right;
+}
+
+.fan-slider-row {
+  display: flex;
+  align-items: center;
+  margin-bottom: 7px;
+}
+
+.fan-range {
+  flex: 1;
+  accent-color: rgb(56,189,210);
+  cursor: pointer;
+}
+
+.fan-presets {
+  display: flex;
+  gap: 3px;
+}
+
+.fan-preset-btn {
+  flex: 1;
+  height: 26px;
+  border-radius: 5px;
+  border: 1px solid rgba(255,255,255,0.08);
+  background: rgba(255,255,255,0.04);
+  color: rgba(200,200,220,0.55);
+  font-size: 10px;
+  font-family: monospace;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background 0.12s, border-color 0.12s, color 0.12s, transform 0.07s;
+}
+
+.fan-preset-btn:hover {
+  background: rgba(56,189,210,0.12);
+  border-color: rgba(56,189,210,0.35);
+  color: #4ecde0;
+}
+
+.fan-preset-btn:active { transform: scale(0.93); }
+
+.fan-preset-btn.is-active {
+  background: rgba(56,189,210,0.2);
+  border-color: rgba(56,189,210,0.6);
+  color: #4ecde0;
+  font-weight: 700;
+}
+
+.fan-preset-btn:disabled { opacity: 0.35; cursor: not-allowed; }
+
+@keyframes fan-spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+.fan-icon-wrap {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  flex-shrink: 0;
+}
+
+.fan-icon-wrap--spin {
+  animation-name: fan-spin;
+  animation-timing-function: linear;
+  animation-iteration-count: infinite;
+}
+
+.fan-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  font-size: 9px;
+  font-weight: 700;
+  padding: 1px 6px;
+  border-radius: 4px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.fan-badge--thermo {
+  background: rgba(240,170,60,0.12);
+  border: 1px solid rgba(240,170,60,0.3);
+  color: #f0aa3c;
+}
+
+/* =================================================================

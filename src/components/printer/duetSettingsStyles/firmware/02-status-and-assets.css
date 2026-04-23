@@ -1,0 +1,274 @@
+/* Ã¢â€â‚¬Ã¢â€â‚¬ Update-status card Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬ */
+.ds-fw-update-card {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 12px 14px;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: rgba(255,255,255,0.02);
+}
+
+.ds-fw-update-card--update-available {
+  border-color: rgba(232,184,75,0.5);
+  background: linear-gradient(135deg, rgba(232,184,75,0.08), rgba(232,184,75,0.02));
+}
+
+.ds-fw-update-card--up-to-date {
+  border-color: rgba(80,200,130,0.4);
+  background: linear-gradient(135deg, rgba(80,200,130,0.06), rgba(80,200,130,0.02));
+}
+
+.ds-fw-update-card--ahead {
+  border-color: rgba(120,130,240,0.35);
+  background: linear-gradient(135deg, rgba(120,130,240,0.06), rgba(120,130,240,0.02));
+}
+
+.ds-fw-update-card--error {
+  flex-direction: row;
+  align-items: flex-start;
+  gap: 10px;
+  border-color: rgba(240,100,100,0.4);
+  background: rgba(240,100,100,0.08);
+  color: rgb(255,160,160);
+}
+
+.ds-fw-update-head {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+}
+
+.ds-fw-update-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  border-radius: 8px;
+  flex-shrink: 0;
+}
+
+.ds-fw-update-card--update-available .ds-fw-update-icon {
+  background: rgba(232,184,75,0.18);
+  color: rgb(250,210,120);
+}
+
+.ds-fw-update-card--up-to-date .ds-fw-update-icon {
+  background: rgba(80,200,130,0.18);
+  color: rgb(130,230,170);
+}
+
+.ds-fw-update-card--ahead .ds-fw-update-icon {
+  background: rgba(120,130,240,0.18);
+  color: var(--accent);
+}
+
+.ds-fw-update-info {
+  flex: 1;
+  min-width: 0;
+}
+
+.ds-fw-update-title {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--text-primary);
+}
+
+.ds-fw-update-detail {
+  margin-top: 3px;
+  font-size: 11px;
+  color: var(--text-muted);
+  line-height: 1.4;
+}
+
+.ds-fw-update-date {
+  opacity: 0.75;
+}
+
+.ds-fw-external-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 10px;
+  border-radius: 5px;
+  border: 1px solid var(--border);
+  background: rgba(255,255,255,0.03);
+  color: var(--text-muted);
+  font-size: 10px;
+  font-weight: 600;
+  text-decoration: none;
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
+  transition: background 0.12s, color 0.12s, border-color 0.12s;
+  flex-shrink: 0;
+}
+
+.ds-fw-external-btn:hover {
+  background: rgba(120,130,240,0.15);
+  color: #fff;
+  border-color: rgba(120,130,240,0.5);
+}
+
+/* Ã¢â€â‚¬Ã¢â€â‚¬ Firmware asset list Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬ */
+.ds-fw-assets {
+  padding-top: 10px;
+  border-top: 1px solid var(--border);
+}
+
+.ds-fw-assets-label {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 10px;
+  font-weight: 700;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  margin-bottom: 6px;
+}
+
+.ds-fw-assets-label svg {
+  color: var(--accent);
+}
+
+.ds-fw-assets-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.ds-fw-asset {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px;
+  border-radius: 6px;
+  border: 1px solid var(--border);
+  background: rgba(255,255,255,0.03);
+  color: var(--text-primary);
+  font-size: 11px;
+  text-decoration: none;
+  transition: background 0.12s, border-color 0.12s, transform 0.08s;
+}
+
+.ds-fw-asset:hover {
+  background: rgba(120,130,240,0.1);
+  border-color: rgba(120,130,240,0.4);
+  transform: translateX(1px);
+}
+
+.ds-fw-asset.is-pick {
+  border-color: rgba(255,170,60,0.55);
+  background: rgba(255,170,60,0.08);
+}
+
+.ds-fw-asset.is-pick svg {
+  color: #ffb347;
+}
+
+.ds-fw-asset.is-iap {
+  opacity: 0.85;
+}
+
+.ds-fw-asset-tag {
+  padding: 1px 6px;
+  border-radius: 999px;
+  background: rgba(255,255,255,0.06);
+  color: var(--text-muted);
+  font-size: 9px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  flex-shrink: 0;
+}
+
+.ds-fw-asset-tag--pick {
+  background: rgba(255,170,60,0.18);
+  color: #ffb347;
+}
+
+.ds-fw-asset svg {
+  color: var(--accent);
+  flex-shrink: 0;
+}
+
+.ds-fw-asset-name {
+  flex: 1;
+  font-family: 'JetBrains Mono', 'Consolas', monospace;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
+}
+
+.ds-fw-asset-size {
+  color: var(--text-muted);
+  font-size: 10px;
+  font-family: 'JetBrains Mono', 'Consolas', monospace;
+  flex-shrink: 0;
+}
+
+.ds-fw-asset-hint {
+  margin-top: 8px;
+  font-size: 10px;
+  color: var(--text-muted);
+  line-height: 1.45;
+}
+
+/* Ã¢â€â‚¬Ã¢â€â‚¬ Release notes Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬ */
+.ds-fw-notes-wrap {
+  padding-top: 8px;
+  border-top: 1px solid var(--border);
+}
+
+.ds-fw-notes-toggle {
+  background: none;
+  border: none;
+  color: var(--accent);
+  font-family: inherit;
+  font-size: 11px;
+  font-weight: 600;
+  cursor: pointer;
+  padding: 0;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+.ds-fw-notes-toggle:hover {
+  color: #fff;
+}
+
+.ds-fw-notes {
+  margin: 8px 0 0;
+  padding: 10px 12px;
+  max-height: 220px;
+  overflow-y: auto;
+  border-radius: 6px;
+  border: 1px solid var(--border);
+  background: rgba(0,0,0,0.25);
+  color: var(--text-muted);
+  font-family: 'JetBrains Mono', 'Consolas', monospace;
+  font-size: 11px;
+  line-height: 1.5;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.ds-pd-reply-log {
+  margin: 8px 0 0;
+  padding: 6px 0 0;
+  max-height: 160px;
+  overflow-y: auto;
+  border: none;
+  border-top: 1px solid var(--border);
+  background: transparent;
+  color: var(--text-muted);
+  font-family: 'JetBrains Mono', 'Consolas', monospace;
+  font-size: 10.5px;
+  line-height: 1.45;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+

@@ -1,0 +1,261 @@
+/* =============================================================================
+   Firmware page (ds-fw-* namespace)
+   ============================================================================= */
+
+.ds-fw-hero {
+  position: relative;
+  border-radius: 10px;
+  padding: 16px 18px;
+  background:
+    linear-gradient(135deg, rgba(232,184,75,0.10), rgba(120,130,240,0.06) 65%),
+    var(--bg-elevated);
+  border: 1px solid var(--border);
+  overflow: hidden;
+}
+
+.ds-fw-hero::before {
+  content: '';
+  position: absolute;
+  top: -50%;
+  right: -15%;
+  width: 320px;
+  height: 320px;
+  background: radial-gradient(circle, rgba(232,184,75,0.12) 0%, transparent 65%);
+  pointer-events: none;
+}
+
+.ds-fw-hero-head {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding-bottom: 14px;
+  border-bottom: 1px solid var(--border);
+  margin-bottom: 14px;
+}
+
+.ds-fw-hero-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 42px;
+  height: 42px;
+  border-radius: 10px;
+  background: linear-gradient(135deg, rgba(232,184,75,0.25), rgba(232,184,75,0.08));
+  border: 1px solid rgba(232,184,75,0.35);
+  color: rgb(240,190,100);
+  flex-shrink: 0;
+}
+
+.ds-fw-hero-title {
+  flex: 1;
+  min-width: 0;
+}
+
+.ds-fw-hero-label {
+  font-size: 10px;
+  font-weight: 700;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.6px;
+}
+
+.ds-fw-hero-version {
+  margin-top: 2px;
+  font-size: 15px;
+  font-family: 'JetBrains Mono', 'Consolas', monospace;
+  color: var(--text-primary);
+}
+
+.ds-fw-hero-version strong {
+  color: var(--accent);
+  font-weight: 700;
+  font-size: 16px;
+}
+
+.ds-fw-hero-date {
+  margin-top: 4px;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 11px;
+  color: var(--text-muted);
+  font-family: 'JetBrains Mono', 'Consolas', monospace;
+}
+
+.ds-fw-hero-rescan {
+  margin-top: 6px;
+  display: flex;
+  width: fit-content;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 8px;
+  border-radius: 5px;
+  border: 1px solid rgba(140,150,180,0.25);
+  background: transparent;
+  color: var(--text-muted);
+  font-family: inherit;
+  font-size: 10.5px;
+  cursor: pointer;
+  transition: color .15s, border-color .15s, background .15s;
+}
+
+.ds-fw-hero-rescan:hover:not(:disabled) {
+  color: var(--text);
+  border-color: rgba(140,150,180,0.45);
+  background: rgba(140,150,180,0.08);
+}
+
+.ds-fw-hero-rescan:disabled {
+  cursor: default;
+  opacity: 0.6;
+}
+
+/* Ã¢â€â‚¬Ã¢â€â‚¬ PanelDue firmware variant table Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬ */
+.ds-pd-table {
+  display: grid;
+  grid-template-columns: minmax(110px, max-content) minmax(0, 1fr) minmax(60px, max-content);
+  row-gap: 2px;
+  margin-top: 8px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  overflow: hidden;
+  background: rgba(255,255,255,0.02);
+}
+
+.ds-pd-table-head,
+.ds-pd-row {
+  display: contents;
+}
+
+.ds-pd-table-head > span {
+  padding: 6px 12px;
+  font-size: 9px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: var(--text-muted);
+  background: rgba(255,255,255,0.04);
+  border-bottom: 1px solid var(--border);
+}
+
+.ds-pd-table-head .ds-pd-col-size {
+  text-align: right;
+}
+
+.ds-pd-row {
+  cursor: pointer;
+}
+
+.ds-pd-row > span {
+  padding: 7px 12px;
+  font-size: 11px;
+  display: flex;
+  align-items: center;
+  border: 0;
+  background: transparent;
+  color: var(--text-primary);
+  transition: background 0.12s, color 0.12s;
+}
+
+.ds-pd-row:not(:last-child) > span {
+  border-bottom: 1px solid rgba(140,150,180,0.12);
+}
+
+.ds-pd-row:hover:not(:disabled) > span {
+  background: rgba(120,130,240,0.1);
+}
+
+.ds-pd-row:disabled {
+  cursor: default;
+  opacity: 0.55;
+}
+
+.ds-pd-row.is-pick > span {
+  background: rgba(255,170,60,0.09);
+}
+
+.ds-pd-cell-variant {
+  gap: 6px;
+}
+
+.ds-pd-row-check {
+  color: #ffb347;
+  flex-shrink: 0;
+}
+
+.ds-pd-row-bullet {
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: rgba(140,150,180,0.3);
+  flex-shrink: 0;
+  margin: 0 2px;
+}
+
+.ds-pd-variant-label {
+  font-family: 'JetBrains Mono', 'Consolas', monospace;
+  font-weight: 700;
+  font-size: 12px;
+}
+
+.ds-pd-row.is-pick .ds-pd-variant-label {
+  color: #ffb347;
+}
+
+.ds-pd-cell-name {
+  font-family: 'JetBrains Mono', 'Consolas', monospace;
+  color: var(--text-muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
+}
+
+.ds-pd-cell-size {
+  justify-content: flex-end;
+  font-family: 'JetBrains Mono', 'Consolas', monospace;
+  color: var(--text-muted);
+  font-size: 10px;
+  white-space: nowrap;
+}
+
+.ds-check-btn {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 14px;
+  border-radius: 7px;
+  border: 1px solid rgba(120,130,240,0.4);
+  background: linear-gradient(135deg, rgba(120,130,240,0.18), rgba(120,130,240,0.08));
+  color: var(--accent);
+  font-family: inherit;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.12s, border-color 0.12s, color 0.12s, transform 0.1s;
+  flex-shrink: 0;
+}
+
+.ds-check-btn:not(:disabled):hover {
+  background: linear-gradient(135deg, rgba(120,130,240,0.3), rgba(120,130,240,0.15));
+  border-color: rgba(120,130,240,0.7);
+  color: #fff;
+  transform: translateY(-1px);
+}
+
+.ds-check-btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.ds-check-btn .spin {
+  animation: spin 0.9s linear infinite;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+

@@ -1,0 +1,170 @@
+.ribbon-tab-row {
+  display: flex;
+  align-items: stretch;
+  height: 30px;
+  background: var(--bg-primary);
+  border-bottom: 1px solid var(--border-light);
+}
+
+.ribbon-workspace-selector {
+  position: relative;
+  display: flex;
+  align-items: center;
+  padding: 0 4px;
+}
+
+.ribbon-workspace-btn {
+  display: flex;
+  align-items: center;
+  padding: 4px 12px;
+  border: none;
+  border-radius: 3px;
+  background: transparent;
+  color: var(--text-primary);
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  cursor: pointer;
+  transition: background 0.12s;
+}
+
+.ribbon-workspace-btn:hover {
+  background: var(--bg-hover);
+}
+
+.ribbon-workspace-dropdown {
+  position: absolute;
+  top: 100%;
+  left: 4px;
+  z-index: 1000;
+  min-width: 160px;
+  background: var(--bg-primary);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 4px 0;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.15);
+}
+
+.ribbon-workspace-option {
+  display: block;
+  width: 100%;
+  padding: 8px 16px;
+  border: none;
+  background: transparent;
+  color: var(--text-primary);
+  font-size: 13px;
+  cursor: pointer;
+  text-align: left;
+  transition: background 0.1s;
+}
+
+.ribbon-workspace-option:hover {
+  background: var(--bg-hover);
+}
+
+.ribbon-workspace-option.active {
+  color: var(--accent);
+  font-weight: 600;
+}
+
+.ribbon-tab-divider-v {
+  width: 1px;
+  background: var(--border-light);
+  margin: 4px 0;
+}
+
+/* Tab Bar */
+.ribbon-tabs {
+  display: flex;
+  align-items: stretch;
+  gap: 0;
+  padding: 0 4px;
+  flex: 1;
+  overflow: hidden;
+  min-width: 0;
+}
+
+.ribbon-tab {
+  padding: 4px 14px;
+  border: none;
+  border-bottom: 2px solid transparent;
+  border-radius: 0;
+  background: transparent;
+  color: var(--text-secondary);
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.8px;
+  cursor: pointer;
+  transition: all 0.15s;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.ribbon-tab:hover {
+  color: var(--text-primary);
+  background: var(--bg-hover);
+}
+
+.ribbon-tab.active {
+  color: var(--tab-color, var(--accent));
+  border-bottom-color: var(--tab-color, var(--accent));
+}
+
+.ribbon-tab.contextual {
+  color: var(--success);
+  border-bottom-color: var(--success);
+  background: rgba(76, 175, 80, 0.06);
+  font-weight: 700;
+}
+
+.ribbon-sketch-indicator {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-left: auto;
+  padding-right: 8px;
+}
+
+.ribbon-sketch-indicator span {
+  font-size: 11px;
+  color: var(--success);
+  font-weight: 600;
+}
+
+.ribbon-finish-btn,
+.ribbon-cancel-btn {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  padding: 3px 10px;
+  border: none;
+  border-radius: 3px;
+  font-size: 11px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.12s;
+}
+
+.ribbon-finish-btn {
+  background: rgba(76, 175, 80, 0.12);
+  color: var(--success);
+}
+
+.ribbon-finish-btn:hover {
+  background: rgba(76, 175, 80, 0.24);
+}
+
+.ribbon-cancel-btn {
+  background: rgba(244, 67, 54, 0.08);
+  color: var(--error);
+}
+
+.ribbon-cancel-btn:hover {
+  background: rgba(244, 67, 54, 0.2);
+}
+

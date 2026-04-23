@@ -1,0 +1,242 @@
+/* Ã¢â€â‚¬Ã¢â€â‚¬ Selected-file chip (replaces firmware-hint) Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬ */
+.ds-fw-file-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 10px;
+  padding: 5px 10px;
+  border-radius: 6px;
+  border: 1px solid var(--border);
+  background: rgba(255,255,255,0.03);
+  font-size: 11px;
+  color: var(--text-primary);
+}
+
+.ds-fw-file-chip svg {
+  color: var(--accent);
+}
+
+.ds-fw-file-chip-size {
+  color: var(--text-muted);
+  font-family: 'JetBrains Mono', 'Consolas', monospace;
+  font-size: 10px;
+}
+
+.ds-section-tag {
+  margin-left: 6px;
+  padding: 1px 8px;
+  border-radius: 999px;
+  background: rgba(255,255,255,0.04);
+  border: 1px solid var(--border);
+  color: var(--text-muted);
+  font-size: 9px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+/* Ã¢â€â‚¬Ã¢â€â‚¬ Auto-update CTA + progress panel Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬ */
+.ds-fw-auto-update-row {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-bottom: 10px;
+  padding: 12px;
+  border-radius: 8px;
+  border: 1px solid rgba(255,170,60,0.3);
+  background: linear-gradient(180deg, rgba(255,170,60,0.08), rgba(255,170,60,0.03));
+}
+
+.ds-fw-auto-update-row--warn {
+  border-color: rgba(239,83,80,0.4);
+  background: linear-gradient(180deg, rgba(239,83,80,0.1), rgba(239,83,80,0.03));
+}
+
+.ds-fw-auto-update-row--dwc {
+  border-color: rgba(120,130,240,0.3);
+  background: linear-gradient(180deg, rgba(120,130,240,0.08), rgba(120,130,240,0.03));
+}
+
+.ds-fw-update-action-btn--secondary {
+  background: linear-gradient(180deg, #6977f0, #4b5ad4);
+  border-color: rgba(120,130,240,0.5);
+  color: #fff;
+  box-shadow: 0 2px 8px rgba(120,130,240,0.22);
+}
+
+.ds-fw-update-action-btn--secondary:hover:not(:disabled) {
+  box-shadow: 0 4px 12px rgba(120,130,240,0.32);
+}
+
+.ds-fw-auto-update-row--warn .ds-fw-auto-update-hint {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+}
+
+.ds-fw-auto-update-row--warn .ds-fw-auto-update-hint svg {
+  color: #ef5350;
+  flex-shrink: 0;
+  margin-top: 2px;
+}
+
+.ds-fw-update-action-btn {
+  align-self: flex-start;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 18px;
+  border-radius: 6px;
+  border: 1px solid rgba(255,170,60,0.5);
+  background: linear-gradient(180deg, #ffb347, #ef8d1f);
+  color: #1b1200;
+  font-family: inherit;
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+  box-shadow: 0 2px 8px rgba(255,170,60,0.25);
+  transition: transform 0.08s ease, box-shadow 0.12s ease, filter 0.12s ease;
+}
+
+.ds-fw-update-action-btn:hover:not(:disabled) {
+  transform: translateY(-1px);
+  filter: brightness(1.06);
+  box-shadow: 0 4px 12px rgba(255,170,60,0.35);
+}
+
+.ds-fw-update-action-btn:active:not(:disabled) {
+  transform: translateY(0);
+}
+
+.ds-fw-update-action-btn:disabled {
+  cursor: not-allowed;
+  opacity: 0.7;
+  box-shadow: none;
+  filter: saturate(0.85);
+}
+
+.ds-fw-auto-update-hint {
+  font-size: 10.5px;
+  color: var(--text-muted);
+  line-height: 1.45;
+}
+
+.ds-fw-auto-status {
+  margin-bottom: 10px;
+  padding: 10px 12px;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: rgba(255,255,255,0.03);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.ds-fw-auto-status--downloading,
+.ds-fw-auto-status--uploading,
+.ds-fw-auto-status--installing {
+  border-color: rgba(120,130,240,0.35);
+  background: linear-gradient(180deg, rgba(120,130,240,0.1), rgba(120,130,240,0.03));
+}
+
+.ds-fw-auto-status--done {
+  border-color: rgba(120,130,240,0.35);
+  background: linear-gradient(180deg, rgba(120,130,240,0.1), rgba(120,130,240,0.03));
+}
+
+.ds-fw-auto-status--reconnected {
+  border-color: rgba(72,187,120,0.45);
+  background: linear-gradient(180deg, rgba(72,187,120,0.14), rgba(72,187,120,0.04));
+}
+
+.ds-fw-auto-status--error {
+  border-color: rgba(239,83,80,0.45);
+  background: linear-gradient(180deg, rgba(239,83,80,0.12), rgba(239,83,80,0.04));
+}
+
+.ds-fw-auto-status-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 11.5px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.ds-fw-auto-status-msg {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.ds-fw-auto-status-msg svg {
+  flex-shrink: 0;
+  color: var(--accent);
+}
+
+.ds-fw-auto-status--reconnected .ds-fw-auto-status-msg svg {
+  color: #48bb78;
+}
+
+.ds-fw-auto-status--error .ds-fw-auto-status-msg svg {
+  color: #ef5350;
+}
+
+.ds-fw-auto-status-dismiss {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 4px;
+  border-radius: 4px;
+  border: 1px solid var(--border);
+  background: rgba(255,255,255,0.04);
+  color: var(--text-muted);
+  cursor: pointer;
+  transition: background 0.12s, color 0.12s;
+}
+
+.ds-fw-auto-status-dismiss:hover {
+  background: rgba(255,255,255,0.08);
+  color: var(--text-primary);
+}
+
+.ds-fw-auto-progress-bar {
+  width: 100%;
+  height: 6px;
+  border-radius: 3px;
+  background: rgba(0,0,0,0.3);
+  overflow: hidden;
+}
+
+.ds-fw-auto-progress-fill {
+  height: 100%;
+  background: linear-gradient(90deg, var(--accent), #8aa0ff);
+  transition: width 0.18s ease;
+}
+
+.ds-fw-auto-error {
+  font-size: 10.5px;
+  color: var(--text-muted);
+  line-height: 1.5;
+}
+
+/* Ã¢â€â‚¬Ã¢â€â‚¬ Upload progress bar Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬ */
+.duet-settings__progress-wrapper {
+  margin-top: 10px;
+}
+
+.duet-settings__progress-track {
+  width: 100%;
+  height: 6px;
+  background: var(--bg-input);
+  border-radius: 3px;
+  overflow: hidden;
+}
+
+.duet-settings__progress-fill {
+  height: 100%;
+  background: var(--accent);
+  transition: width 0.2s ease;
+}
