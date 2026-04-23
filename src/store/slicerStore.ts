@@ -11,7 +11,9 @@ import {
 } from '../types/slicer';
 import { normalizeRotationDegreesToRadians, normalizeScale } from '../utils/slicerTransforms';
 import { createPreviewActions } from './slicer/actions/preview';
-import { deserializeGeom, idbStorage, isBufferGeometry, serializeGeom, type SerializedGeom } from './slicer/persistence';
+import { createPlateActions } from './slicer/plateActions';
+import { deserializeGeom, idbStorage, serializeGeom, type SerializedGeom } from './slicer/persistence';
+import { getActiveSliceRequestId, getCurrentSlicerWorker, getSlicerWorker, isWorkerBusy, nextSliceRequestId, setWorkerBusy } from './slicer/worker';
 
 
 export interface SlicerStore {
@@ -129,29 +131,6 @@ export interface SlicerStore {
   setTransformMode: (mode: 'move' | 'scale' | 'rotate' | 'mirror' | 'settings') => void;
 }
 
-
-// =============================================================================
-// Persistent Web Worker — created once, reused across slice operations
-// =============================================================================
-
-// Lazily created on the first startSlice call.
-let slicerWorker: Worker | null = null;
-let activeSliceRequestId = 0;
-
-function getSlicerWorker(onMessage: (e: MessageEvent) => void): Worker {
-  if (!slicerWorker) {
-    slicerWorker = new Worker(
-      new URL('../workers/SlicerWorker.ts', import.meta.url),
-      { type: 'module' },
-    );
-  }
-  // Re-attach the handler each time so the latest `set` closure is captured.
-  slicerWorker.onmessage = onMessage;
-  return slicerWorker;
-}
-
-// Kept so cancelSlice can forward the signal to the worker.
-let workerBusy = false;
 
 export const useSlicerStore = create<SlicerStore>()(persist((set, get) => ({
   // Profiles — rehydrated from IDB on load; defaults used only on fresh install
@@ -375,211 +354,14 @@ export const useSlicerStore = create<SlicerStore>()(persist((set, get) => ({
 
   // --- Plate management ---
 
-  addToPlate: (featureId, name, geometry) => {
-    // Compute bounding box from Three.js BufferGeometry
-    const bbox = new THREE.Box3();
-    if (isBufferGeometry(geometry)) {
-      geometry.computeBoundingBox();
-      if (geometry.boundingBox) {
-        bbox.copy(geometry.boundingBox);
-      }
-    }
-
-    // Guard: if bbox is still the empty default (Infinity / -Infinity) because
-    // no geometry was provided, fall back to a neutral 10×10×10 placeholder so
-    // BoxGeometry never receives Infinity/NaN args and loses the WebGL context.
-    const isEmptyBbox = !isFinite(bbox.min.x) || !isFinite(bbox.max.x);
-    const safeBbox = isEmptyBbox
-      ? { min: { x: 0, y: 0, z: 0 }, max: { x: 10, y: 10, z: 10 } }
-      : { min: { x: bbox.min.x, y: bbox.min.y, z: bbox.min.z }, max: { x: bbox.max.x, y: bbox.max.y, z: bbox.max.z } };
-
-    const plateObject: PlateObject = {
-      id: crypto.randomUUID(),
-      featureId,
-      name,
-      geometry,
-      position: { x: 0, y: 0, z: 0 },
-      rotation: { x: 0, y: 0, z: 0 },
-      scale: { x: 1, y: 1, z: 1 },
-      boundingBox: safeBbox,
-    };
-
-    set((state) => ({
-      plateObjects: [...state.plateObjects, plateObject],
-      selectedPlateObjectId: plateObject.id,
-    }));
-
-    // Auto-arrange after adding
-    get().autoArrange();
-  },
-
-  removeFromPlate: (id) => set((state) => ({
-    plateObjects: state.plateObjects.filter((o) => o.id !== id),
-    selectedPlateObjectId: state.selectedPlateObjectId === id ? null : state.selectedPlateObjectId,
-    // Invalidate slice result — it was computed for the old object set
-    sliceResult: null,
-    previewMode: 'model' as const,
-    previewLayer: 0,
-    previewLayerStart: 0,
-    previewLayerMax: 0,
-    previewSimEnabled: false,
-    previewSimPlaying: false,
-    previewSimTime: 0,
-  })),
-
-  selectPlateObject: (id) => set({ selectedPlateObjectId: id }),
-
-  updatePlateObject: (id, updates) => set((state) => ({
-    plateObjects: state.plateObjects.map((o) =>
-      o.id === id ? { ...o, ...updates } : o
-    ),
-  })),
-
-  autoArrange: () => {
-    const { plateObjects, getActivePrinterProfile } = get();
-    if (plateObjects.length === 0) return;
-
-    const printer = getActivePrinterProfile();
-    const bedWidth = printer?.buildVolume?.x ?? 220;
-    const bedDepth = printer?.buildVolume?.y ?? 220;
-    const spacing = 10; // mm gap between objects
-
-    // ── Pass 1: compute scaled object dimensions and a grid layout ──────────
-    // Grid cells are in local layout space (origin at top-left).
-    // We will center the whole arrangement on the bed afterwards.
-
-    type Cell = {
-      obj: typeof plateObjects[0];
-      gridX: number;  // left edge in layout space
-      gridY: number;  // top  edge in layout space
-      w: number;      // scaled width  (X)
-      d: number;      // scaled depth  (Y)
-      minX: number;   // geometry local bbox min (possibly scaled)
-      minY: number;
-      minZ: number;
-    };
-
-    const cells: Cell[] = [];
-    let curX = 0;
-    let curY = 0;
-    let rowH = 0;
-    let layoutW = 0;
-    let layoutD = 0;
-
-    for (const obj of plateObjects) {
-      const sx = (obj.scale?.x ?? 1);
-      const sy = (obj.scale?.y ?? 1);
-      const sz = (obj.scale?.z ?? 1);
-
-      const rawW = (obj.boundingBox.max.x - obj.boundingBox.min.x) * sx;
-      const rawD = (obj.boundingBox.max.y - obj.boundingBox.min.y) * sy;
-      const w = isFinite(rawW) && rawW > 0 ? rawW : 50;
-      const d = isFinite(rawD) && rawD > 0 ? rawD : 50;
-
-      const minX = isFinite(obj.boundingBox.min.x) ? obj.boundingBox.min.x * sx : 0;
-      const minY = isFinite(obj.boundingBox.min.y) ? obj.boundingBox.min.y * sy : 0;
-      const minZ = isFinite(obj.boundingBox.min.z) ? obj.boundingBox.min.z * sz : 0;
-
-      // Wrap to next row if this object doesn't fit
-      if (cells.length > 0 && curX + w > bedWidth) {
-        layoutW = Math.max(layoutW, curX - spacing);
-        curX = 0;
-        curY += rowH + spacing;
-        rowH = 0;
-      }
-
-      cells.push({ obj, gridX: curX, gridY: curY, w, d, minX, minY, minZ });
-
-      curX += w + spacing;
-      rowH = Math.max(rowH, d);
-      layoutW = Math.max(layoutW, curX - spacing);
-      layoutD = curY + rowH;
-    }
-
-    // ── Pass 2: center arrangement on bed ────────────────────────────────────
-    const offsetX = (bedWidth  - layoutW) / 2;
-    const offsetY = (bedDepth - layoutD) / 2;
-
-    const arranged = cells.map(({ obj, gridX, gridY, minX, minY, minZ }) => ({
-      ...obj,
-      position: {
-        x: offsetX + gridX - minX,
-        y: offsetY + gridY - minY,
-        z: -minZ, // lift bottom face to z = 0
-      },
-    }));
-
-    set({ plateObjects: arranged });
-  },
-
-  clearPlate: () => set({
-    plateObjects: [],
-    selectedPlateObjectId: null,
-    sliceResult: null,
-    previewMode: 'model',
-    previewLayer: 0,
-    previewLayerStart: 0,
-    previewLayerMax: 0,
-    previewSimEnabled: false,
-    previewSimPlaying: false,
-    previewSimTime: 0,
-  }),
-
-  importFileToPlate: async (file: File) => {
-    try {
-      const { FileImporter } = await import('../engine/FileImporter');
-      const group = await FileImporter.importFile(file);
-
-      // Extract first mesh geometry from group
-      let geometry: THREE.BufferGeometry | null = null;
-      group.traverse((child) => {
-        if (geometry) return;
-        if ((child as THREE.Mesh).isMesh) {
-          geometry = (child as THREE.Mesh).geometry as THREE.BufferGeometry;
-        }
-      });
-
-      if (!geometry) {
-        throw new Error('No mesh geometry found in file');
-      }
-
-      const geom = geometry as THREE.BufferGeometry;
-      geom.computeBoundingBox();
-      const bbox = geom.boundingBox ?? new THREE.Box3();
-      const size = new THREE.Vector3();
-      bbox.getSize(size);
-
-      const plateObject = {
-        id: crypto.randomUUID(),
-        name: file.name.replace(/\.[^.]+$/, ''),
-        geometry: geom,
-        position: { x: 0, y: 0, z: 0 },
-        rotation: { x: 0, y: 0, z: 0 },
-        scale: { x: 1, y: 1, z: 1 },
-        boundingBox: {
-          min: { x: bbox.min.x, y: bbox.min.y, z: bbox.min.z },
-          max: { x: bbox.max.x, y: bbox.max.y, z: bbox.max.z },
-        },
-      };
-
-      set((state) => ({
-        plateObjects: [...state.plateObjects, plateObject],
-        selectedPlateObjectId: plateObject.id,
-      }));
-
-      get().autoArrange();
-    } catch (err) {
-      console.error('File import failed:', err);
-      throw err;
-    }
-  },
+  ...createPlateActions({ set, get }),
 
   // --- Slicing ---
 
   startSlice: () => {
     const state = get();
     if (state.plateObjects.length === 0) return;
-    if (workerBusy) return; // re-entrancy guard
+    if (isWorkerBusy()) return; // re-entrancy guard
 
     const printerProfile = state.getActivePrinterProfile();
     const materialProfile = state.getActiveMaterialProfile();
@@ -697,7 +479,7 @@ export const useSlicerStore = create<SlicerStore>()(persist((set, get) => ({
       return;
     }
 
-    const requestId = ++activeSliceRequestId;
+    const requestId = nextSliceRequestId();
 
     set({
       sliceProgress: {
@@ -706,17 +488,17 @@ export const useSlicerStore = create<SlicerStore>()(persist((set, get) => ({
       },
       sliceResult: null,
     });
-    workerBusy = true;
+    setWorkerBusy(true);
 
     const worker = getSlicerWorker((e: MessageEvent) => {
       const { type, requestId: messageRequestId } = e.data as { type?: string; requestId?: number };
-      if (messageRequestId !== requestId || requestId !== activeSliceRequestId) return;
+      if (messageRequestId !== requestId || requestId !== getActiveSliceRequestId()) return;
       if (type === 'progress') {
         set({ sliceProgress: e.data.progress as SliceProgress });
       } else if (type === 'cancelled') {
-        workerBusy = false;
+        setWorkerBusy(false);
       } else if (type === 'complete') {
-        workerBusy = false;
+        setWorkerBusy(false);
         const result = e.data.result;
         set({
           sliceResult: result,
@@ -733,7 +515,7 @@ export const useSlicerStore = create<SlicerStore>()(persist((set, get) => ({
           previewSimPlaying: false,
         });
       } else if (type === 'error') {
-        workerBusy = false;
+        setWorkerBusy(false);
         set({
           sliceProgress: {
             stage: 'error', percent: 0, currentLayer: 0, totalLayers: 0,
@@ -761,9 +543,10 @@ export const useSlicerStore = create<SlicerStore>()(persist((set, get) => ({
   },
 
   cancelSlice: () => {
-    const requestId = activeSliceRequestId;
-    if (workerBusy && slicerWorker) {
-      slicerWorker.postMessage({ type: 'cancel', requestId });
+    const requestId = getActiveSliceRequestId();
+    const worker = getCurrentSlicerWorker();
+    if (isWorkerBusy() && worker) {
+      worker.postMessage({ type: 'cancel', requestId });
     }
     set({
       sliceProgress: {

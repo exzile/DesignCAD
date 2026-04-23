@@ -105,13 +105,8 @@ export default function SketchInteraction() {
   // D42: click-drag tangent arc detection for line tool
   const isDraggingArcRef = useRef(false);
   const dragScreenStartRef = useRef<{ x: number; y: number } | null>(null);
-  // Set to true on pointerup after a drag; consumed by the next click event.
   const dragJustFinishedRef = useRef(false);
-
-  // S9: 'A' key inline arc toggle during line tool
   const lineArcModeRef = useRef(false);
-
-  // S10: 'X' key construction-mode toggle
   const drawingConstructionRef = useRef(false);
   // S10: construction-mode preview material (cyan dashed)
   const constructionModePreviewMaterial = useRef(new THREE.LineDashedMaterial({
@@ -121,7 +116,7 @@ export default function SketchInteraction() {
   // S7: plane-pick pending — set true when Tab is pressed to redirect draw plane
   const planePickPendingRef = useRef(false);
 
-  // Dispose the shared preview materials when SketchInteraction unmounts
+  // Dispose the shared preview materials when SketchInteraction unmounts.
   useEffect(() => {
     const mat = previewMaterial.current;
     const constMat = constructionPreviewMaterial.current;

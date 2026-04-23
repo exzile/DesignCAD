@@ -1,481 +1,16 @@
 import { useState, useRef, useEffect, useMemo } from 'react';
 import './Timeline.css';
 import {
-  Eye, EyeOff, Trash2, PenTool, ArrowUpFromLine,
-  RotateCcw, Blend, FileBox, ChevronDown, PauseCircle, PlayCircle,
-  SkipBack, CheckSquare, Folder, FolderOpen, ChevronRight, Pencil,
-  Stamp, GitBranch, BoxSelect, Repeat, Grid,
+  CheckSquare,
+  ChevronRight,
+  PauseCircle,
+  PlayCircle,
+  SkipBack,
 } from 'lucide-react';
 import { useCADStore } from '../../store/cadStore';
-import type { Feature, FeatureGroup } from '../../types/cad';
-
-function FeatureIcon({ type }: { type: Feature['type'] }) {
-  switch (type) {
-    case 'sketch':        return <PenTool size={14} />;
-    case 'extrude':       return <ArrowUpFromLine size={14} />;
-    case 'revolve':       return <RotateCcw size={14} />;
-    case 'fillet':        return <Blend size={14} />;
-    case 'chamfer':       return <ChevronDown size={14} />;
-    case 'emboss':               return <Stamp size={14} />;
-    case 'pipe':                 return <GitBranch size={14} />;
-    case 'coil':                 return <RotateCcw size={14} />;
-    case 'boundary-fill':        return <BoxSelect size={14} />;
-    case 'linear-pattern':       return <Repeat size={14} />;
-    case 'rectangular-pattern':  return <Grid size={14} />;
-    case 'circular-pattern':     return <RotateCcw size={14} />;
-    case 'base-feature':         return <FileBox size={14} />;
-    case 'import':               return <FileBox size={14} />;
-    default:                     return <FileBox size={14} />;
-  }
-}
-
-// MM4 / CORR-17 — Group header row (depth drives left padding for nested groups)
-function GroupHeader({ group, depth = 0 }: { group: FeatureGroup; depth?: number }) {
-  const toggleFeatureGroup = useCADStore((s) => s.toggleFeatureGroup);
-  const renameFeatureGroup = useCADStore((s) => s.renameFeatureGroup);
-  const deleteFeatureGroup = useCADStore((s) => s.deleteFeatureGroup);
-  const nestGroupInGroup = useCADStore((s) => s.nestGroupInGroup);
-  const featureGroups = useCADStore((s) => s.featureGroups);
-  const [editing, setEditing] = useState(false);
-  const [editName, setEditName] = useState(group.name);
-  const [nestMenuOpen, setNestMenuOpen] = useState(false);
-
-  const commitRename = () => {
-    if (editName.trim()) renameFeatureGroup(group.id, editName.trim());
-    setEditing(false);
-  };
-
-  // Candidate parent groups = all groups except self and descendants
-  const nestCandidates = useMemo(
-    () => featureGroups.filter((g) => g.id !== group.id && g.parentGroupId !== group.id),
-    [featureGroups, group.id],
-  );
-
-  return (
-    <div
-      className="timeline-group-header"
-      style={depth > 0 ? { paddingLeft: depth * 12 } : undefined}
-      onClick={() => toggleFeatureGroup(group.id)}
-    >
-      <span className="timeline-group-header__accent">
-        {group.collapsed ? <ChevronRight size={12} /> : <ChevronDown size={12} />}
-      </span>
-      <span className="timeline-group-header__accent">
-        {group.collapsed ? <Folder size={13} /> : <FolderOpen size={13} />}
-      </span>
-      {editing ? (
-        <input
-          autoFocus
-          value={editName}
-          onChange={(e) => setEditName(e.target.value)}
-          onBlur={commitRename}
-          onKeyDown={(e) => { if (e.key === 'Enter') commitRename(); if (e.key === 'Escape') setEditing(false); }}
-          onClick={(e) => e.stopPropagation()}
-          className="timeline-group-header__input"
-        />
-      ) : (
-        <span className="timeline-group-header__name">{group.name}</span>
-      )}
-      <button
-        className="timeline-action-btn timeline-group-header__btn"
-        onClick={(e) => { e.stopPropagation(); setEditName(group.name); setEditing(true); }}
-        title="Rename group"
-      >
-        <Pencil size={11} />
-      </button>
-      {/* CORR-17: Nest in another group */}
-      {nestCandidates.length > 0 && (
-        <div style={{ position: 'relative' }} onClick={(e) => e.stopPropagation()}>
-          <button
-            className="timeline-action-btn timeline-group-header__btn"
-            onClick={(e) => { e.stopPropagation(); setNestMenuOpen((v) => !v); }}
-            title="Nest in group"
-          >
-            <FolderOpen size={11} />
-          </button>
-          {nestMenuOpen && (
-            <div className="timeline-context-menu" style={{ top: '100%', right: 0, left: 'auto', minWidth: 140 }}>
-              {group.parentGroupId && (
-                <button className="timeline-context-menu__btn" onClick={() => { nestGroupInGroup(group.id, null); setNestMenuOpen(false); }}>
-                  <Folder size={12} /> Move to top level
-                </button>
-              )}
-              {nestCandidates.map((g) => (
-                <button key={g.id} className="timeline-context-menu__btn"
-                  onClick={() => { nestGroupInGroup(group.id, g.id); setNestMenuOpen(false); }}>
-                  <FolderOpen size={12} /> Nest in "{g.name}"
-                </button>
-              ))}
-            </div>
-          )}
-        </div>
-      )}
-      <button
-        className="timeline-action-btn danger timeline-group-header__btn"
-        onClick={(e) => { e.stopPropagation(); deleteFeatureGroup(group.id); }}
-        title="Delete group"
-      >
-        <Trash2 size={11} />
-      </button>
-    </div>
-  );
-}
-
-// D186: Open the dialog that originally committed this feature, pre-filled.
-// Maps feature type/params to a dialog id in App.tsx's ActiveDialog switch.
-const FEATURE_DIALOG_MAP: Record<string, string | null> = {
-  'shell': 'shell',
-  'draft': 'draft',
-  'scale': 'scale',
-  'combine': 'combine',
-  'hole': 'hole',
-  'thread': 'thread',
-  'thicken': 'thicken',
-  'linear-pattern': 'linear-pattern',
-  'circular-pattern': 'circular-pattern',
-  'rectangular-pattern': 'rectangular-pattern',
-  'pattern-on-path': 'pattern-on-path',
-  'mirror': 'mirror',
-  'offset-face': 'offset-face',
-  'emboss': 'emboss',
-  'pipe': 'pipe',
-  'coil': 'coil',
-  'boundary-fill': 'boundary-fill',
-  'construction-plane': 'construction-plane',
-  'construction-axis': 'axis-perp-to-face',
-};
-
-function editDialogFor(feature: Feature): string | null {
-  const p = feature.params ?? {};
-
-  // Simple 1:1 mappings
-  const direct = FEATURE_DIALOG_MAP[feature.type];
-  if (direct !== undefined) return direct;
-
-  // Types that need param-based disambiguation
-  switch (feature.type) {
-    case 'split-body':
-      if (p.isSurfaceTrim)  return 'surface-trim';
-      if (p.isSurfaceSplit) return 'surface-split';
-      if (p.unstitch)       return 'unstitch';
-      return 'split';
-    case 'rib':
-      if (p.webStyle === 'perpendicular') return 'web';
-      if (p.restStyle === 'rest')         return 'rest';
-      return null;
-    case 'primitive': {
-      const kind = String(p.kind ?? '');
-      if (kind && ['box', 'cylinder', 'sphere', 'torus', 'coil'].includes(kind)) {
-        return `primitive-${kind}`;
-      }
-      return null;
-    }
-    case 'import':
-      if (p.isRigidGroup)       return 'rigid-group';
-      if (p.isPhysicalMaterial) return 'physical-material';
-      if (p.isAppearance)       return 'appearance';
-      if (p.isMoveBody)         return 'move-body';
-      if (p.baseFeature)        return 'base-feature';
-      if (p.isCanvasRef)        return 'insert-canvas';
-      return null;
-    case 'sweep':
-      if (p.isSurfaceOffset) return 'offset-surface';
-      if (p.isSurfaceExtend) return 'surface-extend';
-      return 'sweep';
-    default:
-      return null;
-  }
-}
-
-function FeatureItem({ feature, index, indented }: { feature: Feature; index: number; indented?: boolean }) {
-  const toggleVisibility = useCADStore((s) => s.toggleFeatureVisibility);
-  const toggleSuppressed = useCADStore((s) => s.toggleFeatureSuppressed);
-  const removeFeature = useCADStore((s) => s.removeFeature);
-  const selectedFeatureId = useCADStore((s) => s.selectedFeatureId);
-  const setSelectedFeatureId = useCADStore((s) => s.setSelectedFeatureId);
-  const setEditingFeatureId = useCADStore((s) => s.setEditingFeatureId);
-  const loadExtrudeForEdit = useCADStore((s) => s.loadExtrudeForEdit);
-  const setActiveDialog = useCADStore((s) => s.setActiveDialog);
-  const reorderFeature = useCADStore((s) => s.reorderFeature);
-  const renameFeature = useCADStore((s) => s.renameFeature);
-  const rollbackIndex = useCADStore((s) => s.rollbackIndex);
-  const setRollbackIndex = useCADStore((s) => s.setRollbackIndex);
-  const setStatusMessage = useCADStore((s) => s.setStatusMessage);
-  const createFeatureGroup  = useCADStore((s) => s.createFeatureGroup);
-  const moveFeatureToGroup  = useCADStore((s) => s.moveFeatureToGroup);
-  const featureGroups       = useCADStore((s) => s.featureGroups);
-  const [contextMenu, setContextMenu] = useState<{ x: number; y: number } | null>(null);
-  const [moveToGroupOpen, setMoveToGroupOpen] = useState(false);
-
-  const isSelected = selectedFeatureId === feature.id;
-  // D190: feature is rolled back (skipped) if index > rollbackIndex (and rollbackIndex >= 0)
-  const isRolledBack = rollbackIndex >= 0 && index > rollbackIndex;
-
-  // D186: double-click to edit — open the dialog that committed this feature
-  const handleDoubleClick = () => {
-    // EX-13: extrude has a panel-based edit flow, not a dialog
-    if (feature.type === 'extrude') {
-      loadExtrudeForEdit(feature.id);
-      return;
-    }
-    const dialogId = editDialogFor(feature);
-    if (!dialogId) {
-      setStatusMessage(`${feature.name}: no editable parameters`);
-      return;
-    }
-    setEditingFeatureId(feature.id);
-    setActiveDialog(dialogId);
-  };
-
-  // D189: drag-reorder
-  const handleDragStart = (e: React.DragEvent) => {
-    e.dataTransfer.setData('text/feature-id', feature.id);
-    e.dataTransfer.setData('text/feature-index', String(index));
-    e.dataTransfer.effectAllowed = 'move';
-  };
-  const handleDragOver = (e: React.DragEvent) => {
-    if (e.dataTransfer.types.includes('text/feature-id')) {
-      e.preventDefault();
-      e.dataTransfer.dropEffect = 'move';
-    }
-  };
-  const handleDrop = (e: React.DragEvent) => {
-    const id = e.dataTransfer.getData('text/feature-id');
-    if (!id || id === feature.id) return;
-    e.preventDefault();
-    reorderFeature(id, index);
-  };
-
-  // D190: Set rollback marker via alt-click on the timeline row
-  const handleRollbackClick = (e: React.MouseEvent) => {
-    e.stopPropagation();
-    if (rollbackIndex === index) {
-      setRollbackIndex(-1);
-      setStatusMessage('Rollback cleared');
-    } else {
-      setRollbackIndex(index);
-      setStatusMessage(`Rolled back to "${feature.name}"`);
-    }
-  };
-
-  // MM4 right-click context menu
-  const handleContextMenu = (e: React.MouseEvent) => {
-    e.preventDefault();
-    setContextMenu({ x: e.clientX, y: e.clientY });
-  };
-
-  const closeContextMenu = () => { setContextMenu(null); setMoveToGroupOpen(false); };
-
-  return (
-    <>
-    <div
-      className={`timeline-item ${isSelected ? 'selected' : ''} ${isRolledBack ? 'rolled-back' : ''} ${indented ? 'indented' : ''}`}
-      draggable
-      onDragStart={handleDragStart}
-      onDragOver={handleDragOver}
-      onDrop={handleDrop}
-      onClick={() => setSelectedFeatureId(isSelected ? null : feature.id)}
-      onDoubleClick={handleDoubleClick}
-      onContextMenu={handleContextMenu}
-      title="Double-click to edit • Drag to reorder • Right-click for options"
-    >
-      <div className="timeline-item-icon">
-        <FeatureIcon type={feature.type} />
-      </div>
-      <div className="timeline-item-info">
-        <span className="timeline-item-name">{feature.name}</span>
-        <span className="timeline-item-type">{feature.type}</span>
-      </div>
-      <div className="timeline-item-actions">
-        <button
-          className={`timeline-action-btn ${rollbackIndex === index ? 'active' : ''}`}
-          onClick={handleRollbackClick}
-          title={rollbackIndex === index ? 'Clear rollback' : 'Roll back to this feature'}
-        >
-          <SkipBack size={14} />
-        </button>
-        <button
-          className={`timeline-action-btn ${feature.suppressed ? 'active' : ''}`}
-          onClick={(e) => {
-            e.stopPropagation();
-            toggleSuppressed(feature.id);
-          }}
-          title={feature.suppressed ? 'Unsuppress' : 'Suppress'}
-        >
-          {feature.suppressed ? <PlayCircle size={14} /> : <PauseCircle size={14} />}
-        </button>
-        <button
-          className="timeline-action-btn"
-          onClick={(e) => {
-            e.stopPropagation();
-            toggleVisibility(feature.id);
-          }}
-          title={feature.visible ? 'Hide' : 'Show'}
-        >
-          {feature.visible ? <Eye size={14} /> : <EyeOff size={14} />}
-        </button>
-        <button
-          className="timeline-action-btn danger"
-          onClick={(e) => {
-            e.stopPropagation();
-            removeFeature(feature.id);
-          }}
-          title="Delete"
-        >
-          <Trash2 size={14} />
-        </button>
-      </div>
-    </div>
-    {contextMenu && (
-      <>
-        <div
-          className="timeline-context-overlay"
-          onClick={closeContextMenu}
-          onContextMenu={(e) => { e.preventDefault(); closeContextMenu(); }}
-        />
-        <div
-          className="timeline-context-menu"
-          style={{ left: contextMenu.x, top: contextMenu.y }}
-          onClick={(e) => e.stopPropagation()}
-        >
-          {/* Edit */}
-          {editDialogFor(feature) && (
-            <button
-              className="timeline-context-menu__btn"
-              onClick={() => {
-                handleDoubleClick();
-                closeContextMenu();
-              }}
-            >
-              <Pencil size={12} />
-              Edit
-            </button>
-          )}
-          {/* Rename */}
-          <button
-            className="timeline-context-menu__btn"
-            onClick={() => {
-              const name = window.prompt('Rename feature', feature.name);
-              if (name?.trim()) {
-                renameFeature(feature.id, name.trim());
-                setStatusMessage(`Feature renamed to "${name.trim()}"`);
-              }
-              closeContextMenu();
-            }}
-          >
-            <Pencil size={12} />
-            Rename
-          </button>
-
-          <div className="timeline-context-menu__sep" />
-
-          {/* Suppress / Unsuppress */}
-          <button
-            className="timeline-context-menu__btn"
-            onClick={() => {
-              toggleSuppressed(feature.id);
-              closeContextMenu();
-            }}
-          >
-            {feature.suppressed ? <PlayCircle size={12} /> : <PauseCircle size={12} />}
-            {feature.suppressed ? 'Unsuppress' : 'Suppress'}
-          </button>
-
-          {/* Roll Back To Here */}
-          <button
-            className="timeline-context-menu__btn"
-            onClick={() => {
-              if (rollbackIndex === index) {
-                setRollbackIndex(-1);
-                setStatusMessage('Rollback cleared');
-              } else {
-                setRollbackIndex(index);
-                setStatusMessage(`Rolled back to "${feature.name}"`);
-              }
-              closeContextMenu();
-            }}
-          >
-            <SkipBack size={12} />
-            {rollbackIndex === index ? 'Clear Rollback' : 'Roll Back To Here'}
-          </button>
-
-          <div className="timeline-context-menu__sep" />
-
-          {/* CTX-12: Move to Group */}
-          {featureGroups.length > 0 && (
-            <div className="timeline-submenu-container">
-              <button
-                className="timeline-context-menu__btn"
-                onClick={() => setMoveToGroupOpen((v) => !v)}
-              >
-                <FolderOpen size={12} />
-                Move to Group ▸
-              </button>
-              {moveToGroupOpen && (
-                <div className="timeline-context-submenu">
-                  {featureGroups.map((g) => (
-                    <button
-                      key={g.id}
-                      className="timeline-context-menu__btn"
-                      onClick={() => {
-                        moveFeatureToGroup(feature.id, g.id);
-                        setStatusMessage(`Moved "${feature.name}" to group "${g.name}"`);
-                        closeContextMenu();
-                      }}
-                    >
-                      <Folder size={12} />
-                      {g.name}
-                    </button>
-                  ))}
-                  {feature.groupId && (
-                    <button
-                      className="timeline-context-menu__btn"
-                      onClick={() => {
-                        moveFeatureToGroup(feature.id, null);
-                        setStatusMessage(`Removed "${feature.name}" from group`);
-                        closeContextMenu();
-                      }}
-                    >
-                      <FolderOpen size={12} />
-                      Remove from Group
-                    </button>
-                  )}
-                </div>
-              )}
-            </div>
-          )}
-
-          {/* Group */}
-          <button
-            className="timeline-context-menu__btn"
-            onClick={() => {
-              createFeatureGroup('Group', [feature.id]);
-              closeContextMenu();
-            }}
-          >
-            <Folder size={12} />
-            Group Selected
-          </button>
-
-          <div className="timeline-context-menu__sep" />
-
-          {/* Delete */}
-          <button
-            className="timeline-context-menu__btn danger"
-            onClick={() => {
-              removeFeature(feature.id);
-              closeContextMenu();
-            }}
-          >
-            <Trash2 size={12} />
-            Delete
-          </button>
-        </div>
-      </>
-    )}
-    </>
-  );
-}
+import type { FeatureGroup } from '../../types/cad';
+import { FeatureItem } from './timeline/FeatureItem';
+import { GroupHeader } from './timeline/GroupHeader';
 
 export default function Timeline() {
   const allFeatures = useCADStore((s) => s.features);
@@ -485,10 +20,9 @@ export default function Timeline() {
   const setRollbackIndex = useCADStore((s) => s.setRollbackIndex);
   const baseFeatureActive = useCADStore((s) => s.baseFeatureActive);
   const finishBaseFeature = useCADStore((s) => s.finishBaseFeature);
-  const [dragOverEnd, setDragOverEnd] = useState(false);
   const reorderFeature = useCADStore((s) => s.reorderFeature);
+  const [dragOverEnd, setDragOverEnd] = useState(false);
 
-  // TL-2: Play-from-beginning animation
   const [isPlaying, setIsPlaying] = useState(false);
   const playIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const playIndexRef = useRef(0);
@@ -501,9 +35,6 @@ export default function Timeline() {
     setIsPlaying(false);
   };
 
-  // MM1: Only show features that were recorded while history was enabled
-  // Moved ABOVE startPlayback so the interval callback always reads the live filtered list
-  // via useCADStore.getState() — not a stale closure from an earlier render.
   const features = useMemo(
     () => allFeatures.filter((f) => !f.suppressTimeline),
     [allFeatures],
@@ -517,7 +48,6 @@ export default function Timeline() {
     setRollbackIndex(0);
     setIsPlaying(true);
     playIntervalRef.current = setInterval(() => {
-      // Read fresh from store so late-added features don't cause early stop
       const liveFeatures = useCADStore.getState().features.filter((f) => !f.suppressTimeline);
       playIndexRef.current += 1;
       if (playIndexRef.current >= liveFeatures.length) {
@@ -529,8 +59,9 @@ export default function Timeline() {
     }, 400);
   };
 
-  // Clean up interval on unmount
-  useEffect(() => () => { if (playIntervalRef.current) clearInterval(playIntervalRef.current); }, []);
+  useEffect(() => () => {
+    if (playIntervalRef.current) clearInterval(playIntervalRef.current);
+  }, []);
 
   const handleEndDrop = (e: React.DragEvent) => {
     const id = e.dataTransfer.getData('text/feature-id');
@@ -540,30 +71,24 @@ export default function Timeline() {
     setDragOverEnd(false);
   };
 
-  // MM4 / CORR-17: Build grouped render list with nested group support
   const groupMap = useMemo(
     () => new Map(featureGroups.map((g) => [g.id, g])),
     [featureGroups],
   );
 
-  /** Recursively render a group's header + its features + sub-groups, at a given depth. */
   const renderGroup = (group: FeatureGroup, depth: number, collapsedAncestor: boolean): React.ReactNode[] => {
     const rows: React.ReactNode[] = [];
-    // The group itself is collapsed if any ancestor is collapsed
-    const isVisible = !collapsedAncestor;
-    if (!isVisible) return rows;
+    if (collapsedAncestor) return rows;
 
     rows.push(<GroupHeader key={`group-${group.id}`} group={group} depth={depth} />);
     if (group.collapsed) return rows;
 
-    // Features that belong directly to this group
     features.forEach((feature, i) => {
       if (feature.groupId === group.id) {
         rows.push(<FeatureItem key={feature.id} feature={feature} index={i} indented />);
       }
     });
 
-    // Sub-groups
     featureGroups
       .filter((g) => g.parentGroupId === group.id)
       .forEach((subGroup) => {
@@ -576,18 +101,16 @@ export default function Timeline() {
   const renderFeatureList = () => {
     const rows: React.ReactNode[] = [];
 
-    // Top-level groups first (groups without a parentGroupId, or parentGroupId not found)
     featureGroups
       .filter((g) => !g.parentGroupId || !groupMap.has(g.parentGroupId))
       .forEach((group) => {
-        const hasMembers = features.some((f) => f.groupId === group.id) ||
-          featureGroups.some((g) => g.parentGroupId === group.id);
+        const hasMembers = features.some((f) => f.groupId === group.id)
+          || featureGroups.some((g) => g.parentGroupId === group.id);
         if (hasMembers) {
           rows.push(...renderGroup(group, 0, false));
         }
       });
 
-    // Ungrouped features
     features.forEach((feature, i) => {
       if (!feature.groupId) {
         rows.push(<FeatureItem key={feature.id} feature={feature} index={i} />);
@@ -599,37 +122,26 @@ export default function Timeline() {
 
   return (
     <div className="timeline-panel">
-      {/* MM1 — Direct Modeling mode notice */}
       {!historyEnabled && (
         <div className="timeline-banner timeline-banner--direct-modeling">
           Design history not captured (Direct Modeling mode)
         </div>
       )}
-      {/* MM3 — Base Feature active banner */}
       {baseFeatureActive && (
         <div className="timeline-banner timeline-banner--base-feature">
-          <span className="timeline-banner__label">Base Feature open — parametric recompute suppressed</span>
-          <button
-            onClick={finishBaseFeature}
-            title="Finish Base Feature"
-            className="timeline-banner__finish-btn"
-          >
+          <span className="timeline-banner__label">Base Feature open - parametric recompute suppressed</span>
+          <button onClick={finishBaseFeature} title="Finish Base Feature" className="timeline-banner__finish-btn">
             <CheckSquare size={12} />
             Finish
           </button>
         </div>
       )}
+
       <div className="timeline-header">
         <h3>Timeline</h3>
         <div className="timeline-header__controls">
-          {/* TL-1: Step navigation */}
           <div className="timeline-nav">
-            <button
-              className="timeline-nav__btn"
-              onClick={() => { setRollbackIndex(0); }}
-              title="Beginning — roll back to first feature"
-              disabled={features.length === 0}
-            >
+            <button className="timeline-nav__btn" onClick={() => { setRollbackIndex(0); }} title="Beginning - roll back to first feature" disabled={features.length === 0}>
               <SkipBack size={11} />
             </button>
             <button
@@ -657,25 +169,15 @@ export default function Timeline() {
             >
               <ChevronRight size={11} />
             </button>
-            <button
-              className="timeline-nav__btn"
-              onClick={() => setRollbackIndex(-1)}
-              title="End — show all features"
-              disabled={rollbackIndex < 0}
-            >
+            <button className="timeline-nav__btn" onClick={() => setRollbackIndex(-1)} title="End - show all features" disabled={rollbackIndex < 0}>
               <PlayCircle size={11} />
             </button>
           </div>
           {rollbackIndex >= 0 && (
-            <button
-              className="timeline-action-btn active timeline-action-btn--small"
-              onClick={() => setRollbackIndex(-1)}
-              title="Clear rollback marker"
-            >
+            <button className="timeline-action-btn active timeline-action-btn--small" onClick={() => setRollbackIndex(-1)} title="Clear rollback marker">
               @ {rollbackIndex + 1}/{features.length}
             </button>
           )}
-          {/* TL-2: Play from beginning animation */}
           <button
             className={`timeline-nav__btn${isPlaying ? ' active' : ''}`}
             title={isPlaying ? 'Stop playback' : 'Play from beginning (400ms/step)'}
@@ -688,6 +190,7 @@ export default function Timeline() {
           <span className="feature-count">{features.length} features</span>
         </div>
       </div>
+
       <div className="timeline-list">
         {features.length === 0 ? (
           <div className="timeline-empty">

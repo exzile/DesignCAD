@@ -5,7 +5,18 @@ import type {
   DuetGCodeFileInfo,
   DuetHeightMap,
 } from '../types/duet';
+import {
+  createDirectory as createDirectoryRequest,
+  deleteFile as deleteFileRequest,
+  downloadFile as downloadFileRequest,
+  getFileInfo as getFileInfoRequest,
+  listFiles as listFilesRequest,
+  moveFile as moveFileRequest,
+  uploadFile as uploadFileRequest,
+} from './duet/fileApi';
 import { fetchOrThrow, requestJsonOrText } from './httpRequest';
+import { parseHeightMapCsv } from './duet/heightMap';
+import { deepMerge } from './duet/modelMerge';
 
 /**
  * Comprehensive Duet3D API service supporting both standalone (RepRapFirmware)
@@ -58,6 +69,14 @@ export class DuetService {
     init?: RequestInit
   ): Promise<T> {
     return requestJsonOrText<T>(url, init, 'Duet request failed');
+  }
+
+  private get fileApiContext() {
+    return {
+      config: this.config,
+      baseUrl: this.baseUrl,
+      request: this.request.bind(this),
+    };
   }
 
   // ---------------------------------------------------------------------------
@@ -282,47 +301,6 @@ export class DuetService {
     }
   }
 
-  private uploadViaXhr(
-    method: 'PUT' | 'POST',
-    url: string,
-    content: Blob | File,
-    onProgress?: (percent: number) => void,
-    validateResponse?: (responseText: string) => void
-  ): Promise<void> {
-    return new Promise<void>((resolve, reject) => {
-      const xhr = new XMLHttpRequest();
-      xhr.open(method, url, true);
-      xhr.setRequestHeader('Content-Type', 'application/octet-stream');
-
-      if (onProgress) {
-        xhr.upload.addEventListener('progress', (e) => {
-          if (e.lengthComputable) {
-            onProgress(Math.round((e.loaded / e.total) * 100));
-          }
-        });
-      }
-
-      xhr.onload = () => {
-        if (xhr.status < 200 || xhr.status >= 300) {
-          const detail = xhr.responseText?.trim();
-          reject(new Error(`Upload failed: ${xhr.status} ${xhr.statusText}${detail ? ` - ${detail}` : ''}`));
-          return;
-        }
-
-        try {
-          validateResponse?.(xhr.responseText);
-          resolve();
-        } catch (err) {
-          reject(err instanceof Error ? err : new Error(String(err)));
-        }
-      };
-
-      xhr.onerror = () => reject(new Error('Upload network error'));
-      xhr.onabort = () => reject(new Error('Upload canceled'));
-      xhr.send(content);
-    });
-  }
-
   // ---------------------------------------------------------------------------
   // Object Model
   // ---------------------------------------------------------------------------
@@ -332,43 +310,10 @@ export class DuetService {
    * Handles both full replacement objects and incremental patches from the WS.
    */
   private applyModelPatch(patch: Record<string, unknown>): void {
-    this.objectModel = this.deepMerge(
+    this.objectModel = deepMerge(
       this.objectModel as Record<string, unknown>,
       patch
     ) as Partial<DuetObjectModel>;
-  }
-
-  private deepMerge(
-    target: Record<string, unknown>,
-    source: Record<string, unknown>
-  ): Record<string, unknown> {
-    const output: Record<string, unknown> = { ...target };
-    for (const key of Object.keys(source)) {
-      const srcVal = source[key];
-      const tgtVal = target[key];
-      if (Array.isArray(srcVal) && Array.isArray(tgtVal)) {
-        // Merge by index so runtime patches don't wipe config fields on array elements
-        output[key] = srcVal.map((sv, i) => {
-          const tv = tgtVal[i];
-          if (sv && typeof sv === 'object' && !Array.isArray(sv) &&
-              tv && typeof tv === 'object' && !Array.isArray(tv)) {
-            return this.deepMerge(tv as Record<string, unknown>, sv as Record<string, unknown>);
-          }
-          return sv;
-        });
-      } else if (
-        srcVal && typeof srcVal === 'object' && !Array.isArray(srcVal) &&
-        tgtVal && typeof tgtVal === 'object' && !Array.isArray(tgtVal)
-      ) {
-        output[key] = this.deepMerge(
-          tgtVal as Record<string, unknown>,
-          srcVal as Record<string, unknown>
-        );
-      } else {
-        output[key] = srcVal;
-      }
-    }
-    return output;
   }
 
   /** Fetch static config sections (tool defs, fan names, etc.) and merge into objectModel. */
@@ -633,61 +578,11 @@ export class DuetService {
   // ---------------------------------------------------------------------------
 
   async listFiles(directory: string): Promise<DuetFileInfo[]> {
-    if (this.config.mode === 'sbc') {
-      const url = `${this.baseUrl}/machine/directory/${encodeURIComponent(directory)}`;
-      return this.request<DuetFileInfo[]>(url);
-    }
-
-    // Standalone – /rr_filelist returns { dir, first, files, next }
-    const allFiles: DuetFileInfo[] = [];
-    let first = 0;
-    let hasMore = true;
-
-    while (hasMore) {
-      const url = `${this.baseUrl}/rr_filelist?dir=${encodeURIComponent(directory)}&first=${first}`;
-      const res = await this.request<{
-        dir: string;
-        first: number;
-        files: Array<{ type: string; name: string; size: number; date: string }>;
-        next: number;
-        err?: number;
-      }>(url);
-
-      if (res.err !== undefined && res.err !== 0) {
-        throw new Error(`File listing error (err=${res.err})`);
-      }
-
-      for (const f of res.files ?? []) {
-        allFiles.push({
-          type: f.type === 'd' ? 'd' : 'f',
-          name: f.name,
-          size: f.size,
-          date: f.date,
-        });
-      }
-
-      if (res.next !== 0 && res.next > first) {
-        first = res.next;
-      } else {
-        hasMore = false;
-      }
-    }
-
-    return allFiles;
+    return listFilesRequest(this.fileApiContext, directory);
   }
 
   async getFileInfo(filename: string): Promise<DuetGCodeFileInfo> {
-    if (this.config.mode === 'sbc') {
-      const url = `${this.baseUrl}/machine/fileinfo/${encodeURIComponent(filename)}`;
-      return this.request<DuetGCodeFileInfo>(url);
-    }
-
-    const url = `${this.baseUrl}/rr_fileinfo?name=${encodeURIComponent(filename)}`;
-    const res = await this.request<DuetGCodeFileInfo & { err?: number }>(url);
-    if (res.err !== undefined && res.err !== 0) {
-      throw new Error(`File info error (err=${res.err})`);
-    }
-    return res;
+    return getFileInfoRequest(this.fileApiContext, filename);
   }
 
   async uploadFile(
@@ -695,81 +590,23 @@ export class DuetService {
     content: Blob | File,
     onProgress?: (percent: number) => void
   ): Promise<void> {
-    if (this.config.mode === 'sbc') {
-      const url = `${this.baseUrl}/machine/file/${encodeURIComponent(path)}`;
-      return this.uploadViaXhr('PUT', url, content, onProgress);
-    }
-
-    // Standalone – POST to /rr_upload
-    const url = `${this.baseUrl}/rr_upload?name=${encodeURIComponent(path)}&time=${encodeURIComponent(new Date().toISOString())}`;
-    return this.uploadViaXhr('POST', url, content, onProgress, (responseText) => {
-      try {
-        const res = JSON.parse(responseText);
-        if (res.err !== 0) {
-          throw new Error(`Upload error (err=${res.err})`);
-        }
-      } catch (err) {
-        if (err instanceof Error && err.message.startsWith('Upload error')) {
-          throw err;
-        }
-        // Non-JSON response is fine
-      }
-    });
+    return uploadFileRequest(this.fileApiContext, path, content, onProgress);
   }
 
   async downloadFile(path: string): Promise<Blob> {
-    if (this.config.mode === 'sbc') {
-      const url = `${this.baseUrl}/machine/file/${encodeURIComponent(path)}`;
-      const res = await fetch(url);
-      if (!res.ok) {
-        throw new Error(`Download failed: ${res.status}`);
-      }
-      return res.blob();
-    }
-
-    const url = `${this.baseUrl}/rr_download?name=${encodeURIComponent(path)}`;
-    const res = await fetch(url);
-    if (!res.ok) {
-      throw new Error(`Download failed: ${res.status}`);
-    }
-    return res.blob();
+    return downloadFileRequest(this.fileApiContext, path);
   }
 
   async deleteFile(path: string): Promise<void> {
-    if (this.config.mode === 'sbc') {
-      const url = `${this.baseUrl}/machine/file/${encodeURIComponent(path)}`;
-      await this.request(url, { method: 'DELETE' });
-      return;
-    }
-
-    const url = `${this.baseUrl}/rr_delete?name=${encodeURIComponent(path)}`;
-    await this.request(url);
+    return deleteFileRequest(this.fileApiContext, path);
   }
 
   async moveFile(from: string, to: string): Promise<void> {
-    if (this.config.mode === 'sbc') {
-      const url = `${this.baseUrl}/machine/file/move`;
-      await this.request(url, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ from, to }),
-      });
-      return;
-    }
-
-    const url = `${this.baseUrl}/rr_move?old=${encodeURIComponent(from)}&new=${encodeURIComponent(to)}`;
-    await this.request(url);
+    return moveFileRequest(this.fileApiContext, from, to);
   }
 
   async createDirectory(path: string): Promise<void> {
-    if (this.config.mode === 'sbc') {
-      const url = `${this.baseUrl}/machine/directory/${encodeURIComponent(path)}`;
-      await this.request(url, { method: 'PUT' });
-      return;
-    }
-
-    const url = `${this.baseUrl}/rr_mkdir?dir=${encodeURIComponent(path)}`;
-    await this.request(url);
+    return createDirectoryRequest(this.fileApiContext, path);
   }
 
   // ---------------------------------------------------------------------------
@@ -792,69 +629,11 @@ export class DuetService {
     try {
       const blob = await this.downloadFile(path);
       const text = await blob.text();
-      return this.parseHeightMapCsv(text);
+      return parseHeightMapCsv(text);
     } catch {
       return null;
     }
   }
-
-  private parseHeightMapCsv(csv: string): DuetHeightMap {
-    const lines = csv.trim().split('\n');
-
-    // First line: RepRapFirmware height map file ... (header comment)
-    // Second line: xmin, xmax, ymin, ymax, radius, xspacing, yspacing, num_x, num_y
-    // Remaining lines: grid data rows
-
-    let headerLine = '';
-    let dataStartIndex = 0;
-
-    for (let i = 0; i < lines.length; i++) {
-      const trimmed = lines[i].trim();
-      // Skip comment lines
-      if (trimmed.startsWith('RepRapFirmware') || trimmed.startsWith(';')) {
-        continue;
-      }
-      // First non-comment line with "xmin" is the header
-      if (trimmed.toLowerCase().includes('xmin') || trimmed.includes(',') && !headerLine) {
-        headerLine = trimmed;
-        dataStartIndex = i + 1;
-        break;
-      }
-    }
-
-    // Parse header values: "xmin,xmax,ymin,ymax,radius,xspacing,yspacing,num_x,num_y"
-    const headerParts = headerLine.split(',').map((s) => s.trim());
-    // The header row may contain labels; if the next line has actual numbers we
-    // need to read the following line as the parameter row.
-    let paramLine: string;
-    if (isNaN(parseFloat(headerParts[0]))) {
-      // headerLine contains labels, next line has values
-      paramLine = lines[dataStartIndex].trim();
-      dataStartIndex++;
-    } else {
-      paramLine = headerLine;
-    }
-
-    const params = paramLine.split(',').map((s) => parseFloat(s.trim()));
-    const [xMin, xMax, yMin, yMax, radius, xSpacing, ySpacing, numXRaw, numYRaw] = params;
-    const numX = Math.round(numXRaw);
-    const numY = Math.round(numYRaw);
-
-    // Parse grid data
-    const points: number[][] = [];
-    for (let i = dataStartIndex; i < lines.length; i++) {
-      const line = lines[i].trim();
-      if (!line || line.startsWith(';')) continue;
-      const row = line.split(',').map((s) => {
-        const val = parseFloat(s.trim());
-        return isNaN(val) ? 0 : val;
-      });
-      points.push(row);
-    }
-
-    return { xMin, xMax, xSpacing, yMin, yMax, ySpacing, radius, numX, numY, points };
-  }
-
   async probeGrid(): Promise<void> {
     await this.sendGCode('G29 S0');
   }

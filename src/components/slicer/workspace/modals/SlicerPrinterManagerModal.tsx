@@ -1,306 +1,37 @@
 import { useState } from 'react';
-import { X, Printer, Plus, Trash2, ChevronRight, RefreshCw, Cpu } from 'lucide-react';
+import { X, Printer, Plus, Trash2, ChevronRight, RefreshCw } from 'lucide-react';
 import { useSlicerStore } from '../../../../store/slicerStore';
 import { usePrinterStore } from '../../../../store/printerStore';
 import type { PrinterProfile } from '../../../../types/slicer';
 import { colors, sharedStyles } from '../../../../utils/theme';
 import { parseDuetConfig } from '../../../../utils/duetConfigParser';
-
-// ── shared primitives ─────────────────────────────────────────────────────────
-
-const col: React.CSSProperties = { display: 'flex', flexDirection: 'column', flex: 1, minWidth: 0, gap: 0 };
-const row: React.CSSProperties = { display: 'flex', alignItems: 'center', gap: 8, minHeight: 30, marginBottom: 4 };
-
-function Lbl({ children }: { children: React.ReactNode }) {
-  return <div style={{ flex: 1, fontSize: 12, color: colors.text }}>{children}</div>;
-}
-
-const LOCK_TOOLTIP = 'Value synced from the printer. Edit on the board (config.g) and use "Sync from Duet".';
-
-function MachineLockIcon() {
-  return (
-    <span title={LOCK_TOOLTIP} style={{
-      display: 'inline-flex', alignItems: 'center', marginLeft: 4,
-      color: colors.accent, opacity: 0.85, cursor: 'help', flexShrink: 0,
-    }}>
-      <Cpu size={10} />
-    </span>
-  );
-}
-
-function NumIn({ value, onChange, step = 1, min, max, suffix, width = 80, locked }: {
-  value: number; onChange: (v: number) => void;
-  step?: number; min?: number; max?: number; suffix?: string; width?: number; locked?: boolean;
-}) {
-  return (
-    <div style={{ display: 'flex', alignItems: 'center', gap: 0 }} title={locked ? LOCK_TOOLTIP : undefined}>
-      <input
-        type="number"
-        value={value}
-        step={step}
-        min={min}
-        max={max}
-        disabled={locked}
-        readOnly={locked}
-        onChange={(e) => { if (locked) return; onChange(parseFloat(e.target.value) || 0); }}
-        style={{
-          ...sharedStyles.input,
-          width,
-          textAlign: 'right',
-          borderRadius: suffix ? '4px 0 0 4px' : 4,
-          borderRight: suffix ? 'none' : undefined,
-          opacity: locked ? 0.55 : 1,
-          cursor: locked ? 'not-allowed' : undefined,
-        }}
-      />
-      {suffix && (
-        <div style={{
-          padding: '0 7px',
-          fontSize: 11,
-          color: colors.textDim,
-          background: colors.panelLight,
-          border: `1px solid ${colors.panelBorder}`,
-          borderLeft: 'none',
-          borderRadius: '0 4px 4px 0',
-          height: 24,
-          display: 'flex',
-          alignItems: 'center',
-          opacity: locked ? 0.55 : 1,
-        }}>
-          {suffix}
-        </div>
-      )}
-    </div>
-  );
-}
-
-function SelIn<T extends string>({ value, onChange, options, width = 180, locked }: {
-  value: T; onChange: (v: T) => void;
-  options: { value: T; label: string }[]; width?: number; locked?: boolean;
-}) {
-  return (
-    <select
-      value={value}
-      disabled={locked}
-      onChange={(e) => { if (locked) return; onChange(e.target.value as T); }}
-      title={locked ? LOCK_TOOLTIP : undefined}
-      style={{ ...sharedStyles.select, width, opacity: locked ? 0.55 : 1, cursor: locked ? 'not-allowed' : undefined }}
-    >
-      {options.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
-    </select>
-  );
-}
-
-function Chk({ checked, onChange, label, locked }: { checked: boolean; onChange: (v: boolean) => void; label: string; locked?: boolean }) {
-  return (
-    <label title={locked ? LOCK_TOOLTIP : undefined} style={{ ...row, cursor: locked ? 'not-allowed' : 'pointer', gap: 7, marginBottom: 2, opacity: locked ? 0.55 : 1 }}>
-      <input type="checkbox" checked={checked} disabled={locked} onChange={(e) => { if (locked) return; onChange(e.target.checked); }} style={{ accentColor: colors.accent }} />
-      <span style={{ fontSize: 12, color: colors.text, display: 'flex', alignItems: 'center' }}>{label}{locked && <MachineLockIcon />}</span>
-    </label>
-  );
-}
-
-function Lbl2({ locked, children }: { locked?: boolean; children: React.ReactNode }) {
-  return (
-    <div style={{ flex: 1, fontSize: 12, color: colors.text, display: 'flex', alignItems: 'center' }}>
-      {children}{locked && <MachineLockIcon />}
-    </div>
-  );
-}
-
-function GCode({ label, value, onChange }: { label: string; value: string; onChange: (v: string) => void }) {
-  return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 5, flex: 1 }}>
-      <div style={{ fontSize: 12, fontWeight: 600, color: colors.text }}>{label}</div>
-      <textarea
-        value={value}
-        onChange={(e) => onChange(e.target.value)}
-        style={{
-          ...sharedStyles.input,
-          flex: 1,
-          minHeight: 140,
-          fontFamily: 'monospace',
-          fontSize: 11,
-          resize: 'none',
-          lineHeight: 1.5,
-        }}
-      />
-    </div>
-  );
-}
-
-function ColHead({ children }: { children: React.ReactNode }) {
-  return (
-    <div style={{ fontSize: 13, fontWeight: 700, color: colors.text, marginBottom: 10 }}>{children}</div>
-  );
-}
-
-// ── Printer tab ───────────────────────────────────────────────────────────────
-
-function PrinterTab({ p, upd }: { p: PrinterProfile; upd: (u: Partial<PrinterProfile>) => void }) {
-  const ms = new Set(p.machineSourcedFields ?? []);
-  const locked = (field: string) => ms.has(field);
-  return (
-    <div style={{ flex: 1, overflowY: 'auto', padding: '16px 20px', display: 'flex', flexDirection: 'column', gap: 16 }}>
-      {/* Top: two columns */}
-      <div style={{ display: 'flex', gap: 32 }}>
-
-        {/* Left: Printer Settings */}
-        <div style={col}>
-          <ColHead>Printer Settings</ColHead>
-          <div style={row}><Lbl2 locked={locked('buildVolume')}>X (Width)</Lbl2><NumIn value={p.buildVolume.x} onChange={(v) => upd({ buildVolume: { ...p.buildVolume, x: v } })} suffix="mm" min={1} locked={locked('buildVolume')} /></div>
-          <div style={row}><Lbl2 locked={locked('buildVolume')}>Y (Depth)</Lbl2><NumIn value={p.buildVolume.y} onChange={(v) => upd({ buildVolume: { ...p.buildVolume, y: v } })} suffix="mm" min={1} locked={locked('buildVolume')} /></div>
-          <div style={row}><Lbl2 locked={locked('buildVolume')}>Z (Height)</Lbl2><NumIn value={p.buildVolume.z} onChange={(v) => upd({ buildVolume: { ...p.buildVolume, z: v } })} suffix="mm" min={1} locked={locked('buildVolume')} /></div>
-          <div style={row}>
-            <Lbl2 locked={locked('buildPlateShape')}>Build plate shape</Lbl2>
-            <SelIn
-              value={p.buildPlateShape ?? 'rectangular'}
-              onChange={(v) => upd({ buildPlateShape: v })}
-              options={[{ value: 'rectangular', label: 'Rectangular' }, { value: 'elliptic', label: 'Elliptic' }]}
-              width={150}
-              locked={locked('buildPlateShape')}
-            />
-          </div>
-          <Chk checked={p.originCenter} onChange={(v) => upd({ originCenter: v })} label="Origin at center" locked={locked('originCenter')} />
-          <Chk checked={p.hasHeatedBed} onChange={(v) => upd({ hasHeatedBed: v })} label="Heated bed" locked={locked('hasHeatedBed')} />
-          <Chk checked={p.hasHeatedChamber} onChange={(v) => upd({ hasHeatedChamber: v })} label="Heated build volume" locked={locked('hasHeatedChamber')} />
-          <div style={{ ...row, marginTop: 4 }}>
-            <Lbl2 locked={locked('gcodeFlavorType')}>G-code flavor</Lbl2>
-            <SelIn
-              value={p.gcodeFlavorType}
-              onChange={(v) => upd({ gcodeFlavorType: v })}
-              options={[
-                { value: 'marlin',  label: 'Marlin' },
-                { value: 'reprap',  label: 'RepRap (Sprinter / Repetier)' },
-                { value: 'klipper', label: 'Klipper' },
-                { value: 'duet',    label: 'Duet (RepRap Firmware)' },
-              ]}
-              width={200}
-              locked={locked('gcodeFlavorType')}
-            />
-          </div>
-          <div style={row}>
-            <Lbl>Print Time Estimation Factor</Lbl>
-            <NumIn
-              value={Math.round((p.printTimeEstimationFactor ?? 1.0) * 100)}
-              onChange={(v) => upd({ printTimeEstimationFactor: v / 100 })}
-              suffix="%"
-              min={10}
-              max={500}
-            />
-          </div>
-        </div>
-
-        {/* Right: Printhead Settings */}
-        <div style={col}>
-          <ColHead>Printhead Settings</ColHead>
-          <div style={row}><Lbl>X min</Lbl><NumIn value={p.printheadMinX ?? -20} onChange={(v) => upd({ printheadMinX: v })} suffix="mm" /></div>
-          <div style={row}><Lbl>Y min ('-' towards back)</Lbl><NumIn value={p.printheadMinY ?? -10} onChange={(v) => upd({ printheadMinY: v })} suffix="mm" /></div>
-          <div style={row}><Lbl>X max</Lbl><NumIn value={p.printheadMaxX ?? 10} onChange={(v) => upd({ printheadMaxX: v })} suffix="mm" /></div>
-          <div style={row}><Lbl>Y max ('+' towards front)</Lbl><NumIn value={p.printheadMaxY ?? 10} onChange={(v) => upd({ printheadMaxY: v })} suffix="mm" /></div>
-          <div style={row}><Lbl>Gantry Height</Lbl><NumIn value={p.gantryHeight ?? p.buildVolume.z} onChange={(v) => upd({ gantryHeight: v })} suffix="mm" min={0} /></div>
-          <div style={row}>
-            <Lbl2 locked={locked('nozzleCount')}>Number of Extruders</Lbl2>
-            <SelIn
-              value={String(p.nozzleCount) as '1'|'2'|'3'|'4'}
-              onChange={(v) => upd({ nozzleCount: parseInt(v) })}
-              options={(['1','2','3','4'] as const).map((n) => ({ value: n, label: n }))}
-              width={80}
-              locked={locked('nozzleCount')}
-            />
-          </div>
-          <Chk checked={p.applyExtruderOffsets ?? true} onChange={(v) => upd({ applyExtruderOffsets: v })} label="Apply Extruder offsets to GCode" />
-          <Chk checked={p.startGCodeMustBeFirst ?? false} onChange={(v) => upd({ startGCodeMustBeFirst: v })} label="Start GCode must be first" />
-        </div>
-      </div>
-
-      {/* Bottom: G-code side by side */}
-      <div style={{ display: 'flex', gap: 16, flex: 1, minHeight: 200 }}>
-        <GCode label="Start G-code" value={p.startGCode} onChange={(v) => upd({ startGCode: v })} />
-        <GCode label="End G-code"   value={p.endGCode}   onChange={(v) => upd({ endGCode: v })} />
-      </div>
-    </div>
-  );
-}
-
-// ── Extruder tab ──────────────────────────────────────────────────────────────
-
-function ExtruderTab({ p, upd }: { p: PrinterProfile; upd: (u: Partial<PrinterProfile>) => void }) {
-  const ms = new Set(p.machineSourcedFields ?? []);
-  const locked = (field: string) => ms.has(field);
-  return (
-    <div style={{ flex: 1, overflowY: 'auto', padding: '16px 20px', display: 'flex', flexDirection: 'column', gap: 16 }}>
-      <div style={{ display: 'flex', gap: 32 }}>
-        {/* Left */}
-        <div style={col}>
-          <ColHead>Nozzle Settings</ColHead>
-          <div style={row}><Lbl2 locked={locked('nozzleDiameter')}>Nozzle size</Lbl2><NumIn value={p.nozzleDiameter} onChange={(v) => upd({ nozzleDiameter: v })} step={0.1} min={0.1} max={2} suffix="mm" locked={locked('nozzleDiameter')} /></div>
-          <div style={row}>
-            <Lbl2 locked={locked('filamentDiameter')}>Compatible material diameter</Lbl2>
-            <SelIn
-              value={p.filamentDiameter === 2.85 ? '2.85' : '1.75'}
-              onChange={(v) => upd({ filamentDiameter: parseFloat(v) })}
-              options={[{ value: '1.75', label: '1.75 mm' }, { value: '2.85', label: '2.85 mm' }]}
-              width={110}
-              locked={locked('filamentDiameter')}
-            />
-          </div>
-          <div style={row}><Lbl2 locked={locked('extruderOffsetX')}>Nozzle offset X</Lbl2><NumIn value={p.extruderOffsetX ?? 0} onChange={(v) => upd({ extruderOffsetX: v })} suffix="mm" locked={locked('extruderOffsetX')} /></div>
-          <div style={row}><Lbl2 locked={locked('extruderOffsetY')}>Nozzle offset Y</Lbl2><NumIn value={p.extruderOffsetY ?? 0} onChange={(v) => upd({ extruderOffsetY: v })} suffix="mm" locked={locked('extruderOffsetY')} /></div>
-          <div style={row}><Lbl2 locked={locked('coolingFanNumber')}>Cooling Fan Number</Lbl2><NumIn value={p.coolingFanNumber ?? 0} onChange={(v) => upd({ coolingFanNumber: Math.max(0, Math.round(v)) })} min={0} max={8} width={60} locked={locked('coolingFanNumber')} /></div>
-        </div>
-
-        {/* Right */}
-        <div style={col}>
-          <ColHead>&nbsp;</ColHead>
-          <div style={row}><Lbl>Extruder Change duration</Lbl><NumIn value={p.extruderChangeDuration ?? 0} onChange={(v) => upd({ extruderChangeDuration: v })} step={0.1} min={0} suffix="s" /></div>
-          <div style={row}><Lbl>Extruder Start G-code duration</Lbl><NumIn value={p.extruderStartGCodeDuration ?? 0} onChange={(v) => upd({ extruderStartGCodeDuration: v })} step={0.1} min={0} suffix="s" /></div>
-          <div style={row}><Lbl>Extruder End G-code duration</Lbl><NumIn value={p.extruderEndGCodeDuration ?? 0} onChange={(v) => upd({ extruderEndGCodeDuration: v })} step={0.1} min={0} suffix="s" /></div>
-        </div>
-      </div>
-
-      {/* G-code areas */}
-      <div style={{ display: 'flex', gap: 16, flex: 1 }}>
-        <div style={{ ...col, gap: 12 }}>
-          <GCode label="Extruder Prestart G-code" value={p.extruderPrestartGCode ?? ''} onChange={(v) => upd({ extruderPrestartGCode: v })} />
-          <GCode label="Extruder Start G-code"    value={p.extruderStartGCode ?? ''}    onChange={(v) => upd({ extruderStartGCode: v })} />
-        </div>
-        <div style={{ ...col, gap: 12 }}>
-          <GCode label="Extruder End G-code" value={p.extruderEndGCode ?? ''} onChange={(v) => upd({ extruderEndGCode: v })} />
-        </div>
-      </div>
-    </div>
-  );
-}
-
-// ── main modal ────────────────────────────────────────────────────────────────
+import { ExtruderTab, PrinterTab } from './slicerPrinterManager/tabs';
 
 const TABS = ['Printer', 'Extruder 1'] as const;
 
 export function SlicerPrinterManagerModal({ onClose }: { onClose: () => void }) {
-  const printerProfiles  = useSlicerStore((s) => s.printerProfiles);
-  const activePrinterId  = useSlicerStore((s) => s.activePrinterProfileId);
+  const printerProfiles = useSlicerStore((s) => s.printerProfiles);
+  const activePrinterId = useSlicerStore((s) => s.activePrinterProfileId);
   const setActivePrinter = useSlicerStore((s) => s.setActivePrinterProfile);
-  const deletePrinter    = useSlicerStore((s) => s.deletePrinterProfile);
-  const createPrinter         = useSlicerStore((s) => s.createPrinterWithDefaults);
-  const updatePrinter         = useSlicerStore((s) => s.updatePrinterProfile);
+  const deletePrinter = useSlicerStore((s) => s.deletePrinterProfile);
+  const createPrinter = useSlicerStore((s) => s.createPrinterWithDefaults);
+  const updatePrinter = useSlicerStore((s) => s.updatePrinterProfile);
   const updateMaterialProfile = useSlicerStore((s) => s.updateMaterialProfile);
-  const updatePrintProfile    = useSlicerStore((s) => s.updatePrintProfile);
+  const updatePrintProfile = useSlicerStore((s) => s.updatePrintProfile);
 
-  // Connected Duet printers from the printer store
-  const duetPrinters     = usePrinterStore((s) => s.printers);
-  const printerService   = usePrinterStore((s) => s.service);
+  const duetPrinters = usePrinterStore((s) => s.printers);
+  const printerService = usePrinterStore((s) => s.service);
   const printerConnected = usePrinterStore((s) => s.connected);
-  const activeDuetId     = usePrinterStore((s) => s.activePrinterId);
+  const activeDuetId = usePrinterStore((s) => s.activePrinterId);
 
-  const [selectedId, setSelectedId]   = useState(activePrinterId);
-  const [tab, setTab]                 = useState<typeof TABS[number]>('Printer');
-  const [addingName, setAddingName]   = useState('');
-  const [showAdd, setShowAdd]         = useState(false);
+  const [selectedId, setSelectedId] = useState(activePrinterId);
+  const [tab, setTab] = useState<typeof TABS[number]>('Printer');
+  const [addingName, setAddingName] = useState('');
+  const [showAdd, setShowAdd] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState<string | null>(null);
-  const [syncing, setSyncing]         = useState(false);
-  const [syncError, setSyncError]     = useState<string | null>(null);
-  const [syncStatus, setSyncStatus]   = useState<string | null>(null);
+  const [syncing, setSyncing] = useState(false);
+  const [syncError, setSyncError] = useState<string | null>(null);
+  const [syncStatus, setSyncStatus] = useState<string | null>(null);
   const [selectedDuetId, setSelectedDuetId] = useState(activeDuetId);
 
   const selectedPrinter = printerProfiles.find((p) => p.id === selectedId) ?? printerProfiles[0];
@@ -320,29 +51,50 @@ export function SlicerPrinterManagerModal({ onClose }: { onClose: () => void }) 
     setSyncError(null);
   }
 
+  async function readBoardFiles(service: NonNullable<typeof printerService>) {
+    const readFile = async (path: string) => {
+      try {
+        return await (await service.downloadFile(path)).text();
+      } catch {
+        return '';
+      }
+    };
+
+    return Promise.all([
+      readFile('0:/sys/config.g'),
+      readFile('0:/sys/start.g'),
+      readFile('0:/sys/stop.g'),
+      readFile('0:/sys/config-override.g'),
+      readFile('0:/sys/tool0.g'),
+      readFile('0:/sys/tpre0.g'),
+      readFile('0:/sys/tfree0.g'),
+    ]);
+  }
+
   async function handleSyncFromDuet() {
     const name = addingName.trim();
     if (!name) return;
     const service = printerService ?? usePrinterStore.getState().service;
-    if (!service) { setSyncError('No connected Duet printer'); return; }
+    if (!service) {
+      setSyncError('No connected Duet printer');
+      return;
+    }
+
     setSyncing(true);
     setSyncError(null);
     try {
-      const readFile = async (path: string) => {
-        try { return await (await service.downloadFile(path)).text(); }
-        catch { return ''; }
-      };
-      const [configG, startG, stopG, overrideG, tool0G, tpre0G, tfree0G] = await Promise.all([
-        readFile('0:/sys/config.g'),
-        readFile('0:/sys/start.g'),
-        readFile('0:/sys/stop.g'),
-        readFile('0:/sys/config-override.g'),  // calibrated M92/M566/M201/M203 values from M500
-        readFile('0:/sys/tool0.g'),             // extruder start G-code (runs when T0 selected)
-        readFile('0:/sys/tpre0.g'),             // extruder prestart G-code
-        readFile('0:/sys/tfree0.g'),            // extruder end G-code (runs when T0 released)
-      ]);
-      const { profile, profileMachineSourcedFields, startGCode, endGCode, extruderStartGCode, extruderEndGCode, extruderPrestartGCode, materialPatch, printPatch } =
-        parseDuetConfig(configG, startG, stopG, overrideG, tool0G, tpre0G, tfree0G);
+      const [configG, startG, stopG, overrideG, tool0G, tpre0G, tfree0G] = await readBoardFiles(service);
+      const {
+        profile,
+        profileMachineSourcedFields,
+        startGCode,
+        endGCode,
+        extruderStartGCode,
+        extruderEndGCode,
+        extruderPrestartGCode,
+        materialPatch,
+        printPatch,
+      } = parseDuetConfig(configG, startG, stopG, overrideG, tool0G, tpre0G, tfree0G);
 
       const duetPrinterName = duetPrinters.find((p) => p.id === selectedDuetId)?.name ?? '';
       const finalName = name || duetPrinterName || 'Duet Printer';
@@ -354,14 +106,13 @@ export function SlicerPrinterManagerModal({ onClose }: { onClose: () => void }) 
         ...profile,
         gcodeFlavorType: 'duet',
         startGCode: startGCode || (existingProfile?.startGCode ?? ''),
-        endGCode:   endGCode   || (existingProfile?.endGCode   ?? ''),
-        ...(extruderStartGCode   ? { extruderStartGCode }   : {}),
-        ...(extruderEndGCode     ? { extruderEndGCode }     : {}),
+        endGCode: endGCode || (existingProfile?.endGCode ?? ''),
+        ...(extruderStartGCode ? { extruderStartGCode } : {}),
+        ...(extruderEndGCode ? { extruderEndGCode } : {}),
         ...(extruderPrestartGCode ? { extruderPrestartGCode } : {}),
         machineSourcedFields: profileMachineSourcedFields,
       });
 
-      // Apply material-profile patch (retraction, pressure advance)
       if (Object.keys(materialPatch.fields).length > 0) {
         const state = useSlicerStore.getState();
         const defaultMaterialId = state.printerLastMaterial[newId]
@@ -374,7 +125,6 @@ export function SlicerPrinterManagerModal({ onClose }: { onClose: () => void }) 
         }
       }
 
-      // Apply print-profile patch (acceleration, jerk)
       if (Object.keys(printPatch.fields).length > 0) {
         const state = useSlicerStore.getState();
         const defaultPrintId = state.printerLastPrint[newId]
@@ -386,6 +136,7 @@ export function SlicerPrinterManagerModal({ onClose }: { onClose: () => void }) 
           });
         }
       }
+
       setSelectedId(newId);
       setAddingName('');
       setShowAdd(false);
@@ -396,45 +147,43 @@ export function SlicerPrinterManagerModal({ onClose }: { onClose: () => void }) 
     }
   }
 
-  // Re-sync the currently selected (already-added) printer from the connected
-  // Duet board. Unlike handleSyncFromDuet which creates a new profile, this
-  // updates the existing printer profile plus its bound material and print
-  // profiles in place — pulling fresh acceleration (M204/M201) and jerk (M566)
-  // values into the print profile so the slicer matches the board.
   async function handleSyncSelected() {
     if (!selectedPrinter) return;
     const service = printerService ?? usePrinterStore.getState().service;
-    if (!service) { setSyncError('No connected Duet printer'); setSyncStatus(null); return; }
+    if (!service) {
+      setSyncError('No connected Duet printer');
+      setSyncStatus(null);
+      return;
+    }
+
     setSyncing(true);
     setSyncError(null);
     setSyncStatus(null);
     try {
-      const readFile = async (path: string) => {
-        try { return await (await service.downloadFile(path)).text(); }
-        catch { return ''; }
-      };
-      const [configG, startG, stopG, overrideG, tool0G, tpre0G, tfree0G] = await Promise.all([
-        readFile('0:/sys/config.g'),
-        readFile('0:/sys/start.g'),
-        readFile('0:/sys/stop.g'),
-        readFile('0:/sys/config-override.g'),
-        readFile('0:/sys/tool0.g'),
-        readFile('0:/sys/tpre0.g'),
-        readFile('0:/sys/tfree0.g'),
-      ]);
+      const [configG, startG, stopG, overrideG, tool0G, tpre0G, tfree0G] = await readBoardFiles(service);
       if (!configG.trim()) {
         throw new Error('config.g is empty or missing on the board');
       }
-      const { profile, profileMachineSourcedFields, startGCode, endGCode, extruderStartGCode, extruderEndGCode, extruderPrestartGCode, materialPatch, printPatch } =
-        parseDuetConfig(configG, startG, stopG, overrideG, tool0G, tpre0G, tfree0G);
+
+      const {
+        profile,
+        profileMachineSourcedFields,
+        startGCode,
+        endGCode,
+        extruderStartGCode,
+        extruderEndGCode,
+        extruderPrestartGCode,
+        materialPatch,
+        printPatch,
+      } = parseDuetConfig(configG, startG, stopG, overrideG, tool0G, tpre0G, tfree0G);
 
       updatePrinter(selectedPrinter.id, {
         ...profile,
         gcodeFlavorType: 'duet',
         ...(startGCode ? { startGCode } : {}),
-        ...(endGCode   ? { endGCode }   : {}),
-        ...(extruderStartGCode    ? { extruderStartGCode }    : {}),
-        ...(extruderEndGCode      ? { extruderEndGCode }      : {}),
+        ...(endGCode ? { endGCode } : {}),
+        ...(extruderStartGCode ? { extruderStartGCode } : {}),
+        ...(extruderEndGCode ? { extruderEndGCode } : {}),
         ...(extruderPrestartGCode ? { extruderPrestartGCode } : {}),
         machineSourcedFields: profileMachineSourcedFields,
       });
@@ -463,9 +212,9 @@ export function SlicerPrinterManagerModal({ onClose }: { onClose: () => void }) 
         }
       }
 
-      const printerFieldCount    = Object.keys(profile).length;
-      const materialFieldCount   = Object.keys(materialPatch.fields).length;
-      const printFieldCount      = Object.keys(printPatch.fields).length;
+      const printerFieldCount = Object.keys(profile).length;
+      const materialFieldCount = Object.keys(materialPatch.fields).length;
+      const printFieldCount = Object.keys(printPatch.fields).length;
       setSyncStatus(`Synced ${printerFieldCount} printer, ${materialFieldCount} material, ${printFieldCount} print fields from Duet`);
     } catch (err) {
       setSyncError(err instanceof Error ? err.message : String(err));
@@ -493,8 +242,12 @@ export function SlicerPrinterManagerModal({ onClose }: { onClose: () => void }) 
   return (
     <div
       style={{
-        position: 'fixed', inset: 0, zIndex: 1000,
-        display: 'flex', alignItems: 'center', justifyContent: 'center',
+        position: 'fixed',
+        inset: 0,
+        zIndex: 1000,
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
         background: 'rgba(0,0,0,0.65)',
       }}
       onClick={onClose}
@@ -512,13 +265,17 @@ export function SlicerPrinterManagerModal({ onClose }: { onClose: () => void }) 
         }}
         onClick={(e) => e.stopPropagation()}
       >
-        {/* Header */}
-        <div style={{
-          display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-          padding: '12px 18px', flexShrink: 0,
-          borderBottom: `1px solid ${colors.panelBorder}`,
-          background: `linear-gradient(to bottom, color-mix(in srgb, ${colors.accent} 8%, ${colors.panelLight}), ${colors.panel})`,
-        }}>
+        <div
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            padding: '12px 18px',
+            flexShrink: 0,
+            borderBottom: `1px solid ${colors.panelBorder}`,
+            background: `linear-gradient(to bottom, color-mix(in srgb, ${colors.accent} 8%, ${colors.panelLight}), ${colors.panel})`,
+          }}
+        >
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, color: colors.text, fontSize: 14, fontWeight: 700 }}>
             <Printer size={16} color={colors.accent} />
             {selectedPrinter?.name ?? 'Manage Printers'}
@@ -528,13 +285,7 @@ export function SlicerPrinterManagerModal({ onClose }: { onClose: () => void }) 
           </button>
         </div>
 
-        {/* Tabs (Cura puts them at the top, full width) */}
-        <div style={{
-          display: 'flex',
-          borderBottom: `1px solid ${colors.panelBorder}`,
-          background: colors.panelLight,
-          flexShrink: 0,
-        }}>
+        <div style={{ display: 'flex', borderBottom: `1px solid ${colors.panelBorder}`, background: colors.panelLight, flexShrink: 0 }}>
           {TABS.map((t) => (
             <button
               key={t}
@@ -555,18 +306,17 @@ export function SlicerPrinterManagerModal({ onClose }: { onClose: () => void }) 
           ))}
         </div>
 
-        {/* Body: sidebar + content */}
         <div style={{ display: 'flex', flex: 1, overflow: 'hidden' }}>
-
-          {/* Left sidebar: printer list */}
-          <div style={{
-            width: 195,
-            flexShrink: 0,
-            borderRight: `1px solid ${colors.panelBorder}`,
-            display: 'flex',
-            flexDirection: 'column',
-            background: colors.panelLight,
-          }}>
+          <div
+            style={{
+              width: 195,
+              flexShrink: 0,
+              borderRight: `1px solid ${colors.panelBorder}`,
+              display: 'flex',
+              flexDirection: 'column',
+              background: colors.panelLight,
+            }}
+          >
             <div style={{ flex: 1, overflowY: 'auto' }}>
               {printerProfiles.map((printer) => {
                 const isSel = printer.id === selectedId;
@@ -589,7 +339,7 @@ export function SlicerPrinterManagerModal({ onClose }: { onClose: () => void }) 
                           {printer.name}
                         </div>
                         <div style={{ fontSize: 10, color: colors.textDim, marginTop: 1 }}>
-                          {printer.buildVolume.x}×{printer.buildVolume.y}×{printer.buildVolume.z} mm
+                          {printer.buildVolume.x}x{printer.buildVolume.y}x{printer.buildVolume.z} mm
                         </div>
                       </div>
                       {isSel && <ChevronRight size={11} color={colors.accent} />}
@@ -603,16 +353,29 @@ export function SlicerPrinterManagerModal({ onClose }: { onClose: () => void }) 
                     ) : (
                       <button
                         disabled={printerProfiles.length <= 1}
-                        onClick={(e) => { e.stopPropagation(); setConfirmDelete(printer.id); }}
-                        style={{
-                          background: 'transparent', border: 'none', color: colors.textDim,
-                          cursor: printerProfiles.length <= 1 ? 'not-allowed' : 'pointer',
-                          display: 'flex', padding: '2px 0', marginTop: 3,
-                          opacity: printerProfiles.length <= 1 ? 0.3 : 1,
-                          fontSize: 10, alignItems: 'center', gap: 3,
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setConfirmDelete(printer.id);
                         }}
-                        onMouseEnter={(e) => { if (printerProfiles.length > 1) (e.currentTarget as HTMLElement).style.color = '#ef4444'; }}
-                        onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.color = colors.textDim; }}
+                        style={{
+                          background: 'transparent',
+                          border: 'none',
+                          color: colors.textDim,
+                          cursor: printerProfiles.length <= 1 ? 'not-allowed' : 'pointer',
+                          display: 'flex',
+                          padding: '2px 0',
+                          marginTop: 3,
+                          opacity: printerProfiles.length <= 1 ? 0.3 : 1,
+                          fontSize: 10,
+                          alignItems: 'center',
+                          gap: 3,
+                        }}
+                        onMouseEnter={(e) => {
+                          if (printerProfiles.length > 1) (e.currentTarget as HTMLElement).style.color = '#ef4444';
+                        }}
+                        onMouseLeave={(e) => {
+                          (e.currentTarget as HTMLElement).style.color = colors.textDim;
+                        }}
                       >
                         <Trash2 size={10} /> Remove
                       </button>
@@ -622,19 +385,27 @@ export function SlicerPrinterManagerModal({ onClose }: { onClose: () => void }) 
               })}
             </div>
 
-            {/* Add printer */}
             {showAdd ? (
               <div style={{ padding: '8px 10px', borderTop: `1px solid ${colors.panelBorder}`, display: 'flex', flexDirection: 'column', gap: 6 }}>
                 <input
                   autoFocus
                   style={{ ...sharedStyles.input, width: '100%', boxSizing: 'border-box', fontSize: 12 }}
-                  placeholder="Printer name…"
+                  placeholder="Printer name..."
                   value={addingName}
-                  onChange={(e) => { setAddingName(e.target.value); setSyncError(null); }}
-                  onKeyDown={(e) => { if (e.key === 'Enter') handleCreate(); if (e.key === 'Escape') { setShowAdd(false); setAddingName(''); setSyncError(null); } }}
+                  onChange={(e) => {
+                    setAddingName(e.target.value);
+                    setSyncError(null);
+                  }}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') handleCreate();
+                    if (e.key === 'Escape') {
+                      setShowAdd(false);
+                      setAddingName('');
+                      setSyncError(null);
+                    }
+                  }}
                 />
 
-                {/* Duet sync row — only visible when a Duet is connected */}
                 {printerConnected && (
                   <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
                     <div style={{ fontSize: 10, color: colors.textDim, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
@@ -656,35 +427,46 @@ export function SlicerPrinterManagerModal({ onClose }: { onClose: () => void }) 
                       disabled={syncing || !addingName.trim()}
                       style={{
                         ...sharedStyles.btnBase,
-                        display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 5,
-                        fontSize: 11, width: '100%',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        gap: 5,
+                        fontSize: 11,
+                        width: '100%',
                         opacity: (syncing || !addingName.trim()) ? 0.5 : 1,
                         cursor: (syncing || !addingName.trim()) ? 'not-allowed' : 'pointer',
-                        color: colors.accent, borderColor: colors.accent,
+                        color: colors.accent,
+                        borderColor: colors.accent,
                       }}
                     >
                       <RefreshCw size={11} className={syncing ? 'spin' : undefined} />
-                      {syncing ? 'Reading config.g…' : 'Import from config.g'}
+                      {syncing ? 'Reading config.g...' : 'Import from config.g'}
                     </button>
-                    {syncError && (
-                      <div style={{ fontSize: 10, color: '#ef4444' }}>{syncError}</div>
-                    )}
+                    {syncError && <div style={{ fontSize: 10, color: '#ef4444' }}>{syncError}</div>}
                   </div>
                 )}
 
                 <div style={{ display: 'flex', gap: 4 }}>
                   <button onClick={handleCreate} disabled={!addingName.trim()} style={{ ...sharedStyles.btnAccent, flex: 1, justifyContent: 'center', fontSize: 11, opacity: addingName.trim() ? 1 : 0.5 }}>Create</button>
-                  <button onClick={() => { setShowAdd(false); setAddingName(''); setSyncError(null); }} style={{ ...sharedStyles.btnBase, fontSize: 11 }}>✕</button>
+                  <button onClick={() => { setShowAdd(false); setAddingName(''); setSyncError(null); }} style={{ ...sharedStyles.btnBase, fontSize: 11 }}>x</button>
                 </div>
               </div>
             ) : (
               <button
                 onClick={() => setShowAdd(true)}
                 style={{
-                  display: 'flex', alignItems: 'center', gap: 6, padding: '9px 12px',
-                  cursor: 'pointer', background: 'transparent', border: 'none',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 6,
+                  padding: '9px 12px',
+                  cursor: 'pointer',
+                  background: 'transparent',
+                  border: 'none',
                   borderTop: `1px solid ${colors.panelBorder}`,
-                  color: colors.accent, fontSize: 12, fontWeight: 500, width: '100%',
+                  color: colors.accent,
+                  fontSize: 12,
+                  fontWeight: 500,
+                  width: '100%',
                 }}
               >
                 <Plus size={13} /> Add Printer
@@ -692,10 +474,9 @@ export function SlicerPrinterManagerModal({ onClose }: { onClose: () => void }) 
             )}
           </div>
 
-          {/* Right: tab content */}
           {selectedPrinter ? (
             <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
-              {tab === 'Printer'     && <PrinterTab  p={selectedPrinter} upd={upd} />}
+              {tab === 'Printer' && <PrinterTab p={selectedPrinter} upd={upd} />}
               {tab === 'Extruder 1' && <ExtruderTab p={selectedPrinter} upd={upd} />}
             </div>
           ) : (
@@ -705,12 +486,17 @@ export function SlicerPrinterManagerModal({ onClose }: { onClose: () => void }) 
           )}
         </div>
 
-        {/* Footer */}
-        <div style={{
-          padding: '10px 18px', borderTop: `1px solid ${colors.panelBorder}`,
-          display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-          gap: 12, flexShrink: 0,
-        }}>
+        <div
+          style={{
+            padding: '10px 18px',
+            borderTop: `1px solid ${colors.panelBorder}`,
+            display: 'flex',
+            justifyContent: 'space-between',
+            alignItems: 'center',
+            gap: 12,
+            flexShrink: 0,
+          }}
+        >
           <div style={{ display: 'flex', alignItems: 'center', gap: 10, minWidth: 0, flex: 1 }}>
             {printerConnected && selectedPrinter && (
               <button
@@ -719,15 +505,18 @@ export function SlicerPrinterManagerModal({ onClose }: { onClose: () => void }) 
                 title="Re-read config.g from the connected Duet and update this printer + its material and print profiles (acceleration, jerk, retraction, pressure advance)."
                 style={{
                   ...sharedStyles.btnBase,
-                  display: 'flex', alignItems: 'center', gap: 6,
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 6,
                   fontSize: 12,
                   opacity: syncing ? 0.6 : 1,
                   cursor: syncing ? 'wait' : 'pointer',
-                  color: colors.accent, borderColor: colors.accent,
+                  color: colors.accent,
+                  borderColor: colors.accent,
                 }}
               >
                 <RefreshCw size={12} className={syncing ? 'spin' : undefined} />
-                {syncing ? 'Syncing…' : 'Sync from Duet'}
+                {syncing ? 'Syncing...' : 'Sync from Duet'}
               </button>
             )}
             {syncError && (

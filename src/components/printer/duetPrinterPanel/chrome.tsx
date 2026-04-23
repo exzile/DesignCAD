@@ -1,0 +1,491 @@
+import React from 'react';
+import {
+  Activity,
+  Clock,
+  Cpu,
+  Loader2,
+  Moon,
+  OctagonAlert,
+  Search,
+  Settings,
+  Sun,
+  Wifi,
+  WifiOff,
+  X,
+} from 'lucide-react';
+import { formatUptime } from '../dashboard/helpers';
+import { colors as COLORS } from '../../../utils/theme';
+import { TABS, type TabKey } from './config';
+
+type SearchResult = {
+  label: string;
+  tab: TabKey;
+  type: string;
+};
+
+type HeaderProps = {
+  connected: boolean;
+  hostname?: string;
+  theme: string;
+  globalSearch: string;
+  showSearchResults: boolean;
+  searchResults: SearchResult[];
+  searchInputRef: React.RefObject<HTMLInputElement | null>;
+  onSearchChange: (value: string) => void;
+  onSearchFocus: () => void;
+  onSearchBlur: () => void;
+  onResultSelect: (tab: TabKey) => void;
+  onToggleTheme: () => void;
+  onEmergencyStop: () => void;
+  onOpenSettings: () => void;
+  onClose: () => void;
+};
+
+export function PanelHeader({
+  connected,
+  hostname,
+  theme,
+  globalSearch,
+  showSearchResults,
+  searchResults,
+  searchInputRef,
+  onSearchChange,
+  onSearchFocus,
+  onSearchBlur,
+  onResultSelect,
+  onToggleTheme,
+  onEmergencyStop,
+  onOpenSettings,
+  onClose,
+}: HeaderProps) {
+  return (
+    <div
+      style={{
+        display: 'flex',
+        alignItems: 'center',
+        gap: 8,
+        padding: '8px 12px',
+        background: COLORS.panel,
+        borderBottom: `1px solid ${COLORS.panelBorder}`,
+        flexShrink: 0,
+      }}
+    >
+      <div
+        style={{
+          width: 8,
+          height: 8,
+          borderRadius: '50%',
+          flexShrink: 0,
+          background: connected ? COLORS.success : COLORS.danger,
+        }}
+        title={connected ? 'Connected' : 'Disconnected'}
+      />
+      {!connected && (
+        <button
+          style={{
+            background: 'none',
+            border: `1px solid ${COLORS.success}`,
+            color: COLORS.success,
+            cursor: 'pointer',
+            padding: '2px 8px',
+            borderRadius: 4,
+            fontWeight: 600,
+            fontSize: 11,
+            display: 'flex',
+            alignItems: 'center',
+            gap: 4,
+            marginLeft: 6,
+          }}
+          onClick={onOpenSettings}
+          title="Connect to printer"
+        >
+          <Wifi size={12} /> Connect
+        </button>
+      )}
+      <span style={{ fontWeight: 600, fontSize: 14, whiteSpace: 'nowrap', marginRight: 4 }}>Duet3D Control</span>
+      {connected && hostname && (
+        <span
+          style={{
+            color: COLORS.textDim,
+            fontSize: 11,
+            overflow: 'hidden',
+            textOverflow: 'ellipsis',
+            whiteSpace: 'nowrap',
+            maxWidth: 120,
+          }}
+          title={hostname}
+        >
+          {hostname}
+        </span>
+      )}
+      <div style={{ flex: 1 }} />
+
+      <div style={{ position: 'relative' }}>
+        <div
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: 4,
+            background: COLORS.inputBg,
+            border: `1px solid ${COLORS.panelBorder}`,
+            borderRadius: 4,
+            padding: '2px 6px',
+          }}
+        >
+          <Search size={12} style={{ color: COLORS.textDim, flexShrink: 0 }} />
+          <input
+            ref={searchInputRef}
+            type="text"
+            value={globalSearch}
+            onChange={(e) => onSearchChange(e.target.value)}
+            onFocus={onSearchFocus}
+            onBlur={onSearchBlur}
+            placeholder="Search..."
+            style={{
+              border: 'none',
+              background: 'transparent',
+              color: COLORS.text,
+              fontSize: 11,
+              outline: 'none',
+              width: 100,
+              padding: '2px 0',
+              fontFamily: 'inherit',
+            }}
+          />
+        </div>
+        {showSearchResults && searchResults.length > 0 && (
+          <div
+            style={{
+              position: 'absolute',
+              top: '100%',
+              right: 0,
+              marginTop: 4,
+              background: COLORS.panel,
+              border: `1px solid ${COLORS.panelBorder}`,
+              borderRadius: 4,
+              maxHeight: 240,
+              overflowY: 'auto',
+              zIndex: 1100,
+              minWidth: 220,
+              boxShadow: '0 4px 16px rgba(0,0,0,0.4)',
+            }}
+          >
+            {searchResults.map((r, i) => (
+              <div
+                key={`${r.tab}-${r.label}-${i}`}
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 8,
+                  padding: '6px 10px',
+                  cursor: 'pointer',
+                  fontSize: 12,
+                  borderBottom: `1px solid ${COLORS.panelBorder}`,
+                }}
+                onMouseDown={(e) => {
+                  e.preventDefault();
+                  onResultSelect(r.tab);
+                }}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.background = COLORS.inputBg;
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.background = 'transparent';
+                }}
+              >
+                <span style={{ color: COLORS.accent, fontWeight: 600, fontSize: 10, minWidth: 50 }}>{r.type}</span>
+                <span style={{ color: COLORS.text, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{r.label}</span>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+
+      <button
+        style={headerIconButton}
+        onClick={onToggleTheme}
+        title={theme === 'dark' ? 'Switch to light theme' : 'Switch to dark theme'}
+      >
+        {theme === 'dark' ? <Sun size={16} /> : <Moon size={16} />}
+      </button>
+
+      <button
+        style={{
+          background: COLORS.danger,
+          border: 'none',
+          color: '#fff',
+          cursor: 'pointer',
+          padding: '4px 10px',
+          borderRadius: 4,
+          fontWeight: 700,
+          fontSize: 11,
+          display: 'flex',
+          alignItems: 'center',
+          gap: 4,
+          letterSpacing: 0.5,
+        }}
+        onClick={onEmergencyStop}
+        title="Emergency Stop (M112)"
+      >
+        <OctagonAlert size={14} /> E-STOP
+      </button>
+
+      <button style={headerIconButton} onClick={onOpenSettings} title="Settings">
+        <Settings size={16} />
+      </button>
+
+      <button style={headerIconButton} onClick={onClose} title="Close panel">
+        <X size={16} />
+      </button>
+    </div>
+  );
+}
+
+export function PanelTabBar({
+  activeTab,
+  onTabChange,
+}: {
+  activeTab: string;
+  onTabChange: (tab: TabKey) => void;
+}) {
+  return (
+    <div
+      style={{
+        display: 'flex',
+        gap: 0,
+        background: COLORS.panel,
+        borderBottom: `1px solid ${COLORS.panelBorder}`,
+        flexShrink: 0,
+        overflowX: 'auto',
+      }}
+    >
+      {TABS.map(({ key, label, Icon }) => (
+        <button
+          key={key}
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: 5,
+            padding: '8px 12px',
+            background: 'none',
+            border: 'none',
+            borderBottomWidth: 2,
+            borderBottomStyle: 'solid',
+            borderBottomColor: activeTab === key ? COLORS.accent : 'transparent',
+            color: activeTab === key ? COLORS.accent : COLORS.textDim,
+            cursor: 'pointer',
+            fontSize: 12,
+            whiteSpace: 'nowrap',
+            transition: 'color 0.15s, border-color 0.15s',
+          }}
+          onClick={() => onTabChange(key)}
+          title={label}
+        >
+          <Icon size={14} />
+          <span className="tab-label">{label}</span>
+        </button>
+      ))}
+    </div>
+  );
+}
+
+export function PanelBanners({
+  error,
+  connected,
+  reconnecting,
+  hasStaleModel,
+  lastUpdatedText,
+  onOpenSettings,
+}: {
+  error: string | null;
+  connected: boolean;
+  reconnecting: boolean;
+  hasStaleModel: boolean;
+  lastUpdatedText: string | null;
+  onOpenSettings: () => void;
+}) {
+  return (
+    <>
+      {error && (
+        <div
+          style={{
+            padding: '6px 12px',
+            background: 'rgba(239,68,68,0.15)',
+            color: COLORS.danger,
+            fontSize: 12,
+            borderBottom: `1px solid ${COLORS.panelBorder}`,
+          }}
+        >
+          {error}
+        </div>
+      )}
+
+      {!connected && reconnecting && (
+        <div
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: 8,
+            padding: '6px 14px',
+            background: 'rgba(234,179,8,0.12)',
+            borderBottom: `1px solid ${COLORS.panelBorder}`,
+            color: COLORS.warning,
+            fontSize: 12,
+            flexShrink: 0,
+          }}
+        >
+          <Loader2 size={14} className="spin" />
+          <span>Reconnecting to printer...</span>
+        </div>
+      )}
+
+      {!connected && (
+        <div
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: 10,
+            padding: '8px 14px',
+            background: 'rgba(239,68,68,0.08)',
+            borderBottom: `1px solid ${COLORS.panelBorder}`,
+            color: COLORS.textDim,
+            fontSize: 12,
+            flexShrink: 0,
+          }}
+        >
+          <WifiOff size={14} color={COLORS.danger} />
+          <span>
+            {hasStaleModel
+              ? `Disconnected - showing last known values (updated ${lastUpdatedText}).`
+              : 'Not connected to a Duet3D board.'}
+          </span>
+          <div style={{ flex: 1 }} />
+          <button
+            style={{
+              background: COLORS.accent,
+              color: '#fff',
+              border: 'none',
+              borderRadius: 4,
+              padding: '4px 12px',
+              cursor: 'pointer',
+              fontWeight: 600,
+              fontSize: 11,
+              display: 'flex',
+              alignItems: 'center',
+              gap: 4,
+            }}
+            onClick={onOpenSettings}
+          >
+            <Wifi size={12} /> Connect
+          </button>
+        </div>
+      )}
+    </>
+  );
+}
+
+export function PanelFooter({
+  connected,
+  machineStatus,
+  currentTool,
+  upTime,
+  board,
+  printProgress,
+}: {
+  connected: boolean;
+  machineStatus: string;
+  currentTool: string;
+  upTime: number;
+  board?: {
+    firmwareName?: string;
+    firmwareVersion?: string;
+    name?: string;
+    shortName?: string;
+  };
+  printProgress: number | null;
+}) {
+  return (
+    <div
+      style={{
+        display: 'flex',
+        alignItems: 'center',
+        gap: 10,
+        padding: '6px 12px',
+        background: COLORS.panel,
+        borderTop: `1px solid ${COLORS.panelBorder}`,
+        fontSize: 11,
+        color: COLORS.textDim,
+        flexShrink: 0,
+      }}
+    >
+      <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+        <Activity size={11} style={{ color: connected ? COLORS.success : COLORS.textDim }} />
+        <span style={{ fontWeight: 600, textTransform: 'capitalize', color: connected ? COLORS.success : COLORS.textDim }}>
+          {machineStatus}
+        </span>
+      </span>
+      <span style={{ color: COLORS.panelBorder }}>|</span>
+      <span>Tool: {currentTool}</span>
+      {upTime > 0 && (
+        <>
+          <span style={{ color: COLORS.panelBorder }}>|</span>
+          <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+            <Clock size={10} /> {formatUptime(upTime)}
+          </span>
+        </>
+      )}
+      {board && (
+        <>
+          <span style={{ color: COLORS.panelBorder }}>|</span>
+          <span
+            style={{ display: 'flex', alignItems: 'center', gap: 4 }}
+            title={`${board.firmwareName ?? ''} ${board.firmwareVersion ?? ''}`.trim()}
+          >
+            <Cpu size={10} />
+            <span>{board.name || board.shortName}</span>
+            {board.firmwareVersion && (
+              <span style={{ color: COLORS.textDim }}>· {board.firmwareVersion}</span>
+            )}
+          </span>
+        </>
+      )}
+
+      {printProgress !== null && (
+        <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 6 }}>
+          <div
+            style={{
+              width: 80,
+              height: 6,
+              background: COLORS.inputBg,
+              borderRadius: 3,
+              overflow: 'hidden',
+            }}
+          >
+            <div
+              style={{
+                height: '100%',
+                background: COLORS.accent,
+                borderRadius: 3,
+                transition: 'width 0.3s ease',
+                width: `${printProgress.toFixed(1)}%`,
+              }}
+            />
+          </div>
+          <span>{printProgress.toFixed(1)}%</span>
+        </div>
+      )}
+    </div>
+  );
+}
+
+const headerIconButton: React.CSSProperties = {
+  background: 'none',
+  border: 'none',
+  color: COLORS.textDim,
+  cursor: 'pointer',
+  padding: 4,
+  borderRadius: 4,
+  display: 'flex',
+  alignItems: 'center',
+  justifyContent: 'center',
+};
