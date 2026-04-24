@@ -427,6 +427,10 @@ export const DEFAULT_PRINT_PROFILES: PrintProfile[] = [
     flowRateCompensationMaxExtrusion: 0.0,
     smallHoleMaxSize: 0.0,
     minimumPolygonCircumference: 1.0,
-    slicingClosingRadius: 0.049,
+    // polygonClipping.union inside closeContourGaps collapses colinear points,
+    // so enabling this even at 0.05mm drops well-tessellated circles from
+    // 30+ points down to ~8-sided polygons. Keep it off by default — users
+    // with non-manifold STLs can re-enable in settings.
+    slicingClosingRadius: 0,
   },
 ];

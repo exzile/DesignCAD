@@ -120,6 +120,32 @@ export function generatePerimetersEx(
   printProfile: PrintProfile,
   deps: PerimeterDeps,
 ): GeneratedPerimeters {
+  // polygonClipping.difference on dense tessellated outer + hole contours
+  // frequently produces hundreds of sub-mm sliver polygons at the shared
+  // edges. Those slivers (a) emit degenerate-wall gcode no printer can follow
+  // and (b) each become a separate infill region that gets sprayed with
+  // infill dots on wall surfaces. Drop anything below roughly half a bead's
+  // worth of area — real material regions are always substantially larger.
+  const minPolyArea = Math.max(0.02, lineWidth * lineWidth * 0.5);
+  const ringArea = (ring: PCRing): number => {
+    let a2 = 0;
+    for (let i = 0; i < ring.length - 1; i++) {
+      a2 += ring[i][0] * ring[i + 1][1] - ring[i + 1][0] * ring[i][1];
+    }
+    return Math.abs(a2) / 2;
+  };
+  const dropTinyPolygons = (mp: PCMultiPolygon): PCMultiPolygon =>
+    mp.filter((poly) => poly.length > 0 && ringArea(poly[0]) >= minPolyArea);
+  const ringBBox = (ring: PCRing) => {
+    let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
+    for (let i = 0; i < ring.length - 1; i++) {
+      const x = ring[i][0], y = ring[i][1];
+      if (x < minX) minX = x; if (x > maxX) maxX = x;
+      if (y < minY) minY = y; if (y > maxY) maxY = y;
+    }
+    return { minX, maxX, minY, maxY };
+  };
+
   const computeDepth = (offset: number): { result: PCMultiPolygon; holesAtDepth: THREE.Vector2[][] } | null => {
     const outerShrunk = deps.offsetContour(outerContour, offset);
     if (outerShrunk.length < 3) return null;
@@ -130,14 +156,51 @@ export function generatePerimetersEx(
 
     let result: PCMultiPolygon = [[toRing(outerShrunk)]];
     if (holesExpanded.length > 0) {
-      const holeMPs: PCMultiPolygon[] = holesExpanded.map((h) => [[toRing([...h].reverse())]]);
-      try {
-        result = polygonClipping.difference(result, ...holeMPs);
-      } catch {
-        result = [[toRing(outerShrunk)]];
+      // Fast path: when expanded holes don't intersect each other or the outer
+      // boundary, we can assemble the polygon directly without routing through
+      // polygonClipping.difference. The library's union/difference pass
+      // aggressively merges colinear points, collapsing a well-tessellated
+      // circular hole offset from ~30 points to ~8 — which is exactly what
+      // was producing the octagonal rings around mounting holes in the
+      // preview. Use the fast path when possible; fall back to polygon-
+      // clipping for overlapping / self-intersecting cases.
+      const outerBbox = ringBBox(toRing(outerShrunk));
+      const holeBboxes = holesExpanded.map((h) => ringBBox(toRing(h)));
+      let needsClipping = false;
+      for (let i = 0; i < holeBboxes.length && !needsClipping; i++) {
+        const hb = holeBboxes[i];
+        // Hole bbox strictly outside outer bbox → clipping needed.
+        if (hb.minX < outerBbox.minX || hb.maxX > outerBbox.maxX || hb.minY < outerBbox.minY || hb.maxY > outerBbox.maxY) {
+          needsClipping = true;
+          break;
+        }
+        for (let j = i + 1; j < holeBboxes.length; j++) {
+          const hb2 = holeBboxes[j];
+          // Hole bboxes overlap → their rings may merge, clipping needed.
+          if (hb.maxX > hb2.minX && hb2.maxX > hb.minX && hb.maxY > hb2.minY && hb2.maxY > hb.minY) {
+            needsClipping = true;
+            break;
+          }
+        }
+      }
+
+      if (!needsClipping) {
+        // Assemble a single polygon with outer ring + each hole as a ring
+        // (reversed to match polygon-clipping's hole orientation convention).
+        const poly: PCRing[] = [toRing(outerShrunk)];
+        for (const h of holesExpanded) poly.push(toRing([...h].reverse()));
+        result = [poly];
+      } else {
+        const holeMPs: PCMultiPolygon[] = holesExpanded.map((h) => [[toRing([...h].reverse())]]);
+        try {
+          result = polygonClipping.difference(result, ...holeMPs);
+        } catch {
+          result = [[toRing(outerShrunk)]];
+        }
       }
     }
 
+    result = dropTinyPolygons(result);
     if (result.length === 0) return null;
 
     const holesAtDepth: THREE.Vector2[][] = [];
@@ -254,8 +317,13 @@ export function generatePerimetersEx(
         }
       }
     }
-    if (thisDepthHoles.length > 0) lastInnermostHoles = thisDepthHoles;
-    lastInfillRegions = deps.multiPolygonToRegions(result);
+    const regionsAtDepth = deps.multiPolygonToRegions(result);
+    if (thisDepthHoles.length > 0) {
+      lastInnermostHoles = thisDepthHoles;
+      lastInfillRegions = regionsAtDepth;
+    } else if (lastInfillRegions.length === 0) {
+      lastInfillRegions = regionsAtDepth;
+    }
   }
 
   return {

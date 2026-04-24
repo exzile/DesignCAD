@@ -1,6 +1,6 @@
 /* Extrude / Press-Pull panel — uses the canonical tool-panel look.
    Only tool-specific overrides live here. */
-@import '../dialogs/common/ToolPanel.css';
+@import '../../dialogs/common/ToolPanel.css';
 
 .tp-header-icon.extrude { background: #3b82f6; }
 .tp-header-icon.cut     { background: #ef4444; }

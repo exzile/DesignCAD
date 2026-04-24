@@ -22,11 +22,19 @@ const MOVE_TYPE_COLORS: Record<string, THREE.Color> = {
 };
 const FALLBACK_COLOR = new THREE.Color('#ffffff');
 
-// Shared unit extrusion-bead geometry used by every LayerLines InstancedMesh.
-// A flat-ended unit box better matches Cura's preview and avoids rounded-cap
-// bulges on tight circular hole walls. Axis aligned to +X so per-instance
-// scale (length, width, height) maps cleanly. Created once at module load.
-const UNIT_BOX_GEO = (() => new THREE.BoxGeometry(1, 1, 1))();
+// Shared unit extrusion-bead geometries. The shaft cylinder is rotated so its
+// axis lies along +X, matching the per-instance scale convention
+// (X=length, Y=width, Z=layerHeight). Endpoint sphere caps sit at each
+// segment's from/to to give a rounded pill appearance from top-down instead
+// of the flat-ended rectangle that plain boxes produced. 12 radial segments
+// on the shaft and 12×8 on the sphere give a smooth curve without exploding
+// tri count for dense slices.
+const UNIT_SHAFT_GEO = (() => {
+  const g = new THREE.CylinderGeometry(0.5, 0.5, 1, 12, 1, true);
+  g.rotateZ(Math.PI / 2);
+  return g;
+})();
+const UNIT_CAP_GEO = new THREE.SphereGeometry(0.5, 12, 8);
 
 // Reusable scratch objects to avoid per-frame allocations inside useMemo.
 const _mat4 = new THREE.Matrix4();
@@ -65,7 +73,12 @@ function LayerLines({
       ? layer.moves.slice(0, currentLayerMoveCount)
       : layer.moves;
 
-    type Bucket = { mids: number[]; dirs: number[]; lens: number[]; lws: number[]; heights: number[]; cols: number[] };
+    type Bucket = {
+      // Shaft instance data
+      mids: number[]; dirs: number[]; lens: number[]; lws: number[]; heights: number[]; cols: number[];
+      // Cap instance data (one sphere per endpoint)
+      capPos: number[]; capLws: number[]; capHeights: number[]; capCols: number[];
+    };
     const byType = new Map<string, Bucket>();
     const travPos: number[] = [];
 
@@ -89,37 +102,23 @@ function LayerLines({
       const len = Math.hypot(dx, dy);
       if (len < 1e-6) continue;
 
-      const prev = moveIndex > 0 ? moves[moveIndex - 1] : null;
-      const next = moveIndex + 1 < moves.length ? moves[moveIndex + 1] : null;
-      const connectsToPrev = prev !== null
-        && prev.type === move.type
-        && prev.extrusion > 0
-        && samePoint(prev.to, move.from);
-      const connectsToNext = next !== null
-        && next.type === move.type
-        && next.extrusion > 0
-        && samePoint(move.to, next.from);
-
-      const renderRadius = ((move.lineWidth ?? 0.4) * PREVIEW_LINE_SCALE) / 2;
-      const trimStart = connectsToPrev ? Math.min(renderRadius, len * 0.45) : 0;
-      const trimEnd = connectsToNext ? Math.min(renderRadius, len * 0.45) : 0;
-      const renderLen = len - trimStart - trimEnd;
-      if (renderLen < 1e-6) continue;
-
       const dirX = dx / len;
       const dirY = dy / len;
-      const renderFromX = move.from.x + dirX * trimStart;
-      const renderFromY = move.from.y + dirY * trimStart;
-      const renderToX = move.to.x - dirX * trimEnd;
-      const renderToY = move.to.y - dirY * trimEnd;
 
-      if (!byType.has(move.type)) byType.set(move.type, { mids: [], dirs: [], lens: [], lws: [], heights: [], cols: [] });
+      if (!byType.has(move.type)) byType.set(move.type, { mids: [], dirs: [], lens: [], lws: [], heights: [], cols: [], capPos: [], capLws: [], capHeights: [], capCols: [] });
       const b = byType.get(move.type)!;
-      const beadHeight = Math.max(0.02, Math.min(layerHeight * 0.45, (move.lineWidth ?? 0.4) * 0.45));
-      b.mids.push((renderFromX + renderToX) / 2, (renderFromY + renderToY) / 2, layer.z - beadHeight / 2);
+      const lw = (move.lineWidth ?? 0.4) * PREVIEW_LINE_SCALE;
+      // Bead Z-extent = full layer height so each bead fills its slice and
+      // reads as a round elliptical tube instead of a flat ribbon. Anchor the
+      // bottom at the previous layer's top (layer.z - layerHeight) so stacked
+      // layers touch without overlap.
+      const beadHeight = Math.max(0.02, layerHeight);
+      const beadZ = layer.z - beadHeight / 2;
+
+      b.mids.push((move.from.x + move.to.x) / 2, (move.from.y + move.to.y) / 2, beadZ);
       b.dirs.push(dirX, dirY);
-      b.lens.push(renderLen);
-      b.lws.push(move.lineWidth ?? 0.4);
+      b.lens.push(len);
+      b.lws.push(lw);
       b.heights.push(beadHeight);
 
       let col: THREE.Color;
@@ -131,37 +130,90 @@ function LayerLines({
         col = new THREE.Color().setHSL(Math.max(0, (120 - move.extrusion * 100) / 360), 0.8, 0.55);
       }
       b.cols.push(col.r, col.g, col.b);
+
+      // Caps only at endpoints shared with an adjacent same-type segment.
+      // Dangling ends (e.g. infill scan-line terminations) get no cap — a
+      // sphere there would protrude W/2 past the endpoint into neighbouring
+      // walls, which reads as top-bottom fill overlapping wall-inner beads
+      // even though the g-code itself stays inside the wall contour.
+      const prev = moveIndex > 0 ? moves[moveIndex - 1] : null;
+      const next = moveIndex + 1 < moves.length ? moves[moveIndex + 1] : null;
+      const fromShared = prev !== null
+        && prev.type === move.type
+        && prev.extrusion > 0
+        && samePoint(prev.to, move.from);
+      const toShared = next !== null
+        && next.type === move.type
+        && next.extrusion > 0
+        && samePoint(move.to, next.from);
+      if (fromShared) {
+        b.capPos.push(move.from.x, move.from.y, beadZ);
+        b.capLws.push(lw);
+        b.capHeights.push(beadHeight);
+        b.capCols.push(col.r, col.g, col.b);
+      }
+      if (toShared) {
+        b.capPos.push(move.to.x, move.to.y, beadZ);
+        b.capLws.push(lw);
+        b.capHeights.push(beadHeight);
+        b.capCols.push(col.r, col.g, col.b);
+      }
     }
 
-    const meshList: Array<{ mesh: THREE.InstancedMesh; type: string }> = [];
-    for (const [type, { mids, dirs, lens, lws, heights, cols }] of byType) {
-      const count = lens.length;
-      if (count === 0) continue;
+    const meshList: Array<{ mesh: THREE.InstancedMesh; type: string; kind: 'shaft' | 'cap' }> = [];
+    const col3 = new THREE.Color();
+    for (const [type, b] of byType) {
+      const shaftCount = b.lens.length;
+      if (shaftCount === 0) continue;
+
       // Lambert gives each bead visible top/side shading under the scene's
       // directional + ambient lights — critical for distinguishing stacked
       // walls on sloped surfaces that would otherwise blend into a solid mass.
-      const mat = new THREE.MeshLambertMaterial();
-      const mesh = new THREE.InstancedMesh(UNIT_BOX_GEO, mat, count);
-      const col3 = new THREE.Color();
-      for (let i = 0; i < count; i++) {
-        const angle = Math.atan2(dirs[i * 2 + 1], dirs[i * 2]);
+      const shaftMat = new THREE.MeshLambertMaterial();
+      const shaftMesh = new THREE.InstancedMesh(UNIT_SHAFT_GEO, shaftMat, shaftCount);
+      for (let i = 0; i < shaftCount; i++) {
+        const angle = Math.atan2(b.dirs[i * 2 + 1], b.dirs[i * 2]);
         _quat.setFromAxisAngle(_zAxis, angle);
-        _pos3.set(mids[i * 3], mids[i * 3 + 1], mids[i * 3 + 2]);
-        _scl3.set(lens[i], lws[i] * PREVIEW_LINE_SCALE, heights[i]);
+        _pos3.set(b.mids[i * 3], b.mids[i * 3 + 1], b.mids[i * 3 + 2]);
+        _scl3.set(b.lens[i], b.lws[i], b.heights[i]);
         _mat4.compose(_pos3, _quat, _scl3);
-        mesh.setMatrixAt(i, _mat4);
-        col3.setRGB(cols[i * 3], cols[i * 3 + 1], cols[i * 3 + 2]);
-        mesh.setColorAt(i, col3);
+        shaftMesh.setMatrixAt(i, _mat4);
+        col3.setRGB(b.cols[i * 3], b.cols[i * 3 + 1], b.cols[i * 3 + 2]);
+        shaftMesh.setColorAt(i, col3);
       }
-      mesh.instanceMatrix.needsUpdate = true;
-      if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true;
-      // InstancedMesh frustum culling does not reliably account for all
-      // per-instance transforms here, which can drop dense curved / slanted
-      // wall beads from the preview even though the G-code exists. Keep the
-      // full layer bucket visible and let OrbitControls camera movement drive
-      // the redraw instead of relying on instance-derived bounds.
-      mesh.frustumCulled = false;
-      meshList.push({ mesh, type });
+      shaftMesh.instanceMatrix.needsUpdate = true;
+      if (shaftMesh.instanceColor) shaftMesh.instanceColor.needsUpdate = true;
+      shaftMesh.frustumCulled = false;
+      meshList.push({ mesh: shaftMesh, type, kind: 'shaft' });
+
+      // Cap instances at every segment endpoint. Identity rotation, scaled so
+      // the cap matches the shaft's cross-section but does NOT protrude past
+      // the shaft's length end. At a polygon vertex the cap sphere sits at
+      // the shared endpoint; a full W-diameter cap would stick W/2 outward
+      // from the vertex in every horizontal direction, which on a wall-inner
+      // ring next to the wall-outer was reading as green bleeding over red.
+      // Using 0.95 * W keeps caps just shy of the shaft's cross-section so
+      // they still smooth the tiny gap at convex turns without bulging past
+      // the bead's expected footprint.
+      const capCount = b.capLws.length;
+      if (capCount > 0) {
+        const capMat = new THREE.MeshLambertMaterial();
+        const capMesh = new THREE.InstancedMesh(UNIT_CAP_GEO, capMat, capCount);
+        _quat.identity();
+        for (let i = 0; i < capCount; i++) {
+          _pos3.set(b.capPos[i * 3], b.capPos[i * 3 + 1], b.capPos[i * 3 + 2]);
+          const capSize = b.capLws[i] * 0.95;
+          _scl3.set(capSize, capSize, b.capHeights[i]);
+          _mat4.compose(_pos3, _quat, _scl3);
+          capMesh.setMatrixAt(i, _mat4);
+          col3.setRGB(b.capCols[i * 3], b.capCols[i * 3 + 1], b.capCols[i * 3 + 2]);
+          capMesh.setColorAt(i, col3);
+        }
+        capMesh.instanceMatrix.needsUpdate = true;
+        if (capMesh.instanceColor) capMesh.instanceColor.needsUpdate = true;
+        capMesh.frustumCulled = false;
+        meshList.push({ mesh: capMesh, type, kind: 'cap' });
+      }
     }
 
     const tg = travPos.length > 0 ? new THREE.BufferGeometry() : null;
@@ -172,7 +224,8 @@ function LayerLines({
 
   useEffect(() => () => {
     for (const { mesh } of meshes) {
-      // Don't dispose mesh.geometry — it's UNIT_BOX_GEO, shared across all instances.
+      // Don't dispose mesh.geometry — it's UNIT_SHAFT_GEO or UNIT_CAP_GEO,
+      // both module-level singletons shared across every LayerLines instance.
       (mesh.material as THREE.Material).dispose();
       mesh.dispose();
     }
@@ -181,8 +234,8 @@ function LayerLines({
 
   return (
     <>
-      {meshes.map(({ mesh, type }) => (
-        <primitive key={`${layer.layerIndex}-${type}`} object={mesh} />
+      {meshes.map(({ mesh, type, kind }) => (
+        <primitive key={`${layer.layerIndex}-${type}-${kind}`} object={mesh} />
       ))}
       {travelGeo && (
         <lineSegments key={`${layer.layerIndex}-travel`} geometry={travelGeo}>

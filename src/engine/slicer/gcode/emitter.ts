@@ -203,6 +203,7 @@ export class GCodeEmitter {
     const dx = x - this.currentX;
     const dy = y - this.currentY;
     const dist = Math.sqrt(dx * dx + dy * dy);
+    if (dist < 1e-4) return;
     if (shouldRetractOnTravel(dist, this.extrudedSinceRetract, this.print)) {
       this.retract();
     }

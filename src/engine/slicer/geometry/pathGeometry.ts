@@ -106,39 +106,71 @@ export function offsetContour(
   return cleanOffsetContour(result, signedArea);
 }
 
+// Ramer-Douglas-Peucker on an open point list: return indices of points to
+// keep so that every dropped point lies within `tolerance` of the polyline
+// formed by kept points. Works iteratively with an explicit stack to avoid
+// recursion blow-ups on long contours.
+function dpKeepIndices(points: THREE.Vector2[], start: number, end: number, tolerance: number, keep: Uint8Array): void {
+  const stack: Array<[number, number]> = [[start, end]];
+  while (stack.length > 0) {
+    const [lo, hi] = stack.pop()!;
+    if (hi <= lo + 1) continue;
+    const a = points[lo];
+    const b = points[hi];
+    let maxDist = -1;
+    let maxIdx = -1;
+    for (let i = lo + 1; i < hi; i++) {
+      const d = distancePointToSegment2D(points[i], a, b);
+      if (d > maxDist) { maxDist = d; maxIdx = i; }
+    }
+    if (maxDist > tolerance && maxIdx > 0) {
+      keep[maxIdx] = 1;
+      stack.push([lo, maxIdx]);
+      stack.push([maxIdx, hi]);
+    }
+  }
+}
+
 export function simplifyClosedContour(points: THREE.Vector2[], tolerance: number): THREE.Vector2[] {
   if (points.length <= 3 || !(tolerance > 0)) return points.slice();
 
+  // Dedupe coincident points but keep the tolerance tight here — we only want
+  // to collapse true duplicates, not start eating actual geometry.
   const deduped: THREE.Vector2[] = [];
+  const dedupTol = Math.min(tolerance * 0.1, 0.005);
   for (const pt of points) {
     const prev = deduped[deduped.length - 1];
-    if (!prev || prev.distanceTo(pt) > tolerance * 0.25) deduped.push(pt);
+    if (!prev || prev.distanceTo(pt) > dedupTol) deduped.push(pt);
   }
-  if (deduped.length > 1 && deduped[0].distanceTo(deduped[deduped.length - 1]) <= tolerance * 0.25) {
+  if (deduped.length > 1 && deduped[0].distanceTo(deduped[deduped.length - 1]) <= dedupTol) {
     deduped.pop();
   }
   if (deduped.length <= 3) return deduped;
 
-  const simplified = deduped.slice();
-  let changed = true;
-  let guard = 0;
-  while (changed && simplified.length > 3 && guard++ < deduped.length * 4) {
-    changed = false;
-    for (let i = 0; i < simplified.length; i++) {
-      const prev = simplified[(i - 1 + simplified.length) % simplified.length];
-      const curr = simplified[i];
-      const next = simplified[(i + 1) % simplified.length];
-      if (prev.distanceTo(curr) <= tolerance * 0.25 || curr.distanceTo(next) <= tolerance * 0.25) {
-        simplified.splice(i, 1);
-        changed = true;
-        break;
-      }
-      if (distancePointToSegment2D(curr, prev, next) <= tolerance) {
-        simplified.splice(i, 1);
-        changed = true;
-        break;
-      }
-    }
-  }
-  return simplified;
+  // Split the closed contour at two antipodal anchors so DP runs on two open
+  // polylines. Without anchors, a closed loop has no natural endpoints for DP
+  // and greedy per-triple removal wildly over-simplifies small circles (a
+  // 424-point 5mm-diameter circle collapses to ~6 points instead of ~24).
+  const n = deduped.length;
+  const anchor0 = 0;
+  const anchor1 = Math.floor(n / 2);
+  const keep = new Uint8Array(n);
+  keep[anchor0] = 1;
+  keep[anchor1] = 1;
+  dpKeepIndices(deduped, anchor0, anchor1, tolerance, keep);
+  // Second half: anchor1 → end → anchor0 (wrap). DP on an explicit array.
+  const half2: THREE.Vector2[] = [];
+  const half2Src: number[] = [];
+  for (let i = anchor1; i < n; i++) { half2.push(deduped[i]); half2Src.push(i); }
+  half2.push(deduped[anchor0]);
+  half2Src.push(anchor0);
+  const keep2 = new Uint8Array(half2.length);
+  keep2[0] = 1;
+  keep2[half2.length - 1] = 1;
+  dpKeepIndices(half2, 0, half2.length - 1, tolerance, keep2);
+  for (let i = 0; i < half2Src.length; i++) if (keep2[i]) keep[half2Src[i]] = 1;
+
+  const out: THREE.Vector2[] = [];
+  for (let i = 0; i < n; i++) if (keep[i]) out.push(deduped[i]);
+  return out.length >= 3 ? out : deduped;
 }
