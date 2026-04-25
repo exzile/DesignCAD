@@ -1,7 +1,62 @@
 import * as THREE from 'three';
 
-function reorderOuterLoop(pp: any, pipeline: any, emitter: any, loop: any[], lineWidth: number, li: number) {
-  const seamIdx = pipeline.findSeamPosition(loop, pp, li, emitter.currentX, emitter.currentY);
+type WallLineWidthSpec = number | number[];
+
+function representativeLineWidth(lineWidth: WallLineWidthSpec | undefined, fallback: number): number {
+  if (Array.isArray(lineWidth)) {
+    if (lineWidth.length === 0) return fallback;
+    return lineWidth.reduce((sum, width) => sum + width, 0) / lineWidth.length;
+  }
+  return lineWidth ?? fallback;
+}
+
+function segmentLineWidth(lineWidth: WallLineWidthSpec, fromIndex: number, toIndex: number): number {
+  if (!Array.isArray(lineWidth)) return lineWidth;
+  const from = lineWidth[fromIndex] ?? lineWidth[toIndex] ?? lineWidth[0] ?? 0;
+  const to = lineWidth[toIndex] ?? from;
+  return (from + to) / 2;
+}
+
+function centroid(points: THREE.Vector2[]): THREE.Vector2 {
+  const center = new THREE.Vector2();
+  for (const point of points) center.add(point);
+  return center.multiplyScalar(1 / Math.max(1, points.length));
+}
+
+function beginSeamLayer(run: any, li: number) {
+  if (run.seamMemoryLayer === li) return;
+  if (run.seamMemoryLayer !== undefined) run.previousSeamPoints = run.currentSeamPoints ?? [];
+  run.currentSeamPoints = [];
+  run.seamMemoryLayer = li;
+}
+
+function nearestPreviousSeam(run: any, loop: THREE.Vector2[], tolerance: number): THREE.Vector2 | null {
+  const previous: THREE.Vector2[] = run.previousSeamPoints ?? [];
+  if (previous.length === 0 || loop.length === 0) return null;
+  const center = centroid(loop);
+  let best: THREE.Vector2 | null = null;
+  let bestDistance = Infinity;
+  for (const point of previous) {
+    const distance = point.distanceTo(center);
+    if (distance < bestDistance) {
+      bestDistance = distance;
+      best = point;
+    }
+  }
+  return bestDistance <= Math.max(tolerance * 8, 10) ? best : null;
+}
+
+function reorderOuterLoop(pp: any, pipeline: any, run: any, layer: any, emitter: any, loop: any[], lineWidth: number, li: number) {
+  const continuityTolerance = pp.zSeamContinuityDistance ?? 2;
+  const seamIdx = pipeline.findSeamPosition(loop, pp, li, emitter.currentX, emitter.currentY, {
+    previousSeam: nearestPreviousSeam(run, loop, continuityTolerance),
+    continuityTolerance,
+    userSpecifiedRadius: pp.zSeamUserSpecifiedRadius ?? 0,
+    isSupported: layer.hasBridgeRegions
+      ? (point: THREE.Vector2) => !layer.isInBridgeRegion(point.x, point.y)
+      : undefined,
+  });
+  run.currentSeamPoints.push(loop[seamIdx].clone());
   let reordered = pipeline.reorderFromIndex(loop, seamIdx);
   if (pp.fluidMotionEnable && reordered.length >= 3) {
     const fmAngle = ((pp.fluidMotionAngle ?? 15) * Math.PI) / 180;
@@ -25,12 +80,20 @@ function reorderOuterLoop(pp: any, pipeline: any, emitter: any, loop: any[], lin
     reordered = smoothed;
   }
   if ((pp.alternateWallDirections ?? false) && li % 2 === 1) reordered = [reordered[0], ...reordered.slice(1).reverse()];
-  return pipeline.simplifyClosedContour(reordered, Math.max(0.015, lineWidth * 0.05));
+  // Same Arachne-lite simplification as inner walls: collapse narrow
+  // perimeter "fingers" so the wall doesn't snake into broken-through hole
+  // notches at problem layers.
+  return pipeline.simplifyClosedContour(reordered, Math.max(0.015, lineWidth * 0.5));
 }
 
 function emitOuterLoop(params: any) {
   const { pp, li, layerZ, layerH, isFirstLayer, outerWallSpeed, gcode, emitter, moves } = params;
-  const reordered = reorderOuterLoop(pp, params.pipeline, emitter, params.loop, params.lineWidth, li);
+  const variableLineWidth = Array.isArray(params.lineWidth);
+  const isClosed = params.isClosed ?? true;
+  const fallbackLineWidth = representativeLineWidth(params.lineWidth, pp.wallLineWidth);
+  const reordered = variableLineWidth
+    ? params.loop
+    : reorderOuterLoop(pp, params.pipeline, params.run, params.layer, emitter, params.loop, fallbackLineWidth, li);
   if (reordered.length < 2) return 0;
   emitter.setAccel(isFirstLayer ? pp.accelerationInitialLayer : (pp.accelerationOuterWall ?? pp.accelerationWall), pp.accelerationPrint);
   emitter.setJerk(isFirstLayer ? pp.jerkInitialLayer : (pp.jerkOuterWall ?? pp.jerkWall), pp.jerkPrint);
@@ -43,12 +106,14 @@ function emitOuterLoop(params: any) {
   let layerTime = 0;
   for (let pi = 1; pi < reordered.length; pi++) {
     const from = reordered[pi - 1], to = reordered[pi];
-    let segLW = params.lineWidth, segSpeed = outerWallSpeed;
+    let segLW = variableLineWidth ? segmentLineWidth(params.lineWidth, pi - 1, pi) : fallbackLineWidth;
+    const baseSegLW = segLW;
+    let segSpeed = outerWallSpeed;
     if (scarfRemaining > 0) {
       const done = scarfLen - scarfRemaining;
       const tRaw = done / scarfLen;
       const t = Math.min(1, scarfStepLen > 0 ? Math.floor(done / scarfStepLen) * scarfStepLen / scarfLen : tRaw);
-      segLW = params.lineWidth * t;
+      segLW = baseSegLW * t;
       const speedRatio = pp.scarfSeamStartSpeedRatio ?? 1.0;
       segSpeed = outerWallSpeed * (speedRatio + (1.0 - speedRatio) * t);
       scarfRemaining = Math.max(0, scarfRemaining - from.distanceTo(to));
@@ -56,27 +121,28 @@ function emitOuterLoop(params: any) {
     layerTime += emitter.extrudeTo(to.x, to.y, segSpeed, segLW, layerH).time;
     moves.push({ type: 'wall-outer', from: { x: from.x, y: from.y }, to: { x: to.x, y: to.y }, speed: segSpeed, extrusion: emitter.calculateExtrusion(from.distanceTo(to), segLW, layerH), lineWidth: segLW });
   }
-  if (reordered.length > 2) {
+  if (isClosed && reordered.length > 2) {
     const lastPt = reordered[reordered.length - 1], firstPt = reordered[0], segLen = lastPt.distanceTo(firstPt);
     const coastVol = params.allowCoasting ? (pp.coastingEnabled ? (pp.coastingVolume ?? 0) : 0) : 0;
     const minCoastVol = pp.minVolumeBeforeCoasting ?? 0;
     const loopVol = minCoastVol > 0 ? (() => {
       let perim = segLen;
       for (let ri = 1; ri < reordered.length - 1; ri++) perim += reordered[ri].distanceTo(reordered[ri + 1]);
-      return perim * pp.wallLineWidth * layerH;
+      return perim * fallbackLineWidth * layerH;
     })() : Infinity;
-    const coastDist = coastVol > 0 && loopVol >= minCoastVol ? coastVol / (params.lineWidth * layerH) : 0;
+    const closingLineWidth = variableLineWidth ? segmentLineWidth(params.lineWidth, reordered.length - 1, 0) : fallbackLineWidth;
+    const coastDist = coastVol > 0 && loopVol >= minCoastVol ? coastVol / (closingLineWidth * layerH) : 0;
     if (coastDist > 0 && segLen > coastDist + 1e-3) {
       const t = 1 - coastDist / segLen;
       const midX = lastPt.x + (firstPt.x - lastPt.x) * t, midY = lastPt.y + (firstPt.y - lastPt.y) * t;
-      layerTime += emitter.extrudeTo(midX, midY, outerWallSpeed, params.lineWidth, layerH).time;
-      moves.push({ type: 'wall-outer', from: { x: lastPt.x, y: lastPt.y }, to: { x: midX, y: midY }, speed: outerWallSpeed, extrusion: emitter.calculateExtrusion(segLen * t, params.lineWidth, layerH), lineWidth: params.lineWidth });
+      layerTime += emitter.extrudeTo(midX, midY, outerWallSpeed, closingLineWidth, layerH).time;
+      moves.push({ type: 'wall-outer', from: { x: lastPt.x, y: lastPt.y }, to: { x: midX, y: midY }, speed: outerWallSpeed, extrusion: emitter.calculateExtrusion(segLen * t, closingLineWidth, layerH), lineWidth: closingLineWidth });
       const coastSpeed = outerWallSpeed * ((pp.coastingSpeed ?? 90) / 100);
       gcode.push(`G0 X${firstPt.x.toFixed(3)} Y${firstPt.y.toFixed(3)} F${(coastSpeed * 60).toFixed(0)} ; Coast`);
       emitter.currentX = firstPt.x; emitter.currentY = firstPt.y;
     } else {
-      layerTime += emitter.extrudeTo(firstPt.x, firstPt.y, outerWallSpeed, params.lineWidth, layerH).time;
-      moves.push({ type: 'wall-outer', from: { x: lastPt.x, y: lastPt.y }, to: { x: firstPt.x, y: firstPt.y }, speed: outerWallSpeed, extrusion: emitter.calculateExtrusion(segLen, params.lineWidth, layerH), lineWidth: params.lineWidth });
+      layerTime += emitter.extrudeTo(firstPt.x, firstPt.y, outerWallSpeed, closingLineWidth, layerH).time;
+      moves.push({ type: 'wall-outer', from: { x: lastPt.x, y: lastPt.y }, to: { x: firstPt.x, y: firstPt.y }, speed: outerWallSpeed, extrusion: emitter.calculateExtrusion(segLen, closingLineWidth, layerH), lineWidth: closingLineWidth });
     }
   }
   return layerTime;
@@ -87,21 +153,22 @@ export function emitGroupedAndContourWalls(pipeline: any, run: any, layer: any) 
   const { li, layerZ, layerH, isFirstLayer, outerWallSpeed, innerWallSpeed, workContours, holesByOuterContour, moves } = layer;
   const groupOW = pp.groupOuterWalls ?? false;
   const perContour: any[] = [];
+  beginSeamLayer(run, li);
 
   if (groupOW) {
     for (const contour of workContours) {
       if (!contour.isOuter) continue;
       const containedHoles = holesByOuterContour.get(contour) ?? [];
       const perimeters = pipeline.filterPerimetersByMinOdd(
-        pipeline.generatePerimetersEx(contour.points, containedHoles, pp.wallCount, pp.wallLineWidth, pp.outerWallInset ?? 0),
+        pipeline.generatePerimeters(contour.points, containedHoles, pp.wallCount, pp.wallLineWidth, pp.outerWallInset ?? 0),
         pp.minOddWallLineWidth ?? 0,
       );
-      perContour.push({ contour, exWalls: perimeters, wallSets: perimeters.walls, wallLineWidths: perimeters.lineWidths, outerWallCount: perimeters.outerCount, infillHoles: perimeters.innermostHoles });
+      perContour.push({ contour, exWalls: perimeters, wallSets: perimeters.walls, wallLineWidths: perimeters.lineWidths, wallClosed: perimeters.wallClosed, outerWallCount: perimeters.outerCount, infillHoles: perimeters.innermostHoles });
     }
     for (const item of perContour) {
       const outerWall = item.wallSets[0];
       if (!outerWall || outerWall.length < 2) continue;
-      layer.layerTime += emitOuterLoop({ pipeline, pp, li, layerZ, layerH, isFirstLayer, outerWallSpeed, gcode, emitter, moves, loop: outerWall, lineWidth: item.wallLineWidths[0] ?? pp.wallLineWidth, comment: 'Outer wall (grouped)', allowCoasting: false });
+      layer.layerTime += emitOuterLoop({ pipeline, run, layer, pp, li, layerZ, layerH, isFirstLayer, outerWallSpeed, gcode, emitter, moves, loop: outerWall, lineWidth: item.wallLineWidths[0] ?? pp.wallLineWidth, isClosed: item.wallClosed?.[0] ?? true, comment: 'Outer wall (grouped)', allowCoasting: false });
     }
   }
 
@@ -109,48 +176,82 @@ export function emitGroupedAndContourWalls(pipeline: any, run: any, layer: any) 
     if (!contour.isOuter) continue;
     const containedHoles = holesByOuterContour.get(contour) ?? [];
     const exWalls = pipeline.filterPerimetersByMinOdd(
-      pipeline.generatePerimetersEx(contour.points, containedHoles, pp.wallCount, pp.wallLineWidth, pp.outerWallInset ?? 0),
+      pipeline.generatePerimeters(contour.points, containedHoles, pp.wallCount, pp.wallLineWidth, pp.outerWallInset ?? 0),
       pp.minOddWallLineWidth ?? 0,
     );
     const wallSets = exWalls.walls;
     const wallLineWidths = exWalls.lineWidths;
+    const wallClosed = exWalls.wallClosed;
     const outerWallCount = exWalls.outerCount;
     const infillHoles = exWalls.innermostHoles;
-    const contourData = { contour, exWalls, wallSets, wallLineWidths, outerWallCount, infillHoles };
+    const contourData = { contour, exWalls, wallSets, wallLineWidths, wallClosed, outerWallCount, infillHoles };
     perContour.push(contourData);
 
     if (!groupOW && wallSets.length > 0 && pp.outerWallFirst) {
       if (isFirstLayer && pp.initialLayerOuterWallFlow != null) emitter.currentLayerFlow = pp.initialLayerOuterWallFlow / 100;
-      layer.layerTime += emitOuterLoop({ pipeline, pp, li, layerZ, layerH, isFirstLayer, outerWallSpeed, gcode, emitter, moves, loop: wallSets[0], lineWidth: wallLineWidths[0] ?? pp.wallLineWidth, allowCoasting: true });
+      layer.layerTime += emitOuterLoop({ pipeline, run, layer, pp, li, layerZ, layerH, isFirstLayer, outerWallSpeed, gcode, emitter, moves, loop: wallSets[0], lineWidth: wallLineWidths[0] ?? pp.wallLineWidth, isClosed: wallClosed?.[0] ?? true, allowCoasting: true });
     }
 
     emitter.currentLayerFlow = isFirstLayer && (pp.initialLayerFlow ?? 0) > 0 ? (pp.initialLayerFlow / 100) : 1.0;
     const innerLW = pp.innerWallLineWidth ?? pp.wallLineWidth;
     if (isFirstLayer && pp.initialLayerInnerWallFlow != null) emitter.currentLayerFlow = pp.initialLayerInnerWallFlow / 100;
+    const wallDepths: number[] = exWalls.wallDepths ?? [];
     for (let wi = 1; wi < wallSets.length; wi++) {
-      const innerWallLineWidth = wallLineWidths[wi] ?? innerLW;
-      const innerWall = pipeline.simplifyClosedContour(wallSets[wi], Math.max(0.015, innerWallLineWidth * 0.05));
-      if (innerWall.length < 2) continue;
-      emitter.setAccel(isFirstLayer ? pp.accelerationInitialLayer : (pp.accelerationInnerWall ?? pp.accelerationWall), pp.accelerationPrint);
-      emitter.setJerk(isFirstLayer ? pp.jerkInitialLayer : (pp.jerkInnerWall ?? pp.jerkWall), pp.jerkPrint);
-      emitter.travelTo(innerWall[0].x, innerWall[0].y, moves);
-      gcode.push(`; Inner wall ${wi}`);
-      for (let pi = 1; pi < innerWall.length; pi++) {
-        const from = innerWall[pi - 1], to = innerWall[pi];
-        layer.layerTime += emitter.extrudeTo(to.x, to.y, innerWallSpeed, innerWallLineWidth, layerH).time;
-        moves.push({ type: 'wall-inner', from: { x: from.x, y: from.y }, to: { x: to.x, y: to.y }, speed: innerWallSpeed, extrusion: emitter.calculateExtrusion(from.distanceTo(to), innerWallLineWidth, layerH), lineWidth: innerWallLineWidth });
+      // wallDepths[wi] === 0 means this is the outermost wall of its
+      // contour — for hole loops, this is the wall closest to the hole's
+      // empty space, which is topologically the wall-OUTER of that hole.
+      // Tag it accordingly so the preview renders it in the outer colour
+      // (red) next to the empty hole, matching how OrcaSlicer / Cura render.
+      const isHoleOuterWall = (wallDepths[wi] ?? 1) === 0;
+      const moveType: 'wall-outer' | 'wall-inner' = isHoleOuterWall ? 'wall-outer' : 'wall-inner';
+      const wallSpeed = isHoleOuterWall ? outerWallSpeed : innerWallSpeed;
+      const wallLWSpec: WallLineWidthSpec = wallLineWidths[wi] ?? (isHoleOuterWall ? pp.wallLineWidth : innerLW);
+      const wallLW = representativeLineWidth(wallLWSpec, isHoleOuterWall ? pp.wallLineWidth : innerLW);
+      const isClosed = wallClosed?.[wi] ?? true;
+      // Aggressive simplification (≈half the line width) acts as a poor-
+      // man's Arachne for narrow regions: any perimeter "finger" or notch
+      // narrower than ~lw/2 gets straightened out by RDP, so the wall no
+      // longer snakes into thin breakthroughs around mounting holes. Real
+      // curvature on the boundary (radius >> lw/2) is preserved because
+      // those vertices deviate from the chord by more than the tolerance.
+      // Walls that are intentional sharp corners (rectangles, slot ends)
+      // also keep their corners — RDP only collapses points within the
+      // tolerance, never adds vertices.
+      const simplifyTol = Math.max(0.015, wallLW * 0.5);
+      const wallLoop = Array.isArray(wallLWSpec) || !isClosed ? wallSets[wi] : pipeline.simplifyClosedContour(wallSets[wi], simplifyTol);
+      if (wallLoop.length < 2) continue;
+      emitter.setAccel(
+        isFirstLayer ? pp.accelerationInitialLayer
+          : isHoleOuterWall ? (pp.accelerationOuterWall ?? pp.accelerationWall)
+          : (pp.accelerationInnerWall ?? pp.accelerationWall),
+        pp.accelerationPrint,
+      );
+      emitter.setJerk(
+        isFirstLayer ? pp.jerkInitialLayer
+          : isHoleOuterWall ? (pp.jerkOuterWall ?? pp.jerkWall)
+          : (pp.jerkInnerWall ?? pp.jerkWall),
+        pp.jerkPrint,
+      );
+      emitter.travelTo(wallLoop[0].x, wallLoop[0].y, moves);
+      gcode.push(`; ${isHoleOuterWall ? 'Hole outer wall' : 'Inner wall'} ${wi}`);
+      for (let pi = 1; pi < wallLoop.length; pi++) {
+        const from = wallLoop[pi - 1], to = wallLoop[pi];
+        const segLW = segmentLineWidth(wallLWSpec, pi - 1, pi);
+        layer.layerTime += emitter.extrudeTo(to.x, to.y, wallSpeed, segLW, layerH).time;
+        moves.push({ type: moveType, from: { x: from.x, y: from.y }, to: { x: to.x, y: to.y }, speed: wallSpeed, extrusion: emitter.calculateExtrusion(from.distanceTo(to), segLW, layerH), lineWidth: segLW });
       }
-      if (innerWall.length > 2) {
-        const lastPt = innerWall[innerWall.length - 1], firstPt = innerWall[0];
-        layer.layerTime += emitter.extrudeTo(firstPt.x, firstPt.y, innerWallSpeed, innerWallLineWidth, layerH).time;
-        moves.push({ type: 'wall-inner', from: { x: lastPt.x, y: lastPt.y }, to: { x: firstPt.x, y: firstPt.y }, speed: innerWallSpeed, extrusion: emitter.calculateExtrusion(lastPt.distanceTo(firstPt), innerWallLineWidth, layerH), lineWidth: innerWallLineWidth });
+      if (isClosed && wallLoop.length > 2) {
+        const lastPt = wallLoop[wallLoop.length - 1], firstPt = wallLoop[0];
+        const segLW = segmentLineWidth(wallLWSpec, wallLoop.length - 1, 0);
+        layer.layerTime += emitter.extrudeTo(firstPt.x, firstPt.y, wallSpeed, segLW, layerH).time;
+        moves.push({ type: moveType, from: { x: lastPt.x, y: lastPt.y }, to: { x: firstPt.x, y: firstPt.y }, speed: wallSpeed, extrusion: emitter.calculateExtrusion(lastPt.distanceTo(firstPt), segLW, layerH), lineWidth: segLW });
       }
     }
 
     emitter.currentLayerFlow = isFirstLayer && (pp.initialLayerFlow ?? 0) > 0 ? (pp.initialLayerFlow / 100) : 1.0;
     if (!groupOW && wallSets.length > 0 && !pp.outerWallFirst) {
       if (isFirstLayer && pp.initialLayerOuterWallFlow != null) emitter.currentLayerFlow = pp.initialLayerOuterWallFlow / 100;
-      layer.layerTime += emitOuterLoop({ pipeline, pp, li, layerZ, layerH, isFirstLayer, outerWallSpeed, gcode, emitter, moves, loop: wallSets[0], lineWidth: wallLineWidths[0] ?? pp.wallLineWidth, allowCoasting: true });
+      layer.layerTime += emitOuterLoop({ pipeline, run, layer, pp, li, layerZ, layerH, isFirstLayer, outerWallSpeed, gcode, emitter, moves, loop: wallSets[0], lineWidth: wallLineWidths[0] ?? pp.wallLineWidth, isClosed: wallClosed?.[0] ?? true, allowCoasting: true });
       emitter.currentLayerFlow = isFirstLayer && (pp.initialLayerFlow ?? 0) > 0 ? (pp.initialLayerFlow / 100) : 1.0;
     }
   }

@@ -266,8 +266,22 @@ export const useSlicerStore = create<SlicerStore>()(persist((set, get) => ({
       overrides?: Record<string, unknown>;
       objectName?: string;
     }[] = [];
+    const modifierObjects = state.plateObjects.filter((obj) => obj.modifierMeshRole && obj.modifierMeshRole !== 'normal');
+    const printableObjects = state.plateObjects.filter((obj) => !obj.modifierMeshRole || obj.modifierMeshRole === 'normal');
+    const worldBox = (obj: typeof state.plateObjects[number]) => ({
+      minX: obj.boundingBox.min.x + obj.position.x,
+      maxX: obj.boundingBox.max.x + obj.position.x,
+      minY: obj.boundingBox.min.y + obj.position.y,
+      maxY: obj.boundingBox.max.y + obj.position.y,
+      minZ: obj.boundingBox.min.z + obj.position.z,
+      maxZ: obj.boundingBox.max.z + obj.position.z,
+    });
+    const boxesOverlap = (a: ReturnType<typeof worldBox>, b: ReturnType<typeof worldBox>) =>
+      a.minX <= b.maxX && a.maxX >= b.minX
+      && a.minY <= b.maxY && a.maxY >= b.minY
+      && a.minZ <= b.maxZ && a.maxZ >= b.minZ;
 
-    for (const obj of state.plateObjects) {
+    for (const obj of printableObjects) {
       if (!obj.geometry) continue;
       const geo = obj.geometry as THREE.BufferGeometry;
       const posAttr = geo.getAttribute('position');
@@ -342,11 +356,27 @@ export const useSlicerStore = create<SlicerStore>()(persist((set, get) => ({
       }
 
       const per = (obj as { perObjectSettings?: Record<string, unknown> }).perObjectSettings;
-      const filteredOverrides = per && Object.keys(per).length > 0
+      let filteredOverrides = per && Object.keys(per).length > 0
         // Drop undefined entries — those represent "inherit global" and should
         // not override the profile.
         ? Object.fromEntries(Object.entries(per).filter(([, v]) => v !== undefined))
         : undefined;
+      const modifierOverrides: Record<string, unknown> = {};
+      const objBox = worldBox(obj);
+      for (const modifier of modifierObjects) {
+        if (!boxesOverlap(objBox, worldBox(modifier))) continue;
+        if (modifier.modifierMeshRole === 'infill_mesh') {
+          if (modifier.modifierMeshSettings?.infillDensity !== undefined) modifierOverrides.infillDensity = modifier.modifierMeshSettings.infillDensity;
+          if (modifier.modifierMeshSettings?.infillPattern !== undefined) modifierOverrides.infillPattern = modifier.modifierMeshSettings.infillPattern;
+        } else if (modifier.modifierMeshRole === 'support_mesh') {
+          modifierOverrides.supportEnabled = modifier.modifierMeshSettings?.supportEnabled ?? true;
+        } else if (modifier.modifierMeshRole === 'anti_overhang_mesh') {
+          modifierOverrides.supportEnabled = false;
+        }
+      }
+      if (Object.keys(modifierOverrides).length > 0) {
+        filteredOverrides = { ...modifierOverrides, ...(filteredOverrides ?? {}) };
+      }
       geometryData.push({
         positions: positionsForWorker,
         index: indexForWorker,

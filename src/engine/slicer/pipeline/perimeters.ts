@@ -3,7 +3,7 @@ import polygonClipping, { type MultiPolygon as PCMultiPolygon, type Ring as PCRi
 
 import type { PrintProfile } from '../../../types/slicer';
 import type { PerimeterDeps } from '../../../types/slicer-pipeline-deps.types';
-import type { Contour, GeneratedPerimeters, InfillRegion } from '../../../types/slicer-pipeline.types';
+import type { Contour, GeneratedPerimeters, InfillRegion, WallLineWidth } from '../../../types/slicer-pipeline.types';
 
 function toRing(pts: THREE.Vector2[]): PCRing {
   const ring: PCRing = pts.map((p) => [p.x, p.y] as [number, number]);
@@ -100,15 +100,19 @@ export function filterPerimetersByMinOdd(
   });
 
   const walls: THREE.Vector2[][] = [];
-  const lineWidths: number[] = [];
+  const lineWidths: WallLineWidth[] = [];
+  const wallClosed: boolean[] = [];
+  const wallDepths: number[] = [];
   let outerCount = 0;
   for (let i = 0; i < p.walls.length; i++) {
     if (!keep[i]) continue;
     walls.push(p.walls[i]);
     lineWidths.push(p.lineWidths[i] ?? defaultWallLineWidth);
+    wallClosed.push(p.wallClosed?.[i] ?? true);
+    wallDepths.push(p.wallDepths[i] ?? 0);
     if (i < p.outerCount) outerCount++;
   }
-  return { walls, lineWidths, outerCount, innermostHoles: p.innermostHoles, infillRegions: p.infillRegions };
+  return { walls, lineWidths, wallClosed, wallDepths, outerCount, innermostHoles: p.innermostHoles, infillRegions: p.infillRegions };
 }
 
 export function generatePerimetersEx(
@@ -207,36 +211,8 @@ export function generatePerimetersEx(
      *  instead of one giant notched chain. */
     validHoles: THREE.Vector2[][];
   } | null => {
-    const outerShrunkRaw = deps.offsetContour(outerContour, offset);
-    if (outerShrunkRaw.length < 3) return null;
-
-    // The custom offsetContour does NOT split a polygon when its inward
-    // offset would pinch off through a thin neck — it just returns one
-    // self-intersecting polyline. polygonClipping.union resolves the
-    // self-intersections and SPLITS the polygon into multiple disjoint
-    // regions when needed. That's exactly what we want for layers where a
-    // hole has broken through the outer: the offset outer pinches through
-    // the breakthrough point, and union breaks it into "the main outer
-    // perimeter" + "a tiny region around the leftover hole material" (or
-    // just removes that region if it's below minPolyArea).
-    const cleanOuters: THREE.Vector2[][] = [];
-    try {
-      const unioned = polygonClipping.union([[toRing(outerShrunkRaw)]]);
-      const filtered = dropTinyPolygons(unioned);
-      for (const poly of filtered) {
-        if (poly.length === 0) continue;
-        const ring = fromRing(poly[0]);
-        if (ring.length >= 3) cleanOuters.push(ring);
-      }
-    } catch {
-      // Fallback to the raw offset if union failed.
-      cleanOuters.push(outerShrunkRaw);
-    }
-    if (cleanOuters.length === 0) return null;
-    // For backwards-compat with the rest of computeDepth, pick the largest
-    // cleanOuter as "the" outerShrunk used for hole validation.
-    const outerShrunk = cleanOuters.reduce((a, b) =>
-      ringArea(toRing(a)) >= ringArea(toRing(b)) ? a : b);
+    const outerShrunk = deps.offsetContour(outerContour, offset);
+    if (outerShrunk.length < 3) return null;
 
     const holesExpanded = holeContours
       .map((h) => deps.offsetContour(h, offset))
@@ -305,6 +281,21 @@ export function generatePerimetersEx(
     result = dropTinyPolygons(result);
     if (result.length === 0) return null;
 
+    // Derive cleanOuters from the polygon-clipping difference result. Each
+    // polygon's outer ring is a NOTCHED perimeter — for layers where a hole
+    // has broken through the outer, the notch correctly traces around the
+    // breakthrough region instead of drawing the wall straight across the
+    // hole's empty space. Filtering broken-through holes from validHoles
+    // (above) PLUS using the notched perimeter here gives the correct
+    // topology: no walls drawn over empty regions.
+    const cleanOuters: THREE.Vector2[][] = [];
+    for (const poly of result) {
+      if (poly.length === 0) continue;
+      const ring = fromRing(poly[0]);
+      if (ring.length >= 3) cleanOuters.push(ring);
+    }
+    if (cleanOuters.length === 0) return null;
+
     const holesAtDepth: THREE.Vector2[][] = [];
     for (const poly of result) {
       for (let i = 1; i < poly.length; i++) {
@@ -320,6 +311,8 @@ export function generatePerimetersEx(
   const holeLoops: THREE.Vector2[][] = [];
   const outerLineWidths: number[] = [];
   const holeLineWidths: number[] = [];
+  const outerDepths: number[] = []; // parallel to outerLoops, the offset depth (0 = wall-outer)
+  const holeDepths: number[] = [];  // parallel to holeLoops, the offset depth (0 = wall-outer of that hole)
   let lastInnermostHoles: THREE.Vector2[][] = [];
   let lastInfillRegions: InfillRegion[] = [];
 
@@ -348,17 +341,22 @@ export function generatePerimetersEx(
             // Emit each feature (outer regions + each valid hole) as its own
             // clean closed loop, NOT the merged polygon's rings — that
             // prevents the wall from "hugging" around any hole that has
-            // broken through the outer at this depth.
+            // broken through the outer at this depth. Depth-0 walls (the
+            // outermost wall of each contour, both outer perimeter and each
+            // hole) are tagged via wallDepths so the emit step can label
+            // them as wall-outer.
             for (const ring of best.cleanOuters) {
               if (ring.length >= 3) {
                 outerLoops.push(ring);
                 outerLineWidths.push(widened);
+                outerDepths.push(w);
               }
             }
             for (const hole of best.validHoles) {
               if (hole.length >= 3) {
                 holeLoops.push(hole);
                 holeLineWidths.push(widened);
+                holeDepths.push(w);
               }
             }
             if (best.holesAtDepth.length > 0) lastInnermostHoles = best.holesAtDepth;
@@ -416,12 +414,14 @@ export function generatePerimetersEx(
       if (ring.length >= 3) {
         outerLoops.push(ring);
         outerLineWidths.push(depthLineWidth);
+        outerDepths.push(w);
       }
     }
     for (const hole of validHoles) {
       if (hole.length >= 3) {
         holeLoops.push(hole);
         holeLineWidths.push(depthLineWidth);
+        holeDepths.push(w);
       }
     }
     const regionsAtDepth = deps.multiPolygonToRegions(result);
@@ -436,6 +436,7 @@ export function generatePerimetersEx(
   return {
     walls: [...outerLoops, ...holeLoops],
     lineWidths: [...outerLineWidths, ...holeLineWidths],
+    wallDepths: [...outerDepths, ...holeDepths],
     outerCount: outerLoops.length,
     innermostHoles: lastInnermostHoles,
     infillRegions: lastInfillRegions,

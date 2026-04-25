@@ -35,9 +35,22 @@ export interface InfillRegion {
   holes: THREE.Vector2[][];
 }
 
+export type WallLineWidth = number | number[];
+
 export interface GeneratedPerimeters {
   walls: THREE.Vector2[][];
-  lineWidths: number[];
+  lineWidths: WallLineWidth[];
+  /** Parallel to `walls`. False for medial-axis branch/gap-fill paths that
+   *  terminate inside a thin feature instead of forming a closed loop. */
+  wallClosed?: boolean[];
+  /** Parallel to `walls`. The wall offset depth: 0 = outermost wall of its
+   *  contour (this is a `wall-outer` move type), 1+ = inner walls. The
+   *  outermost wall of the OUTER contour AND the outermost wall of every
+   *  hole are both depth-0 (each is the first wall encountered when crossing
+   *  from air into model material). The wall-emission step uses this to
+   *  correctly tag hole walls so they render in the outer colour next to
+   *  the empty hole instead of the inner colour. */
+  wallDepths: number[];
   outerCount: number;
   innermostHoles: THREE.Vector2[][];
   infillRegions: InfillRegion[];

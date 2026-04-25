@@ -335,6 +335,7 @@ export const DEFAULT_PRINT_PROFILES: PrintProfile[] = [
     combingMode: 'all',            // retraction_combing = 'all'
     avoidCrossingPerimeters: true, // travel_avoid_other_parts = true
     thinWallDetection: true,       // fill_outline_gaps = true
+    wallGenerator: 'arachne',
     ironingEnabled: false,         // ironing_enabled = false
     ironingSpeed: 15,
     ironingFlow: 10.0,             // ironing_flow = 10
@@ -354,6 +355,8 @@ export const DEFAULT_PRINT_PROFILES: PrintProfile[] = [
     outerWallWipeDistance: 0.0,
     zSeamX: null,
     zSeamY: null,
+    zSeamUserSpecifiedRadius: 0,
+    zSeamContinuityDistance: 2,
     roofingLayers: 0,              // roofing_layer_count = 0
     roofingPattern: 'lines',       // roofing_pattern = 'lines'
     monotonicTopBottomOrder: false, // skin_monotonic = false
@@ -428,5 +431,8 @@ export const DEFAULT_PRINT_PROFILES: PrintProfile[] = [
     smallHoleMaxSize: 0.0,         // small_hole_max_size = 0
     minimumPolygonCircumference: 1.0, // minimum_polygon_circumference = 1.0
     slicingClosingRadius: 0,
+    extruderIndex: 0,
+    postProcessingScripts: [],
+    nonPlanarSlicingEnabled: false,
   },
 ];

@@ -2,28 +2,368 @@ import * as THREE from 'three';
 
 import type { PrintProfile, SliceMove } from '../../../types/slicer';
 import type { SupportDeps } from '../../../types/slicer-pipeline-deps.types';
-import type { Contour, Triangle } from '../../../types/slicer-pipeline.types';
+import type { BBox2, Contour, Triangle } from '../../../types/slicer-pipeline.types';
 
-function mergeTreeAnchors(
-  anchors: { cx: number; cy: number; topZ: number }[],
-  mergeRadius: number,
-): { cx: number; cy: number; topZ: number }[] {
-  const merged: { cx: number; cy: number; topZ: number; count: number }[] = [];
-  for (const a of anchors) {
-    let found = false;
-    for (const m of merged) {
-      if (Math.hypot(a.cx - m.cx, a.cy - m.cy) < mergeRadius) {
-        m.cx = (m.cx * m.count + a.cx) / (m.count + 1);
-        m.cy = (m.cy * m.count + a.cy) / (m.count + 1);
-        m.topZ = Math.max(m.topZ, a.topZ);
-        m.count++;
-        found = true;
+interface SupportIsland {
+  points: THREE.Vector2[];
+  centroid: THREE.Vector2;
+  area: number;
+  maxZ: number;
+  minZ: number;
+}
+
+interface TreeAnchor {
+  cx: number;
+  cy: number;
+  topZ: number;
+  weight: number;
+}
+
+function triangleArea2D(points: THREE.Vector2[]): number {
+  if (points.length < 3) return 0;
+  return Math.abs(
+    (points[0].x * (points[1].y - points[2].y)
+    + points[1].x * (points[2].y - points[0].y)
+    + points[2].x * (points[0].y - points[1].y)) / 2,
+  );
+}
+
+function pointInsideMaterial(point: THREE.Vector2, contours: Contour[], deps: SupportDeps): boolean {
+  let insideOuter = false;
+  for (const contour of contours) {
+    if (contour.isOuter && deps.pointInContour(point, contour.points)) {
+      insideOuter = true;
+      break;
+    }
+  }
+  if (!insideOuter) return false;
+  for (const contour of contours) {
+    if (!contour.isOuter && deps.pointInContour(point, contour.points)) return false;
+  }
+  return true;
+}
+
+function overhangIslands(
+  triangles: Triangle[],
+  sliceZ: number,
+  offsetX: number,
+  offsetY: number,
+  pp: PrintProfile,
+): SupportIsland[] {
+  const overhangAngleRad = (pp.supportAngle * Math.PI) / 180;
+  const topGap = pp.supportTopDistance ?? pp.supportZDistance ?? 0;
+  const regions: SupportIsland[] = [];
+
+  for (const tri of triangles) {
+    const dotUp = tri.normal.z;
+    const clamped = Math.max(0, Math.min(1, Math.abs(dotUp)));
+    const faceAngle = Math.acos(clamped);
+    if (dotUp >= 0 || faceAngle <= overhangAngleRad) continue;
+
+    const minZ = Math.min(tri.v0.z, tri.v1.z, tri.v2.z);
+    const maxZ = Math.max(tri.v0.z, tri.v1.z, tri.v2.z);
+    if (sliceZ < minZ || sliceZ > maxZ + pp.layerHeight - topGap) continue;
+
+    const points = [
+      new THREE.Vector2(tri.v0.x + offsetX, tri.v0.y + offsetY),
+      new THREE.Vector2(tri.v1.x + offsetX, tri.v1.y + offsetY),
+      new THREE.Vector2(tri.v2.x + offsetX, tri.v2.y + offsetY),
+    ];
+    const centroid = new THREE.Vector2(
+      (points[0].x + points[1].x + points[2].x) / 3,
+      (points[0].y + points[1].y + points[2].y) / 3,
+    );
+    regions.push({ points, centroid, area: triangleArea2D(points), minZ, maxZ });
+  }
+
+  const joinDistance = Math.max(pp.supportJoinDistance ?? 2, pp.supportLineWidth ?? pp.wallLineWidth);
+  const clusters: SupportIsland[] = [];
+  for (const region of regions) {
+    let best: SupportIsland | null = null;
+    let bestDistance = Infinity;
+    for (const cluster of clusters) {
+      const distance = cluster.centroid.distanceTo(region.centroid);
+      if (distance <= joinDistance && distance < bestDistance) {
+        best = cluster;
+        bestDistance = distance;
+      }
+    }
+    if (!best) {
+      clusters.push({ ...region, points: [...region.points] });
+      continue;
+    }
+    const nextArea = best.area + region.area;
+    best.centroid.multiplyScalar(best.area / Math.max(nextArea, 1e-6));
+    best.centroid.add(region.centroid.clone().multiplyScalar(region.area / Math.max(nextArea, 1e-6)));
+    best.area = nextArea;
+    best.minZ = Math.min(best.minZ, region.minZ);
+    best.maxZ = Math.max(best.maxZ, region.maxZ);
+    best.points.push(...region.points);
+  }
+  return clusters;
+}
+
+function islandBBox(island: SupportIsland, pp: PrintProfile, layerZ: number, layerIndex: number, modelHeight: number): BBox2 | null {
+  let bbox: BBox2 = {
+    minX: Math.min(...island.points.map((p) => p.x)),
+    maxX: Math.max(...island.points.map((p) => p.x)),
+    minY: Math.min(...island.points.map((p) => p.y)),
+    maxY: Math.max(...island.points.map((p) => p.y)),
+  };
+
+  if (pp.enableConicalSupport) {
+    const angleRad = ((pp.conicalSupportAngle ?? 30) * Math.PI) / 180;
+    const shrinkPerLayer = Math.tan(angleRad) * pp.layerHeight;
+    const shrink = shrinkPerLayer * layerIndex;
+    bbox = {
+      minX: bbox.minX + shrink,
+      maxX: bbox.maxX - shrink,
+      minY: bbox.minY + shrink,
+      maxY: bbox.maxY - shrink,
+    };
+    if (bbox.maxX <= bbox.minX || bbox.maxY <= bbox.minY) return null;
+  }
+
+  if ((pp.supportStairStepHeight ?? 0) > 0 && (pp.supportStairStepMinSlope ?? 0) > 0) {
+    const stepLayers = Math.max(1, Math.ceil((pp.supportStairStepHeight ?? 0.3) / pp.layerHeight));
+    if (layerIndex < stepLayers) {
+      const maxW = pp.supportStairStepMaxWidth ?? 0;
+      const pad = maxW > 0 ? Math.min(pp.wallLineWidth, maxW / 2) : pp.wallLineWidth;
+      bbox = { minX: bbox.minX - pad, maxX: bbox.maxX + pad, minY: bbox.minY - pad, maxY: bbox.maxY + pad };
+    }
+  }
+
+  const conicalAngle = pp.enableConicalSupport ? pp.conicalSupportAngle ?? 0 : 0;
+  if (conicalAngle > 0 && modelHeight > 0) {
+    const expansion = Math.tan((conicalAngle * Math.PI) / 180) * Math.max(0, modelHeight - layerZ);
+    const actualExp = Math.max((pp.conicalSupportMinWidth ?? 0) / 2, expansion);
+    bbox = { minX: bbox.minX - actualExp, maxX: bbox.maxX + actualExp, minY: bbox.minY - actualExp, maxY: bbox.maxY + actualExp };
+  }
+
+  const minArea = pp.minimumSupportArea ?? 0;
+  if (minArea > 0 && (bbox.maxX - bbox.minX) * (bbox.maxY - bbox.minY) < minArea) return null;
+
+  const horizExp = pp.supportHorizontalExpansion ?? 0;
+  const minXYGap = Math.max(0, (pp.minSupportXYDistance ?? 0) - (pp.supportXYDistance ?? 0));
+  bbox = {
+    minX: bbox.minX - horizExp + minXYGap,
+    maxX: bbox.maxX + horizExp - minXYGap,
+    minY: bbox.minY - horizExp + minXYGap,
+    maxY: bbox.maxY + horizExp - minXYGap,
+  };
+  return bbox.maxX > bbox.minX && bbox.maxY > bbox.minY ? bbox : null;
+}
+
+function supportInterfaceState(triangles: Triangle[], sliceZ: number, pp: PrintProfile): { roof: boolean; floor: boolean } {
+  const legacyInterface = pp.supportInterface && (pp.supportInterfaceLayers ?? 0) > 0;
+  const roofThickness = pp.supportRoofEnable || legacyInterface
+    ? pp.supportRoofThickness ?? pp.supportInterfaceThickness ?? (pp.supportInterfaceLayers ?? 0) * pp.layerHeight
+    : 0;
+  const floorThickness = pp.supportFloorEnable || legacyInterface
+    ? pp.supportFloorThickness ?? pp.supportInterfaceThickness ?? (pp.supportInterfaceLayers ?? 0) * pp.layerHeight
+    : 0;
+  const supZDist = pp.supportZDistance ?? 0;
+  let roof = false;
+  let floor = false;
+
+  for (const tri of triangles) {
+    const triMinZ = Math.min(tri.v0.z, tri.v1.z, tri.v2.z);
+    const triMaxZ = Math.max(tri.v0.z, tri.v1.z, tri.v2.z);
+    if (!roof && roofThickness > 0 && triMinZ > sliceZ && triMinZ <= sliceZ + supZDist + roofThickness) roof = true;
+    if (!floor && floorThickness > 0 && triMaxZ < sliceZ && triMaxZ >= sliceZ - supZDist - floorThickness) floor = true;
+    if (roof && floor) break;
+  }
+  return { roof, floor };
+}
+
+function supportLineSettings(pp: PrintProfile, layerIndex: number, isRoof: boolean, isFloor: boolean) {
+  const supLW = pp.supportLineWidth ?? pp.wallLineWidth;
+  const baseSpacing = (pp.supportLineDistance ?? 0) > 0
+    ? pp.supportLineDistance ?? 1
+    : supLW / Math.max(0.01, pp.supportDensity / 100);
+  let spacing = layerIndex === 0 && (pp.initialLayerSupportLineDistance ?? 0) > 0
+    ? pp.initialLayerSupportLineDistance!
+    : baseSpacing;
+  let pattern: string = pp.supportPattern;
+  let speed = pp.supportInfillSpeed ?? pp.supportSpeed ?? pp.printSpeed * 0.8;
+  let flowOverride: number | undefined;
+
+  if (isRoof || isFloor) {
+    if ((pp.supportInterfaceSpeed ?? 0) > 0) speed = pp.supportInterfaceSpeed!;
+    if (isRoof) {
+      if ((pp.supportRoofSpeed ?? 0) > 0) speed = pp.supportRoofSpeed!;
+      if ((pp.supportRoofFlow ?? 0) > 0) flowOverride = pp.supportRoofFlow! / 100;
+      const density = pp.supportRoofDensity ?? pp.supportInterfaceDensity ?? pp.supportDensity;
+      spacing = (pp.supportRoofLineDistance ?? 0) > 0 ? pp.supportRoofLineDistance! : supLW / Math.max(0.01, density / 100);
+      pattern = pp.supportRoofPattern ?? pp.supportInterfacePattern ?? pattern;
+    } else {
+      if ((pp.supportFloorSpeed ?? 0) > 0) speed = pp.supportFloorSpeed!;
+      if ((pp.supportFloorFlow ?? 0) > 0) flowOverride = pp.supportFloorFlow! / 100;
+      const density = pp.supportFloorDensity ?? pp.supportInterfaceDensity ?? pp.supportDensity;
+      spacing = (pp.supportFloorLineDistance ?? 0) > 0 ? pp.supportFloorLineDistance! : supLW / Math.max(0.01, density / 100);
+      pattern = pp.supportFloorPattern ?? pp.supportInterfacePattern ?? pattern;
+    }
+  } else {
+    const gradSteps = pp.gradualSupportSteps ?? 0;
+    const gradHeight = pp.gradualSupportStepHeight ?? 1.0;
+    if (gradSteps > 0 && gradHeight > 0) {
+      const totalGradZ = gradSteps * gradHeight;
+      const fromTop = Math.max(0, totalGradZ - (layerIndex * pp.layerHeight) % totalGradZ);
+      const stepN = Math.min(gradSteps, Math.floor(fromTop / gradHeight));
+      if (stepN > 0) spacing = baseSpacing * Math.pow(2, stepN);
+    }
+  }
+  return { supLW, spacing, pattern, speed, flowOverride };
+}
+
+function patternAngle(pp: PrintProfile, layerIndex: number, pattern: string, isInterface: boolean): number {
+  const dirs = isInterface
+    ? pp.supportInterfaceLineDirections ?? pp.supportInfillLineDirections ?? null
+    : pp.supportInfillLineDirections ?? null;
+  if (dirs && dirs.length > 0) return (dirs[layerIndex % dirs.length] * Math.PI) / 180;
+  if (pattern === 'grid') return layerIndex % 2 === 0 ? 0 : Math.PI / 2;
+  if (pattern === 'zigzag') return layerIndex % 2 === 0 ? Math.PI / 4 : -Math.PI / 4;
+  return 0;
+}
+
+function emitSupportIsland(
+  moves: SliceMove[],
+  bboxIn: BBox2,
+  layerIndex: number,
+  pp: PrintProfile,
+  modelContours: Contour[],
+  deps: SupportDeps,
+  isRoof: boolean,
+  isFloor: boolean,
+): number | undefined {
+  let bbox = { ...bboxIn };
+  if (isRoof || isFloor) {
+    const ifHorizExp = pp.supportInterfaceHorizontalExpansion ?? 0;
+    bbox = { minX: bbox.minX - ifHorizExp, maxX: bbox.maxX + ifHorizExp, minY: bbox.minY - ifHorizExp, maxY: bbox.maxY + ifHorizExp };
+  }
+
+  const settings = supportLineSettings(pp, layerIndex, isRoof, isFloor);
+  const { supLW, spacing, pattern, speed, flowOverride } = settings;
+  if (!(spacing > 0) || !isFinite(spacing)) return flowOverride;
+
+  const wallCount = isRoof || isFloor
+    ? pp.supportInterfaceWallCount ?? pp.supportWallLineCount ?? pp.supportWallCount ?? 0
+    : pp.supportWallLineCount ?? pp.supportWallCount ?? 0;
+  for (let w = 0; w < wallCount; w++) {
+    const wallOff = w * supLW + supLW / 2;
+    const corners = [
+      { x: bbox.minX - wallOff, y: bbox.minY - wallOff },
+      { x: bbox.maxX + wallOff, y: bbox.minY - wallOff },
+      { x: bbox.maxX + wallOff, y: bbox.maxY + wallOff },
+      { x: bbox.minX - wallOff, y: bbox.maxY + wallOff },
+      { x: bbox.minX - wallOff, y: bbox.minY - wallOff },
+    ];
+    for (let ci = 1; ci < corners.length; ci++) {
+      moves.push({ type: 'support', from: corners[ci - 1], to: corners[ci], speed, extrusion: 0, lineWidth: supLW });
+    }
+  }
+
+  const angle = patternAngle(pp, layerIndex, pattern, isRoof || isFloor);
+  const cos = Math.cos(angle);
+  const sin = Math.sin(angle);
+  const maxDim = Math.max(bbox.maxX - bbox.minX, bbox.maxY - bbox.minY) * 1.5;
+  const centerX = (bbox.minX + bbox.maxX) / 2;
+  const centerY = (bbox.minY + bbox.maxY) / 2;
+  const xyDist = pp.supportXYDistance;
+  let scanCount = 0;
+
+  for (let d = -maxDim / 2; d <= maxDim / 2; d += spacing) {
+    if (++scanCount > 50000) break;
+    const p1x = centerX + cos * (-maxDim) - sin * d;
+    const p1y = centerY + sin * (-maxDim) + cos * d;
+    const p2x = centerX + cos * maxDim - sin * d;
+    const p2y = centerY + sin * maxDim + cos * d;
+    const fromX = Math.max(Math.min(p1x, p2x), bbox.minX + xyDist);
+    const toX = Math.min(Math.max(p1x, p2x), bbox.maxX - xyDist);
+    const fromY = Math.max(Math.min(p1y, p2y), bbox.minY + xyDist);
+    const toY = Math.min(Math.max(p1y, p2y), bbox.maxY - xyDist);
+    if (Math.abs(fromX - toX) <= 0.5 && Math.abs(fromY - toY) <= 0.5) continue;
+
+    const midPt = new THREE.Vector2((fromX + toX) / 2, (fromY + toY) / 2);
+    if (pointInsideMaterial(midPt, modelContours, deps)) continue;
+    moves.push({
+      type: 'support',
+      from: { x: fromX, y: fromY },
+      to: { x: toX, y: toY },
+      speed,
+      extrusion: 0,
+      lineWidth: supLW,
+    });
+  }
+
+  return flowOverride;
+}
+
+function collectTreeAnchors(triangles: Triangle[], sliceZ: number, offsetX: number, offsetY: number, pp: PrintProfile): TreeAnchor[] {
+  const overhangAngleRad = (pp.supportAngle * Math.PI) / 180;
+  const topGap = pp.supportTopDistance ?? pp.supportZDistance ?? 0;
+  const minHeight = pp.supportTreeMinHeight ?? 0;
+  const anchors: TreeAnchor[] = [];
+  for (const tri of triangles) {
+    const dotUp = tri.normal.z;
+    const faceAngle = Math.acos(Math.max(0, Math.min(1, Math.abs(dotUp))));
+    if (dotUp >= 0 || faceAngle <= overhangAngleRad) continue;
+    const maxZ = Math.max(tri.v0.z, tri.v1.z, tri.v2.z);
+    if (maxZ - topGap <= sliceZ) continue;
+    if (minHeight > 0 && maxZ - sliceZ < minHeight) continue;
+    const points = [
+      new THREE.Vector2(tri.v0.x + offsetX, tri.v0.y + offsetY),
+      new THREE.Vector2(tri.v1.x + offsetX, tri.v1.y + offsetY),
+      new THREE.Vector2(tri.v2.x + offsetX, tri.v2.y + offsetY),
+    ];
+    anchors.push({
+      cx: (points[0].x + points[1].x + points[2].x) / 3,
+      cy: (points[0].y + points[1].y + points[2].y) / 3,
+      topZ: maxZ,
+      weight: Math.max(triangleArea2D(points), 0.1),
+    });
+  }
+  return anchors;
+}
+
+function mergeTreeAnchorsForLayer(anchors: TreeAnchor[], sliceZ: number, pp: PrintProfile): TreeAnchor[] {
+  const baseMerge = Math.max(pp.supportTreeBranchDiameter, pp.supportJoinDistance ?? 2);
+  const merged: TreeAnchor[] = [];
+  for (const anchor of anchors) {
+    const distBelow = Math.max(0, anchor.topZ - sliceZ);
+    const mergeRadius = baseMerge + distBelow * Math.tan(((pp.supportTreeAngle ?? 60) * Math.PI) / 180) * 0.25;
+    let target: TreeAnchor | null = null;
+    for (const item of merged) {
+      if (Math.hypot(anchor.cx - item.cx, anchor.cy - item.cy) <= mergeRadius) {
+        target = item;
         break;
       }
     }
-    if (!found) merged.push({ ...a, count: 1 });
+    if (!target) {
+      merged.push({ ...anchor });
+      continue;
+    }
+    const totalWeight = target.weight + anchor.weight;
+    target.cx = (target.cx * target.weight + anchor.cx * anchor.weight) / totalWeight;
+    target.cy = (target.cy * target.weight + anchor.cy * anchor.weight) / totalWeight;
+    target.topZ = Math.max(target.topZ, anchor.topZ);
+    target.weight = totalWeight;
   }
   return merged;
+}
+
+function nudgeTreeCenter(center: THREE.Vector2, radius: number, modelContours: Contour[], deps: SupportDeps): THREE.Vector2 | null {
+  if (!pointInsideMaterial(center, modelContours, deps)) return center;
+  const searchRadius = radius + 1;
+  for (let ring = 1; ring <= 6; ring++) {
+    const r = searchRadius * ring;
+    for (let i = 0; i < 16; i++) {
+      const a = (i / 16) * Math.PI * 2;
+      const candidate = new THREE.Vector2(center.x + Math.cos(a) * r, center.y + Math.sin(a) * r);
+      if (!pointInsideMaterial(candidate, modelContours, deps)) return candidate;
+    }
+  }
+  return null;
 }
 
 function generateTreeSupportForLayer(
@@ -37,81 +377,39 @@ function generateTreeSupportForLayer(
   deps: SupportDeps,
 ): SliceMove[] {
   const moves: SliceMove[] = [];
+  const anchors = mergeTreeAnchorsForLayer(collectTreeAnchors(triangles, sliceZ, offsetX, offsetY, pp), sliceZ, pp);
+  if (anchors.length === 0) return moves;
 
-  const overhangAngleRad = (pp.supportAngle * Math.PI) / 180;
-  const topGap = pp.supportTopDistance ?? pp.supportZDistance ?? 0;
   const tipR = (pp.supportTreeTipDiameter ?? 0.8) / 2;
   const maxR = (pp.supportTreeMaxBranchDiameter ?? pp.supportTreeBranchDiameter * 4) / 2;
-  const growAngleRad =
-    ((pp.supportTreeAngle + (pp.supportTreeBranchDiameterAngle ?? 0)) * Math.PI) / 180;
+  const growAngleRad = ((pp.supportTreeAngle + (pp.supportTreeBranchDiameterAngle ?? 0)) * Math.PI) / 180;
   const supLW = pp.supportLineWidth ?? pp.wallLineWidth;
   const supportSpeed = pp.supportInfillSpeed ?? pp.supportSpeed ?? pp.printSpeed * 0.8;
-  const minHeight = pp.supportTreeMinHeight ?? 0;
-
-  const rawAnchors: { cx: number; cy: number; topZ: number }[] = [];
-  for (const tri of triangles) {
-    const dotUp = tri.normal.z;
-    const clamped = Math.max(0, Math.min(1, Math.abs(dotUp)));
-    const faceAngle = Math.acos(clamped);
-    if (dotUp >= 0 || faceAngle <= overhangAngleRad) continue;
-
-    const maxZ = Math.max(tri.v0.z, tri.v1.z, tri.v2.z);
-    if (maxZ - topGap <= sliceZ) continue;
-    if (minHeight > 0 && maxZ - sliceZ < minHeight) continue;
-
-    rawAnchors.push({
-      cx: (tri.v0.x + tri.v1.x + tri.v2.x) / 3 + offsetX,
-      cy: (tri.v0.y + tri.v1.y + tri.v2.y) / 3 + offsetY,
-      topZ: maxZ,
-    });
-  }
-  if (rawAnchors.length === 0) return moves;
-
-  const anchors = mergeTreeAnchors(rawAnchors, pp.supportTreeBranchDiameter);
 
   for (const anchor of anchors) {
     const distBelow = anchor.topZ - sliceZ;
     if (distBelow <= 0) continue;
-
     const r = Math.min(maxR, tipR + Math.tan(growAngleRad) * distBelow);
     if (r < supLW / 2) continue;
-
-    const centerPt = new THREE.Vector2(anchor.cx, anchor.cy);
-    let inside = false;
-    for (const c of modelContours) {
-      if (c.isOuter && deps.pointInContour(centerPt, c.points)) { inside = true; break; }
-    }
-    if (inside) continue;
+    const center = nudgeTreeCenter(new THREE.Vector2(anchor.cx, anchor.cy), r + pp.supportXYDistance, modelContours, deps);
+    if (!center) continue;
 
     const segs = Math.max(8, Math.round((2 * Math.PI * r) / supLW));
-    for (let i = 0; i < segs; i++) {
-      const a0 = (i / segs) * 2 * Math.PI;
-      const a1 = ((i + 1) / segs) * 2 * Math.PI;
-      moves.push({
-        type: 'support',
-        from: { x: anchor.cx + Math.cos(a0) * r, y: anchor.cy + Math.sin(a0) * r },
-        to: { x: anchor.cx + Math.cos(a1) * r, y: anchor.cy + Math.sin(a1) * r },
-        speed: supportSpeed, extrusion: 0, lineWidth: supLW,
-      });
-    }
-
-    const circContour: THREE.Vector2[] = [];
+    const contour: THREE.Vector2[] = [];
     for (let i = 0; i < segs; i++) {
       const a = (i / segs) * 2 * Math.PI;
-      circContour.push(new THREE.Vector2(anchor.cx + Math.cos(a) * r, anchor.cy + Math.sin(a) * r));
+      contour.push(new THREE.Vector2(center.x + Math.cos(a) * r, center.y + Math.sin(a) * r));
     }
-    const infillAngle = layerIndex % 2 === 0 ? 0 : Math.PI / 2;
-    const lines = deps.generateScanLines(circContour, pp.supportDensity, supLW, infillAngle);
+    for (let i = 0; i < segs; i++) {
+      moves.push({ type: 'support', from: contour[i], to: contour[(i + 1) % segs], speed: supportSpeed, extrusion: 0, lineWidth: supLW });
+    }
+    const lines = deps.generateScanLines(contour, pp.supportDensity, supLW, layerIndex % 2 === 0 ? 0 : Math.PI / 2);
     for (const line of lines) {
-      moves.push({
-        type: 'support',
-        from: { x: line.from.x, y: line.from.y },
-        to: { x: line.to.x, y: line.to.y },
-        speed: supportSpeed, extrusion: 0, lineWidth: supLW,
-      });
+      const mid = new THREE.Vector2((line.from.x + line.to.x) / 2, (line.from.y + line.to.y) / 2);
+      if (pointInsideMaterial(mid, modelContours, deps)) continue;
+      moves.push({ type: 'support', from: line.from, to: line.to, speed: supportSpeed, extrusion: 0, lineWidth: supLW });
     }
   }
-
   return moves;
 }
 
@@ -127,269 +425,22 @@ export function generateSupportForLayer(
   pp: PrintProfile,
   deps: SupportDeps,
 ): { moves: SliceMove[]; flowOverride?: number } {
-  const moves: SliceMove[] = [];
-
   if (pp.supportType === 'tree' || pp.supportType === 'organic') {
-    return {
-      moves: generateTreeSupportForLayer(
-        triangles, sliceZ, layerIndex, offsetX, offsetY, modelContours, pp, deps,
-      ),
-    };
+    return { moves: generateTreeSupportForLayer(triangles, sliceZ, layerIndex, offsetX, offsetY, modelContours, pp, deps) };
   }
 
-  const overhangAngleRad = (pp.supportAngle * Math.PI) / 180;
-  const overhangRegions: THREE.Vector2[][] = [];
+  const moves: SliceMove[] = [];
+  const islands = overhangIslands(triangles, sliceZ, offsetX, offsetY, pp);
+  if (islands.length === 0) return { moves };
 
-  for (const tri of triangles) {
-    const dotUp = tri.normal.z;
-    const clamped = Math.max(0, Math.min(1, Math.abs(dotUp)));
-    const faceAngle = Math.acos(clamped);
-
-    if (dotUp < 0 && faceAngle > overhangAngleRad) {
-      const minZ = Math.min(tri.v0.z, tri.v1.z, tri.v2.z);
-      const maxZ = Math.max(tri.v0.z, tri.v1.z, tri.v2.z);
-      const topGap = pp.supportTopDistance ?? pp.supportZDistance ?? 0;
-      if (sliceZ >= minZ && sliceZ <= maxZ + pp.layerHeight - topGap) {
-        overhangRegions.push([
-          new THREE.Vector2(tri.v0.x + offsetX, tri.v0.y + offsetY),
-          new THREE.Vector2(tri.v1.x + offsetX, tri.v1.y + offsetY),
-          new THREE.Vector2(tri.v2.x + offsetX, tri.v2.y + offsetY),
-        ]);
-      }
-    }
+  const { roof, floor } = supportInterfaceState(triangles, sliceZ, pp);
+  let flowOverride: number | undefined;
+  for (const island of islands) {
+    const bbox = islandBBox(island, pp, layerZ, layerIndex, modelHeight);
+    if (!bbox) continue;
+    const islandFlow = emitSupportIsland(moves, bbox, layerIndex, pp, modelContours, deps, roof, floor);
+    if (islandFlow !== undefined) flowOverride = islandFlow;
   }
 
-  if (overhangRegions.length === 0) return { moves };
-
-  const allOverhangPts: THREE.Vector2[] = [];
-  for (const region of overhangRegions) allOverhangPts.push(...region);
-  if (allOverhangPts.length === 0) return { moves };
-
-  let rawBbox = deps.pointsBBox(allOverhangPts);
-
-  if (pp.enableConicalSupport) {
-    const angleRad = ((pp.conicalSupportAngle ?? 30) * Math.PI) / 180;
-    const shrinkPerLayer = Math.tan(angleRad) * pp.layerHeight;
-    const shrink = shrinkPerLayer * layerIndex;
-    rawBbox = {
-      minX: rawBbox.minX + shrink,
-      maxX: rawBbox.maxX - shrink,
-      minY: rawBbox.minY + shrink,
-      maxY: rawBbox.maxY - shrink,
-    };
-    if (rawBbox.maxX <= rawBbox.minX || rawBbox.maxY <= rawBbox.minY) return { moves };
-  }
-
-  if ((pp.supportStairStepHeight ?? 0) > 0 && (pp.supportStairStepMinSlope ?? 0) > 0) {
-    const stepLayers = Math.max(1, Math.ceil((pp.supportStairStepHeight ?? 0.3) / pp.layerHeight));
-    if (layerIndex < stepLayers) {
-      const maxW = pp.supportStairStepMaxWidth ?? 0;
-      const pad = maxW > 0 ? Math.min(pp.wallLineWidth, maxW / 2) : pp.wallLineWidth;
-      rawBbox = {
-        minX: rawBbox.minX - pad,
-        maxX: rawBbox.maxX + pad,
-        minY: rawBbox.minY - pad,
-        maxY: rawBbox.maxY + pad,
-      };
-    }
-  }
-
-  const conicalAngle = (pp.enableConicalSupport ?? false) ? (pp.conicalSupportAngle ?? 0) : 0;
-  if (conicalAngle > 0 && modelHeight > 0) {
-    const conicalRad = (conicalAngle * Math.PI) / 180;
-    const expansion = Math.tan(conicalRad) * Math.max(0, modelHeight - layerZ);
-    const minWidth = (pp.conicalSupportMinWidth ?? 0) / 2;
-    const actualExp = Math.max(minWidth, expansion);
-    rawBbox = {
-      minX: rawBbox.minX - actualExp,
-      maxX: rawBbox.maxX + actualExp,
-      minY: rawBbox.minY - actualExp,
-      maxY: rawBbox.maxY + actualExp,
-    };
-  }
-
-  const minArea = pp.minimumSupportArea ?? 0;
-  if (minArea > 0) {
-    const bboxArea = (rawBbox.maxX - rawBbox.minX) * (rawBbox.maxY - rawBbox.minY);
-    if (bboxArea < minArea) return { moves };
-  }
-
-  const horizExp = pp.supportHorizontalExpansion ?? 0;
-  const minXYGap = Math.max(0, (pp.minSupportXYDistance ?? 0) - (pp.supportXYDistance ?? 0));
-  const bbox = {
-    minX: rawBbox.minX - horizExp + minXYGap,
-    maxX: rawBbox.maxX + horizExp - minXYGap,
-    minY: rawBbox.minY - horizExp + minXYGap,
-    maxY: rawBbox.maxY + horizExp - minXYGap,
-  };
-
-  const supLW = pp.supportLineWidth ?? pp.wallLineWidth;
-  const baseSpacing = (pp.supportLineDistance ?? 0) > 0
-    ? (pp.supportLineDistance ?? 1)
-    : supLW / (pp.supportDensity / 100);
-  let spacing = (layerIndex === 0 && (pp.initialLayerSupportLineDistance ?? 0) > 0)
-    ? pp.initialLayerSupportLineDistance!
-    : baseSpacing;
-  const gradSteps = pp.gradualSupportSteps ?? 0;
-  const gradHeight = pp.gradualSupportStepHeight ?? 1.0;
-  if (gradSteps > 0 && gradHeight > 0) {
-    const totalGradZ = gradSteps * gradHeight;
-    const fromTop = Math.max(0, totalGradZ - (layerZ - (layerZ % gradHeight)));
-    const stepN = Math.min(gradSteps, Math.floor(fromTop / gradHeight));
-    if (stepN > 0) spacing = baseSpacing * Math.pow(2, stepN);
-  }
-
-  const ifThickRoof = pp.supportRoofThickness ?? pp.supportInterfaceThickness ?? 0;
-  const ifThickFloor = pp.supportFloorThickness ?? pp.supportInterfaceThickness ?? 0;
-  const supZDist = pp.supportZDistance ?? 0;
-  let isRoofLayer = false;
-  let isFloorLayer = false;
-  if (ifThickRoof > 0 || ifThickFloor > 0) {
-    for (const tri of triangles) {
-      const triMinZ = Math.min(tri.v0.z, tri.v1.z, tri.v2.z);
-      const triMaxZ = Math.max(tri.v0.z, tri.v1.z, tri.v2.z);
-      if (!isRoofLayer && ifThickRoof > 0) {
-        if (triMinZ > sliceZ && triMinZ <= sliceZ + supZDist + ifThickRoof) isRoofLayer = true;
-      }
-      if (!isFloorLayer && ifThickFloor > 0) {
-        if (triMaxZ < sliceZ && triMaxZ >= sliceZ - supZDist - ifThickFloor) isFloorLayer = true;
-      }
-      if (isRoofLayer && isFloorLayer) break;
-    }
-  }
-
-  let supportSpeed = pp.supportInfillSpeed ?? pp.supportSpeed ?? pp.printSpeed * 0.8;
-  if ((isRoofLayer || isFloorLayer) && (pp.supportInterfaceSpeed ?? 0) > 0) supportSpeed = pp.supportInterfaceSpeed!;
-  if (isRoofLayer && (pp.supportRoofSpeed ?? 0) > 0) supportSpeed = pp.supportRoofSpeed!;
-  if (isFloorLayer && (pp.supportFloorSpeed ?? 0) > 0) supportSpeed = pp.supportFloorSpeed!;
-
-  const supportFlowOverride: number | undefined =
-    isRoofLayer && (pp.supportRoofFlow ?? 0) > 0 ? pp.supportRoofFlow! / 100 :
-    isFloorLayer && (pp.supportFloorFlow ?? 0) > 0 ? pp.supportFloorFlow! / 100 :
-    undefined;
-
-  if (isRoofLayer || isFloorLayer) {
-    const ifHorizExp = pp.supportInterfaceHorizontalExpansion ?? 0;
-    if (ifHorizExp !== 0) {
-      bbox.minX -= ifHorizExp; bbox.maxX += ifHorizExp;
-      bbox.minY -= ifHorizExp; bbox.maxY += ifHorizExp;
-    }
-    if (isRoofLayer) {
-      const roofDensity = pp.supportRoofDensity ?? pp.supportDensity;
-      const roofDist = (pp.supportRoofLineDistance ?? 0) > 0
-        ? pp.supportRoofLineDistance!
-        : supLW / (roofDensity / 100);
-      spacing = roofDist;
-    } else {
-      const floorDensity = pp.supportFloorDensity ?? pp.supportDensity;
-      const floorDist = (pp.supportFloorLineDistance ?? 0) > 0
-        ? pp.supportFloorLineDistance!
-        : supLW / (floorDensity / 100);
-      spacing = floorDist;
-    }
-  }
-
-  const activeLineDirs = (isRoofLayer || isFloorLayer)
-    ? (pp.supportInterfaceLineDirections ?? pp.supportInfillLineDirections ?? null)
-    : (pp.supportInfillLineDirections ?? null);
-  const ifPattern = isRoofLayer
-    ? (pp.supportRoofPattern ?? pp.supportPattern)
-    : isFloorLayer
-      ? (pp.supportFloorPattern ?? pp.supportPattern)
-      : pp.supportPattern;
-
-  let angle: number;
-  if (activeLineDirs && activeLineDirs.length > 0) {
-    angle = (activeLineDirs[layerIndex % activeLineDirs.length] * Math.PI) / 180;
-  } else {
-    switch (ifPattern) {
-      case 'grid':
-        angle = layerIndex % 2 === 0 ? 0 : Math.PI / 2;
-        break;
-      case 'zigzag':
-        angle = layerIndex % 2 === 0 ? Math.PI / 4 : -Math.PI / 4;
-        break;
-      case 'lines':
-      default:
-        angle = 0;
-        break;
-    }
-  }
-
-  const cos = Math.cos(angle);
-  const sin = Math.sin(angle);
-  const maxDim = Math.max(bbox.maxX - bbox.minX, bbox.maxY - bbox.minY) * 1.5;
-  const centerX = (bbox.minX + bbox.maxX) / 2;
-  const centerY = (bbox.minY + bbox.maxY) / 2;
-  const xyDist = pp.supportXYDistance;
-
-  const supWalls = (isRoofLayer || isFloorLayer)
-    ? (pp.supportInterfaceWallCount ?? pp.supportWallLineCount ?? 0)
-    : (pp.supportWallLineCount ?? 0);
-  for (let w = 0; w < supWalls; w++) {
-    const wallOff = w * supLW + supLW / 2;
-    const wx0 = bbox.minX - wallOff;
-    const wx1 = bbox.maxX + wallOff;
-    const wy0 = bbox.minY - wallOff;
-    const wy1 = bbox.maxY + wallOff;
-    const corners = [
-      { x: wx0, y: wy0 }, { x: wx1, y: wy0 },
-      { x: wx1, y: wy1 }, { x: wx0, y: wy1 }, { x: wx0, y: wy0 },
-    ];
-    for (let ci = 1; ci < corners.length; ci++) {
-      moves.push({
-        type: 'support',
-        from: { x: corners[ci - 1].x, y: corners[ci - 1].y },
-        to: { x: corners[ci].x, y: corners[ci].y },
-        speed: supportSpeed, extrusion: 0, lineWidth: supLW,
-      });
-    }
-  }
-
-  if (!(spacing > 0) || !isFinite(spacing)) return { moves };
-  const SUPPORT_MAX_SCAN = 50000;
-  let supScanCount = 0;
-
-  for (let d = -maxDim / 2; d <= maxDim / 2; d += spacing) {
-    if (++supScanCount > SUPPORT_MAX_SCAN) break;
-    const p1x = centerX + cos * (-maxDim) - sin * d;
-    const p1y = centerY + sin * (-maxDim) + cos * d;
-    const p2x = centerX + cos * maxDim - sin * d;
-    const p2y = centerY + sin * maxDim + cos * d;
-
-    const lineMinX = Math.min(p1x, p2x);
-    const lineMaxX = Math.max(p1x, p2x);
-    const lineMinY = Math.min(p1y, p2y);
-    const lineMaxY = Math.max(p1y, p2y);
-
-    if (lineMaxX < bbox.minX || lineMinX > bbox.maxX) continue;
-    if (lineMaxY < bbox.minY || lineMinY > bbox.maxY) continue;
-
-    const fromX = Math.max(p1x, bbox.minX + xyDist);
-    const toX = Math.min(p2x, bbox.maxX - xyDist);
-    const fromY = Math.max(p1y, bbox.minY + xyDist);
-    const toY = Math.min(p2y, bbox.maxY - xyDist);
-
-    const midPt = new THREE.Vector2((fromX + toX) / 2, (fromY + toY) / 2);
-    let insideModel = false;
-    for (const contour of modelContours) {
-      if (contour.isOuter && deps.pointInContour(midPt, contour.points)) {
-        insideModel = true;
-        break;
-      }
-    }
-
-    if (!insideModel && (Math.abs(fromX - toX) > 0.5 || Math.abs(fromY - toY) > 0.5)) {
-      moves.push({
-        type: 'support',
-        from: { x: fromX, y: fromY },
-        to: { x: toX, y: toY },
-        speed: supportSpeed,
-        extrusion: 0,
-        lineWidth: supLW,
-      });
-    }
-  }
-
-  return { moves, flowOverride: supportFlowOverride };
+  return { moves, flowOverride };
 }

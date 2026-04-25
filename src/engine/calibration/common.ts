@@ -55,6 +55,17 @@ export function buildCalibrationFooter(ctx: CalibrationTowerContext): string[] {
   ].filter((line) => line.trim().length > 0);
 }
 
+export function pressureAdvanceCommand(printer: PrinterProfile, value: number): string {
+  const k = formatNumber(value, 4);
+  if (printer.gcodeFlavorType === 'duet' || printer.gcodeFlavorType === 'reprap') {
+    return `M572 D0 S${k}`;
+  }
+  if (printer.gcodeFlavorType === 'klipper') {
+    return `SET_PRESSURE_ADVANCE ADVANCE=${k}`;
+  }
+  return `M900 K${k}`;
+}
+
 export function makeBands<T>(values: readonly T[], layersPerBand: number): CalibrationBand<T>[] {
   return values.map((value, index) => ({
     startLayer: index * layersPerBand,

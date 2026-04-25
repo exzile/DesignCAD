@@ -20,6 +20,7 @@ import {
   filterPerimetersByMinOdd as filterPerimetersByMinOddFromModule,
   generatePerimetersEx as generatePerimetersExFromModule,
 } from '../../perimeters';
+import { generatePerimetersArachne } from '../../arachne';
 import {
   offsetContour as offsetContourFromModule,
   simplifyClosedContour as simplifyClosedContourFromModule,
@@ -128,6 +129,43 @@ export class SlicePipelineGeometry {
     );
   }
 
+  /**
+   * Wall generator dispatcher — picks classic fixed-width offset (legacy)
+   * or Arachne variable-width walls based on `printProfile.wallGenerator`.
+   *
+   * Both implementations return the same `GeneratedPerimeters` shape so
+   * call sites don't need to know which generator ran. Until Arachne is
+   * fully implemented (TaskLists.txt § ARACHNE-*) it falls through to
+   * classic, so the toggle is safe to flip on but produces identical
+   * output for now.
+   */
+  public generatePerimeters(
+    outerContour: THREE.Vector2[],
+    holeContours: THREE.Vector2[][],
+    wallCount: number,
+    lineWidth: number,
+    outerWallInset = 0,
+  ): GeneratedPerimeters {
+    const deps = {
+      offsetContour: (contour: THREE.Vector2[], offset: number) => this.offsetContour(contour, offset),
+      signedArea: (points: THREE.Vector2[]) => this.signedArea(points),
+      multiPolygonToRegions: (mp: PCMultiPolygon) => this.multiPolygonToRegions(mp),
+    };
+    // Default to Arachne when the profile flag is unset or set to 'arachne'.
+    // Classic remains opt-in via the explicit `wallGenerator: 'classic'`
+    // flag for backward parity / debugging.
+    if (this.printProfile.wallGenerator !== 'classic') {
+      return generatePerimetersArachne(
+        outerContour, holeContours, wallCount, lineWidth, outerWallInset,
+        this.printProfile, deps,
+      );
+    }
+    return generatePerimetersExFromModule(
+      outerContour, holeContours, wallCount, lineWidth, outerWallInset,
+      this.printProfile, deps,
+    );
+  }
+
   protected offsetContour(contour: THREE.Vector2[], offset: number): THREE.Vector2[] {
     return offsetContourFromModule(contour, offset, (points) => this.signedArea(points));
   }
@@ -142,8 +180,9 @@ export class SlicePipelineGeometry {
     layerIndex: number,
     nozzleX?: number,
     nozzleY?: number,
+    options?: Parameters<typeof findSeamPositionFromModule>[5],
   ): number {
-    return findSeamPositionFromModule(contour, pp, layerIndex, nozzleX, nozzleY);
+    return findSeamPositionFromModule(contour, pp, layerIndex, nozzleX, nozzleY, options);
   }
 
   protected reorderFromIndex(contour: THREE.Vector2[], startIdx: number): THREE.Vector2[] {

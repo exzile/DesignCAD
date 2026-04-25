@@ -24,6 +24,7 @@ interface SliceMessage {
     printerProfile: object;
     materialProfile: object;
     printProfile: object;
+    disableGroupPool?: boolean;
   };
 }
 
@@ -37,8 +38,32 @@ type WorkerMessage = SliceMessage | CancelMessage;
 let activeSlicer: Slicer | null = null;
 let cancelRequested = false;
 let activeRequestId = 0;
+let activeChildWorkers: Worker[] = [];
+let activeChildRejectors: Array<(error: Error) => void> = [];
 
-function mergeSliceResults(results: SliceResult[]): SliceResult {
+type ReconstructedGeometry = {
+  raw: RawGeometry;
+  geometry: THREE.BufferGeometry;
+  transform: THREE.Matrix4;
+  overrides?: Record<string, unknown>;
+  objectName?: string;
+};
+
+type ChildWorkerMessage =
+  | { type: 'progress'; requestId: number; progress: SliceProgress }
+  | { type: 'complete'; requestId: number; result: SliceResult }
+  | { type: 'cancelled'; requestId: number }
+  | { type: 'error'; requestId: number; message: string };
+
+type SliceResultWithTool = SliceResult & { extruderIndex?: number };
+
+function toolChangeLines(result: SliceResultWithTool): string[] {
+  const tool = result.extruderIndex;
+  if (tool === undefined || tool <= 0) return [];
+  return [`T${tool} ; Select tool for sliced group`];
+}
+
+function mergeSliceResults(results: SliceResultWithTool[]): SliceResult {
   if (results.length === 1) return results[0];
   const merged: SliceResult = {
     gcode: '',
@@ -61,7 +86,8 @@ function mergeSliceResults(results: SliceResult[]): SliceResult {
       `; Group ${i + 1} of ${results.length}`,
       `; ============================================================`,
     );
-    merged.gcode += headers.join('\n') + '\n' + r.gcode + '\n';
+    const toolLines = toolChangeLines(r);
+    merged.gcode += headers.join('\n') + '\n' + (toolLines.length ? `${toolLines.join('\n')}\n` : '') + r.gcode + '\n';
     headers.length = 0;
     merged.printTime += r.printTime;
     merged.filamentUsed += r.filamentUsed;
@@ -93,6 +119,197 @@ function mergeSliceResults(results: SliceResult[]): SliceResult {
   return merged;
 }
 
+function getHardwareConcurrency(): number {
+  const cores = typeof navigator !== 'undefined' ? navigator.hardwareConcurrency : undefined;
+  return Math.max(1, Math.floor(cores || 1));
+}
+
+function getTransferList(geometryData: RawGeometry[]): Transferable[] {
+  const transferables: Transferable[] = [];
+  for (const raw of geometryData) {
+    transferables.push(raw.positions.buffer);
+    transferables.push(raw.transformElements.buffer);
+    if (raw.index) transferables.push(raw.index.buffer);
+  }
+  return transferables;
+}
+
+function createSliceWorker(): Worker {
+  return new Worker(new URL('./SlicerWorker.ts', import.meta.url), { type: 'module' });
+}
+
+function disposeGeometries(geometries: ReconstructedGeometry[]): void {
+  for (const g of geometries) g.geometry.dispose();
+}
+
+async function runSliceGroupInChildWorker(
+  requestId: number,
+  groupIndex: number,
+  groupCount: number,
+  geometryData: RawGeometry[],
+  printerProfile: object,
+  materialProfile: object,
+  printProfile: object,
+  postProgressSafely: (progress: SliceProgress) => void,
+): Promise<SliceResultWithTool> {
+  const worker = createSliceWorker();
+  const transferableGeometryData = geometryData.map((raw) => ({
+    ...raw,
+    positions: raw.positions.slice(),
+    index: raw.index ? raw.index.slice() : null,
+    transformElements: raw.transformElements.slice(),
+  }));
+
+  return new Promise<SliceResultWithTool>((resolve, reject) => {
+    let settled = false;
+    const rejectOnCancel = () => reject(new Error('Slicing cancelled'));
+    activeChildWorkers.push(worker);
+    activeChildRejectors.push(rejectOnCancel);
+
+    const finish = (fn: () => void) => {
+      if (settled) return;
+      settled = true;
+      worker.terminate();
+      activeChildWorkers = activeChildWorkers.filter((w) => w !== worker);
+      activeChildRejectors = activeChildRejectors.filter((r) => r !== rejectOnCancel);
+      fn();
+    };
+
+    worker.onmessage = (event: MessageEvent<ChildWorkerMessage>) => {
+      const msg = event.data;
+      if (msg.requestId !== requestId) return;
+      if (msg.type === 'progress') {
+        const span = 100 / groupCount;
+        const base = groupIndex * span;
+        postProgressSafely({
+          ...msg.progress,
+          percent: Math.round(base + (msg.progress.percent * span) / 100),
+          message: `Group ${groupIndex + 1}/${groupCount} · ${msg.progress.message}`,
+        });
+      } else if (msg.type === 'complete') {
+        finish(() => resolve(msg.result));
+      } else if (msg.type === 'cancelled') {
+        finish(() => reject(new Error('Slicing cancelled')));
+      } else if (msg.type === 'error') {
+        finish(() => reject(new Error(msg.message)));
+      }
+    };
+
+    worker.onerror = (event) => {
+      finish(() => reject(new Error(event.message || 'Slice worker failed')));
+    };
+
+    worker.postMessage({
+      type: 'slice',
+      requestId,
+      payload: {
+        geometryData: transferableGeometryData,
+        printerProfile,
+        materialProfile,
+        printProfile,
+        disableGroupPool: true,
+      },
+    } satisfies SliceMessage, getTransferList(transferableGeometryData));
+  });
+}
+
+async function runSliceGroupsInWorkerPool(
+  requestId: number,
+  groupList: Array<[string, ReconstructedGeometry[]]>,
+  printerProfile: object,
+  materialProfile: object,
+  printProfile: object,
+  postProgressSafely: (progress: SliceProgress) => void,
+): Promise<SliceResultWithTool[]> {
+  const results = new Array<SliceResultWithTool>(groupList.length);
+  let nextIndex = 0;
+  const workerCount = Math.min(groupList.length, getHardwareConcurrency());
+
+  async function runNext(): Promise<void> {
+    const index = nextIndex++;
+    if (index >= groupList.length) return;
+    if (cancelRequested) throw new Error('Slicing cancelled');
+
+    const [, geos] = groupList[index];
+    const effectivePrintProfile = { ...printProfile } as Record<string, unknown>;
+    const overrides = geos[0].overrides;
+    if (overrides) Object.assign(effectivePrintProfile, overrides);
+
+    results[index] = await runSliceGroupInChildWorker(
+      requestId,
+      index,
+      groupList.length,
+      geos.map((g) => g.raw),
+      printerProfile,
+      materialProfile,
+      effectivePrintProfile,
+      postProgressSafely,
+    );
+    const extruderIndex = effectivePrintProfile.extruderIndex;
+    if (typeof extruderIndex === 'number') results[index].extruderIndex = extruderIndex;
+
+    await runNext();
+  }
+
+  await Promise.all(Array.from({ length: workerCount }, () => runNext()));
+  return results;
+}
+
+async function runSliceGroupsSequentially(
+  groupList: Array<[string, ReconstructedGeometry[]]>,
+  printerProfile: object,
+  materialProfile: object,
+  printProfile: object,
+  postProgressSafely: (progress: SliceProgress) => void,
+): Promise<SliceResultWithTool[]> {
+  const results: SliceResultWithTool[] = [];
+  const multi = groupList.length > 1;
+
+  for (let idx = 0; idx < groupList.length; idx++) {
+    if (cancelRequested) throw new Error('Slicing cancelled');
+    const [, geos] = groupList[idx];
+    // Build the per-group effective print profile by layering overrides
+    // onto the base. Per-object numeric and boolean settings are copied
+    // straight onto the profile for this pass.
+    const effectivePrintProfile = { ...printProfile } as Record<string, unknown>;
+    const overrides = geos[0].overrides;
+    if (overrides) Object.assign(effectivePrintProfile, overrides);
+
+    const slicer = new Slicer(
+      printerProfile as never,
+      materialProfile as never,
+      effectivePrintProfile as never,
+    );
+    activeSlicer = slicer;
+    slicer.setProgressCallback((progress: SliceProgress) => {
+      if (!multi) {
+        postProgressSafely(progress);
+        return;
+      }
+      // In multi-group mode, scale each group's progress into its slice
+      // of the overall percent so the UI bar doesn't jump back.
+      const span = 100 / groupList.length;
+      const base = idx * span;
+      postProgressSafely({
+        ...progress,
+        percent: Math.round(base + (progress.percent * span) / 100),
+        message: groupList.length > 1
+          ? `Group ${idx + 1}/${groupList.length} · ${progress.message}`
+          : progress.message,
+      });
+    });
+
+    const geosForSlice = geos.map(({ geometry, transform }) => ({ geometry, transform }));
+    const result = await slicer.slice(geosForSlice) as SliceResultWithTool;
+    const extruderIndex = effectivePrintProfile.extruderIndex;
+    if (typeof extruderIndex === 'number') result.extruderIndex = extruderIndex;
+    if (cancelRequested) throw new Error('Slicing cancelled');
+    results.push(result);
+  }
+
+  return results;
+}
+
 self.onmessage = async (e: MessageEvent<WorkerMessage>) => {
   const msg = e.data;
 
@@ -100,6 +317,10 @@ self.onmessage = async (e: MessageEvent<WorkerMessage>) => {
     if (msg.requestId !== activeRequestId) return;
     cancelRequested = true;
     activeSlicer?.cancel();
+    for (const worker of activeChildWorkers) worker.terminate();
+    for (const reject of activeChildRejectors) reject(new Error('Slicing cancelled'));
+    activeChildWorkers = [];
+    activeChildRejectors = [];
     return;
   }
 
@@ -107,24 +328,25 @@ self.onmessage = async (e: MessageEvent<WorkerMessage>) => {
     activeRequestId = msg.requestId;
     cancelRequested = false;
     const { requestId } = msg;
-    const { geometryData, printerProfile, materialProfile, printProfile } = msg.payload;
+    const { geometryData, printerProfile, materialProfile, printProfile, disableGroupPool } = msg.payload;
 
     // Reconstruct THREE.js geometry objects from transferred typed arrays.
     // We reference the typed arrays directly instead of copying via Array.from
     // — the main thread transferred ownership so they're ours to use.
-    const geometries = geometryData.map(({ positions, index, transformElements, overrides, objectName }) => {
+    const geometries: ReconstructedGeometry[] = geometryData.map((raw) => {
+      const { positions, index, transformElements, overrides, objectName } = raw;
       const geometry = new THREE.BufferGeometry();
       geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
       if (index) geometry.setIndex(new THREE.BufferAttribute(index, 1));
       const transform = new THREE.Matrix4();
       transform.fromArray(transformElements);
-      return { geometry, transform, overrides, objectName };
+      return { raw, geometry, transform, overrides, objectName };
     });
 
     // Partition geometries by their override signature. Each partition runs
     // its own slice pass so the profile overrides (infill, walls, supports,
     // etc.) genuinely apply to that subset of plate objects.
-    const groups = new Map<string, typeof geometries>();
+    const groups = new Map<string, ReconstructedGeometry[]>();
     for (const g of geometries) {
       const key = g.overrides ? JSON.stringify(g.overrides) : '__default__';
       const bucket = groups.get(key) ?? [];
@@ -133,6 +355,7 @@ self.onmessage = async (e: MessageEvent<WorkerMessage>) => {
     }
     const groupList = [...groups.entries()];
     const multi = groupList.length > 1;
+    const useGroupPool = !disableGroupPool && multi && getHardwareConcurrency() > 1;
 
     // Token used to detect re-entry from a fresh slice starting while this
     // one is still completing — each message posted back checks it.
@@ -142,7 +365,30 @@ self.onmessage = async (e: MessageEvent<WorkerMessage>) => {
     };
 
     try {
-      const results: SliceResult[] = [];
+      let results: SliceResult[];
+      if (useGroupPool) {
+        try {
+          results = await runSliceGroupsInWorkerPool(
+            requestId,
+            groupList,
+            printerProfile,
+            materialProfile,
+            printProfile,
+            postProgressSafely,
+          );
+        } catch (err) {
+          if (cancelRequested) throw err;
+          console.warn('Falling back to sequential slicing after worker-pool failure', err);
+          results = await runSliceGroupsSequentially(
+            groupList,
+            printerProfile,
+            materialProfile,
+            printProfile,
+            postProgressSafely,
+          );
+        }
+      } else {
+      const resultsSequential: SliceResultWithTool[] = [];
       for (let idx = 0; idx < groupList.length; idx++) {
         if (cancelRequested) throw new Error('Slicing cancelled');
         const [, geos] = groupList[idx];
@@ -178,31 +424,35 @@ self.onmessage = async (e: MessageEvent<WorkerMessage>) => {
         });
 
         const geosForSlice = geos.map(({ geometry, transform }) => ({ geometry, transform }));
-        const result = await slicer.slice(geosForSlice);
+        const result = await slicer.slice(geosForSlice) as SliceResultWithTool;
+        const extruderIndex = effectivePrintProfile.extruderIndex;
+        if (typeof extruderIndex === 'number') result.extruderIndex = extruderIndex;
         if (cancelRequested) throw new Error('Slicing cancelled');
-        results.push(result);
+        resultsSequential.push(result);
+      }
+      results = resultsSequential;
       }
 
       if (cancelRequested) {
         if (activeRequestId === requestId) self.postMessage({ type: 'cancelled', requestId });
-        for (const g of geometries) g.geometry.dispose();
+        disposeGeometries(geometries);
         return;
       }
       const merged = mergeSliceResults(results);
       activeSlicer = null;
       if (activeRequestId === requestId) self.postMessage({ type: 'complete', requestId, result: merged });
-      for (const g of geometries) g.geometry.dispose();
+      disposeGeometries(geometries);
     } catch (err) {
       // Suppress errors from cancelled runs or from a stale worker state.
       if (cancelRequested || activeRequestId !== requestId) {
         if (cancelRequested && activeRequestId === requestId) self.postMessage({ type: 'cancelled', requestId });
-        for (const g of geometries) g.geometry.dispose();
+        disposeGeometries(geometries);
         return;
       }
       activeSlicer = null;
       const message = err instanceof Error ? err.message : String(err);
       self.postMessage({ type: 'error', requestId, message });
-      for (const g of geometries) g.geometry.dispose();
+      disposeGeometries(geometries);
     }
   }
 };

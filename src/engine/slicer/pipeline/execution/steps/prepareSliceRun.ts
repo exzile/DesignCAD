@@ -68,6 +68,18 @@ export function prepareSliceRun(pipeline: any, geometries: { geometry: THREE.Buf
   });
 
   appendHeaderPlaceholders(gcode, printer, mat, pp);
+  const extruderIndex = Math.max(0, Math.floor(pp.extruderIndex ?? 0));
+  if (extruderIndex > 0) {
+    const toolChange = pp.toolChangeGCode?.trim();
+    gcode.push('; ----- Tool selection -----');
+    if (toolChange) gcode.push(toolChange.replace(/\{tool\}/g, String(extruderIndex)));
+    else gcode.push(`T${extruderIndex} ; Select tool`);
+    if (printer.applyExtruderOffsets) {
+      const x = printer.extruderOffsetX ?? 0;
+      const y = printer.extruderOffsetY ?? 0;
+      if (x !== 0 || y !== 0) gcode.push(`G10 P${extruderIndex} X${x.toFixed(3)} Y${y.toFixed(3)} ; Tool offset`);
+    }
+  }
   appendStartGCode({
     gcode,
     printer,
@@ -103,6 +115,9 @@ export function prepareSliceRun(pipeline: any, geometries: { geometry: THREE.Buf
       buildVolumeFanHeightFired: false,
     },
     prevLayerMaterial: [] as any[],
+    previousSeamPoints: [] as THREE.Vector2[],
+    currentSeamPoints: [] as THREE.Vector2[],
+    seamMemoryLayer: undefined as number | undefined,
     bridgeFanActive: false,
     sliceLayers: [] as any[],
     totalTime: 0,

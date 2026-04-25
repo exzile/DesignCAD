@@ -1,13 +1,21 @@
 import * as THREE from 'three';
 import polygonClipping, { type MultiPolygon as PCMultiPolygon, type Ring as PCRing } from 'polygon-clipping';
 
+function representativeLineWidth(lineWidth: number | number[] | undefined, fallback: number): number {
+  if (Array.isArray(lineWidth)) {
+    if (lineWidth.length === 0) return fallback;
+    return lineWidth.reduce((sum, width) => sum + width, 0) / lineWidth.length;
+  }
+  return lineWidth ?? fallback;
+}
+
 export function emitContourInfill(pipeline: any, run: any, layer: any, contoursData: any[]) {
   const { pp, mat, triangles, offsetX, offsetY, emitter, gcode } = run;
   const { li, layerH, isFirstLayer, isSolid, isSolidBottom, isSolidTop, infillSpeed, topBottomSpeed, hasBridgeRegions, isInBridgeRegion, moves } = layer;
 
   for (const item of contoursData) {
     const { contour, exWalls, wallSets, wallLineWidths, outerWallCount, infillHoles } = item;
-    const adaptiveOuterFilled = outerWallCount === 1 && (wallLineWidths[0] ?? pp.wallLineWidth) > pp.wallLineWidth + 1e-6;
+    const adaptiveOuterFilled = outerWallCount === 1 && representativeLineWidth(wallLineWidths[0], pp.wallLineWidth) > pp.wallLineWidth + 1e-6;
     const innermostWall = adaptiveOuterFilled ? [] : outerWallCount > 0 ? wallSets[outerWallCount - 1] : contour.points;
     const infillRegions = adaptiveOuterFilled ? [] : (exWalls.infillRegions.length > 0 ? exWalls.infillRegions : (innermostWall.length >= 3 ? [{ contour: innermostWall, holes: infillHoles }] : []));
     if (infillRegions.length === 0) continue;

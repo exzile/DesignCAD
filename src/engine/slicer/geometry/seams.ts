@@ -15,36 +15,119 @@ export function closestPointIndex(contour: THREE.Vector2[], target: THREE.Vector
   return bestIdx;
 }
 
+export interface SeamPlacementOptions {
+  previousSeam?: THREE.Vector2 | null;
+  continuityTolerance?: number;
+  userSpecifiedRadius?: number;
+  isSupported?: (point: THREE.Vector2) => boolean;
+}
+
+function contourCentroid(contour: THREE.Vector2[]): THREE.Vector2 {
+  const center = new THREE.Vector2();
+  for (const point of contour) center.add(point);
+  return center.multiplyScalar(1 / Math.max(1, contour.length));
+}
+
+function cornerSharpness(contour: THREE.Vector2[], index: number): number {
+  const n = contour.length;
+  const prev = contour[(index - 1 + n) % n];
+  const curr = contour[index];
+  const next = contour[(index + 1) % n];
+  const v1 = new THREE.Vector2().subVectors(prev, curr).normalize();
+  const v2 = new THREE.Vector2().subVectors(next, curr).normalize();
+  return Math.acos(Math.max(-1, Math.min(1, v1.dot(v2))));
+}
+
+function closestSupportedIndex(
+  contour: THREE.Vector2[],
+  startIdx: number,
+  isSupported?: (point: THREE.Vector2) => boolean,
+): number {
+  if (!isSupported || isSupported(contour[startIdx])) return startIdx;
+  let bestIdx = startIdx;
+  let bestDistance = Infinity;
+  const start = contour[startIdx];
+  for (let i = 0; i < contour.length; i++) {
+    if (!isSupported(contour[i])) continue;
+    const distance = contour[i].distanceTo(start);
+    if (distance < bestDistance) {
+      bestDistance = distance;
+      bestIdx = i;
+    }
+  }
+  return bestIdx;
+}
+
+function continuityIndex(
+  contour: THREE.Vector2[],
+  currentIdx: number,
+  previousSeam: THREE.Vector2 | null | undefined,
+  tolerance: number,
+): number {
+  if (!previousSeam || tolerance <= 0) return currentIdx;
+  let bestIdx = currentIdx;
+  let bestDistance = Infinity;
+  for (let i = 0; i < contour.length; i++) {
+    const distance = contour[i].distanceTo(previousSeam);
+    if (distance > tolerance) continue;
+    if (distance < bestDistance) {
+      bestDistance = distance;
+      bestIdx = i;
+    }
+  }
+  return bestIdx;
+}
+
+function userSpecifiedIndex(contour: THREE.Vector2[], pp: PrintProfile): number {
+  const tx = pp.zSeamX ?? 0;
+  const ty = pp.zSeamY ?? 0;
+  let origin = new THREE.Vector2(0, 0);
+  if (pp.zSeamRelative) origin = contourCentroid(contour);
+  const target = new THREE.Vector2(origin.x + tx, origin.y + ty);
+  const radius = pp.zSeamUserSpecifiedRadius ?? 0;
+  if (radius <= 0) return closestPointIndex(contour, target);
+
+  let bestIdx = -1;
+  let bestScore = Infinity;
+  for (let i = 0; i < contour.length; i++) {
+    const distance = contour[i].distanceTo(target);
+    if (distance > radius) continue;
+    const sharpness = cornerSharpness(contour, i);
+    const score = sharpness + distance / Math.max(radius, 1e-6) * 0.25;
+    if (score < bestScore) {
+      bestScore = score;
+      bestIdx = i;
+    }
+  }
+  return bestIdx >= 0 ? bestIdx : closestPointIndex(contour, target);
+}
+
 export function findSeamPosition(
   contour: THREE.Vector2[],
   pp: PrintProfile,
   _layerIndex: number,
   nozzleX?: number,
   nozzleY?: number,
+  options: SeamPlacementOptions = {},
 ): number {
   if (contour.length === 0) return 0;
 
   const mode: string = pp.zSeamPosition ?? pp.zSeamAlignment ?? 'shortest';
+  let seamIdx = 0;
 
   switch (mode) {
     case 'random':
-      return Math.floor(Math.random() * contour.length);
+      seamIdx = Math.floor(Math.random() * contour.length);
+      break;
 
     case 'aligned':
     case 'back':
-      return closestPointIndex(contour, new THREE.Vector2(0, 1e6));
+      seamIdx = closestPointIndex(contour, new THREE.Vector2(0, 1e6));
+      break;
 
     case 'user_specified': {
-      const tx = pp.zSeamX ?? 0;
-      const ty = pp.zSeamY ?? 0;
-      let cx = 0;
-      let cy = 0;
-      if (pp.zSeamRelative) {
-        for (const p of contour) { cx += p.x; cy += p.y; }
-        cx /= contour.length;
-        cy /= contour.length;
-      }
-      return closestPointIndex(contour, new THREE.Vector2(cx + tx, cy + ty));
+      seamIdx = userSpecifiedIndex(contour, pp);
+      break;
     }
 
     case 'sharpest_corner': {
@@ -77,17 +160,30 @@ export function findSeamPosition(
           sharpestConvexIdx = i;
         }
       }
-      if (pref === 'hide_seam' && sharpestConcaveIdx >= 0) return sharpestConcaveIdx;
-      if (pref === 'expose_seam' && sharpestConvexIdx >= 0) return sharpestConvexIdx;
-      if (pref === 'smart_hide' && sharpestConcaveIdx >= 0) return sharpestConcaveIdx;
-      return sharpestIdx;
+      if (pref === 'hide_seam' && sharpestConcaveIdx >= 0) seamIdx = sharpestConcaveIdx;
+      else if (pref === 'expose_seam' && sharpestConvexIdx >= 0) seamIdx = sharpestConvexIdx;
+      else if (pref === 'smart_hide' && sharpestConcaveIdx >= 0) seamIdx = sharpestConcaveIdx;
+      else seamIdx = sharpestIdx;
+      break;
     }
 
     case 'shortest':
     default:
       if (nozzleX !== undefined && nozzleY !== undefined) {
-        return closestPointIndex(contour, new THREE.Vector2(nozzleX, nozzleY));
+        seamIdx = closestPointIndex(contour, new THREE.Vector2(nozzleX, nozzleY));
+      } else {
+        seamIdx = 0;
       }
-      return 0;
+      break;
   }
+
+  if (mode !== 'random') {
+    seamIdx = continuityIndex(
+      contour,
+      seamIdx,
+      options.previousSeam,
+      options.continuityTolerance ?? pp.zSeamContinuityDistance ?? 2,
+    );
+  }
+  return closestSupportedIndex(contour, seamIdx, options.isSupported);
 }

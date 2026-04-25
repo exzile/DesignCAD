@@ -8,6 +8,7 @@ import { useSlicerStore } from '../../../../store/slicerStore';
 import { usePrinterStore } from '../../../../store/printerStore';
 import {
   generateFlowTowerGCode,
+  generatePressureAdvancePatternGCode,
   generateRetractionTowerGCode,
   generateTemperatureTowerGCode,
 } from '../../../../engine/calibration';
@@ -246,6 +247,15 @@ export function SlicerWorkspaceBottomBar() {
               )}
             >
               Flow tower
+            </button>
+            <button
+              className="slicer-bottom-bar__calibration-item"
+              onClick={() => downloadCalibration(
+                'calibration-pressure-advance-pattern.gcode',
+                generatePressureAdvancePatternGCode(activePrinter, activeMaterial, activePrint),
+              )}
+            >
+              Pressure advance pattern
             </button>
           </div>
         )}

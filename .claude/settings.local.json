@@ -77,7 +77,8 @@
       "Bash(node -e \"require\\('three/examples/jsm/lines/LineSegments2.js'\\)\")",
       "mcp__Kapture_Browser_Automation__list_tabs",
       "mcp__Kapture_Browser_Automation__new_tab",
-      "Bash(wait)"
+      "Bash(wait)",
+      "Bash(npx vitest *)"
     ]
   }
 }

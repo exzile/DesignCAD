@@ -32,6 +32,7 @@ export function PrintProfileEditor({
         {activeTab === 1 && (
           <>
             <div style={fieldRow}><div style={labelStyle}>Wall Count</div><input type="number" style={inputStyle} value={print.wallCount} min={1} onChange={(e) => updatePrintProfile(print.id, { wallCount: parseInt(e.target.value) || 3 })} /></div>
+            <div style={fieldRow}><div style={labelStyle}>Wall Generator</div><select style={selectStyle} value={print.wallGenerator ?? 'arachne'} onChange={(e) => updatePrintProfile(print.id, { wallGenerator: e.target.value as PrintProfile['wallGenerator'] })}><option value="classic">Classic</option><option value="arachne">Arachne</option></select></div>
             <div style={fieldRow}><div style={labelStyle}>Wall Line Width (mm)</div><input type="number" style={inputStyle} value={print.wallLineWidth} step={0.01} onChange={(e) => updatePrintProfile(print.id, { wallLineWidth: parseFloat(e.target.value) || 0.45 })} /></div>
             <div style={fieldRow}><div style={labelStyle}>Wall Speed (mm/s)</div><input type="number" style={inputStyle} value={print.wallSpeed} onChange={(e) => updatePrintProfile(print.id, { wallSpeed: parseInt(e.target.value) || 45 })} /></div>
             <div style={fieldRow}><div style={labelStyle}>Outer Wall Speed (mm/s)</div><input type="number" style={inputStyle} value={print.outerWallSpeed} onChange={(e) => updatePrintProfile(print.id, { outerWallSpeed: parseInt(e.target.value) || 30 })} /></div>

@@ -1,16 +1,14 @@
 import { applyLayerStartControls } from '../../layerControls';
 import { buildLayerTopology } from '../layerTopology';
 
-export async function prepareLayerState(pipeline: any, run: any, li: number) {
-  const { pp, mat, printer, triangles, modelBBox, offsetX, offsetY, offsetZ, layerZs, totalLayers, solidBottom, solidTop, emitter, gcode, sliceLayers } = run;
+export async function prepareLayerGeometryState(pipeline: any, run: any, li: number) {
+  const { pp, mat, triangles, modelBBox, offsetX, offsetY, offsetZ, layerZs, totalLayers, solidBottom, solidTop } = run;
   if (pipeline.cancelled) throw new Error('Slicing cancelled by user.');
 
   const layerZ = layerZs[li];
-  emitter.currentLayerTravelSpeed = (li === 0 && (pp.initialLayerTravelSpeed ?? 0) > 0) ? pp.initialLayerTravelSpeed! : pp.travelSpeed;
   const sliceZ = modelBBox.min.z + layerZ;
   const isFirstLayer = li === 0;
   const layerH = li === 0 ? layerZs[0] : layerZs[li] - layerZs[li - 1];
-  emitter.currentLayerFlow = isFirstLayer && (pp.initialLayerFlow ?? 0) > 0 ? pp.initialLayerFlow / 100 : 1.0;
 
   pipeline.reportProgress('slicing', (li / totalLayers) * 80, li, totalLayers, `Slicing layer ${li + 1}/${totalLayers}...`);
   await pipeline.yieldToUI();
@@ -89,14 +87,35 @@ export async function prepareLayerState(pipeline: any, run: any, li: number) {
     if (hasOverhang) outerWallSpeed *= (pp.overhangingWallSpeed ?? 100) / 100;
   }
 
-  const innerWallSpeed = ramp(pp.wallSpeed);
-  const infillSpeed = ramp(pp.infillSpeed);
-  const topBottomSpeed = isFirstLayer ? pp.firstLayerSpeed : isSolidBottom ? ramp(pp.bottomSpeed ?? pp.topSpeed) : ramp(pp.topSpeed);
+  const zOverlap = isFirstLayer ? (pp.initialLayerZOverlap ?? 0) : 0;
+
+  return {
+    li,
+    layerZ,
+    sliceZ,
+    isFirstLayer,
+    layerH,
+    isSolidBottom,
+    isSolidTop,
+    isSolid,
+    outerWallSpeed,
+    innerWallSpeed: ramp(pp.wallSpeed),
+    infillSpeed: ramp(pp.infillSpeed),
+    topBottomSpeed: isFirstLayer ? pp.firstLayerSpeed : isSolidBottom ? ramp(pp.bottomSpeed ?? pp.topSpeed) : ramp(pp.topSpeed),
+    contours,
+    printZ: layerZ - zOverlap,
+  };
+}
+
+export function emitLayerStartState(pipeline: any, run: any, geometryState: any) {
+  const { pp, mat, printer, emitter, gcode, sliceLayers } = run;
+  const { li, layerZ, layerH, isFirstLayer, contours, printZ } = geometryState;
   const moves: any[] = [];
   let layerTime = 0;
 
-  const zOverlap = isFirstLayer ? (pp.initialLayerZOverlap ?? 0) : 0;
-  const printZ = layerZ - zOverlap;
+  emitter.currentLayerTravelSpeed = (li === 0 && (pp.initialLayerTravelSpeed ?? 0) > 0) ? pp.initialLayerTravelSpeed! : pp.travelSpeed;
+  emitter.currentLayerFlow = isFirstLayer && (pp.initialLayerFlow ?? 0) > 0 ? pp.initialLayerFlow / 100 : 1.0;
+
   gcode.push('');
   gcode.push(`; ----- Layer ${li}, Z=${printZ.toFixed(3)} -----`);
   gcode.push(`G1 Z${printZ.toFixed(3)} F${(pp.travelSpeed * 60).toFixed(0)}`);
@@ -108,7 +127,7 @@ export async function prepareLayerState(pipeline: any, run: any, li: number) {
   applyLayerStartControls({
     gcode,
     layerIndex: li,
-    totalLayers,
+    totalLayers: run.totalLayers,
     layerZ,
     previousLayerTime: sliceLayers.length > 0 ? sliceLayers[sliceLayers.length - 1].layerTime : Infinity,
     printer,
@@ -125,7 +144,7 @@ export async function prepareLayerState(pipeline: any, run: any, li: number) {
       emitter.setJerk(pp.raftPrintJerk ?? pp.jerkSkirtBrim ?? pp.jerkInitialLayer, pp.jerkPrint);
       if ((pp.raftFanSpeed ?? 0) > 0) gcode.push(`M106 S${emitter.fanSpeedArg(pp.raftFanSpeed!)} ; Raft fan`);
     }
-    const adhesionMoves = pipeline.generateAdhesion(contours, pp, layerH, offsetX, offsetY);
+    const adhesionMoves = pipeline.generateAdhesion(contours, pp, layerH, run.offsetX, run.offsetY);
     for (const am of adhesionMoves) {
       emitter.travelTo(am.from.x, am.from.y, moves);
       layerTime += emitter.extrudeTo(am.to.x, am.to.y, am.speed, am.lineWidth, am.layerHeight ?? layerH).time;
@@ -171,22 +190,15 @@ export async function prepareLayerState(pipeline: any, run: any, li: number) {
   });
 
   return {
-    li,
-    layerZ,
-    sliceZ,
-    isFirstLayer,
-    layerH,
-    isSolidBottom,
-    isSolidTop,
-    isSolid,
-    outerWallSpeed,
-    innerWallSpeed,
-    infillSpeed,
-    topBottomSpeed,
-    contours,
+    ...geometryState,
     moves,
     layerTime,
-    printZ,
     ...topology,
   };
+}
+
+export async function prepareLayerState(pipeline: any, run: any, li: number) {
+  const geometryState = await prepareLayerGeometryState(pipeline, run, li);
+  if (!geometryState) return null;
+  return emitLayerStartState(pipeline, run, geometryState);
 }

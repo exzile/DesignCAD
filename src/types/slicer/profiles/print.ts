@@ -113,6 +113,12 @@ export interface PrintProfile {
   combingMode: 'off' | 'all' | 'noskin' | 'infill';
   avoidCrossingPerimeters: boolean;
   thinWallDetection: boolean;
+  /** Wall generator. `'classic'` = fixed-width offset (legacy). `'arachne'`
+   *  = variable-width walls (Cura's algorithm) which handles narrow regions
+   *  cleanly — no fragmented walls or notch-snake patterns at layers where
+   *  holes break through the outer perimeter. Defaults to `'classic'` until
+   *  the Arachne port (TaskLists.txt § ARACHNE-*) is complete. */
+  wallGenerator?: 'classic' | 'arachne';
 
   // Ironing (top surface smoothing)
   ironingEnabled: boolean;
@@ -315,6 +321,8 @@ export interface PrintProfile {
   primeTowerPositionY?: number;      // mm — center Y on build plate
   primeTowerMinVolume?: number;      // mm³ — minimum purge volume per tool change
   primeTowerWipeEnable?: boolean;    // wipe on tower after tool change
+  extruderIndex?: number;            // wired — active tool/extruder for this print or object group
+  toolChangeGCode?: string;          // wired — optional tool-change snippet, supports {tool}
 
   // =========================================================================
   // Cura-parity extension (see TaskLists.txt for wiring status). Fields marked
@@ -342,6 +350,8 @@ export interface PrintProfile {
   zSeamPosition?: 'shortest' | 'user_specified' | 'random' | 'sharpest_corner' | 'back'; // wired
   zSeamRelative?: boolean;             // wired — z seam X/Y relative to model
   zSeamOnVertex?: boolean;             // storage-only — snap seam to nearest vertex
+  zSeamUserSpecifiedRadius?: number;   // wired — mm tolerance around user X/Y target
+  zSeamContinuityDistance?: number;    // wired — mm, prefer previous-layer seam if nearby
   seamCornerPreference?: 'none' | 'hide_seam' | 'expose_seam' | 'hide_or_expose' | 'smart_hide'; // wired
 
   // --- Top/Bottom (Cura: Top/Bottom) --------------------------------------
@@ -548,6 +558,12 @@ export interface PrintProfile {
 
   // --- Support Interface Wall Count -------------------------------------
   supportInterfaceWallCount?: number;  // storage-only
+
+  // --- Post Processing ---------------------------------------------------
+  postProcessingScripts?: string[];     // wired — simple G-code post-processing hooks
+
+  // --- Non-Planar --------------------------------------------------------
+  nonPlanarSlicingEnabled?: boolean;    // wired guard — planar slicer rejects unsupported mode
 
   // Fields whose values were imported from a connected printer (shown with machine badge in UI)
   machineSourcedFields?: string[];
