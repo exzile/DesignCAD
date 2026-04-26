@@ -60,6 +60,27 @@ export async function prepareLayerGeometryState(pipeline: any, run: any, li: num
     }
   }
 
+  // Horizontal expansion (Cura's `xy_offset`) — grows or shrinks the material
+  // uniformly. Positive values inflate outers and contract holes (the hole
+  // is negative space, so shrinking it equals growing the surrounding
+  // material). `initialLayerHorizontalExpansion` overrides on layer 0;
+  // `elephantFootCompensation` further shrinks the outer on layer 0 only.
+  const baseXY = pp.horizontalExpansion ?? 0;
+  const xyOffset = isFirstLayer
+    ? (pp.initialLayerHorizontalExpansion ?? baseXY)
+    : baseXY;
+  const elephantFoot = isFirstLayer ? (pp.elephantFootCompensation ?? 0) : 0;
+  const outerOffset = xyOffset - elephantFoot;
+  const holeOffset = -xyOffset;
+  if (outerOffset !== 0 || holeOffset !== 0) {
+    for (const c of contours) {
+      const offset = c.isOuter ? outerOffset : holeOffset;
+      if (offset === 0) continue;
+      const expanded = pipeline.offsetContour(c.points, offset);
+      if (expanded.length >= 3) c.points = expanded;
+    }
+  }
+
   const isSolidBottom = li < Math.max(solidBottom, pp.initialBottomLayers ?? 0);
   const isSolidTop = li >= totalLayers - solidTop;
   const isSolid = isSolidBottom || isSolidTop;

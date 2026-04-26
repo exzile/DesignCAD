@@ -97,14 +97,14 @@
 # ============================================================================
 # ADDITIONAL CURA PARITY GAPS (audit follow-up)
 # ============================================================================
-- [s] Support Interface Enable / Layers (`supportInterface`, `supportInterfaceLayers`) - UI exists, but support interface generation is not actually gated/thickness-driven from these settings
-- [s] Horizontal Expansion (`horizontalExpansion`) - UI exists; general XY compensation is not applied in engine
-- [s] Initial Layer Horizontal Expansion (`initialLayerHorizontalExpansion`) - UI exists; first-layer-specific XY compensation is not applied
-- [s] Elephant Foot Compensation (`elephantFootCompensation`) - UI exists; dedicated first-layer compensation logic is not wired
+- [x] Support Interface Enable / Layers (`supportInterface`, `supportInterfaceLayers`) - WIRED. `support.ts` `supportInterfaceState` (line 158) gates roof/floor thickness on `(supportRoofEnable || legacyInterface)` and `(supportFloorEnable || legacyInterface)` where `legacyInterface = supportInterface && supportInterfaceLayers > 0`. Thickness then drives the `triMinZ <= sliceZ + supZDist + roofThickness` overhang lookup (line 172-173). Removed from gap list 2026-04-26 — was correctly wired but tasklist was stale.
+- [x] Horizontal Expansion (`horizontalExpansion`) - WIRED 2026-04-26 in `prepareLayerState.ts` (`prepareLayerGeometryState`). Outer contours grow by +offset, hole contours shrink by -offset (matches Cura's `xy_offset` semantics — positive = grow material).
+- [x] Initial Layer Horizontal Expansion (`initialLayerHorizontalExpansion`) - WIRED 2026-04-26 same site. Replaces baseline `horizontalExpansion` on layer 0 only (Cura `xy_offset_layer_0` override semantics); falls back to baseline when undefined.
+- [x] Elephant Foot Compensation (`elephantFootCompensation`) - WIRED 2026-04-26 same site. Layer 0 outer offset becomes `xyOffset - elephantFoot` so a positive elephantFoot value shrinks first-layer outer to undo squish. Holes are unaffected. Covered by 7 unit tests in `prepareLayerState.test.ts`.
 - [s] Adaptive Layers core wiring (`adaptiveLayersEnabled`, `adaptiveLayersMaxVariation`, `adaptiveLayersVariationStep`) - UI exists; engine still uses uniform layer heights
 - [s] Spiralize / Vase Mode (`spiralizeContour`) - UI exists; engine still slices as standard layered toolpaths
 - [s] Master/per-feature line width wiring (`lineWidth`, `outerWallLineWidth`, `topBottomLineWidth`) - UI exists, but engine semantics do not yet match Cura
-- [s] Support Roof / Floor toggles (`supportRoofEnable`, `supportFloorEnable`) - UI exists; engine does not honor enable/disable state
+- [x] Support Roof / Floor toggles (`supportRoofEnable`, `supportFloorEnable`) - WIRED. `support.ts:159-164` zeros out `roofThickness`/`floorThickness` when both the per-direction toggle AND `legacyInterface` are false; that thickness then gates the trimMinZ/triMaxZ overhang search loop. Removed from gap list 2026-04-26 — tasklist was stale.
 
 
 # ============================================================================
