@@ -5,6 +5,10 @@ import type { SliceMove } from '../../../../types/slicer';
 export const MOVE_TYPE_COLORS: Record<SliceMove['type'], string> = {
   'wall-outer': '#cc2222',
   'wall-inner': '#22bb44',
+  // Gap-fill: medial-axis bead in narrow regions where no full wall fits.
+  // Cura uses a yellow-green to flag these (visually distinct from
+  // wall-inner so the user can spot quality concerns).
+  'gap-fill':   '#bbcc22',
   infill:       '#cc6600',
   'top-bottom': '#2255cc',
   support:      '#cc44bb',
@@ -25,6 +29,7 @@ export const MOVE_TYPE_THREE_COLORS: Record<SliceMove['type'], THREE.Color> = Ob
 export const MOVE_TYPE_LABELS: Record<SliceMove['type'], string> = {
   'wall-outer': 'Outer Wall',
   'wall-inner': 'Inner Wall',
+  'gap-fill': 'Gap Fill',
   infill: 'Infill',
   'top-bottom': 'Top / Bottom',
   support: 'Support',

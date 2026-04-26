@@ -6,6 +6,22 @@ import type { PrintProfile } from '../../../../types/slicer';
  *  in 9.3D). */
 export type ArachneBackendName = 'wasm' | 'js';
 
+export type ArachneSectionType =
+  | 'wall'
+  | 'infill'
+  | 'skin'
+  | 'support'
+  | 'adhesion'
+  | 'ironing'
+  | 'mesh'
+  | 'dots'
+  | 'concentric-infill';
+
+export interface ArachneGenerationContext {
+  sectionType?: ArachneSectionType;
+  isTopOrBottomLayer?: boolean;
+}
+
 export interface ArachneBackend {
   readonly name: ArachneBackendName;
   generatePaths(
@@ -15,6 +31,7 @@ export interface ArachneBackend {
     lineWidth: number,
     outerWallInset: number,
     printProfile: PrintProfile,
+    context?: ArachneGenerationContext,
   ): VariableWidthPath[];
 }
 

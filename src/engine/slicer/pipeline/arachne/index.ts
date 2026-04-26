@@ -4,9 +4,10 @@ import type { PrintProfile } from '../../../../types/slicer';
 import type { PerimeterDeps } from '../../../../types/slicer-pipeline-deps.types';
 import type { GeneratedPerimeters, InfillRegion } from '../../../../types/slicer-pipeline.types';
 import { booleanMultiPolygonClipper2Sync } from '../../geometry/clipper2Boolean';
+import { strokeOpenPathsClipper2Sync, offsetPathsClipper2Sync } from '../../geometry/clipper2Wasm';
 import { generatePerimetersEx } from '../perimeters';
 import { resolveArachneBackend } from './backend';
-import type { ArachneBackendName, VariableWidthPath } from './types';
+import type { ArachneBackendName, ArachneGenerationContext, VariableWidthPath } from './types';
 
 function toRing(pts: THREE.Vector2[]): PCRing {
   const ring: PCRing = pts.map((p) => [p.x, p.y] as [number, number]);
@@ -153,6 +154,7 @@ export function generatePerimetersArachne(
   outerWallInset: number,
   printProfile: PrintProfile,
   deps: PerimeterDeps,
+  context: ArachneGenerationContext = {},
 ): GeneratedPerimeters {
   const debug = (globalThis as Record<string, unknown>)[ARACHNE_DEBUG_GLOBAL_KEY] === true;
   const statsBag = debug ? getStats() : null;
@@ -168,6 +170,7 @@ export function generatePerimetersArachne(
       lineWidth,
       outerWallInset,
       printProfile,
+      context,
     ).filter((path) =>
       path.points.length >= 2 && path.depth < wallCount && path.widths.length === path.points.length,
     );
@@ -195,34 +198,35 @@ export function generatePerimetersArachne(
       pathMs: t1 - t0,
     });
 
-    // Arachne emits variable-width walls placed by libArachne's
-    // skeletal-trapezoidation, NOT at fixed `depth × lineWidth` offsets.
-    // For example a depth-2 wall in a thin section can sit further from
-    // the boundary than a depth-2 wall in a wide section. So the only
-    // reliable measure of the wall envelope is the actual emitted-path
-    // geometry: for each point on each path, distance from that point
-    // to the nearest input-boundary segment, plus half the local wall
-    // width at that point.
+    // Compute the leftover region available for infill. The preferred
+    // path (Clipper2 loaded) is the same algorithm CuraEngine ships in
+    // `WallToolPaths::computeInnerContour()`: stroke each emitted
+    // variable-width wall path into its actual polygon footprint, union
+    // the footprints, and subtract from the body region. This handles
+    // libArachne's non-uniform wall placement exactly — narrow features
+    // where beads sit further inside, transition zones where two beads
+    // overlap, and asymmetric tapers — none of which a single scalar
+    // inset can represent.
     //
-    // We compute that envelope and inset the body geometry by it. Falls
-    // back to `(wallCount + 0.5) × lineWidth` if no usable points.
-    const measuredCoverage = computeMaxPathInset(paths, outerContour, holeContours);
-    const fallbackCoverage = (wallCount + 0.5) * lineWidth;
-    // Safety pad of 0.5×lineWidth past the measured envelope. The
-    // emit stage applies `infillOverlap` (default 10%) which expands
-    // infill back toward walls — so we need at least that much
-    // headroom or infill ends up inside the wall band again.
-    // Tighter pads (0.05×) failed in production because libArachne's
-    // actual wall placement isn't always at the simulated `(depth+0.5)
-    // ×lineWidth` offsets, and `computeMaxPathInset` only sees the
-    // emitted-path centerlines, not the bead's full inward extent
-    // when a path tail tapers asymmetrically.
-    const insetDistance = outerWallInset
-      + Math.max(measuredCoverage, fallbackCoverage)
-      + lineWidth * 0.5;
-    const { innermostHoles, infillRegions } = computeArachneInfillGeometry(
-      outerContour, holeContours, insetDistance, deps,
+    // If Clipper2 isn't loaded yet, fall back to the legacy scalar
+    // `computeMaxPathInset` approach with a generous safety pad.
+    let innermostHoles: THREE.Vector2[][];
+    let infillRegions: InfillRegion[];
+    const stroked = computeArachneInfillFromStroke(
+      paths, outerContour, holeContours, lineWidth, deps,
     );
+    if (stroked) {
+      ({ innermostHoles, infillRegions } = stroked);
+    } else {
+      const measuredCoverage = computeMaxPathInset(paths, outerContour, holeContours);
+      const fallbackCoverage = (wallCount + 0.5) * lineWidth;
+      const insetDistance = outerWallInset
+        + Math.max(measuredCoverage, fallbackCoverage)
+        + lineWidth * 0.5;
+      ({ innermostHoles, infillRegions } = computeArachneInfillGeometry(
+        outerContour, holeContours, insetDistance, deps,
+      ));
+    }
     return {
       ...variableWidthPathsToPerimeters(paths),
       innermostHoles,
@@ -317,6 +321,156 @@ export function computeArachneInfillGeometry(
 }
 
 /**
+ * Compute infill geometry by **stroking** each variable-width Arachne
+ * wall path into its actual polygon footprint and subtracting the
+ * union of footprints from the body region (`outer − holes`).
+ *
+ * This is the algorithm CuraEngine uses in
+ * `WallToolPaths::computeInnerContour()`. It handles the cases that a
+ * scalar inset cannot:
+ *
+ *   • Non-uniform wall placement — libArachne deliberately positions
+ *     beads further inward in narrow regions, so a single offset over-
+ *     shrinks wide regions or under-shrinks narrow ones.
+ *   • Asymmetric tapers — a path tip ending mid-feature has a circular
+ *     end-cap that protrudes inward beyond what a centerline-sample
+ *     measurement would predict.
+ *   • Transition zones — overlapping bead footprints in regions where
+ *     wall count changes are correctly merged by the Clipper2 union.
+ *
+ * Returns null when Clipper2 isn't loaded (caller should fall back to
+ * the scalar `computeArachneInfillGeometry`).
+ */
+export function computeArachneInfillFromStroke(
+  paths: VariableWidthPath[],
+  outerContour: THREE.Vector2[],
+  holeContours: THREE.Vector2[][],
+  lineWidth: number,
+  deps: PerimeterDeps,
+): { innermostHoles: THREE.Vector2[][]; infillRegions: InfillRegion[] } | null {
+  // Stroke each path with its per-vertex widths into a coverage
+  // multipolygon. Empty `paths` shouldn't happen (the caller bails on
+  // 0-length paths upstream), but guard for robustness.
+  if (paths.length === 0) return null;
+
+  // For closed paths, append a duplicate of the first vertex so the
+  // stroker emits the closing segment from p[N-1] back to p[0]. Without
+  // this, libArachne's closed walls have a small uncovered arc where
+  // the loop wraps — leaving a sliver of infill INSIDE the wall.
+  // We detect already-closed inputs (first == last) so we don't double
+  // the duplicate.
+  const strokeInput = paths.map((p) => {
+    const pts = p.points;
+    const widths = p.widths;
+    if (!p.isClosed || pts.length < 2) return { points: pts, widths };
+    const first = pts[0];
+    const last = pts[pts.length - 1];
+    if (first.x === last.x && first.y === last.y) return { points: pts, widths };
+    return {
+      points: [...pts, first],
+      widths: [...widths, widths[0]],
+    };
+  });
+  let coverage: THREE.Vector2[][] | null;
+  try {
+    // Tight `arcTolerance` (sub-micron) so the polygonal approximation
+    // of round caps doesn't underestimate the bead radius. With the
+    // default tolerance, disk approximations can be ~20µm short of the
+    // true radius, leaving a sliver of infill inside the bead.
+    coverage = strokeOpenPathsClipper2Sync(strokeInput, {
+      precision: 4,
+      arcTolerance: 1e-4,
+    });
+  } catch {
+    return null;
+  }
+  if (coverage === null) return null;  // Clipper2 not loaded yet
+  if (coverage.length === 0) return null;  // degenerate — let scalar path handle it
+
+  // Coverage safety inflation. libArachne's bead placement is NOT
+  // perfectly symmetric across geometrically-identical features — for a
+  // disc with four matching mounting holes, the avg-radius of the
+  // inner walls around each hole varies by ~30µm between holes
+  // (skeletal trapezoidation produces asymmetric output for small
+  // closed boundaries). The bead also has variable width along a
+  // single path. Both mean the stroke envelope can fall short of
+  // covering the full "bead presence" zone in some sectors by
+  // 100-200µm, leaving infill that creeps INTO the wall band.
+  //
+  // Cura/Orca handle this by inflating the wall-coverage polygon
+  // outward post-union — a uniform safety margin pushes the coverage
+  // boundary past where any libArachne placement variance could put a
+  // bead. We use 25% of the line width: small enough not to bite into
+  // legitimate infill area in narrow features, big enough to absorb
+  // libArachne's typical non-uniformity.
+  const coverageSafetyPad = lineWidth * 0.25;
+  // Clipper2 raw `+delta` inflates each ring outward along its winding
+  // normal — CCW outers grow bigger (the wall band's body-side edge
+  // pushes deeper into body) and CW holes shrink visually (the wall
+  // band's empty-feature-side edge pushes into the empty space). Both
+  // are what we want: extra coverage on the body side prevents infill
+  // bleed; extra coverage into empty mounting holes is harmless because
+  // those areas are already non-printing. We bypass `deps.offsetContour`
+  // here on purpose — that helper applies winding-aware sign-flipping
+  // to keep the slicer's "+offset means inset toward solid" convention,
+  // which is the wrong semantics for a coverage union.
+  const inflatedCoverage = offsetPathsClipper2Sync(coverage, coverageSafetyPad, {
+    joinType: 'round',
+    arcTolerance: 1e-4,
+  });
+  const safeCoverage = (inflatedCoverage && inflatedCoverage.length > 0)
+    ? inflatedCoverage
+    : coverage;
+
+  // Inset the BODY by `lineWidth/2` before subtracting coverage. This
+  // mirrors CuraEngine's `outline.offset(-outermost_wall_inset_distance)`
+  // step in `WallToolPaths::computeInnerContour`. Without it, the thin
+  // band between the body boundary and the outermost wall (the band
+  // that the outer wall sits ON) survives `body - coverage` as a
+  // degenerate infill region — which is wrong: that band IS the wall.
+  const insetOuter = deps.offsetContour(outerContour, lineWidth * 0.5);
+  if (insetOuter.length < 3) return { innermostHoles: [], infillRegions: [] };
+  const insetHoles = holeContours
+    .map((h) => deps.offsetContour(h, lineWidth * 0.5))
+    .filter((h) => h.length >= 3);
+
+  // body = inset_outer - inset_holes
+  const outerMP: PCMultiPolygon = [[toRing(insetOuter)]];
+  const holesMP: PCMultiPolygon = insetHoles.map((h) => [toRing(h)]);
+  const bodyMP = holesMP.length > 0
+    ? booleanMultiPolygonClipper2Sync(outerMP, holesMP, 'difference')
+    : outerMP;
+  if (bodyMP === null) return null;
+
+  // infill = body - coverage_inflated
+  const coverageMP: PCMultiPolygon = safeCoverage.map((ring) => [toRing(ring)]);
+  const infillMP = booleanMultiPolygonClipper2Sync(bodyMP, coverageMP, 'difference');
+  if (infillMP === null) return null;
+
+  // A tiny inward cleanup absorbs polygonal arc/chord approximation error
+  // from the stroke operation. This stays in the single-digit micron range
+  // for normal nozzle sizes, so it prevents accidental wall overlap without
+  // creating a visible Cura/Orca-style gap.
+  const numericCleanup = Math.max(lineWidth * 0.02, 0.005);
+  const shrinkRegionContour = (contour: THREE.Vector2[]): THREE.Vector2[] =>
+    deps.offsetContour(contour, deps.signedArea(contour) >= 0 ? numericCleanup : -numericCleanup);
+  const trimmedRegions = deps.multiPolygonToRegions(infillMP)
+    .map((r) => ({
+      contour: shrinkRegionContour(r.contour),
+      holes: r.holes,
+    }))
+    .filter((r) => r.contour.length >= 3);
+
+  // `innermostHoles` (consumed downstream as `infillHoles` for skin/
+  // ironing routing) is the union of all hole rings across infill
+  // regions — i.e. the inner-wall-side boundary of every void inside
+  // the body, expressed in the same shrunken frame as the regions.
+  const innermostHoles = trimmedRegions.flatMap((r) => r.holes);
+
+  return { innermostHoles, infillRegions: trimmedRegions };
+}
+
+/**
  * Convert a list of variable-width Arachne paths into the existing
  * `GeneratedPerimeters` shape so the rest of the slicer can consume them.
  *
@@ -332,15 +486,19 @@ export function variableWidthPathsToPerimeters(
   const lineWidths: number[][] = [];
   const wallClosed: boolean[] = [];
   const wallDepths: number[] = [];
+  const wallSources: Array<'outer' | 'hole' | 'gapfill'> = [];
   let outerCount = 0;
 
-  // Sort outer-contour walls before hole walls (matches existing convention
-  // in `perimeters.ts` where `walls = [...outerLoops, ...holeLoops]`).
-  const sorted = [...paths].sort((a, b) => {
-    const aOuter = a.source === 'outer' ? 0 : 1;
-    const bOuter = b.source === 'outer' ? 0 : 1;
-    return aOuter - bOuter;
-  });
+  // Order: outer-contour walls first, hole walls next, gap-fill paths
+  // LAST. This mirrors CuraEngine's `InsetOrderOptimizer`: gap-fill
+  // beads run after the wall structure they live inside, because (a)
+  // they lock in dimensional accuracy of the surrounding walls, and
+  // (b) putting them at the end means the next move likely starts a
+  // travel into a different region anyway, so the open-path tip of
+  // the gap-fill bead doesn't disrupt a clean wall seam.
+  const sortKey = (s: 'outer' | 'hole' | 'gapfill') =>
+    s === 'outer' ? 0 : s === 'hole' ? 1 : 2;
+  const sorted = [...paths].sort((a, b) => sortKey(a.source) - sortKey(b.source));
 
   for (const path of sorted) {
     if (path.points.length < 2) continue;
@@ -348,6 +506,7 @@ export function variableWidthPathsToPerimeters(
     lineWidths.push(path.widths);
     wallClosed.push(path.isClosed);
     wallDepths.push(path.depth);
+    wallSources.push(path.source);
     if (path.source === 'outer') outerCount++;
   }
 
@@ -356,6 +515,7 @@ export function variableWidthPathsToPerimeters(
     lineWidths,
     wallClosed,
     wallDepths,
+    wallSources,
     outerCount,
     innermostHoles: [],
     infillRegions: [],

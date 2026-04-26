@@ -139,6 +139,7 @@ const std::vector<VariableWidthLines>& WallToolPaths::generate()
 
     const int wall_distribution_count = config.wall_distribution_count;
     const size_t max_bead_count = (inset_count < std::numeric_limits<coord_t>::max() / 2) ? 2 * inset_count : std::numeric_limits<coord_t>::max();
+    const coord_t effective_wall_0_inset = config.precise_outer_wall ? 0 : wall_0_inset;
     const auto beading_strat = BeadingStrategyFactory::makeStrategy(
         bead_width_0,
         bead_width_x,
@@ -150,7 +151,7 @@ const std::vector<VariableWidthLines>& WallToolPaths::generate()
         wall_split_middle_threshold,
         wall_add_middle_threshold,
         max_bead_count,
-        wall_0_inset,
+        effective_wall_0_inset,
         wall_distribution_count,
         Ratio(config.min_variable_line_ratio));
     const auto transition_filter_dist = mmToCoord(config.wall_transition_filter_distance);
@@ -189,7 +190,7 @@ const std::vector<VariableWidthLines>& WallToolPaths::generate()
         scripta::PointVDI{ "width", &ExtrusionJunction::w },
         scripta::PointVDI{ "perimeter_index", &ExtrusionJunction::perimeter_index });
 
-    removeSmallLines(toolpaths);
+    removeSmallLines(toolpaths, config);
     scripta::log(
         "toolpaths_2",
         toolpaths,
@@ -282,8 +283,9 @@ void WallToolPaths::stitchToolPaths(std::vector<VariableWidthLines>& toolpaths, 
     }
 }
 
-void WallToolPaths::removeSmallLines(std::vector<VariableWidthLines>& toolpaths)
+void WallToolPaths::removeSmallLines(std::vector<VariableWidthLines>& toolpaths, const ArachneConfig& config)
 {
+    const double length_factor = std::max(0.0, config.min_wall_length_factor);
     for (VariableWidthLines& inset : toolpaths)
     {
         for (size_t line_idx = 0; line_idx < inset.size(); line_idx++)
@@ -294,7 +296,10 @@ void WallToolPaths::removeSmallLines(std::vector<VariableWidthLines>& toolpaths)
             {
                 min_width = std::min(min_width, j.w);
             }
-            if (line.is_odd && ! line.is_closed && shorterThan(line, min_width / 2))
+            const coord_t min_length = config.is_top_or_bottom_layer
+                ? min_width / 2
+                : static_cast<coord_t>(static_cast<double>(min_width) * length_factor);
+            if (line.is_odd && ! line.is_closed && shorterThan(line, min_length))
             { // remove line
                 line = std::move(inset.back());
                 inset.erase(--inset.end());

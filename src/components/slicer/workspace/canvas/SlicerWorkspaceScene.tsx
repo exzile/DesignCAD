@@ -354,7 +354,7 @@ export function SlicerWorkspaceScene() {
       <OrbitControls
         makeDefault
         target={[bv.x / 2, bv.y / 2, 0]}
-        minDistance={50}
+        minDistance={2}
         maxDistance={bv.x * 4}
         enableDamping
         onStart={handleControlsStart}

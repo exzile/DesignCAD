@@ -272,6 +272,7 @@ export default function Viewport() {
           makeDefault
           enableDamping
           dampingFactor={0.1}
+          minDistance={0.5}
           enabled={true}
           mouseButtons={{
             LEFT: cameraNavMode === 'pan' ? THREE.MOUSE.PAN

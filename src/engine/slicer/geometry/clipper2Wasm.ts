@@ -36,6 +36,14 @@ export interface Clipper2Module {
     clipPointsPtr: number, clipCountsPtr: number, clipCount: number,
     op: number, fillRule: number, precision: number,
   ): number;
+  // Stroke open polylines into closed coverage polygons (per-vertex
+  // widths). See `WallToolPaths::computeInnerContour` in CuraEngine —
+  // we use this to build the actual variable-width wall coverage that
+  // infill must stay clear of.
+  _strokeOpenPaths(
+    pointsPtr: number, pathCountsPtr: number, pathCount: number,
+    widthsPtr: number, arcTolerance: number, precision: number,
+  ): number;
 }
 
 type BooleanOp = 'union' | 'intersection' | 'difference' | 'xor';
@@ -332,4 +340,132 @@ export function booleanPathsClipper2Sync(
   const mod = getLoadedClipper2Module();
   if (!mod) return null;
   return booleanPathsWithModule(mod, subjects, clips, op, options);
+}
+
+export type Clipper2StrokeOptions = {
+  arcTolerance?: number;
+  precision?: number;
+};
+
+function strokeOpenPathsWithModule(
+  mod: Clipper2Module,
+  paths: Array<{ points: THREE.Vector2[]; widths: number[] }>,
+  options: Clipper2StrokeOptions = {},
+): THREE.Vector2[][] {
+  // Drop sub-2 paths and any vertex/width-mismatched path defensively.
+  const validPaths = paths.filter(
+    (p) => p.points.length >= 2 && p.widths.length === p.points.length,
+  );
+  if (validPaths.length === 0) return [];
+
+  const totalPoints = validPaths.reduce((s, p) => s + p.points.length, 0);
+  const pointsPtr = mod._malloc(totalPoints * 2 * 8);
+  const countsPtr = mod._malloc(validPaths.length * 4);
+  const widthsPtr = mod._malloc(totalPoints * 8);
+  if (!pointsPtr || !countsPtr || !widthsPtr) {
+    if (pointsPtr) mod._free(pointsPtr);
+    if (countsPtr) mod._free(countsPtr);
+    if (widthsPtr) mod._free(widthsPtr);
+    throw new Error('clipper2Wasm: malloc failed for stroke buffers');
+  }
+
+  try {
+    const points = new Float64Array(mod.HEAPF64.buffer, pointsPtr, totalPoints * 2);
+    const counts = new Int32Array(mod.HEAP32.buffer, countsPtr, validPaths.length);
+    const widths = new Float64Array(mod.HEAPF64.buffer, widthsPtr, totalPoints);
+    let pOff = 0;
+    let wOff = 0;
+    validPaths.forEach((path, i) => {
+      counts[i] = path.points.length;
+      for (let j = 0; j < path.points.length; j++) {
+        points[pOff++] = path.points[j].x;
+        points[pOff++] = path.points[j].y;
+        widths[wOff++] = path.widths[j];
+      }
+    });
+
+    const status = mod._strokeOpenPaths(
+      pointsPtr,
+      countsPtr,
+      validPaths.length,
+      widthsPtr,
+      options.arcTolerance ?? 0,
+      options.precision ?? 3,
+    );
+    if (status !== 0) throw new Error(`clipper2Wasm: _strokeOpenPaths returned ${status}`);
+
+    const outCountsPtr = mod._malloc(2 * 4);
+    if (!outCountsPtr) throw new Error('clipper2Wasm: malloc failed for output counts');
+    let outputPathCount = 0;
+    let outputPointCount = 0;
+    try {
+      mod._getOffsetCounts(outCountsPtr);
+      const c = new Int32Array(mod.HEAP32.buffer, outCountsPtr, 2);
+      outputPathCount = c[0];
+      outputPointCount = c[1];
+    } finally {
+      mod._free(outCountsPtr);
+    }
+    if (outputPathCount === 0 || outputPointCount === 0) return [];
+
+    const pathCountsPtr = mod._malloc(outputPathCount * 4);
+    const outPointsPtr = mod._malloc(outputPointCount * 2 * 8);
+    try {
+      if (mod._emitOffsetPathCounts(pathCountsPtr, outputPathCount) < 0) {
+        throw new Error('clipper2Wasm: _emitOffsetPathCounts capacity mismatch');
+      }
+      if (mod._emitOffsetPoints(outPointsPtr, outputPointCount * 2) < 0) {
+        throw new Error('clipper2Wasm: _emitOffsetPoints capacity mismatch');
+      }
+      const outCounts = new Int32Array(mod.HEAP32.buffer, pathCountsPtr, outputPathCount);
+      const outPts = new Float64Array(mod.HEAPF64.buffer, outPointsPtr, outputPointCount * 2);
+      const result: THREE.Vector2[][] = [];
+      let off = 0;
+      for (let pi = 0; pi < outputPathCount; pi++) {
+        const n = outCounts[pi];
+        const ring: THREE.Vector2[] = [];
+        for (let i = 0; i < n; i++) {
+          ring.push(new THREE.Vector2(outPts[off++], outPts[off++]));
+        }
+        if (ring.length >= 3) result.push(ring);
+      }
+      return result;
+    } finally {
+      mod._free(pathCountsPtr);
+      mod._free(outPointsPtr);
+    }
+  } finally {
+    mod._free(pointsPtr);
+    mod._free(countsPtr);
+    mod._free(widthsPtr);
+    mod._resetOffsetPaths();
+  }
+}
+
+/**
+ * Stroke a set of variable-width OPEN polylines into closed polygon
+ * footprints, then union them. This is the algorithm CuraEngine uses
+ * in `WallToolPaths::computeInnerContour()` to determine the actual
+ * region covered by emitted variable-width wall toolpaths.
+ *
+ * Each consecutive (vertex i, vertex i+1) segment is inflated with
+ * `EndType::Round` and `delta = avg(widths[i], widths[i+1]) / 2` so
+ * the bead width tapers segment-by-segment along the path. The unioned
+ * result is the wall coverage polygon — subtract from the input
+ * outline to obtain the genuine infill region.
+ */
+export async function strokeOpenPathsClipper2(
+  paths: Array<{ points: THREE.Vector2[]; widths: number[] }>,
+  options: Clipper2StrokeOptions = {},
+): Promise<THREE.Vector2[][]> {
+  return strokeOpenPathsWithModule(await loadClipper2Module(), paths, options);
+}
+
+export function strokeOpenPathsClipper2Sync(
+  paths: Array<{ points: THREE.Vector2[]; widths: number[] }>,
+  options: Clipper2StrokeOptions = {},
+): THREE.Vector2[][] | null {
+  const mod = getLoadedClipper2Module();
+  if (!mod) return null;
+  return strokeOpenPathsWithModule(mod, paths, options);
 }

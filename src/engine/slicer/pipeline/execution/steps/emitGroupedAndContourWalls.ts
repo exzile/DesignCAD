@@ -193,6 +193,10 @@ export function emitGroupedAndContourWalls(
   const { li, layerZ, layerH, isFirstLayer, outerWallSpeed, innerWallSpeed, workContours, holesByOuterContour, moves } = layer;
   const groupOW = pp.groupOuterWalls ?? false;
   const perContour: ContourWallData[] = [];
+  const arachneContext = {
+    sectionType: 'wall' as const,
+    isTopOrBottomLayer: layer.isSolidTop || layer.isSolidBottom,
+  };
   beginSeamLayer(run, li);
 
   if (groupOW) {
@@ -200,7 +204,7 @@ export function emitGroupedAndContourWalls(
       if (!contour.isOuter) continue;
       const containedHoles = holesByOuterContour.get(contour) ?? [];
       const perimeters = slicer.filterPerimetersByMinOdd(
-        slicer.generatePerimeters(contour.points, containedHoles, pp.wallCount, pp.wallLineWidth, pp.outerWallInset ?? 0),
+        slicer.generatePerimeters(contour.points, containedHoles, pp.wallCount, pp.wallLineWidth, pp.outerWallInset ?? 0, arachneContext),
         pp.minOddWallLineWidth ?? 0,
       );
       perContour.push({ contour, exWalls: perimeters, wallSets: perimeters.walls, wallLineWidths: perimeters.lineWidths, wallClosed: perimeters.wallClosed, outerWallCount: perimeters.outerCount, infillHoles: perimeters.innermostHoles });
@@ -216,7 +220,7 @@ export function emitGroupedAndContourWalls(
     if (!contour.isOuter) continue;
     const containedHoles = holesByOuterContour.get(contour) ?? [];
     const exWalls = slicer.filterPerimetersByMinOdd(
-      slicer.generatePerimeters(contour.points, containedHoles, pp.wallCount, pp.wallLineWidth, pp.outerWallInset ?? 0),
+      slicer.generatePerimeters(contour.points, containedHoles, pp.wallCount, pp.wallLineWidth, pp.outerWallInset ?? 0, arachneContext),
       pp.minOddWallLineWidth ?? 0,
     );
     const wallSets = exWalls.walls;
@@ -237,15 +241,62 @@ export function emitGroupedAndContourWalls(
     const innerLW = pp.innerWallLineWidth ?? pp.wallLineWidth;
     if (isFirstLayer && pp.initialLayerInnerWallFlow != null) emitter.currentLayerFlow = pp.initialLayerInnerWallFlow / 100;
     const wallDepths: number[] = exWalls.wallDepths ?? [];
-    for (let wi = 1; wi < wallSets.length; wi++) {
+    const wallSources = exWalls.wallSources;
+
+    // Build the emission order for inner walls (everything past index 0,
+    // which is the outer wall already handled separately above).
+    //
+    // Inset-order optimizer (Cura `InsetOrderOptimizer` parity): order
+    // the inner walls by depth, NOT by libArachne's emission order.
+    //   • `outerWallFirst === true` → ascending depth (depth 1, 2, 3 …):
+    //     each inset is emitted before the next one further inside, so
+    //     bridges over voids (e.g. the lip of a horizontal hole) anchor
+    //     to the outermost inset that's already laid down.
+    //   • `outerWallFirst === false` → descending depth (deepest first):
+    //     surface finish improves because the outer wall is the LAST
+    //     thing extruded against still-loose plastic — same trade-off
+    //     Cura/Orca document under "Outside Before Inside Walls".
+    //
+    // Within each depth level, hole walls follow outer-contour walls
+    // (preserves the existing convention) and gap-fill paths run last
+    // (after all real walls, since their open-ended tip would otherwise
+    // interrupt the seam-aware ordering between adjacent walls).
+    const sourceWeight = (s?: 'outer' | 'hole' | 'gapfill') =>
+      s === 'gapfill' ? 2 : s === 'hole' ? 1 : 0;
+    const ascending = pp.outerWallFirst !== false;
+    const innerOrder = Array.from({ length: wallSets.length - 1 }, (_, i) => i + 1);
+    innerOrder.sort((a, b) => {
+      const sa = sourceWeight(wallSources?.[a]);
+      const sb = sourceWeight(wallSources?.[b]);
+      // Gap-fill always last regardless of depth ordering.
+      if ((sa === 2) !== (sb === 2)) return sa === 2 ? 1 : -1;
+      const da = wallDepths[a] ?? 1;
+      const db = wallDepths[b] ?? 1;
+      if (da !== db) return ascending ? da - db : db - da;
+      // Same depth: outer-source before hole-source (stable convention).
+      return sa - sb;
+    });
+
+    for (const wi of innerOrder) {
       // wallDepths[wi] === 0 means this is the outermost wall of its
       // contour — for hole loops, this is the wall closest to the hole's
       // empty space, which is topologically the wall-OUTER of that hole.
       // Tag it accordingly so the preview renders it in the outer colour
       // (red) next to the empty hole, matching how OrcaSlicer / Cura render.
-      const isHoleOuterWall = (wallDepths[wi] ?? 1) === 0;
-      const moveType: 'wall-outer' | 'wall-inner' = isHoleOuterWall ? 'wall-outer' : 'wall-inner';
-      const wallSpeed = isHoleOuterWall ? outerWallSpeed : innerWallSpeed;
+      const isGapFill = wallSources?.[wi] === 'gapfill';
+      const isHoleOuterWall = !isGapFill && (wallDepths[wi] ?? 1) === 0;
+      // Gap-fill moves get their own type so the preview colours them
+      // distinctly, the bridge detector skips them (they're not real
+      // walls), the seam optimizer ignores them, and stats report
+      // gap-fill volume separately from wall volume.
+      const moveType: 'wall-outer' | 'wall-inner' | 'gap-fill' = isGapFill
+        ? 'gap-fill'
+        : (isHoleOuterWall ? 'wall-outer' : 'wall-inner');
+      // Gap-fill prints at the inner-wall speed — they're short, narrow,
+      // and pushing them at outer-wall speed risks under-extrusion at
+      // the medial-axis tips where the bead width has already tapered.
+      const wallSpeed = isGapFill ? innerWallSpeed
+        : isHoleOuterWall ? outerWallSpeed : innerWallSpeed;
       const wallLWSpec: WallLineWidthSpec = wallLineWidths[wi] ?? (isHoleOuterWall ? pp.wallLineWidth : innerLW);
       const wallLW = representativeLineWidth(wallLWSpec, isHoleOuterWall ? pp.wallLineWidth : innerLW);
       const isClosed = wallClosed?.[wi] ?? true;
@@ -283,7 +334,7 @@ export function emitGroupedAndContourWalls(
         pp.jerkPrint,
       );
       emitter.travelTo(wallLoop[0].x, wallLoop[0].y, moves);
-      gcode.push(`; ${isHoleOuterWall ? 'Hole outer wall' : 'Inner wall'} ${wi}`);
+      gcode.push(`; ${isGapFill ? 'Gap fill' : isHoleOuterWall ? 'Hole outer wall' : 'Inner wall'} ${wi}`);
       for (let pi = 1; pi < wallLoop.length; pi++) {
         const from = wallLoop[pi - 1], to = wallLoop[pi];
         const segLW = segmentLineWidth(wallLWSpec, pi - 1, pi);

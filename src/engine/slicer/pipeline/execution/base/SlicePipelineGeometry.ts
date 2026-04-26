@@ -36,10 +36,12 @@ import {
 } from '../../../geometry/regionQueries';
 import { computeAdaptiveLayerZs as computeAdaptiveLayerZsFromModule } from '../../adaptiveLayers';
 import type { BBox2, Contour, GeneratedPerimeters, Segment, Triangle } from '../../../../../types/slicer-pipeline.types';
+import type { ArachneGenerationContext } from '../../arachne/types';
 
 export class SlicePipelineGeometry {
   protected printProfile!: PrintProfile;
   private clipper2OffsetWarningShown = false;
+  private spiralizeArachneWarningShown = false;
 
   protected extractTriangles(
     geometries: { geometry: THREE.BufferGeometry; transform: THREE.Matrix4 }[],
@@ -141,10 +143,9 @@ export class SlicePipelineGeometry {
    * or Arachne variable-width walls based on `printProfile.wallGenerator`.
    *
    * Both implementations return the same `GeneratedPerimeters` shape so
-   * call sites don't need to know which generator ran. Until Arachne is
-   * fully implemented (TaskLists.txt § ARACHNE-*) it falls through to
-   * classic, so the toggle is safe to flip on but produces identical
-   * output for now.
+   * call sites don't need to know which generator ran. Arachne is the
+   * production default via libArachne WASM; classic remains available as
+   * an explicit fixed-width fallback and as an error recovery path.
    */
   public generatePerimeters(
     outerContour: THREE.Vector2[],
@@ -152,6 +153,7 @@ export class SlicePipelineGeometry {
     wallCount: number,
     lineWidth: number,
     outerWallInset = 0,
+    context: ArachneGenerationContext = {},
   ): GeneratedPerimeters {
     const deps = {
       offsetContour: (contour: THREE.Vector2[], offset: number) => this.offsetContourFast(contour, offset),
@@ -160,10 +162,25 @@ export class SlicePipelineGeometry {
     };
     // Default is Arachne via libArachne WASM (ARACHNE-9). Profile can opt
     // back to `wallGenerator: 'classic'` for fixed-width walls.
-    if (this.printProfile.wallGenerator === 'arachne') {
+    //
+    // Spiralize / vase mode INTENTIONALLY forces classic walls. Arachne's
+    // variable-width pipeline produces branchy ExtrusionLines with gap-
+    // fill medial-axis tips and short transition zones — none of which
+    // can be wound into a continuous spiral. Cura/Orca apply the same
+    // gating: if a user enables vase mode, walls are always single-pass
+    // fixed-width concentric loops. Warn once so the choice is visible.
+    if (this.printProfile.spiralizeContour && this.printProfile.wallGenerator === 'arachne') {
+      if (!this.spiralizeArachneWarningShown) {
+        console.warn(
+          '[slicer] Spiralize / vase mode is incompatible with Arachne walls; '
+          + 'falling back to classic fixed-width walls for this print.',
+        );
+        this.spiralizeArachneWarningShown = true;
+      }
+    } else if (this.printProfile.wallGenerator === 'arachne') {
       return generatePerimetersArachne(
         outerContour, holeContours, wallCount, lineWidth, outerWallInset,
-        this.printProfile, deps,
+        this.printProfile, deps, context,
       );
     }
     return generatePerimetersExFromModule(

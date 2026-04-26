@@ -336,10 +336,175 @@ export function buildChainTube(
     }
   }
 
+  // Step 6: rounded end caps for OPEN chains. Without these, an open
+  // tube (infill scanline, top/bottom skin line, gap-fill bead, bridge)
+  // ends in a FLAT disk that visually "pokes" past adjacent walls when
+  // the slicer applies infill/skin overlap (the deliberate few-tens-of-
+  // microns of bonding between fill and walls). Cura/Orca hide that
+  // overlap by capping fill-line ends with a hemisphere matching the
+  // bead's elliptical cross-section. We do the same.
+  //
+  // Closed chains never need caps (they wrap onto themselves). Walls
+  // are already trimmed back via OPEN_WALL_END_TRIM_FACTOR and would
+  // benefit only marginally — but adding caps to all open chains is
+  // cheap (each cap is K_CAP × RADIAL extra triangles) and keeps the
+  // visual style consistent across move types.
+  if (!sourceChain.isClosed && n >= 2) {
+    appendRoundCap(positions, normals, colors, indices, {
+      isStart: true,
+      anchorRingStart: 0,
+      tipPoint: pts[0],
+      tangent: dir(pts[0], pts[1]),
+      perp: perps[0],
+      lw: pts[0].lw * miterX[0],
+      vExt,
+      centerZ,
+      ringSize,
+      radial: RADIAL,
+      ringColor: ringColor(0),
+    });
+    appendRoundCap(positions, normals, colors, indices, {
+      isStart: false,
+      anchorRingStart: (n - 1) * ringSize,
+      tipPoint: pts[n - 1],
+      tangent: dir(pts[n - 2], pts[n - 1]),
+      perp: perps[n - 1],
+      lw: pts[n - 1].lw * miterX[n - 1],
+      vExt,
+      centerZ,
+      ringSize,
+      radial: RADIAL,
+      ringColor: ringColor(n - 1),
+    });
+  }
+
   const geo = new THREE.BufferGeometry();
   geo.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
   geo.setAttribute('normal', new THREE.Float32BufferAttribute(normals, 3));
   geo.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3));
   geo.setIndex(indices);
   return geo;
+}
+
+/** Number of latitudinal rings used for each rounded end cap. The cap
+ *  is a quarter-ellipsoid swept from the tube's last ring to a single
+ *  point at the tip. Each ring is one latitude line.
+ *
+ *  4 gives a smooth dome at typical preview scale (each step is
+ *  22.5°). The triangle cost is K_CAP × RADIAL × 2 — at K_CAP=4 and
+ *  RADIAL=8, that's 64 triangles per open end.
+ */
+const K_CAP = 4;
+
+interface RoundCapParams {
+  /** True for the start of the chain (cap extends in -tangent direction);
+   *  false for the end (cap extends in +tangent direction). */
+  isStart: boolean;
+  /** Index of the first vertex of the anchor ring in the global `positions`
+   *  buffer (i.e. ringStart * 1, not / 3). */
+  anchorRingStart: number;
+  tipPoint: { x: number; y: number };
+  tangent: { x: number; y: number } | null;
+  perp: { x: number; y: number };
+  lw: number;
+  vExt: number;
+  centerZ: number;
+  ringSize: number;
+  radial: number;
+  ringColor: [number, number, number];
+}
+
+function appendRoundCap(
+  positions: number[],
+  normals: number[],
+  colors: number[],
+  indices: number[],
+  p: RoundCapParams,
+): void {
+  if (!p.tangent) return;
+  const hExt = p.lw / 2;
+  // Direction the cap extends from the anchor ring. Start caps reach
+  // BACKWARD past `tipPoint` (opposite the chain's flow); end caps
+  // reach forward.
+  const sgn = p.isStart ? -1 : +1;
+  const tx = p.tangent.x * sgn;
+  const ty = p.tangent.y * sgn;
+
+  const baseVertexBeforeCap = positions.length / 3;
+
+  // Generate K_CAP - 1 intermediate rings + 1 degenerate tip ring.
+  // Theta steps from a small offset (just past 0°) to π/2 (tip). At
+  // each θ:
+  //   • axial offset along tangent = hExt × sin(θ)
+  //   • horizontal radius (perp axis) = hExt × cos(θ)
+  //   • vertical radius (Z axis) = vExt × cos(θ)
+  // This is a half-ellipsoid with horizontal semi-axis hExt and
+  // vertical semi-axis vExt — matching the tube's elliptical cross-
+  // section. Cura uses the same construction.
+  const ringPositions: number[] = [];
+  for (let k = 1; k <= K_CAP; k++) {
+    const theta = (k / K_CAP) * (Math.PI / 2);
+    const sinT = Math.sin(theta);
+    const cosT = Math.cos(theta);
+    const cx = p.tipPoint.x + tx * hExt * sinT;
+    const cy = p.tipPoint.y + ty * hExt * sinT;
+    const ringRadialH = hExt * cosT;
+    const ringRadialV = p.vExt * cosT;
+    for (let r = 0; r <= p.radial; r++) {
+      const a = (r / p.radial) * Math.PI * 2;
+      const cosA = Math.cos(a);
+      const sinA = Math.sin(a);
+      const px = cx + cosA * p.perp.x * ringRadialH;
+      const py = cy + cosA * p.perp.y * ringRadialH;
+      const pz = p.centerZ + sinA * ringRadialV;
+      ringPositions.push(px, py, pz);
+      // Outward-pointing normal: blend cap-axis component (sin θ along
+      // tangent, ramping up toward tip) with cross-section radial
+      // component (cos θ in the perpendicular ring direction). At the
+      // anchor ring (θ→0) the normal is purely radial; at the tip
+      // (θ=π/2) it's purely tangent — so lighting transitions smoothly
+      // from the tube body into the dome.
+      const nRad = cosT;
+      const nAxial = sinT;
+      const nx = (cosA * p.perp.x) * nRad + tx * nAxial;
+      const ny = (cosA * p.perp.y) * nRad + ty * nAxial;
+      const nz = sinA * nRad;
+      const nl = Math.hypot(nx, ny, nz) || 1;
+      normals.push(nx / nl, ny / nl, nz / nl);
+      colors.push(p.ringColor[0], p.ringColor[1], p.ringColor[2]);
+    }
+  }
+  positions.push(...ringPositions);
+
+  // Index triangles connecting ring k → ring k+1 (cap rings only),
+  // plus the seam triangles connecting the anchor ring → cap ring 0.
+  // Anchor ring is the existing tube endpoint ring — already in
+  // `positions`. Cap rings start at `baseVertexBeforeCap`.
+  //
+  // Winding: we want outward-facing triangles. For end caps the
+  // natural winding mirrors the main-tube loop; for start caps it
+  // reverses (the cap protrudes the OTHER direction so the same
+  // winding would point the triangles inward).
+  const ringStarts: number[] = [p.anchorRingStart];
+  for (let k = 0; k < K_CAP; k++) {
+    ringStarts.push(baseVertexBeforeCap + k * p.ringSize);
+  }
+  for (let k = 0; k < K_CAP; k++) {
+    const ringA = ringStarts[k];
+    const ringB = ringStarts[k + 1];
+    for (let r = 0; r < p.radial; r++) {
+      const a = ringA + r;
+      const b = ringA + r + 1;
+      const c = ringB + r;
+      const d = ringB + r + 1;
+      if (p.isStart) {
+        // Reversed winding for start caps so normals point outward.
+        indices.push(a, b, c);
+        indices.push(b, d, c);
+      } else {
+        indices.push(a, c, b);
+        indices.push(b, c, d);
+      }
+    }
+  }
 }

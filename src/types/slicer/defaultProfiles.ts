@@ -338,6 +338,8 @@ export const DEFAULT_PRINT_PROFILES: PrintProfile[] = [
     thinWallDetection: true,       // fill_outline_gaps = true
     wallGenerator: 'arachne',      // libArachne (WASM) variable-width walls with transition zones
     arachneBackend: 'wasm',        // libArachne via WASM is the production backend post ARACHNE-9
+    minWallLengthFactor: 0.5,      // Orca-style tiny open wall filter threshold
+    preciseOuterWall: false,
     ironingEnabled: false,         // ironing_enabled = false
     ironingSpeed: 15,
     ironingFlow: 10.0,             // ironing_flow = 10

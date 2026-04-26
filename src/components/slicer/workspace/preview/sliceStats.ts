@@ -6,7 +6,7 @@
 import type { SliceLayer, SliceMove, SliceResult } from '../../../../types/slicer';
 
 const FEATURE_TYPES = [
-  'wall-outer', 'wall-inner', 'infill', 'top-bottom',
+  'wall-outer', 'wall-inner', 'gap-fill', 'infill', 'top-bottom',
   'support', 'skirt', 'brim', 'raft', 'bridge', 'ironing',
 ] as const;
 

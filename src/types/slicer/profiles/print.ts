@@ -113,15 +113,12 @@ export interface PrintProfile {
   combingMode: 'off' | 'all' | 'noskin' | 'infill';
   avoidCrossingPerimeters: boolean;
   thinWallDetection: boolean;
-  /** Wall generator. `'classic'` = fixed-width offset (legacy). `'arachne'`
-   *  = variable-width walls (Cura's algorithm) which handles narrow regions
-   *  cleanly — no fragmented walls or notch-snake patterns at layers where
-   *  holes break through the outer perimeter. Defaults to `'classic'` until
-   *  the Arachne port (TaskLists.txt § ARACHNE-*) is complete. */
+  /** Wall generator. `'classic'` = fixed-width offset fallback. `'arachne'`
+   *  = production default variable-width walls via libArachne WASM, matching
+   *  Cura's narrow-feature wall strategy. */
   wallGenerator?: 'classic' | 'arachne';
-  /** Backend used when `wallGenerator` is `'arachne'`. `'js'` uses the
-   *  current TypeScript pipeline; `'wasm'` is selected by profile but falls
-   *  back gracefully until the libArachne adapter registers itself. */
+  /** Backend used when `wallGenerator` is `'arachne'`. `'wasm'` is the
+   *  production backend; `'js'` remains as a legacy-compatible registry alias. */
   arachneBackend?: 'js' | 'wasm';
 
   // Ironing (top surface smoothing)
@@ -338,15 +335,17 @@ export interface PrintProfile {
   wallLineCount?: number;              // wired — alias for wallCount
   minEvenWallLineWidth?: number;       // storage-only — mm; min width for even-count walls
   holeHorizontalExpansionMaxDiameter?: number; // wired — mm; holes > this skip hole expansion
-  wallDistributionCount?: number;      // storage-only — Cura adaptive-width algorithm
-  wallTransitionFilterDistance?: number; // storage-only — mm
-  wallTransitionFilterMargin?: number;   // storage-only — mm
+  wallDistributionCount?: number;      // wired to Arachne WASM — Cura adaptive-width algorithm
+  wallTransitionFilterDistance?: number; // wired to Arachne WASM — mm
+  wallTransitionFilterMargin?: number;   // wired to Arachne WASM — mm
   innerWallLineWidth?: number;         // wired — inner perimeter line width
   groupOuterWalls?: boolean;           // wired — emit all outer walls together
   outerWallInset?: number;             // wired — mm; shift outer wall inward from contour
-  printThinWalls?: boolean;            // storage-only — detect and print narrow gaps
-  minFeatureSize?: number;             // storage-only — mm; skip contours narrower than this
-  minThinWallLineWidth?: number;       // storage-only — mm; extrusion floor for thin walls
+  printThinWalls?: boolean;            // wired to Arachne WASM — detect and print narrow gaps
+  minFeatureSize?: number;             // wired to Arachne WASM — mm; skip contours narrower than this
+  minThinWallLineWidth?: number;       // wired to Arachne WASM — mm; extrusion floor for thin walls
+  minWallLengthFactor?: number;        // wired to Arachne WASM — Orca-style min odd open-line length multiplier
+  preciseOuterWall?: boolean;          // wired — keep outer/inner wall spacing dimensionally exact
   alternateWallDirections?: boolean;   // wired — flip wall direction per layer
   overhangingWallAngle?: number;       // storage-only — degrees
   overhangingWallSpeed?: number;       // storage-only — % of wall speed

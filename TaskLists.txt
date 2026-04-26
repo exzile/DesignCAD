@@ -77,6 +77,13 @@
 - [skip] Wipe Nozzle Between Layers and all Wipe sub-params - multi-extruder feature
 - [skip] Flow Temperature Graph, Cross Infill Density Image - hardware/image-based; not applicable
 
+## ARACHNE PARITY FOLLOW-UP
+- [x] Region-aware Arachne invocation - bridge now passes section_type through the Arachne context (walls today, extensible to skin/support/infill callers).
+- [x] Orca min wall length factor - `minWallLengthFactor` now reaches libArachne and drives tiny odd open-line filtering.
+- [x] Top/bottom Arachne semantics - solid top/bottom layers now pass `is_top_or_bottom_layer` so short-line filtering uses Orca's top-surface-safe threshold.
+- [x] Precise-wall style spacing/compensation - `preciseOuterWall` now reaches libArachne and disables extra outer-wall inset compensation for dimensional walls.
+- [x] Fluid Motion Arachne smoothing - `fluidMotionEnable` now reaches the libArachne WASM config.
+
 ## PRINTER SETTINGS
 - [skip] Machine Type, Material Type/Brand, Nozzle geometry, Steps/mm, Endstops, Extruder-sharing params - hardware-only fields stored in firmware, not relevant to G-code output
 

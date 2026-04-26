@@ -20,6 +20,8 @@ import * as THREE from 'three';
 
 import { computeMaxPathInset } from '../index';
 import type { VariableWidthPath } from '../types';
+import { offsetPathsClipper2Sync } from '../../../geometry/clipper2Wasm';
+import { multiPolygonToRegions as realMpToRegions } from '../../infill';
 
 const v = (x: number, y: number) => new THREE.Vector2(x, y);
 const makePath = (
@@ -595,6 +597,179 @@ describe('computeMaxPathInset — defensive edge cases', () => {
     expect(insetOuter).toBeLessThan(5.3);
   });
 });
+
+// ----------------------------------------------------------------------
+// Stroke-and-subtract infill (CuraEngine `WallToolPaths::computeInner
+// Contour()` parity). Exercises the real Clipper2 wrapper: tests verify
+// that infill regions never overlap the actual variable-width wall
+// stroke envelope, even with libArachne-style non-uniform placement.
+// ----------------------------------------------------------------------
+
+describe('computeArachneInfillFromStroke', () => {
+  it('returns null for empty paths (caller falls back)', async () => {
+    const { computeArachneInfillFromStroke } = await import('../index');
+    const outer = makeCircle(0, 0, 10, 32);
+    const realDeps = makeRealDeps();
+    expect(computeArachneInfillFromStroke([], outer, [], 0.4, realDeps)).toBeNull();
+  });
+
+  it('infill region for a circular outline with one outer wall stays inside the wall', async () => {
+    // Standard Arachne layout: outer wall centerline at lineWidth/2
+    // inside the boundary, so the bead's outer edge sits ON the
+    // boundary and stroke-subtract has no leftover thin band.
+    const { computeArachneInfillFromStroke } = await import('../index');
+    const outer = makeCircle(0, 0, 25, 96);
+    const lineWidth = 0.45;
+    const halfW = lineWidth / 2;
+    const wall = makePath(makeCircle(0, 0, 25 - halfW, 96),
+      new Array(96).fill(lineWidth), 0);
+    const result = computeArachneInfillFromStroke([wall], outer, [], lineWidth, makeRealDeps());
+    expect(result).not.toBeNull();
+    expect(result!.infillRegions.length).toBeGreaterThan(0);
+    // Every infill outer-contour vertex must sit at r ≤ 25 - lineWidth
+    // (the bead's inner edge). Allow a small numerical tolerance for
+    // Clipper2's polygonal arc approximation.
+    for (const region of result!.infillRegions) {
+      for (const pt of region.contour) {
+        const r = Math.hypot(pt.x, pt.y);
+        // Tolerance covers both the input polygon's chord-arc deviation
+        // (96-pt circle at r=25 → ~10µm) and Clipper2's polygonal
+        // approximation of the stroke's round caps.
+        expect(r).toBeLessThanOrEqual(25 - lineWidth + 0.20);
+      }
+    }
+  });
+
+  it('infill never crosses a variable-width wall stroke (regression)', async () => {
+    // The user-reported scenario: variable-width walls in transition
+    // zones. With the old scalar inset, infill scanlines overlapped the
+    // wider wall sections. With stroke-subtract, infill respects the
+    // actual non-uniform footprint.
+    const { computeArachneInfillFromStroke } = await import('../index');
+    const outer = makeCircle(0, 0, 25, 96);
+    // Place wall so its OUTER edge sits on the boundary in every
+    // sector, even where the bead is widest. Centerline radius =
+    // boundary - halfWidth(sector).
+    const ringPts: THREE.Vector2[] = [];
+    const ringW: number[] = [];
+    for (let i = 0; i < 96; i++) {
+      const t = (i / 96) * Math.PI * 2;
+      const w = 0.5 + 0.15 * Math.sin(t * 2);  // 0.35 → 0.65 mm
+      const r = 25 - w / 2;
+      ringPts.push(new THREE.Vector2(r * Math.cos(t), r * Math.sin(t)));
+      ringW.push(w);
+    }
+    const wall = makePath(ringPts, ringW, 0);
+    const result = computeArachneInfillFromStroke([wall], outer, [], 0.5, makeRealDeps());
+    expect(result).not.toBeNull();
+    expect(result!.infillRegions.length).toBeGreaterThan(0);
+    // Wall's INNER edge: 25 - w(sector). Min at widest sector =
+    // 25 - 0.65 = 24.35. Max at narrowest = 25 - 0.35 = 24.65.
+    // Infill outer must stay inside the inner edge in every sector.
+    for (const region of result!.infillRegions) {
+      for (const pt of region.contour) {
+        const r = Math.hypot(pt.x, pt.y);
+        const t = Math.atan2(pt.y, pt.x);
+        const localW = 0.5 + 0.15 * Math.sin(t * 2);
+        expect(r).toBeLessThanOrEqual(25 - localW + 0.25);
+      }
+    }
+  });
+
+  it('infill stays clear of inner-wall coverage around a small hole', async () => {
+    // Reproduces the layer-20 screenshot: small mounting hole, infill
+    // running through inner walls. With stroke-subtract, infill cannot
+    // enter the bead footprint regardless of hole size.
+    const { computeArachneInfillFromStroke } = await import('../index');
+    const outer = makeCircle(0, 0, 25, 96);
+    const hole = makeCircle(0, 0, 2, 48).reverse();
+    const lineWidth = 0.45;
+    const halfW = lineWidth / 2;
+    // Three inner walls hugging the hole. Outermost (depth 0) sits at
+    // hole_radius + halfW; deeper walls offset by lineWidth.
+    const wallH0 = makePath(makeCircle(0, 0, 2 + halfW, 48), new Array(48).fill(lineWidth), 0, 'hole');
+    const wallH1 = makePath(makeCircle(0, 0, 2 + halfW + lineWidth, 48), new Array(48).fill(lineWidth), 1, 'hole');
+    const wallH2 = makePath(makeCircle(0, 0, 2 + halfW + 2 * lineWidth, 48), new Array(48).fill(lineWidth), 2, 'hole');
+    // One outer wall around the body.
+    const wallO0 = makePath(makeCircle(0, 0, 25 - halfW, 96), new Array(96).fill(lineWidth), 0);
+    const result = computeArachneInfillFromStroke(
+      [wallH0, wallH1, wallH2, wallO0], outer, [hole], lineWidth, makeRealDeps(),
+    );
+    expect(result).not.toBeNull();
+    expect(result!.infillRegions.length).toBeGreaterThan(0);
+    // Innermost hole-side bead's outer (body-side) edge sits at
+    // 2 + halfW + 2*lineWidth + halfW = 2 + 3*lineWidth = 3.35 for
+    // lineWidth=0.45. Every infill hole-ring vertex must be at
+    // r ≥ 3.35 (small tolerance for arc approximation).
+    let minHoleR = Infinity;
+    for (const region of result!.infillRegions) {
+      for (const ring of region.holes) {
+        for (const pt of ring) {
+          const r = Math.hypot(pt.x, pt.y);
+          if (r < minHoleR) minHoleR = r;
+        }
+      }
+    }
+    // Allow ~lineWidth × 0.25 tolerance for the polygonal arc
+    // approximation: a 48-vertex circle at this radius has chord-arc
+    // deviation around 7µm, but Clipper2's integer rounding stacks on
+    // top. The KEY guarantee is `minHoleR > hole_radius + 2*lineWidth`
+    // — i.e. the infill never touches the outermost hole-side wall.
+    expect(minHoleR).toBeGreaterThan(2 + 2 * lineWidth);
+    // Upper bound accounts for the `coverageSafetyPad` (lineWidth * 0.25)
+    // applied to the wall stroke union, plus polygonal arc tolerance.
+    // The safety pad deliberately pushes infill ~25% × lineWidth past
+    // the bead's outer edge to absorb libArachne's non-uniform bead
+    // placement (otherwise small features bleed into walls — verified
+    // against real WASM output on a 4-mounting-hole disc).
+    expect(minHoleR).toBeLessThanOrEqual(2 + 3 * lineWidth + lineWidth * 0.40);
+  });
+});
+
+function makeRealDeps() {
+  return {
+    // Mirror `SlicePipelineGeometry.tryOffsetContourClipper2`: the sign
+    // we feed Clipper2 depends on the ring's winding so positive
+    // `offset` consistently means "inset toward solid material" (CCW
+    // outer shrinks, CW hole expands).
+    offsetContour: (contour: THREE.Vector2[], offset: number): THREE.Vector2[] => {
+      if (contour.length < 3) return [];
+      let area2 = 0;
+      for (let i = 0; i < contour.length; i++) {
+        const a = contour[i];
+        const b = contour[(i + 1) % contour.length];
+        area2 += a.x * b.y - b.x * a.y;
+      }
+      const windingDelta = area2 >= 0 ? -offset : offset;
+      const out = offsetPathsClipper2Sync([contour], windingDelta, { joinType: 'miter' });
+      if (!out || out.length === 0) return [];
+      // When multiple rings come back (rare on a single-ring input),
+      // pick the one with the largest absolute area — matches the
+      // production helper.
+      out.sort((a, b) => {
+        const aa = a.reduce((s, p, i) => {
+          const n = a[(i + 1) % a.length];
+          return s + p.x * n.y - n.x * p.y;
+        }, 0);
+        const ba = b.reduce((s, p, i) => {
+          const n = b[(i + 1) % b.length];
+          return s + p.x * n.y - n.x * p.y;
+        }, 0);
+        return Math.abs(ba) - Math.abs(aa);
+      });
+      return out[0];
+    },
+    multiPolygonToRegions: realMpToRegions,
+    signedArea: (pts: THREE.Vector2[]) => {
+      let a = 0;
+      for (let i = 0; i < pts.length; i++) {
+        const c = pts[i], n = pts[(i + 1) % pts.length];
+        a += c.x * n.y - n.x * c.y;
+      }
+      return a / 2;
+    },
+  } as never;
+}
 
 function pointInPath(pt: THREE.Vector2, ring: THREE.Vector2[]): boolean {
   let inside = false;

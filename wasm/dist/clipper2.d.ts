@@ -16,6 +16,9 @@
   _booleanPaths(subjPointsPtr: number, subjCountsPtr: number, subjCount: number,
                 clipPointsPtr: number, clipCountsPtr: number, clipCount: number,
                 op: number, fillRule: number, precision: number): number;
+
+  _strokeOpenPaths(pointsPtr: number, pathCountsPtr: number, pathCount: number,
+                   widthsPtr: number, arcTolerance: number, precision: number): number;
 }
 
 export default function createClipper2Module(

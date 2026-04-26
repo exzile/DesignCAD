@@ -51,6 +51,14 @@ export interface GeneratedPerimeters {
    *  correctly tag hole walls so they render in the outer colour next to
    *  the empty hole instead of the inner colour. */
   wallDepths: number[];
+  /** Parallel to `walls`. Where each wall came from in the Arachne path
+   *  classification: `'outer'` = wall around the outer contour,
+   *  `'hole'` = wall around a hole, `'gapfill'` = medial-axis bead in a
+   *  region too narrow for a full wall. Emit step routes `'gapfill'`
+   *  entries through the `gap-fill` move type so previews and downstream
+   *  bridge/retract logic can treat them differently from real walls.
+   *  Optional — the classic generator omits it (everything is a wall). */
+  wallSources?: Array<'outer' | 'hole' | 'gapfill'>;
   outerCount: number;
   innermostHoles: THREE.Vector2[][];
   infillRegions: InfillRegion[];

@@ -95,7 +95,7 @@ em++ "${COMMON_FLAGS[@]}" \
   -fexceptions \
   -I "$CLIPPER2_INC" \
   -s EXPORT_NAME=createClipper2Module \
-  -s "EXPORTED_FUNCTIONS=['_clipperAnswer','_offsetPaths','_getOffsetCounts','_emitOffsetPathCounts','_emitOffsetPoints','_resetOffsetPaths','_malloc','_free']" \
+  -s "EXPORTED_FUNCTIONS=['_clipperAnswer','_offsetPaths','_booleanPaths','_strokeOpenPaths','_getOffsetCounts','_emitOffsetPathCounts','_emitOffsetPoints','_resetOffsetPaths','_malloc','_free']" \
   -s "EXPORTED_RUNTIME_METHODS=['HEAPF64','HEAP32']" \
   "$SRC_DIR/clipper2.cpp" \
   "$CLIPPER2_SRC/clipper.engine.cpp" \
@@ -119,6 +119,13 @@ export interface Clipper2Module {
   _emitOffsetPathCounts(outPtr: number, capacityInts: number): number;
   _emitOffsetPoints(outPtr: number, capacityDoubles: number): number;
   _resetOffsetPaths(): void;
+
+  _booleanPaths(subjPointsPtr: number, subjCountsPtr: number, subjCount: number,
+                clipPointsPtr: number, clipCountsPtr: number, clipCount: number,
+                op: number, fillRule: number, precision: number): number;
+
+  _strokeOpenPaths(pointsPtr: number, pathCountsPtr: number, pathCount: number,
+                   widthsPtr: number, arcTolerance: number, precision: number): number;
 }
 
 export default function createClipper2Module(

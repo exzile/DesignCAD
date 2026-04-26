@@ -122,14 +122,19 @@ describe('buildChainTube — geometric contract', () => {
     expect(ringN.x).toBeCloseTo(15 - 0.2, 4);
   });
 
-  it('a 4-segment open polyline produces 5 rings (one per vertex)', () => {
+  it('a 4-segment open polyline produces 5 main-tube rings (one per vertex) plus rounded end caps', () => {
     const chain = makeChain(
       [[0, 0], [10, 0], [10, 10], [0, 10], [0, 5]],
       0.4, false,
     );
     const geo = buildChainTube(chain, 0.2, 0.2);
     const positions = geo!.getAttribute('position').array as Float32Array;
-    expect(positions.length).toBe(5 * ringSize * 3);
+    // Main tube body: 5 rings × ringSize vertices.
+    // Each open end gets a hemispherical cap of K_CAP=4 latitude
+    // rings, each with ringSize vertices. Two caps for an open chain.
+    const K_CAP = 4;
+    const expectedVertices = 5 * ringSize + 2 * K_CAP * ringSize;
+    expect(positions.length).toBe(expectedVertices * 3);
   });
 
   it('center-Z of each ring equals the bead center (baseZ - layerHeight/2)', () => {
@@ -216,13 +221,20 @@ describe('buildChainTube — geometric contract', () => {
     expect(indexAttr!.count).toBe(4 * RADIAL * 6);
   });
 
-  it('open chains generate one fewer loop than closed (n-1 segments)', () => {
+  it('open chains generate one fewer body loop than closed (n-1 segments) plus cap loops', () => {
     const open = buildChainTube(
       makeChain([[0, 0], [10, 0], [10, 10], [0, 10]], 0.4, false),
       0.2, 0.2,
     )!;
     const indices = open.getIndex();
-    expect(indices!.count).toBe(3 * RADIAL * 6);
+    // Body: (n-1) = 3 loops, each loop = RADIAL × 2 triangles × 3 indices.
+    // Plus two K_CAP-step rounded end caps; each cap has K_CAP loops, each
+    // loop with RADIAL × 2 triangles × 3 indices. Same per-loop cost as
+    // the body — caps just add 2 × K_CAP loops to the index count.
+    const K_CAP = 4;
+    const bodyLoops = 3;
+    const capLoops = 2 * K_CAP;
+    expect(indices!.count).toBe((bodyLoops + capLoops) * RADIAL * 6);
   });
 
   it('rings stay perpendicular to the chain direction (no twist)', () => {

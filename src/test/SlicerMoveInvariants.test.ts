@@ -162,7 +162,7 @@ function segmentsCross(
 }
 
 const EXTRUSION_TYPES = new Set<SliceMove['type']>([
-  'wall-outer', 'wall-inner', 'infill', 'top-bottom', 'bridge', 'support', 'ironing',
+  'wall-outer', 'wall-inner', 'gap-fill', 'infill', 'top-bottom', 'bridge', 'support', 'ironing',
   'skirt', 'brim', 'raft',
 ]);
 

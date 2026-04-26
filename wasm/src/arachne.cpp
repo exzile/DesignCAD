@@ -11,7 +11,7 @@
 
 namespace {
 
-constexpr int32_t kConfigValueCount = 22;
+constexpr int32_t kConfigValueCount = 25;
 
 std::vector<cura::ExtrusionLine> g_result_paths;
 
@@ -47,6 +47,9 @@ ArachneConfig decode_config(const double* values, int32_t count) {
   config.simplify_max_area_deviation = config_value(values, count, 19, 0.01);
   config.print_thin_walls = config_value(values, count, 20, 1.0) != 0.0;
   config.fluid_motion_enabled = config_value(values, count, 21, 0.0) != 0.0;
+  config.min_wall_length_factor = config_value(values, count, 22, 0.5);
+  config.is_top_or_bottom_layer = config_value(values, count, 23, 0.0) != 0.0;
+  config.precise_outer_wall = config_value(values, count, 24, 0.0) != 0.0;
   return config;
 }
 

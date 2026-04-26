@@ -157,6 +157,130 @@ void resetOffsetPaths() {
   g_offset_paths.clear();
 }
 
+// Stroke a set of OPEN polylines into closed polygon footprints, then
+// union them. This is what CuraEngine's `WallToolPaths::computeInner
+// Contour()` does to determine actual wall coverage from variable-width
+// toolpaths. Each segment between vertices i and i+1 is inflated with
+// `EndType::Round` and `delta = avg(widths[i], widths[i+1]) * 0.5`, so
+// the per-vertex bead width tapers segment-by-segment.
+//
+// Inputs:
+//   points        — flat (x,y) doubles, all vertices of all paths
+//   path_counts   — int32 length of each path (>= 2 for a stroked path)
+//   path_count    — number of paths
+//   widths        — per-vertex widths, parallel to `points`
+//   arc_tolerance — Clipper2 round-cap tolerance (mm); 0 = default
+//   precision     — decimal digits Clipper retains internally
+//
+// Result lands in `g_result_paths`, read with the existing
+// `getOffsetCounts` / `emitOffsetPathCounts` / `emitOffsetPoints` ABI.
+//
+// Returns 0 on success, -1 on degenerate input, -2 on internal failure.
+int32_t strokeOpenPaths(
+  const double* points,
+  const int32_t* path_counts,
+  int32_t path_count,
+  const double* widths,
+  double arc_tolerance,
+  int32_t precision
+) {
+  g_result_paths.clear();
+  if (path_count <= 0) return 0;
+  if (!points || !path_counts || !widths) return -1;
+
+  // Accumulate every segment-stroke footprint here; final pass unions
+  // the lot into `g_result_paths`. We call InflatePaths once per
+  // segment because each delta differs (variable width) and Clipper's
+  // single-call API takes only one delta. Per-segment cost is
+  // negligible (2-point path) and the final Union dominates.
+  PathsD accum;
+
+  try {
+    int32_t voff = 0;
+    for (int32_t pi = 0; pi < path_count; ++pi) {
+      const int32_t n = path_counts[pi];
+      if (n < 0) return -1;
+      if (n < 2) { voff += n; continue; }
+
+      // For each consecutive vertex pair: stroke a 2-point open path
+      // by half the average bead width with round caps.
+      for (int32_t i = 0; i < n - 1; ++i) {
+        const double w0 = widths[voff + i];
+        const double w1 = widths[voff + i + 1];
+        const double delta = (w0 + w1) * 0.25;  // avg(w)/2
+        if (delta <= 0.0) continue;
+
+        PathsD segment_in;
+        segment_in.emplace_back();
+        segment_in[0].emplace_back(points[(voff + i)     * 2],
+                                   points[(voff + i)     * 2 + 1]);
+        segment_in[0].emplace_back(points[(voff + i + 1) * 2],
+                                   points[(voff + i + 1) * 2 + 1]);
+
+        PathsD stroked = InflatePaths(
+          segment_in,
+          delta,
+          JoinType::Round,
+          EndType::Round,
+          2.0,
+          precision,
+          arc_tolerance >= 0 ? arc_tolerance : 0.0
+        );
+        for (auto& p : stroked) accum.push_back(std::move(p));
+      }
+
+      // Also union a disk at every vertex with radius = widths[i]/2.
+      // The per-segment EndType::Round caps cover most of the joint
+      // area, but at convex corners (especially 90° or sharper) the
+      // two adjacent caps cover only ~75% of the full disk around
+      // the joint, leaving a sliver of body uncovered diagonally
+      // OUTSIDE the corner. A vertex disk fills that consistently
+      // for every join angle.
+      //
+      // We synthesize the disk via InflatePaths on a single zero-
+      // length 2-point path. Clipper2 produces a circle of radius
+      // delta with EndType::Round.
+      for (int32_t i = 0; i < n; ++i) {
+        const double w = widths[voff + i];
+        const double delta = w * 0.5;
+        if (delta <= 0.0) continue;
+
+        const double vx = points[(voff + i) * 2];
+        const double vy = points[(voff + i) * 2 + 1];
+
+        PathsD disk_in;
+        disk_in.emplace_back();
+        disk_in[0].emplace_back(vx, vy);
+        // Tiny offset so the path has nonzero length — Clipper2
+        // skips zero-length paths. The offset is well below `precision`
+        // so it has no observable effect on the disk shape.
+        disk_in[0].emplace_back(vx + 1e-9, vy);
+
+        PathsD stroked = InflatePaths(
+          disk_in,
+          delta,
+          JoinType::Round,
+          EndType::Round,
+          2.0,
+          precision,
+          arc_tolerance >= 0 ? arc_tolerance : 0.0
+        );
+        for (auto& p : stroked) accum.push_back(std::move(p));
+      }
+      voff += n;
+    }
+
+    if (accum.empty()) return 0;
+    // Self-union to coalesce overlapping segment footprints into the
+    // final coverage polygon(s).
+    g_result_paths = Union(accum, FillRule::NonZero, precision);
+    return 0;
+  } catch (...) {
+    g_result_paths.clear();
+    return -2;
+  }
+}
+
 // Boolean op selector (matches the JS adapter's enum):
 //   0 = union, 1 = intersection, 2 = difference, 3 = xor.
 //

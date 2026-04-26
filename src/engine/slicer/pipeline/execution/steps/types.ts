@@ -17,6 +17,7 @@ import type {
 import type { SlicerGCodeFlavor } from '../../../../../types/slicer-gcode.types';
 import type { LayerTopology } from '../../../../../types/slicer-pipeline-layer-topology.types';
 import type { LayerControlFlags } from '../../../../../types/slicer-pipeline-layer-controls.types';
+import type { ArachneGenerationContext } from '../../arachne/types';
 
 export interface SlicerModelBBox {
   min: THREE.Vector3;
@@ -83,6 +84,7 @@ export interface SlicerExecutionPipeline {
     wallCount: number,
     wallLineWidth: number,
     outerWallInset: number,
+    context?: ArachneGenerationContext,
   ): GeneratedPerimeters;
   generateSupportForLayer(
     triangles: Triangle[],

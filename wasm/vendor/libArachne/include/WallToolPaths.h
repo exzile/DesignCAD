@@ -95,9 +95,11 @@ protected:
     static void stitchToolPaths(std::vector<VariableWidthLines>& toolpaths, const ArachneConfig& config);
 
     /*!
-     * Remove polylines shorter than half the smallest line width along that polyline.
+     * Remove very short open odd lines. Orca exposes the length threshold as
+     * a line-width multiplier and relaxes it for top/bottom layers to avoid
+     * visible top-surface gaps.
      */
-    static void removeSmallLines(std::vector<VariableWidthLines>& toolpaths);
+    static void removeSmallLines(std::vector<VariableWidthLines>& toolpaths, const ArachneConfig& config);
 
     /*!
      * Simplifies the variable-width toolpaths by calling the simplify on every line in the toolpath using the provided

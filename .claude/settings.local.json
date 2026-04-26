@@ -89,7 +89,9 @@
       "PowerShell($env:ARACHNE_BENCH = '1'; try { npx --prefix \"C:\\\\Users\\\\joeyp\\\\source\\\\repos\\\\exzile\\\\DesignCAD\\\\\" vitest --root \"C:\\\\Users\\\\joeyp\\\\source\\\\repos\\\\exzile\\\\DesignCAD\" run src/engine/slicer/pipeline/arachne/voronoiBench.test.ts 2>&1 | Select-String -Pattern 'bench|passed|failed|Test Files' | Select-Object -Last 10 } finally { Remove-Item Env:ARACHNE_BENCH })",
       "Bash(npx --prefix \"C:\\\\Users\\\\joeyp\\\\source\\\\repos\\\\exzile\\\\DesignCAD\" vitest --root \"C:\\\\Users\\\\joeyp\\\\source\\\\repos\\\\exzile\\\\DesignCAD\" run --reporter=verbose)",
       "Read(//c/Users/joeyp/.claude/memory//**)",
-      "Read(//c/Users/joeyp/.claude/projects/C--Users-joeyp-source-repos-exzile-DesignCAD/memory//**)"
+      "Read(//c/Users/joeyp/.claude/projects/C--Users-joeyp-source-repos-exzile-DesignCAD/memory//**)",
+      "PowerShell(powershell -ExecutionPolicy Bypass -File wasm\\\\build.ps1)",
+      "Bash(npx tsx *)"
     ]
   }
 }

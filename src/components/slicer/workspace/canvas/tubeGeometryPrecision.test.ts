@@ -204,30 +204,41 @@ describe('Preview tube — closed-loop precision', () => {
   });
 });
 
+// Open chains get rounded hemisphere caps at each end. The cap adds
+// K_CAP latitude rings per cap (each `ringSize` verts / `RADIAL × 2`
+// triangles) on top of the main-tube body. Closed chains have NO caps.
+const K_CAP = 4;
+
 describe('Preview tube — vertex count consistency', () => {
-  it('vertex count = ringCount × ringSize × 3 floats', () => {
+  it('vertex count = (body + caps) × ringSize × 3 floats', () => {
     const chain = makeChain([[0, 0], [10, 0], [20, 5]], 0.4, false, 'support');
     const geo = buildChainTube(chain, 0.2, 0.2);
     const positions = geo!.getAttribute('position').array as Float32Array;
-    expect(positions.length).toBe(3 * ringSize * 3);  // 3 rings × 9 verts × 3 floats
+    // 3 body rings + 2 × K_CAP cap rings.
+    const expectedRings = 3 + 2 * K_CAP;
+    expect(positions.length).toBe(expectedRings * ringSize * 3);
   });
 
-  it.each([2, 3, 4, 5, 8, 16] as const)('chain of %d points produces N rings', (n) => {
+  it.each([2, 3, 4, 5, 8, 16] as const)('chain of %d points produces N body rings + 2×K_CAP cap rings', (n) => {
     const points: Array<[number, number]> = Array.from({ length: n }, (_, i) => [i * 5, 0] as [number, number]);
     const chain = makeChain(points, 0.4, false, 'support');
     const geo = buildChainTube(chain, 0.2, 0.2);
     const positions = geo!.getAttribute('position').array as Float32Array;
-    expect(positions.length).toBe(n * ringSize * 3);
+    const expectedRings = n + 2 * K_CAP;
+    expect(positions.length).toBe(expectedRings * ringSize * 3);
   });
 });
 
 describe('Preview tube — index buffer correctness', () => {
-  it('index buffer has 6 indices per (segment × radial) for open chains', () => {
+  it('index buffer has 6 indices per (segment × radial) for the body, plus 2 × K_CAP × RADIAL × 6 for the caps', () => {
     const chain = makeChain([[0, 0], [10, 0], [20, 0]], 0.4, false);
     const geo = buildChainTube(chain, 0.2, 0.2);
     const indices = geo!.getIndex();
-    // 2 segments × RADIAL × 6 indices
-    expect(indices!.count).toBe(2 * RADIAL * 6);
+    // 2 body segments + 2 × K_CAP cap loops. Each loop = RADIAL × 2
+    // triangles × 3 indices = RADIAL × 6.
+    const bodyLoops = 2;
+    const capLoops = 2 * K_CAP;
+    expect(indices!.count).toBe((bodyLoops + capLoops) * RADIAL * 6);
   });
 
   it('index buffer has 6 × N × RADIAL for closed N-point chains', () => {

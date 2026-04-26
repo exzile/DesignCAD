@@ -27,6 +27,9 @@ struct ArachneConfig
     double simplify_max_area_deviation;
     bool print_thin_walls;
     bool fluid_motion_enabled;
+    double min_wall_length_factor;
+    bool is_top_or_bottom_layer;
+    bool precise_outer_wall;
 };
 
 #endif // DESIGNCAD_WASM_ARACHNE_CONFIG_H

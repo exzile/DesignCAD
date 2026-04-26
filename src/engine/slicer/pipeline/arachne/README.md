@@ -1,13 +1,15 @@
 # Arachne — variable-width wall generator
 
-This module is a TypeScript port of Cura's [Arachne wall generator](https://ultimaker.com/learn/arachne-engine-cura-5/),
-based on Vink et al. 2022 *"Beyond Meshes — Toolpath Generation in 3D Printing
-of Solid Objects"*. The goal is variable-width walls so narrow regions in a
-polygon (e.g. the gap between a hole and the model boundary) get a single
-fat wall instead of a snake of multiple fragmented thin walls.
+This module integrates Cura's [Arachne wall generator](https://ultimaker.com/learn/arachne-engine-cura-5/)
+through the libArachne WASM backend, based on Vink et al. 2022
+*"Beyond Meshes - Toolpath Generation in 3D Printing of Solid Objects"*.
+The goal is variable-width walls so narrow regions in a polygon (e.g. the gap
+between a hole and the model boundary) get a single fat wall instead of a snake
+of multiple fragmented thin walls.
 
 The classic fixed-width-offset generator in `../perimeters.ts` stays as a
-fallback (gated on `pp.useArachne`).
+profile-selectable fallback and recovery path when Arachne cannot return usable
+paths.
 
 ## Pipeline
 

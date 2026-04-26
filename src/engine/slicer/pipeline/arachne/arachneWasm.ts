@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 
 import type { PrintProfile } from '../../../../types/slicer';
-import type { ArachneBackend, VariableWidthPath } from './types';
+import type { ArachneBackend, ArachneGenerationContext, ArachneSectionType, VariableWidthPath } from './types';
 
 interface ArachneModule {
   HEAPF64: Float64Array;
@@ -51,7 +51,7 @@ export async function loadArachneModule(): Promise<ArachneModule> {
     if (typeof mod._arachneAnswer !== 'function' || mod._arachneAnswer() !== 1) {
       throw new Error('arachneWasm: module loaded but _arachneAnswer() check failed');
     }
-    if (mod._arachneConfigValueCount() !== 22) {
+    if (mod._arachneConfigValueCount() !== 25) {
       throw new Error('arachneWasm: module config ABI mismatch');
     }
     loadedModule = mod;
@@ -75,7 +75,19 @@ function flattenContours(
   };
 }
 
-/** Build the 22-field flat ArachneConfig buffer. Field order MUST match
+const SECTION_TYPE_ID: Record<ArachneSectionType, number> = {
+  wall: 1,
+  infill: 2,
+  skin: 3,
+  support: 4,
+  adhesion: 5,
+  ironing: 6,
+  mesh: 7,
+  dots: 8,
+  'concentric-infill': 9,
+};
+
+/** Build the 25-field flat ArachneConfig buffer. Field order MUST match
  *  `wasm/src/arachne_config.h`. Settings missing from the profile fall
  *  back to the libArachne defaults Cura ships with `wall_line_width = 0.4`
  *  for a typical 0.4mm nozzle. */
@@ -84,6 +96,7 @@ export function configValues(
   lineWidth: number,
   outerWallInset: number,
   printProfile: PrintProfile,
+  context: ArachneGenerationContext = {},
 ): Float64Array {
   const outerWidth = printProfile.outerWallLineWidth ?? lineWidth;
   const innerWidth = printProfile.innerWallLineWidth ?? lineWidth;
@@ -98,6 +111,10 @@ export function configValues(
   const transitionFilterDist = printProfile.wallTransitionFilterDistance ?? lineWidth * 0.25;
   const transitionFilterMargin = printProfile.wallTransitionFilterMargin ?? lineWidth * 0.0625;
   const wallDistribution = printProfile.wallDistributionCount ?? 1;
+  const sectionType = SECTION_TYPE_ID[context.sectionType ?? 'wall'];
+  const minWallLengthFactor = printProfile.minWallLengthFactor ?? 0.5;
+  const fluidMotionEnabled = printProfile.fluidMotionEnable === true;
+  const preciseOuterWall = printProfile.preciseOuterWall === true;
   // `printThinWalls` is the Cura-named field. Older profiles use
   // `thinWallDetection` as the same boolean. Either truthy enables.
   const enableThinWalls = (printProfile.printThinWalls ?? printProfile.thinWallDetection) !== false;
@@ -114,7 +131,7 @@ export function configValues(
     minFeature,                    // 8  min_feature_size
     minWallLW,                     // 9  min_bead_width
     wallDistribution,              // 10 wall_distribution_count
-    1,                             // 11 section_type (1 = walls)
+    sectionType,                   // 11 section_type
     0.01,                          // 12 meshfix_maximum_deviation
     minWallLW,                     // 13 min_wall_line_width
     minEvenLW,                     // 14 min_even_wall_line_width
@@ -124,7 +141,10 @@ export function configValues(
     0.01,                          // 18 simplify_max_deviation
     0.01,                          // 19 simplify_max_area_deviation
     enableThinWalls ? 1 : 0,       // 20 print_thin_walls
-    0,                             // 21 fluid_motion_enabled
+    fluidMotionEnabled ? 1 : 0,    // 21 fluid_motion_enabled
+    minWallLengthFactor,           // 22 min_wall_length_factor
+    context.isTopOrBottomLayer ? 1 : 0, // 23 is_top_or_bottom_layer
+    preciseOuterWall ? 1 : 0,      // 24 precise_outer_wall
   ]);
 }
 
@@ -136,13 +156,14 @@ function generatePathsWithModule(
   lineWidth: number,
   outerWallInset: number,
   printProfile: PrintProfile,
+  context: ArachneGenerationContext = {},
 ): VariableWidthPath[] {
   const { paths, pointCount } = flattenContours(outerContour, holeContours);
   if (paths.length === 0 || pointCount === 0) return [];
 
   const pointsPtr = mod._malloc(pointCount * 2 * 8);
   const countsPtr = mod._malloc(paths.length * 4);
-  const config = configValues(wallCount, lineWidth, outerWallInset, printProfile);
+  const config = configValues(wallCount, lineWidth, outerWallInset, printProfile, context);
   if (config.length !== mod._arachneConfigValueCount()) {
     throw new Error(`arachneWasm: configValues length ${config.length} != module ABI ${mod._arachneConfigValueCount()}`);
   }
@@ -260,6 +281,7 @@ export async function generateArachnePathsWasm(
   lineWidth: number,
   outerWallInset: number,
   printProfile: PrintProfile,
+  context?: ArachneGenerationContext,
 ): Promise<VariableWidthPath[]> {
   return generatePathsWithModule(
     await loadArachneModule(),
@@ -269,6 +291,7 @@ export async function generateArachnePathsWasm(
     lineWidth,
     outerWallInset,
     printProfile,
+    context,
   );
 }
 
@@ -279,10 +302,11 @@ export function generateArachnePathsWasmSync(
   lineWidth: number,
   outerWallInset: number,
   printProfile: PrintProfile,
+  context?: ArachneGenerationContext,
 ): VariableWidthPath[] | null {
   const mod = getLoadedArachneModule();
   if (!mod) return null;
-  return generatePathsWithModule(mod, outerContour, holeContours, wallCount, lineWidth, outerWallInset, printProfile);
+  return generatePathsWithModule(mod, outerContour, holeContours, wallCount, lineWidth, outerWallInset, printProfile, context);
 }
 
 export const arachneWasmBackend: ArachneBackend = {
@@ -294,6 +318,7 @@ export const arachneWasmBackend: ArachneBackend = {
     lineWidth: number,
     outerWallInset: number,
     printProfile: PrintProfile,
+    context?: ArachneGenerationContext,
   ) => {
     const paths = generateArachnePathsWasmSync(
       outerContour,
@@ -302,6 +327,7 @@ export const arachneWasmBackend: ArachneBackend = {
       lineWidth,
       outerWallInset,
       printProfile,
+      context,
     );
     if (!paths) throw new Error('arachneWasm: module not loaded');
     return paths;

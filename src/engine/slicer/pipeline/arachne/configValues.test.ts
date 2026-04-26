@@ -28,6 +28,9 @@ const FIELD = {
   simplify_max_area_deviation: 19,
   print_thin_walls: 20,
   fluid_motion_enabled: 21,
+  min_wall_length_factor: 22,
+  is_top_or_bottom_layer: 23,
+  precise_outer_wall: 24,
 } as const;
 
 const baseLineWidth = 0.4;
@@ -39,9 +42,9 @@ function build(overrides: Partial<PrintProfile> = {}): Float64Array {
 }
 
 describe('arachneWasm configValues — field mapping', () => {
-  it('emits exactly 22 fields (matches the libArachne ABI)', () => {
+  it('emits exactly 25 fields (matches the libArachne ABI)', () => {
     const buf = build();
-    expect(buf.length).toBe(22);
+    expect(buf.length).toBe(25);
   });
 
   it('passes wallCount/lineWidth/outerWallInset positionals straight through', () => {
@@ -115,10 +118,36 @@ describe('arachneWasm configValues — field mapping', () => {
     expect(buf[FIELD.print_thin_walls]).toBe(1);
   });
 
-  it('keeps section_type=1 (walls) and fluid_motion_enabled=0 as constants', () => {
+  it('keeps section_type=1 (walls) by default', () => {
     const buf = build();
     expect(buf[FIELD.section_type]).toBe(1);
+  });
+
+  it('threads region and top/bottom context for Arachne cleanup rules', () => {
+    const buf = configValues(baseWallCount, baseLineWidth, baseInset, {} as PrintProfile, {
+      sectionType: 'skin',
+      isTopOrBottomLayer: true,
+    });
+    expect(buf[FIELD.section_type]).toBe(3);
+    expect(buf[FIELD.is_top_or_bottom_layer]).toBe(1);
+  });
+
+  it('threads Orca min wall length factor, fluid motion, and precise wall settings', () => {
+    const buf = build({
+      minWallLengthFactor: 0.8,
+      fluidMotionEnable: true,
+      preciseOuterWall: true,
+    });
+    expect(buf[FIELD.min_wall_length_factor]).toBe(0.8);
+    expect(buf[FIELD.fluid_motion_enabled]).toBe(1);
+    expect(buf[FIELD.precise_outer_wall]).toBe(1);
+  });
+
+  it('defaults fluid motion, top/bottom, and precise wall to disabled', () => {
+    const buf = build();
     expect(buf[FIELD.fluid_motion_enabled]).toBe(0);
+    expect(buf[FIELD.is_top_or_bottom_layer]).toBe(0);
+    expect(buf[FIELD.precise_outer_wall]).toBe(0);
   });
 
   it('all values are finite (no NaN/Infinity leaks from undefined chains)', () => {

@@ -37,6 +37,45 @@ function differenceMultiPolygon(a: PCMultiPolygon, b: PCMultiPolygon): PCMultiPo
   return requireMP(booleanMultiPolygonClipper2Sync(a, b, 'difference'), 'difference');
 }
 
+function contourAreaAbs(contour: THREE.Vector2[]): number {
+  let area2 = 0;
+  for (let i = 0; i < contour.length; i++) {
+    const a = contour[i];
+    const b = contour[(i + 1) % contour.length];
+    area2 += a.x * b.y - b.x * a.y;
+  }
+  return Math.abs(area2) * 0.5;
+}
+
+function offsetByAreaIntent(
+  pipeline: SlicerExecutionPipeline,
+  contour: THREE.Vector2[],
+  distance: number,
+  intent: 'shrink' | 'grow',
+): THREE.Vector2[] {
+  const a = offsetContourFast(pipeline, contour, distance);
+  const b = offsetContourFast(pipeline, contour, -distance);
+  const areaA = a.length >= 3 ? contourAreaAbs(a) : intent === 'shrink' ? -Infinity : Infinity;
+  const areaB = b.length >= 3 ? contourAreaAbs(b) : intent === 'shrink' ? -Infinity : Infinity;
+  if (intent === 'shrink') return areaA <= areaB ? a : b;
+  return areaA >= areaB ? a : b;
+}
+
+function insetFillCenterlineRegion(
+  pipeline: SlicerExecutionPipeline,
+  contour: THREE.Vector2[],
+  holes: THREE.Vector2[][],
+  lineWidth: number,
+): { contour: THREE.Vector2[]; holes: THREE.Vector2[][] } | null {
+  const inset = lineWidth * 0.5;
+  const safeContour = offsetByAreaIntent(pipeline, contour, inset, 'shrink');
+  if (safeContour.length < 3) return null;
+  const safeHoles = holes
+    .map((hole) => offsetByAreaIntent(pipeline, hole, inset, 'grow'))
+    .filter((hole) => hole.length >= 3);
+  return { contour: safeContour, holes: safeHoles };
+}
+
 /** Profile fields read by `pickBridgeFanSpeed` — typed locally so the
  *  helper has zero dependency on the full `PrintProfile` shape. */
 export interface BridgeFanProfile {
@@ -98,7 +137,12 @@ export function emitContourInfill(
     if (isFirstLayer && isSolid && pp.initialLayerBottomFlow != null) emitter.currentLayerFlow = pp.initialLayerBottomFlow / 100;
 
     if (isSolid) {
-      const skinOverlap = ((pp.skinOverlapPercent ?? 0) / 100) * pp.infillLineWidth;
+      // On the first layer the visible bead footprint must not creep under
+      // walls. Region boundaries describe the wall-safe area, but scanline
+      // centerlines need an extra half-line inset because the actual bead has
+      // width. Keep first-layer skin overlap at zero; it was the blue fill
+      // extending into red/green wall strokes in preview.
+      const skinOverlap = isFirstLayer ? 0 : ((pp.skinOverlapPercent ?? 0) / 100) * pp.infillLineWidth;
       const totalExpand = skinOverlap + (isSolidTop ? (pp.topSkinExpandDistance ?? 0) : 0) + (isSolidBottom ? (pp.bottomSkinExpandDistance ?? 0) : 0);
       for (const region of infillRegions) {
         let skinContour = totalExpand > 0 ? offsetContourFast(slicer, region.contour, -totalExpand) : region.contour;
@@ -112,12 +156,14 @@ export function emitContourInfill(
         }
         const skinInput = skinContour.length >= 3 ? skinContour : region.contour;
         if (skinInput.length < 3) continue;
+        const safeSkinInput = insetFillCenterlineRegion(slicer, skinInput, region.holes, pp.infillLineWidth);
+        if (!safeSkinInput) continue;
         const skinPattern = (li === 0 && pp.bottomPatternInitialLayer) ? pp.bottomPatternInitialLayer : (pp.topBottomPattern === 'concentric' ? 'concentric' : 'lines');
         if (pp.topBottomLineDirections && pp.topBottomLineDirections.length > 0) {
           const angleDeg = pp.topBottomLineDirections[li % pp.topBottomLineDirections.length];
-          infillLines.push(...slicer.generateScanLines(skinInput, 100, pp.infillLineWidth, (angleDeg * Math.PI) / 180, 0, region.holes));
+          infillLines.push(...slicer.generateScanLines(safeSkinInput.contour, 100, pp.infillLineWidth, (angleDeg * Math.PI) / 180, 0, safeSkinInput.holes));
         } else {
-          infillLines.push(...slicer.generateLinearInfill(skinInput, 100, pp.infillLineWidth, li, skinPattern, region.holes));
+          infillLines.push(...slicer.generateLinearInfill(safeSkinInput.contour, 100, pp.infillLineWidth, li, skinPattern, safeSkinInput.holes));
         }
       }
       infillMoveType = 'top-bottom';
@@ -157,8 +203,10 @@ export function emitContourInfill(
       const infillOverlapMm = ((pp.infillOverlap ?? 10) / 100) * pp.infillLineWidth;
       for (const baseRegion of infillRegions) {
         const infillRegion = infillOverlapMm > 0 ? offsetContourFast(slicer, baseRegion.contour, -infillOverlapMm) : baseRegion.contour;
+        const safeInfillRegion = insetFillCenterlineRegion(slicer, infillRegion, baseRegion.holes, pp.infillLineWidth);
+        if (!safeInfillRegion) continue;
         const minInfFill = pp.minInfillArea ?? 0;
-        const infillRegionOk = minInfFill <= 0 || (() => { const b = slicer.contourBBox(infillRegion); return (b.maxX - b.minX) * (b.maxY - b.minY) >= minInfFill; })();
+        const infillRegionOk = minInfFill <= 0 || (() => { const b = slicer.contourBBox(safeInfillRegion.contour); return (b.maxX - b.minX) * (b.maxY - b.minY) >= minInfFill; })();
         if (!infillRegionOk) continue;
         const genPattern = (region: THREE.Vector2[], density: number, holes: THREE.Vector2[][]) => {
           if (pp.infillLineDirections && pp.infillLineDirections.length > 0) {
@@ -170,9 +218,9 @@ export function emitContourInfill(
           return slicer.generateLinearInfill(region, density, pp.infillLineWidth, li, pp.infillPattern, holes);
         };
         if (overhangShadowMP.length === 0) {
-          infillLines.push(...genPattern(infillRegion, effectiveDensity, baseRegion.holes));
+          infillLines.push(...genPattern(safeInfillRegion.contour, effectiveDensity, safeInfillRegion.holes));
         } else {
-          const infillRegionMP: PCMultiPolygon = [[slicer.contourToClosedPCRing(infillRegion), ...baseRegion.holes.map((hole) => slicer.contourToClosedPCRing(hole))]];
+          const infillRegionMP: PCMultiPolygon = [[slicer.contourToClosedPCRing(safeInfillRegion.contour), ...safeInfillRegion.holes.map((hole) => slicer.contourToClosedPCRing(hole))]];
           let boostedMP: PCMultiPolygon = [];
           let normalMP: PCMultiPolygon = infillRegionMP;
           try {
