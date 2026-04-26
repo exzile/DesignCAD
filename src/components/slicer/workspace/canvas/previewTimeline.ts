@@ -1,5 +1,5 @@
 import type { SliceMove, SliceResult } from '../../../../types/slicer';
-import type { MoveTimeline, BuildMoveTimelineOptions } from '../../../../types/slicer-timeline.types';
+import type { MoveTimeline, BuildMoveTimelineOptions, MoveTimelineEntry } from '../../../../types/slicer-timeline.types';
 export type { MoveTimeline, BuildMoveTimelineOptions } from '../../../../types/slicer-timeline.types';
 
 export function estimateMoveDistance(
@@ -44,16 +44,14 @@ export function buildMoveTimeline(
     zHopSpeed,
   } = options;
 
-  const flat: Array<{ move: SliceMove; z: number }> = [];
-  let totalMoves = 0;
-  for (const layer of sliceResult.layers) totalMoves += layer.moves.length;
-  const cumulative = new Float32Array(totalMoves);
-  const layerIndices = new Int32Array(totalMoves);
-  const moveWithinLayer = new Int32Array(totalMoves);
+  const flat: MoveTimelineEntry[] = [];
+  const cumulative: number[] = [];
+  const layerIndices: number[] = [];
+  const moveWithinLayer: number[] = [];
 
   let t = 0;
-  let i = 0;
   let prevLayerZ = 0;
+  let currentXY = { x: 0, y: 0 };
   let isRetracted = false;
   let extrudedSinceRetract = 0;
   const retractSpeedMm = Math.max(retractionRetractSpeed ?? retractionSpeed, 1e-6);
@@ -67,7 +65,27 @@ export function buildMoveTimeline(
       ? Math.max(initialLayerTravelSpeed ?? travelSpeed, 1e-6)
       : Math.max(travelSpeed, 1e-6);
     const zDistance = Math.abs(layer.z - prevLayerZ);
-    if (zDistance > 1e-6) t += zDistance / layerTravelSpeed;
+    const layerStartXY = layer.moves[0]?.from ?? currentXY;
+    if (zDistance > 1e-6) {
+      t += zDistance / layerTravelSpeed;
+      flat.push({
+        move: {
+          type: 'travel',
+          from: layerStartXY,
+          to: layerStartXY,
+          speed: layerTravelSpeed,
+          extrusion: 0,
+          lineWidth: 0,
+        },
+        z: layer.z,
+        fromZ: prevLayerZ,
+        toZ: layer.z,
+        layerChange: true,
+      });
+      cumulative.push(t);
+      layerIndices.push(layer.layerIndex);
+      moveWithinLayer.push(-1);
+    }
 
     for (let mi = 0; mi < layer.moves.length; mi++) {
       const move = layer.moves[mi];
@@ -99,18 +117,24 @@ export function buildMoveTimeline(
 
       const distance = estimateMoveDistance(move, fallbackLayerHeight, filamentDiameter);
       t += move.speed > 0 ? distance / move.speed : 0;
-      cumulative[i] = t;
-      layerIndices[i] = layer.layerIndex;
-      moveWithinLayer[i] = mi;
+      cumulative.push(t);
+      layerIndices.push(layer.layerIndex);
+      moveWithinLayer.push(mi);
       const moveZ = move.type === 'travel' && isRetracted && hopEnabled
         ? layer.z + zHopHeight
         : layer.z;
       flat.push({ move, z: moveZ });
-      i++;
+      currentXY = move.to;
     }
 
     prevLayerZ = layer.z;
   }
 
-  return { cumulative, moves: flat, layerIndices, moveWithinLayer, total: t };
+  return {
+    cumulative: Float32Array.from(cumulative),
+    moves: flat,
+    layerIndices: Int32Array.from(layerIndices),
+    moveWithinLayer: Int32Array.from(moveWithinLayer),
+    total: t,
+  };
 }

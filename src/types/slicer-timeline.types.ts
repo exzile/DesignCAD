@@ -1,8 +1,16 @@
 import type { SliceMove } from './slicer';
 
+export interface MoveTimelineEntry {
+  move: SliceMove;
+  z: number;
+  fromZ?: number;
+  toZ?: number;
+  layerChange?: boolean;
+}
+
 export interface MoveTimeline {
   cumulative: Float32Array;
-  moves: Array<{ move: SliceMove; z: number }>;
+  moves: MoveTimelineEntry[];
   layerIndices: Int32Array;
   moveWithinLayer: Int32Array;
   total: number;

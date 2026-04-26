@@ -46,7 +46,7 @@ const CHAIN_BREAK_DOT_THRESHOLD = -0.707;
 // Scratch colour reused during colour computation inside the tube builder.
 const _col = new THREE.Color();
 
-type ColorMode = 'type' | 'speed' | 'flow' | 'width' | 'layer-time';
+type ColorMode = 'type' | 'speed' | 'flow' | 'width' | 'layer-time' | 'wall-quality';
 
 // ---------------------------------------------------------------------------
 // LayerLines — chain-based tube rendering for a single layer
@@ -110,6 +110,23 @@ export function LayerLines({
     const flowRange  = Math.max(1e-9,  maxFlow  - minFlow);
     const widthRange = Math.max(0.001, maxWidth - minWidth);
 
+    // For 'wall-quality' mode: compute the layer's median wall width
+    // and color each wall move by its deviation. Variable-width Arachne
+    // tail-walls show up as blue (under-extrusion risk); transition-
+    // zone wider walls show as orange (over-extrusion risk). Non-wall
+    // moves dim to gray so walls are the focus.
+    let medianWallWidth = 0;
+    if (colorMode === 'wall-quality') {
+      const wallWidths: number[] = [];
+      for (const m of layer.moves) {
+        if (m.type === 'wall-outer' || m.type === 'wall-inner') {
+          if (m.lineWidth > 0) wallWidths.push(m.lineWidth);
+        }
+      }
+      wallWidths.sort((a, b) => a - b);
+      medianWallWidth = wallWidths[Math.floor(wallWidths.length / 2)] ?? 0.4;
+    }
+
     const colorOf = (move: SliceMove): [number, number, number] => {
       if (colorMode === 'type') {
         _col.copy(MOVE_TYPE_COLORS[move.type] ?? FALLBACK_COLOR);
@@ -122,6 +139,31 @@ export function LayerLines({
       } else if (colorMode === 'width') {
         const t = Math.max(0, Math.min(1, (move.lineWidth - minWidth) / widthRange));
         _col.copy(WIDTH_LOW_COLOR).lerp(WIDTH_HIGH_COLOR, t);
+      } else if (colorMode === 'wall-quality') {
+        // For walls only: paint by deviation from median wall width.
+        // - At target (±5%): bright green (good extrusion).
+        // - Under (≥5% narrower): blue (sub-target, under-extrusion risk).
+        // - Over (≥5% wider): orange (transition, over-extrusion risk).
+        // Non-wall moves dim to gray so walls are the visual focus —
+        // matches OrcaSlicer's "Inspect walls" behavior.
+        const isWall = move.type === 'wall-outer' || move.type === 'wall-inner';
+        if (!isWall || medianWallWidth <= 0) {
+          _col.setRGB(0.35, 0.35, 0.35);
+        } else {
+          const ratio = move.lineWidth / medianWallWidth; // 1.0 = nominal
+          if (ratio < 0.95) {
+            // under: gray → blue (more under = more blue)
+            const t = Math.max(0, Math.min(1, (0.95 - ratio) / 0.5));
+            _col.setRGB(0.4, 0.55, 0.85).multiplyScalar(0.6 + 0.4 * t);
+          } else if (ratio > 1.05) {
+            // over: gray → orange
+            const t = Math.max(0, Math.min(1, (ratio - 1.05) / 0.5));
+            _col.setRGB(0.95, 0.55, 0.2).multiplyScalar(0.6 + 0.4 * t);
+          } else {
+            // at target: bright green
+            _col.setRGB(0.3, 0.85, 0.4);
+          }
+        }
       } else {
         // layer-time: all beads in this layer share the same normalised colour.
         _col.copy(LAYER_TIME_LOW_COLOR).lerp(
@@ -172,6 +214,7 @@ export function LayerLines({
         extrusion: move.extrusion,
         lineWidth: move.lineWidth ?? 0.4,
         length: segLen,
+        moveIndex: i,
       };
 
       // Decide whether to extend the current chain, or break it and start

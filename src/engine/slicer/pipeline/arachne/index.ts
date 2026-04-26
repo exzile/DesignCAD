@@ -208,9 +208,18 @@ export function generatePerimetersArachne(
     // back to `(wallCount + 0.5) × lineWidth` if no usable points.
     const measuredCoverage = computeMaxPathInset(paths, outerContour, holeContours);
     const fallbackCoverage = (wallCount + 0.5) * lineWidth;
+    // Safety pad of 0.5×lineWidth past the measured envelope. The
+    // emit stage applies `infillOverlap` (default 10%) which expands
+    // infill back toward walls — so we need at least that much
+    // headroom or infill ends up inside the wall band again.
+    // Tighter pads (0.05×) failed in production because libArachne's
+    // actual wall placement isn't always at the simulated `(depth+0.5)
+    // ×lineWidth` offsets, and `computeMaxPathInset` only sees the
+    // emitted-path centerlines, not the bead's full inward extent
+    // when a path tail tapers asymmetrically.
     const insetDistance = outerWallInset
       + Math.max(measuredCoverage, fallbackCoverage)
-      + lineWidth * 0.05; // small safety pad to avoid touching the wall
+      + lineWidth * 0.5;
     const { innermostHoles, infillRegions } = computeArachneInfillGeometry(
       outerContour, holeContours, insetDistance, deps,
     );

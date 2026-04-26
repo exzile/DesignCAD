@@ -9,6 +9,11 @@ import type { StartEndMachineState } from '../../../types/slicer-gcode.types';
 import { fanSpeedToCommandArg } from './startEnd';
 import { shouldRetractOnTravel } from './travel';
 
+type TravelPoint = { x: number; y: number };
+type CircleObstacle = { kind: 'circle'; cx: number; cy: number; r: number };
+type SegmentObstacle = { kind: 'segment'; x1: number; y1: number; x2: number; y2: number; r: number };
+type TravelObstacle = CircleObstacle | SegmentObstacle;
+
 function createStartEndState(
   stateOwner: GCodeEmitter,
   relativeExtrusion: boolean,
@@ -68,7 +73,8 @@ export class GCodeEmitter {
    *  to detour travel moves around the hole interior. Each obstacle is
    *  the hole's enclosing circle (centroid + max-radius) — adequate for
    *  the typical mounting-hole shape and cheap to test against. */
-  private layerObstacles: { cx: number; cy: number; r: number }[] | null = null;
+  private layerObstacles: CircleObstacle[] | null = null;
+  private printedSegments: SegmentObstacle[] = [];
 
   constructor({
     gcode,
@@ -215,6 +221,7 @@ export class GCodeEmitter {
   /** Set the obstacle list for avoidCrossingPerimeters routing. Holes
    *  are approximated as enclosing circles (centroid + max-radius). */
   setLayerObstacles(holes: ReadonlyArray<ReadonlyArray<{ x: number; y: number }>>): void {
+    this.printedSegments = [];
     if (!holes || holes.length === 0) {
       this.layerObstacles = null;
       return;
@@ -230,7 +237,7 @@ export class GCodeEmitter {
         const d = Math.hypot(p.x - cx, p.y - cy);
         if (d > r) r = d;
       }
-      return { cx, cy, r };
+      return { kind: 'circle' as const, cx, cy, r };
     });
   }
 
@@ -306,13 +313,13 @@ export class GCodeEmitter {
    *  includes detour waypoints that route around blocking obstacles.
    *  Uses an iterative loop with bounded iterations rather than true
    *  recursion to avoid stack overflows on degenerate geometry. */
-  private routeTravelAroundObstacles(toX: number, toY: number): Array<{ x: number; y: number }> {
-    const obstacles = this.layerObstacles;
-    if (!this.print.avoidCrossingPerimeters || !obstacles || obstacles.length === 0) {
+  private routeTravelAroundObstacles(toX: number, toY: number): TravelPoint[] {
+    const obstacles = this.getTravelObstacles();
+    if (!this.print.avoidCrossingPerimeters || obstacles.length === 0) {
       return [{ x: toX, y: toY }];
     }
 
-    const path: Array<{ x: number; y: number }> = [];
+    const path: TravelPoint[] = [];
     let cursorX = this.currentX;
     let cursorY = this.currentY;
     const margin = 0.5;
@@ -331,23 +338,20 @@ export class GCodeEmitter {
 
       let blockingT = Infinity;
       let blockerIdx = -1;
-      let blocker: { cx: number; cy: number; r: number } | null = null;
+      let blocker: TravelObstacle | null = null;
+      let blockPoint: TravelPoint | null = null;
       for (let i = 0; i < obstacles.length; i++) {
         if (visited.has(i)) continue;
         const ob = obstacles[i];
-        const fcx = ob.cx - cursorX;
-        const fcy = ob.cy - cursorY;
-        const t = fcx * nx + fcy * ny;
-        if (t < -ob.r || t > len + ob.r) continue;
-        const px = cursorX + nx * t;
-        const py = cursorY + ny * t;
-        const perpDist = Math.hypot(ob.cx - px, ob.cy - py);
-        if (perpDist >= ob.r + margin) continue;
-        const enterT = t - Math.sqrt(Math.max(0, (ob.r + margin) * (ob.r + margin) - perpDist * perpDist));
-        if (enterT < blockingT) {
-          blockingT = enterT;
+        const hit = ob.kind === 'circle'
+          ? this.findCircleTravelBlock(cursorX, cursorY, nx, ny, len, ob, margin)
+          : this.findSegmentTravelBlock(cursorX, cursorY, toX, toY, ob, margin);
+        if (!hit || hit.t < margin) continue;
+        if (hit.t < blockingT) {
+          blockingT = hit.t;
           blocker = ob;
           blockerIdx = i;
+          blockPoint = hit.point;
         }
       }
       if (!blocker) break;
@@ -356,10 +360,16 @@ export class GCodeEmitter {
       const avoidDist = blocker.r + margin;
       const perpX = -ny;
       const perpY = nx;
-      const leftX = blocker.cx + perpX * avoidDist;
-      const leftY = blocker.cy + perpY * avoidDist;
-      const rightX = blocker.cx - perpX * avoidDist;
-      const rightY = blocker.cy - perpY * avoidDist;
+      const center = blocker.kind === 'circle'
+        ? { x: blocker.cx, y: blocker.cy }
+        : (blockPoint ?? {
+            x: (blocker.x1 + blocker.x2) * 0.5,
+            y: (blocker.y1 + blocker.y2) * 0.5,
+          });
+      const leftX = center.x + perpX * avoidDist;
+      const leftY = center.y + perpY * avoidDist;
+      const rightX = center.x - perpX * avoidDist;
+      const rightY = center.y - perpY * avoidDist;
       const distLeft = Math.hypot(cursorX - leftX, cursorY - leftY) + Math.hypot(leftX - toX, leftY - toY);
       const distRight = Math.hypot(cursorX - rightX, cursorY - rightY) + Math.hypot(rightX - toX, rightY - toY);
       const detour = distLeft <= distRight ? { x: leftX, y: leftY } : { x: rightX, y: rightY };
@@ -371,6 +381,82 @@ export class GCodeEmitter {
     return path;
   }
 
+  private getTravelObstacles(): TravelObstacle[] {
+    const obstacles: TravelObstacle[] = [];
+    if (this.layerObstacles) obstacles.push(...this.layerObstacles);
+    if ((this.print.avoidPrintedParts ?? true) || this.print.avoidSupports) {
+      obstacles.push(...this.printedSegments);
+    }
+    return obstacles;
+  }
+
+  private findCircleTravelBlock(
+    fromX: number,
+    fromY: number,
+    nx: number,
+    ny: number,
+    len: number,
+    obstacle: CircleObstacle,
+    margin: number,
+  ): { t: number; point: TravelPoint } | null {
+    const fcx = obstacle.cx - fromX;
+    const fcy = obstacle.cy - fromY;
+    const t = fcx * nx + fcy * ny;
+    if (t < -obstacle.r || t > len + obstacle.r) return null;
+    const px = fromX + nx * t;
+    const py = fromY + ny * t;
+    const clearance = obstacle.r + margin;
+    const perpDist = Math.hypot(obstacle.cx - px, obstacle.cy - py);
+    if (perpDist >= clearance) return null;
+    const enterT = t - Math.sqrt(Math.max(0, clearance * clearance - perpDist * perpDist));
+    if (enterT > len - margin || !Number.isFinite(enterT)) return null;
+    return { t: Math.max(0, enterT), point: { x: obstacle.cx, y: obstacle.cy } };
+  }
+
+  private findSegmentTravelBlock(
+    fromX: number,
+    fromY: number,
+    toX: number,
+    toY: number,
+    obstacle: SegmentObstacle,
+    margin: number,
+  ): { t: number; point: TravelPoint } | null {
+    const ax = fromX;
+    const ay = fromY;
+    const bx = toX;
+    const by = toY;
+    const cx = obstacle.x1;
+    const cy = obstacle.y1;
+    const dx = obstacle.x2;
+    const dy = obstacle.y2;
+    const ux = bx - ax;
+    const uy = by - ay;
+    const vx = dx - cx;
+    const vy = dy - cy;
+    const uu = ux * ux + uy * uy;
+    const vv = vx * vx + vy * vy;
+    if (uu < 1e-8 || vv < 1e-8) return null;
+    const wx = ax - cx;
+    const wy = ay - cy;
+    const uv = ux * vx + uy * vy;
+    const uw = ux * wx + uy * wy;
+    const vw = vx * wx + vy * wy;
+    const denom = uu * vv - uv * uv;
+    let s = denom > 1e-8 ? (uv * vw - vv * uw) / denom : 0;
+    s = Math.max(0, Math.min(1, s));
+    let q = (uv * s + vw) / vv;
+    q = Math.max(0, Math.min(1, q));
+    s = Math.max(0, Math.min(1, (uv * q - uw) / uu));
+
+    const px = ax + ux * s;
+    const py = ay + uy * s;
+    const ox = cx + vx * q;
+    const oy = cy + vy * q;
+    const clearance = obstacle.r + margin;
+    if (Math.hypot(px - ox, py - oy) >= clearance) return null;
+    return { t: Math.sqrt(uu) * s, point: { x: ox, y: oy } };
+  }
+
   extrudeTo(
     x: number,
     y: number,
@@ -379,6 +465,8 @@ export class GCodeEmitter {
     layerHeight: number,
   ): ExtrusionMoveResult {
     this.unretract();
+    const fromX = this.currentX;
+    const fromY = this.currentY;
     const dx = x - this.currentX;
     const dy = y - this.currentY;
     const dist = Math.sqrt(dx * dx + dy * dy);
@@ -397,6 +485,16 @@ export class GCodeEmitter {
     if (dist > 1e-6) {
       this.lastExtrudeDx = dx;
       this.lastExtrudeDy = dy;
+      if (lineWidth > 0) {
+        this.printedSegments.push({
+          kind: 'segment',
+          x1: fromX,
+          y1: fromY,
+          x2: x,
+          y2: y,
+          r: lineWidth * 0.5,
+        });
+      }
     }
     this.currentX = x;
     this.currentY = y;

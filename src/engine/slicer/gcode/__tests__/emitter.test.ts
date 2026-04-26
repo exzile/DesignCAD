@@ -3,6 +3,7 @@ import type {
   MaterialProfile,
   PrinterProfile,
   PrintProfile,
+  SliceMove,
 } from '../../../../types/slicer';
 
 import { GCodeEmitter } from '../emitter';
@@ -309,6 +310,106 @@ describe('GCodeEmitter — rawTravelTo', () => {
     emitter.rawTravelTo(10, 0, 100, 'lift to start');
     const g0 = gcode.find((l) => l.startsWith('G0 '));
     expect(g0).toMatch(/; lift to start/);
+  });
+});
+
+describe('GCodeEmitter — printed-part travel routing', () => {
+  const directTravelTestSetup = (print: Partial<PrintProfile> = {}) => {
+    const setup = makeEmitter({
+      material: { retractionDistance: 0 },
+      print: {
+        accelerationEnabled: false,
+        jerkEnabled: false,
+        avoidCrossingPerimeters: true,
+        ...print,
+      },
+    });
+    setup.emitter.extrudeTo(10, 0, 20, 0.4, 0.2);
+    setup.emitter.rawTravelTo(10, 5, 150);
+    setup.gcode.length = 0;
+    return setup;
+  };
+
+  it('detours avoidPrintedParts travels around already emitted extrusion segments', () => {
+    const { emitter, gcode } = directTravelTestSetup({ avoidPrintedParts: true });
+    const moves: SliceMove[] = [];
+
+    emitter.travelTo(0, -5, moves);
+
+    const travelLines = gcode.filter((line) => line.startsWith('G0 '));
+    expect(travelLines.length).toBeGreaterThan(1);
+    expect(moves.length).toBeGreaterThan(1);
+    expect(emitter.currentX).toBe(0);
+    expect(emitter.currentY).toBe(-5);
+  });
+
+  it('keeps direct travels when printed-part avoidance is disabled', () => {
+    const { emitter, gcode } = directTravelTestSetup({ avoidPrintedParts: false });
+    const moves: SliceMove[] = [];
+
+    emitter.travelTo(0, -5, moves);
+
+    const travelLines = gcode.filter((line) => line.startsWith('G0 '));
+    expect(travelLines).toHaveLength(1);
+    expect(moves).toHaveLength(1);
+  });
+
+  it('treats missing avoidPrintedParts as enabled for safer default routing', () => {
+    const { emitter, gcode } = directTravelTestSetup();
+    const moves: SliceMove[] = [];
+
+    emitter.travelTo(0, -5, moves);
+
+    expect(gcode.filter((line) => line.startsWith('G0 ')).length).toBeGreaterThan(1);
+    expect(moves.length).toBeGreaterThan(1);
+  });
+
+  it('does not detour printed segments when avoidCrossingPerimeters is disabled', () => {
+    const { emitter, gcode } = directTravelTestSetup({
+      avoidCrossingPerimeters: false,
+      avoidPrintedParts: true,
+    });
+    const moves: SliceMove[] = [];
+
+    emitter.travelTo(0, -5, moves);
+
+    expect(gcode.filter((line) => line.startsWith('G0 '))).toHaveLength(1);
+    expect(moves).toHaveLength(1);
+  });
+
+  it('clears printed-segment obstacles when a new layer obstacle set is applied', () => {
+    const { emitter, gcode } = directTravelTestSetup({ avoidPrintedParts: true });
+    const moves: SliceMove[] = [];
+
+    emitter.setLayerObstacles([]);
+    emitter.travelTo(0, -5, moves);
+
+    expect(gcode.filter((line) => line.startsWith('G0 '))).toHaveLength(1);
+    expect(moves).toHaveLength(1);
+  });
+
+  it('can emit multiple detour segments when a travel crosses several printed paths', () => {
+    const { emitter, gcode } = makeEmitter({
+      material: { retractionDistance: 0 },
+      print: {
+        accelerationEnabled: false,
+        jerkEnabled: false,
+        avoidCrossingPerimeters: true,
+        avoidPrintedParts: true,
+      },
+    });
+    const moves: SliceMove[] = [];
+
+    emitter.extrudeTo(10, 0, 20, 0.4, 0.2);
+    emitter.rawTravelTo(0, -2, 150);
+    emitter.extrudeTo(10, -2, 20, 0.4, 0.2);
+    emitter.rawTravelTo(10, 5, 150);
+    gcode.length = 0;
+
+    emitter.travelTo(0, -5, moves);
+
+    expect(gcode.filter((line) => line.startsWith('G0 ')).length).toBeGreaterThan(2);
+    expect(moves.length).toBeGreaterThan(2);
   });
 });
 

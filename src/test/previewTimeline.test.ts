@@ -54,8 +54,14 @@ describe('buildMoveTimeline', () => {
       travelSpeed: 10,
     });
 
-    expect(timeline.cumulative[0]).toBeCloseTo(1.03, 5);
-    expect(timeline.cumulative[1]).toBeCloseTo(2.05, 5);
+    expect(timeline.moves[0].layerChange).toBe(true);
+    expect(timeline.moves[0].fromZ).toBeCloseTo(0, 5);
+    expect(timeline.moves[0].toZ).toBeCloseTo(0.3, 5);
+    expect(timeline.cumulative[0]).toBeCloseTo(0.03, 5);
+    expect(timeline.cumulative[1]).toBeCloseTo(1.03, 5);
+    expect(timeline.moves[2].layerChange).toBe(true);
+    expect(timeline.cumulative[2]).toBeCloseTo(1.05, 5);
+    expect(timeline.cumulative[3]).toBeCloseTo(2.05, 5);
   });
 
   it('adds retract, hop, and unretract timing around qualifying travels', () => {
@@ -104,8 +110,8 @@ describe('buildMoveTimeline', () => {
       zHopSpeed: 8,
     });
 
-    expect(timeline.cumulative[1]).toBeGreaterThan(timeline.cumulative[0] + 2);
-    expect(timeline.cumulative[2] - timeline.cumulative[1]).toBeGreaterThan(0.1);
-    expect(timeline.moves[1].z).toBeCloseTo(0.6, 5);
+    expect(timeline.cumulative[2]).toBeGreaterThan(timeline.cumulative[1] + 2);
+    expect(timeline.cumulative[3] - timeline.cumulative[2]).toBeGreaterThan(0.1);
+    expect(timeline.moves[2].z).toBeCloseTo(0.6, 5);
   });
 });

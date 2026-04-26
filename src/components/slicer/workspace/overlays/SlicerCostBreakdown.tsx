@@ -1,7 +1,19 @@
 import { useMemo, useState } from 'react';
-import { Clock, DollarSign, Scale, Layers as LayersIcon, ChevronDown, ChevronUp, X } from 'lucide-react';
+import {
+  AlertTriangle,
+  Clock,
+  DollarSign,
+  Info,
+  Layers as LayersIcon,
+  Scale,
+  ChevronDown,
+  ChevronUp,
+  X,
+} from 'lucide-react';
 import { useSlicerStore } from '../../../../store/slicerStore';
 import type { SliceLayer, SliceMove } from '../../../../types/slicer';
+import { computeSliceStats, detectPrintIssues } from '../preview/sliceStats';
+import type { PrintIssue } from '../preview/sliceStats';
 import './SlicerCostBreakdown.css';
 
 // Group move types into a user-friendly category. Matches the colour legend.
@@ -60,10 +72,48 @@ function formatTime(seconds: number): string {
   return `${s}s`;
 }
 
+type IssueGroup = {
+  kind: PrintIssue['kind'];
+  severity: PrintIssue['severity'];
+  total: number;
+  samples: PrintIssue[];
+};
+
+function groupPrintIssues(issues: PrintIssue[]): IssueGroup[] {
+  const groups = new Map<string, IssueGroup>();
+  for (const issue of issues) {
+    const key = `${issue.kind}:${issue.severity}`;
+    let group = groups.get(key);
+    if (!group) {
+      group = {
+        kind: issue.kind,
+        severity: issue.severity,
+        total: 0,
+        samples: [],
+      };
+      groups.set(key, group);
+    }
+    group.total++;
+    if (group.samples.length < 5) group.samples.push(issue);
+  }
+
+  return [...groups.values()].sort((a, b) => {
+    if (a.severity !== b.severity) return a.severity === 'warning' ? -1 : 1;
+    return b.total - a.total;
+  });
+}
+
+function formatIssueKind(kind: PrintIssue['kind']): string {
+  return kind.replace(/-/g, ' ');
+}
+
 export function SlicerCostBreakdown() {
   const sliceResult = useSlicerStore((s) => s.sliceResult);
   const material = useSlicerStore((s) => s.getActiveMaterialProfile());
+  const printer = useSlicerStore((s) => s.getActivePrinterProfile());
   const plateObjects = useSlicerStore((s) => s.plateObjects);
+  const previewLayer = useSlicerStore((s) => s.previewLayer);
+  const setPreviewLayer = useSlicerStore((s) => s.setPreviewLayer);
 
   const [expanded, setExpanded] = useState(true);
   const [dismissed, setDismissed] = useState(false);
@@ -78,6 +128,24 @@ export function SlicerCostBreakdown() {
   );
 
   const totalSeconds = breakdown.reduce((n, b) => n + b.seconds, 0);
+
+  const sliceStats = useMemo(
+    () => (sliceResult
+      ? computeSliceStats(sliceResult, {
+          diameterMm: printer?.filamentDiameter ?? 1.75,
+          densityGPerCm3: material?.density ?? 1.24,
+          costPerKg: material?.costPerKg,
+        })
+      : null),
+    [sliceResult, printer?.filamentDiameter, material?.density, material?.costPerKg],
+  );
+
+  const printIssues = useMemo(
+    () => (sliceResult && sliceStats ? detectPrintIssues(sliceResult, sliceStats) : []),
+    [sliceResult, sliceStats],
+  );
+
+  const issueGroups = useMemo(() => groupPrintIssues(printIssues), [printIssues]);
 
   if (!sliceResult || dismissed) return null;
 
@@ -187,6 +255,62 @@ export function SlicerCostBreakdown() {
                 ))}
               </div>
             </>
+          )}
+
+          <div className="slicer-cost-breakdown__section-title">
+            Print issues
+            {printIssues.length > 0 && (
+              <span className="slicer-cost-breakdown__section-count">{printIssues.length}</span>
+            )}
+          </div>
+          {issueGroups.length > 0 ? (
+            <div className="slicer-cost-breakdown__issues">
+              {issueGroups.map((group) => (
+                <div
+                  key={`${group.kind}:${group.severity}`}
+                  className={`slicer-cost-breakdown__issue slicer-cost-breakdown__issue--${group.severity}`}
+                >
+                  <div className="slicer-cost-breakdown__issue-header">
+                    <span className="slicer-cost-breakdown__issue-icon">
+                      {group.severity === 'warning' ? <AlertTriangle size={12} /> : <Info size={12} />}
+                    </span>
+                    <span className="slicer-cost-breakdown__issue-title">
+                      {formatIssueKind(group.kind)}
+                    </span>
+                    {group.total > 1 && (
+                      <span className="slicer-cost-breakdown__issue-count">
+                        x{group.total}
+                      </span>
+                    )}
+                  </div>
+                  <div className="slicer-cost-breakdown__issue-message">
+                    {group.samples[0].message}
+                  </div>
+                  <div className="slicer-cost-breakdown__issue-layers">
+                    {group.samples.map((issue) => (
+                      <button
+                        key={`${issue.kind}-${issue.layerIndex}`}
+                        type="button"
+                        className={`slicer-cost-breakdown__issue-layer${issue.layerIndex === previewLayer ? ' is-active' : ''}`}
+                        onClick={() => setPreviewLayer(issue.layerIndex)}
+                        title={`Jump to layer ${issue.layerIndex}`}
+                      >
+                        L{issue.layerIndex}
+                      </button>
+                    ))}
+                    {group.total > group.samples.length && (
+                      <span className="slicer-cost-breakdown__issue-more">
+                        +{group.total - group.samples.length}
+                      </span>
+                    )}
+                  </div>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <div className="slicer-cost-breakdown__issues-empty">
+              No detected issues
+            </div>
           )}
 
           {/* Labor rate slider */}

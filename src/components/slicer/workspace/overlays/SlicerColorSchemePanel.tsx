@@ -49,13 +49,14 @@ export function SlicerColorSchemePanel() {
         <select
           className="slicer-cs-panel__mode-select"
           value={colorMode}
-          onChange={(e) => setColorMode(e.target.value as 'type' | 'speed' | 'flow' | 'width' | 'layer-time')}
+          onChange={(e) => setColorMode(e.target.value as 'type' | 'speed' | 'flow' | 'width' | 'layer-time' | 'wall-quality')}
         >
           <option value="type">Line Type</option>
           <option value="speed">Speed</option>
           <option value="flow">Flow Rate</option>
           <option value="width">Line Width</option>
           <option value="layer-time">Layer Time</option>
+          <option value="wall-quality">Wall Quality</option>
         </select>
       </div>
 

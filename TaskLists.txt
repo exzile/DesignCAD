@@ -96,6 +96,5 @@
 # ============================================================================
 # PREVIEW / DIAGNOSTICS
 # ============================================================================
-- [s] Nozzle simulation layer-change timing - current move timeline does not
-      account for explicit Z-only layer-change motion, so preview playback can
-      run faster than emitted G-code on tall / many-layer parts
+- [x] Nozzle simulation layer-change timing - move timeline now models
+      explicit Z-only layer-change motion as first-class preview entries

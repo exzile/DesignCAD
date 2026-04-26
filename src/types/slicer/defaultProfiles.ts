@@ -334,6 +334,7 @@ export const DEFAULT_PRINT_PROFILES: PrintProfile[] = [
     zSeamAlignment: 'sharpest_corner', // z_seam_type = 'sharpest_corner'
     combingMode: 'all',            // retraction_combing = 'all'
     avoidCrossingPerimeters: true, // travel_avoid_other_parts = true
+    avoidPrintedParts: true,
     thinWallDetection: true,       // fill_outline_gaps = true
     wallGenerator: 'arachne',      // libArachne (WASM) variable-width walls with transition zones
     arachneBackend: 'wasm',        // libArachne via WASM is the production backend post ARACHNE-9

@@ -56,6 +56,11 @@ export function HoverTooltip({
         <div>Width: <b>{info.lineWidth.toFixed(2)}</b> mm</div>
         <div>Len:&nbsp;&nbsp;&nbsp;<b>{info.length.toFixed(1)}</b> mm</div>
         <div>E:&nbsp;&nbsp;&nbsp;&nbsp;<b>{info.extrusion.toFixed(3)}</b> mm</div>
+        {typeof info.moveIndex === 'number' && (
+          <div style={{ opacity: 0.6, fontSize: 10, marginTop: 2 }}>
+            Move #{info.moveIndex + 1}
+          </div>
+        )}
       </div>
     </Html>
   );

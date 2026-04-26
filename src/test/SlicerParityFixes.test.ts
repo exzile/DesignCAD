@@ -17,6 +17,11 @@ describe('Slicer parity fixes', () => {
       maxCombDistanceNoRetract: 6,
       retractionMinTravel: 1.5,
       wallLineWidth: 0.4,
+      // Default profile flips `avoidPrintedParts: true`, which makes
+      // `forceRetract` always true and bypasses the short-travel
+      // exemption we're testing here. Disable for this scenario.
+      avoidPrintedParts: false,
+      avoidSupports: false,
     };
     const slicer = new Slicer(printer, material, print) as unknown as {
       shouldRetractOnTravel: (dist: number, extrudedSinceRetract: number, pp: typeof print) => boolean;

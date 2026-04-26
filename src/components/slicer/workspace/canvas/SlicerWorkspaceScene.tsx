@@ -7,6 +7,9 @@ import { buildMoveTimeline } from './previewTimeline';
 import { AxisIndicators, BuildPlateGrid, BuildVolumeWireframe, PlateObjectMesh } from './scenePrimitives';
 import { computeRange, computeLayerTimeRange } from '../preview/utils';
 import { Legend } from '../preview/Legend';
+import { computeSliceStats, detectPrintIssues, extractZSeamPoints } from '../preview/sliceStats';
+import { ZSeamMarkers } from '../preview/ZSeamMarkers';
+import { RiskMarkers } from '../preview/RiskMarkers';
 import { LayerHeightIndicator } from '../preview/BuildVolume';
 import { SectionPlaneController } from './SectionPlaneController';
 import { NozzleSimulator, NozzleTrail } from './NozzleSim';
@@ -168,9 +171,30 @@ export function SlicerWorkspaceScene() {
     }
     return {
       layerIndex: moveTimeline.layerIndices[lo],
-      moveCount: moveTimeline.moveWithinLayer[lo] + 1,
+      moveCount: Math.max(0, moveTimeline.moveWithinLayer[lo] + 1),
     };
   }, [previewSimEnabled, moveTimeline, previewSimTime, previewLayer]);
+
+  // Aggregated slice statistics — drives sparklines, issues panel, and
+  // the per-feature breakdown. Memoised on the slice result identity.
+  const sliceStats = useMemo(() => {
+    if (!sliceResult) return null;
+    return computeSliceStats(sliceResult, {
+      diameterMm: printerProfile?.filamentDiameter ?? 1.75,
+      densityGPerCm3: materialProfile?.density ?? 1.24,
+      costPerKg: materialProfile?.costPerKg,
+    });
+  }, [sliceResult, printerProfile?.filamentDiameter, materialProfile?.density, materialProfile?.costPerKg]);
+
+  const printIssues = useMemo(() => {
+    if (!sliceResult || !sliceStats) return [];
+    return detectPrintIssues(sliceResult, sliceStats);
+  }, [sliceResult, sliceStats]);
+
+  const seamPointsAtCurrentLayer = useMemo(() => {
+    const layer = sliceResult?.layers[simState.layerIndex];
+    return layer ? extractZSeamPoints(layer) : [];
+  }, [sliceResult, simState.layerIndex]);
 
   // Legend props — computed once per layer scrub, not per frame.
   const currentLayerData = sliceResult?.layers[simState.layerIndex] ?? null;
@@ -257,7 +281,38 @@ export function SlicerWorkspaceScene() {
             currentZ={currentLayerData?.z ?? 0}
             layerTime={currentLayerData?.layerTime ?? 0}
             range={legendRange}
+            totalLayers={sliceResult?.layers.length}
+            layerTimeSeries={sliceResult?.layers.map((l) => l.layerTime)}
+            layerFilamentSeries={sliceStats?.perLayerFilamentMm}
+            layerTravelRatioSeries={sliceStats
+              ? sliceStats.perLayerExtrudeMm.map((ext, i) => {
+                  const trv = sliceStats.perLayerTravelMm[i];
+                  const total = ext + trv;
+                  return total > 0 ? trv / total : 0;
+                })
+              : undefined}
+            widthSamples={previewColorMode === 'width' && currentLayerData
+              ? currentLayerData.moves
+                  .filter((m) => m.type !== 'travel' && m.lineWidth > 0)
+                  .map((m) => m.lineWidth)
+              : undefined}
+            layerMoveCounts={currentLayerData ? {
+              extrude: currentLayerData.moves.filter((m) => m.type !== 'travel').length,
+              travel:  currentLayerData.moves.filter((m) => m.type === 'travel').length,
+            } : undefined}
           />
+          {seamPointsAtCurrentLayer.length > 0 && (
+            <ZSeamMarkers
+              points={seamPointsAtCurrentLayer}
+              z={currentLayerData?.z ?? 0}
+            />
+          )}
+          {currentLayerData && printIssues.length > 0 && (
+            <RiskMarkers
+              issues={printIssues.filter((i) => i.layerIndex === simState.layerIndex)}
+              z={currentLayerData.z}
+            />
+          )}
           {hoverInfo && (
             <HoverTooltip
               info={hoverInfo}

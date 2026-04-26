@@ -50,8 +50,8 @@ export function NozzleTrail({
     let count = 0;
 
     for (let i = lo; i >= 0 && count < NOZZLE_TRAIL_MOVE_COUNT; i--) {
-      const { move, z } = timeline.moves[i];
-      if (move.extrusion <= 0) continue; // skip travel/retract
+      const { move, z, layerChange } = timeline.moves[i];
+      if (layerChange || move.extrusion <= 0) continue; // skip travel/retract/Z-only moves
 
       let toX = move.to.x;
       let toY = move.to.y;
@@ -138,13 +138,16 @@ export function NozzleSimulator({
       if (cum[mid] < clampedT) lo = mid + 1;
       else hi = mid;
     }
-    const { move, z } = timeline.moves[lo];
+    const { move, z, fromZ, toZ } = timeline.moves[lo];
     const prevCum = lo > 0 ? cum[lo - 1] : 0;
     const moveDur = Math.max(1e-6, cum[lo] - prevCum);
     const alpha = Math.max(0, Math.min(1, (clampedT - prevCum) / moveDur));
     const x = move.from.x + (move.to.x - move.from.x) * alpha;
     const y = move.from.y + (move.to.y - move.from.y) * alpha;
-    return _nozzlePos.set(x, y, z + 0.2);
+    const currentZ = fromZ !== undefined && toZ !== undefined
+      ? fromZ + (toZ - fromZ) * alpha
+      : z;
+    return _nozzlePos.set(x, y, currentZ + 0.2);
   }, [timeline, simTime]);
 
   return (

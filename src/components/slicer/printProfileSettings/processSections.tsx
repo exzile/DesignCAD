@@ -104,7 +104,7 @@ export function TravelSection({ print, upd, isVisible, showHelp }: PrintSettings
       </Tier>
       <Tier min="advanced">
         <AdvancedDivider label="Advanced Â· Avoidance" />
-        <Check label="Avoid Printed Parts When Traveling" value={print.avoidPrintedParts ?? false} onChange={(v) => upd({ avoidPrintedParts: v })} helpBrief={getSettingHelp('avoidPrintedParts')?.brief} onShowHelp={() => showHelp('avoidPrintedParts', 'Avoid Printed Parts')} />
+        <Check label="Avoid Printed Parts When Traveling" value={print.avoidPrintedParts ?? true} onChange={(v) => upd({ avoidPrintedParts: v })} helpBrief={getSettingHelp('avoidPrintedParts')?.brief} onShowHelp={() => showHelp('avoidPrintedParts', 'Avoid Printed Parts')} />
         <Check label="Avoid Supports When Traveling" value={print.avoidSupports ?? false} onChange={(v) => upd({ avoidSupports: v })} helpBrief={getSettingHelp('avoidSupports')?.brief} onShowHelp={() => showHelp('avoidSupports', 'Avoid Supports')} />
         <Num label="Max Comb Distance w/o Retract" unit="mm" value={print.maxCombDistanceNoRetract ?? 0} step={1} min={0} max={1000} onChange={(v) => upd({ maxCombDistanceNoRetract: v })} helpBrief={getSettingHelp('maxCombDistanceNoRetract')?.brief} onShowHelp={() => showHelp('maxCombDistanceNoRetract', 'Max Comb Distance')} />
         <Num label="Travel Avoid Distance" unit="mm" value={print.travelAvoidDistance ?? 0.625} step={0.05} min={0} max={10} onChange={(v) => upd({ travelAvoidDistance: v })} helpBrief={getSettingHelp('travelAvoidDistance')?.brief} onShowHelp={() => showHelp('travelAvoidDistance', 'Travel Avoid Distance')} />

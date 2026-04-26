@@ -14,6 +14,9 @@ export interface ShaftMoveData {
   extrusion: number;
   lineWidth: number;
   length: number;
+  /** 0-based index of the source SliceMove inside its layer. Useful for
+   *  debugging and for the future g-code-text-panel sync feature. */
+  moveIndex?: number;
 }
 
 /** Full hover info passed to the tooltip renderer. */
