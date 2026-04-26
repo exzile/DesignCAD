@@ -1,0 +1,12 @@
+# Build output is checked in (ARACHNE-9 ships .wasm in the bundle).
+# Anything inside dist/ is intentionally tracked. Ignore only transient
+# build artifacts that em++ may drop alongside.
+*.o
+*.obj
+*.tmp
+
+# Local toolchain — emsdk + vendored Boost headers. Do not commit
+# (~1GB). The Dockerfile is the canonical reproducible build; this
+# directory is the no-Docker fallback for dev machines that already
+# have git+python.
+.toolchain/

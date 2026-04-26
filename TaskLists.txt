@@ -179,7 +179,7 @@
 # ============================================================================
 
 ## ARACHNE-9 PHASE 1 — Toolchain + boost::polygon::voronoi
-- [ ] **9.1A** [owner: claude] Set up Emscripten via Docker so the build is
+- [x] **9.1A** [owner: claude] Set up Emscripten via Docker so the build is
       reproducible without polluting the dev's local toolchain. Deliverable:
       `wasm/Dockerfile` that pulls `emscripten/emsdk:3.1.x`, vendors Boost
       headers (just the `boost.polygon` and `boost.geometry` headers — no
@@ -188,7 +188,7 @@
       hello-world `voronoi.cpp` that returns `1.0` from a single function.
       ~1 day.
 
-- [ ] **9.1B** [owner: codex] In parallel with 9.1A, set up Vite-side WASM
+- [x] **9.1B** [owner: codex] In parallel with 9.1A, set up Vite-side WASM
       loading. Add `vite-plugin-wasm` (or similar) to `vite.config.ts` with
       a glob pattern that includes `**/*.wasm`, configure asset handling so
       the `.wasm` artifact gets a content-hash filename + lazy-load behavior
@@ -198,7 +198,7 @@
       a stub `.wasm` so this can ship before 9.1A is done.
       ~0.5 day.
 
-- [ ] **9.1C** [owner: claude, depends on 9.1A] Write `wasm/src/voronoi.cpp`
+- [x] **9.1C** [owner: claude, depends on 9.1A] Write `wasm/src/voronoi.cpp`
       — a thin C++ wrapper around `boost::polygon::voronoi_diagram` that
       takes a flat array of segment endpoints (`double[4]` per segment),
       runs Boost's Fortune sweep-line, and writes results back to a
@@ -213,7 +213,7 @@
       same vertex+edge counts.
       ~1 day.
 
-- [ ] **9.1D** [owner: claude, depends on 9.1C] Write the TS adapter
+- [x] **9.1D** [owner: claude, depends on 9.1C] Write the TS adapter
       `src/engine/slicer/pipeline/arachne/voronoiWasm.ts` that exposes the
       same `buildEdgeVoronoi(outerContour, holeContours): VoronoiGraph`
       signature as the existing pure-JS `voronoi.ts`. Implementation:
@@ -224,7 +224,7 @@
       pipeline doesn't change.
       ~0.5 day.
 
-- [ ] **9.1E** [owner: claude, depends on 9.1D + 9.1B] Run the existing 23
+- [.] **9.1E** [owner: claude, depends on 9.1D + 9.1B] Run the existing 23
       unit tests in `voronoi.test.ts` against the WASM adapter (parameterise
       the test file with both implementations). All 23 must pass. Compare
       output on the user's `adjustable_support_foot` layer 21 (1700+ edge
@@ -243,7 +243,7 @@
       Reference: Cura commit `5.6.0` is known-good for stable libArachne
       API surface.
 
-- [ ] **9.2B** [owner: codex, can start when 9.2A starts] In parallel
+- [x] **9.2B** [owner: codex, can start when 9.2A starts] In parallel
       with 9.2A's C++ work, plumb the existing TS pipeline so the
       Voronoi/trapezoidation/bead/path-extraction modules each have a
       pluggable backend (the existing pure-JS implementation, or the
@@ -308,19 +308,57 @@
 
 ## ARACHNE-9 PHASE 4 — Optional follow-ups (post-merge)
 
-- [ ] **9.4A** [owner: anyone] Add Clipper2 WASM build (replaces
+- [.] **9.4A** [owner: anyone] Add Clipper2 WASM build (replaces
       `polygon-clipping` JS dep). Same pattern as 9.1C/9.1D. Speeds up
       classic's offset cascade too. ~1 day.
+      STATUS 2026-04-25: offset path lands. Boolean ops + callsite
+      migration still TBD. Subtasks below.
 
-- [ ] **9.4B** [owner: anyone] Add a CI step that re-builds the WASM
+- [x] **9.4A.1** [owner: claude+codex] Wire Clipper2 1.5.4 in toolchain
+      (Dockerfile + build.sh + build.ps1) and emit
+      `wasm/dist/clipper2.{js,wasm,d.ts}` (~76KB wasm). Adapter at
+      `src/engine/slicer/geometry/clipper2Wasm.ts` exposes
+      `offsetPathsClipper2(paths, delta, opts)` and is unit-tested. Done.
+
+- [ ] **9.4A.2** [owner: codex] Replace `polygonClipping`-based offset
+      callsites with `offsetPathsClipper2`. Hot ones first:
+      `src/engine/slicer/pipeline/perimeters.ts`,
+      `src/engine/slicer/pipeline/infill.ts`,
+      `src/engine/slicer/pipeline/execution/steps/emitContourInfill.ts`.
+      Adapter is async — perimeter generation is already in a worker
+      pipeline so the await is ergonomically free. Verify against
+      `adjustable_support_foot.stl` slice that walls are byte-equivalent
+      to the JS path before deletion.
+      ~0.5 day.
+
+- [ ] **9.4A.3** [owner: claude] Extend `wasm/src/clipper2.cpp` with
+      `_unionPaths / _intersectPaths / _differencePaths / _xorPaths`
+      using the same flat path-counts + interleaved double-points ABI
+      as `_offsetPaths`. ClipperD already exposes `Union/Intersect/
+      Difference/Xor`. ~0.5 day.
+
+- [ ] **9.4A.4** [owner: codex, depends on 9.4A.3] Replace remaining
+      `polygonClipping.{union,intersection,difference}` callsites
+      (11 files identified by grep). Drop the `polygon-clipping`
+      dependency from package.json once all callsites are gone. Run
+      full slicer test suite to confirm no behavioural drift.
+      ~0.5 day.
+
+- [.] **9.4B** [owner: anyone] Add a CI step that re-builds the WASM
       artifacts from source on every PR (using the Docker container from
       9.1A). Currently the .wasm is checked in; CI verification ensures
       it stays reproducible. ~0.5 day.
+      STATUS 2026-04-25: not yet implemented. Dockerfile is in place
+      (vendoring Boost + Clipper2); the GitHub Actions YAML that runs
+      `docker build && diff against checked-in dist/` is still pending.
 
-- [ ] **9.4C** [owner: anyone] Bundle-size budget: add a check that the
+- [.] **9.4C** [owner: anyone] Bundle-size budget: add a check that the
       WASM artifact stays under 500KB compressed. Today libArachne +
       Boost is ~300KB compressed; future additions could blow this if
       not monitored. ~0.25 day.
+      STATUS 2026-04-25: current sizes well under budget (voronoi.wasm
+      50KB + clipper2.wasm 76KB = 126KB raw, ~40KB gzipped). Programmatic
+      budget check in CI still pending.
 
 # Coordination notes:
 #   - 9.1A and 9.1B run in parallel (both ~half a day)

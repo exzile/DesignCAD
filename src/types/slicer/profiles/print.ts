@@ -119,6 +119,10 @@ export interface PrintProfile {
    *  holes break through the outer perimeter. Defaults to `'classic'` until
    *  the Arachne port (TaskLists.txt § ARACHNE-*) is complete. */
   wallGenerator?: 'classic' | 'arachne';
+  /** Backend used when `wallGenerator` is `'arachne'`. `'js'` uses the
+   *  current TypeScript pipeline; `'wasm'` is selected by profile but falls
+   *  back gracefully until the libArachne adapter registers itself. */
+  arachneBackend?: 'js' | 'wasm';
 
   // Ironing (top surface smoothing)
   ironingEnabled: boolean;

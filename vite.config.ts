@@ -1,5 +1,6 @@
 import { defineConfig, type Plugin } from 'vite'
 import react from '@vitejs/plugin-react'
+import wasm from 'vite-plugin-wasm'
 import http from 'node:http'
 import https from 'node:https'
 
@@ -111,11 +112,20 @@ function githubProxyPlugin(): Plugin {
 
 // https://vite.dev/config/
 export default defineConfig({
-  plugins: [react(), duetProxyPlugin(), githubProxyPlugin()],
+  plugins: [react(), wasm(), duetProxyPlugin(), githubProxyPlugin()],
   build: {
     // Disable CSS minification — lightningcss crashes on @keyframes in
     // some versions of the Vite 8 / rolldown stack.
     cssMinify: false,
+    assetsInlineLimit: (filePath) => filePath.endsWith('.wasm') ? false : undefined,
+    rollupOptions: {
+      output: {
+        assetFileNames: (assetInfo) =>
+          assetInfo.names.some((name) => name.endsWith('.wasm'))
+            ? 'assets/wasm/[name]-[hash][extname]'
+            : 'assets/[name]-[hash][extname]',
+      },
+    },
   },
   server: {
     port: 5173,

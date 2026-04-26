@@ -32,6 +32,11 @@ jobs:
                const coredemo = require('@actions/core')
                return await coredemo.getIDToken()
            result-encoding: string
+      - name: Check WASM bundle-size budget
+        run: npm run check:wasm-budget
+      - name: Verify reproducible WASM build
+        if: github.event_name == 'pull_request'
+        run: npm run verify:wasm-build
       - name: Build And Deploy
         id: builddeploy
         uses: Azure/static-web-apps-deploy@v1

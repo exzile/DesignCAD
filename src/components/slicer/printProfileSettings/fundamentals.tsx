@@ -62,6 +62,9 @@ export function WallsSection({ print, upd, isVisible, showHelp }: PrintSettingsS
         <Sel label="Z Seam Alignment" value={print.zSeamAlignment} onChange={(v) => upd({ zSeamAlignment: v })} options={[{ value: 'sharpest_corner', label: 'Sharpest Corner' }, { value: 'aligned', label: 'Aligned' }, { value: 'shortest', label: 'Shortest' }, { value: 'random', label: 'Random' }]} helpBrief={getSettingHelp('zSeamAlignment')?.brief} onShowHelp={() => showHelp('zSeamAlignment', 'Z Seam Alignment')} />
         <Check label="Thin Wall Detection" value={print.thinWallDetection} onChange={(v) => upd({ thinWallDetection: v })} helpBrief={getSettingHelp('thinWallDetection')?.brief} onShowHelp={() => showHelp('thinWallDetection', 'Thin Wall Detection')} />
         <Sel label="Wall Generator" value={print.wallGenerator ?? 'classic'} onChange={(v) => upd({ wallGenerator: v as 'classic' | 'arachne' })} options={[{ value: 'classic', label: 'Classic (fixed-width offset)' }, { value: 'arachne', label: 'Arachne (variable-width)' }]} helpBrief="Variable-width walls handle narrow regions cleanly. Classic is the legacy fixed-width offset." onShowHelp={() => showHelp('wallGenerator', 'Wall Generator')} />
+        {(print.wallGenerator ?? 'classic') === 'arachne' && (
+          <Sel label="Arachne Backend" value={print.arachneBackend ?? 'js'} onChange={(v) => upd({ arachneBackend: v as 'js' | 'wasm' })} options={[{ value: 'js', label: 'JavaScript' }, { value: 'wasm', label: 'WASM' }]} helpBrief="Selects the Arachne pipeline backend. WASM falls back until the adapter is available." onShowHelp={() => showHelp('arachneBackend', 'Arachne Backend')} />
+        )}
       </Tier>
       <Tier min="expert">
         <SectionDivider label="Expert" />

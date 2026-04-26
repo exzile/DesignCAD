@@ -1,4 +1,22 @@
 import type * as THREE from 'three';
+import type { BeadGraph } from './beadStrategy';
+import type { ArachnePolygon, TrapezoidGraph } from './trapezoidation';
+import type { VoronoiGraph } from './voronoi';
+
+export type ArachneBackendName = 'js' | 'wasm';
+
+export interface ArachneBackend {
+  readonly name: ArachneBackendName;
+  buildVoronoi(outerContour: THREE.Vector2[], holeContours: THREE.Vector2[][]): VoronoiGraph;
+  buildTrapezoidation(voronoiGraph: VoronoiGraph, polygon: ArachnePolygon): TrapezoidGraph;
+  distributeBeads(
+    trapezoidGraph: TrapezoidGraph,
+    lineWidth: number,
+    minWidth: number,
+    maxWidth: number,
+  ): BeadGraph;
+  extractPaths(beadGraph: BeadGraph): VariableWidthPath[];
+}
 
 /**
  * Output of the Arachne pipeline: a wall path with PER-VERTEX line width.
