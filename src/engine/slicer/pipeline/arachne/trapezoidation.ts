@@ -38,6 +38,13 @@ export interface TrapezoidGraph {
   nodes: TrapezoidNode[];
   trapezoids: SkeletalTrapezoid[];
   polygon: ArachnePolygon;
+  /** Voronoi-vertex → trapezoidIds adjacency. Two trapezoids are
+   *  adjacent if they share at least one Voronoi vertex. Used by the
+   *  bead-distribution stage to compute transition zones — when a
+   *  trapezoid has more beads than its neighbour at a vertex, the
+   *  "extra" beads taper to zero width near that vertex so the wall
+   *  smoothly fades out instead of leaving a parallelogram end-cap. */
+  adjacency: Map<number, number[]>;
 }
 
 function normalizePolygon(polygon: ArachnePolygon | THREE.Vector2[]): ArachnePolygon {
@@ -134,6 +141,38 @@ function chooseSourcePair(vertex: VoronoiVertex, edgeMap: EdgeMap): [number, num
   return bestPair;
 }
 
+/** Insert intermediate samples between consecutive centerline points,
+ *  targeting `targetSegmentLen` per output segment, with at least
+ *  `minSubdivisions` steps per input segment.
+ *
+ *  Why length-based: Voronoi edges between distant source edges can be
+ *  20+ mm long, and a fixed `subdivisions = 4` would still leave 5+ mm
+ *  bead segments. A bead path with 5mm chord between samples chord-cuts
+ *  across non-convex polygon features (mounting-hole notches), producing
+ *  the visible "flap" / "lines through walls" artifact. Sampling every
+ *  ~0.5–1 mm keeps the bead path closely following the medial axis even
+ *  through long Voronoi edges. */
+function subdivideCenterline(
+  centerline: THREE.Vector2[],
+  targetSegmentLen = 1.0,
+  minSubdivisions = 4,
+): THREE.Vector2[] {
+  if (centerline.length < 2) return centerline;
+  const out: THREE.Vector2[] = [centerline[0]];
+  for (let i = 0; i < centerline.length - 1; i++) {
+    const a = centerline[i];
+    const b = centerline[i + 1];
+    const len = Math.hypot(b.x - a.x, b.y - a.y);
+    const subdivisions = Math.max(minSubdivisions, Math.ceil(len / targetSegmentLen));
+    for (let s = 1; s < subdivisions; s++) {
+      const t = s / subdivisions;
+      out.push(new THREE.Vector2(a.x + (b.x - a.x) * t, a.y + (b.y - a.y) * t));
+    }
+    out.push(b);
+  }
+  return out;
+}
+
 function buildTrapezoid(
   id: number,
   edgeMap: EdgeMap,
@@ -143,7 +182,15 @@ function buildTrapezoid(
 ): SkeletalTrapezoid {
   const edgeA = edgeById(edgeMap, sourceEdgeIds[0]);
   const edgeB = edgeById(edgeMap, sourceEdgeIds[1]);
-  const samples = centerline.map((point) => sampleWidth(point, edgeA, edgeB));
+  // Subdivide so interior samples carry the bead offset while the two
+  // boundary samples (start/end of centerline = Voronoi vertices) act as
+  // junction-snap points where adjacent trapezoids' beads meet exactly.
+  // Target ~1mm segments along the centerline so bead chords closely
+  // follow the medial axis even on long Voronoi edges across the polygon
+  // interior. `minSubdivisions = 4` keeps thin/short trapezoids dense
+  // enough that adjacent ones merge cleanly at junctions.
+  const subdivided = subdivideCenterline(centerline, 1.0, 4);
+  const samples = subdivided.map((point) => sampleWidth(point, edgeA, edgeB));
   const widths = samples.map((sample) => sample.width);
   const minWidth = Math.min(...widths);
   const maxWidth = Math.max(...widths);
@@ -152,7 +199,7 @@ function buildTrapezoid(
     id,
     voronoiVertexIds: vertexIds,
     sourceEdgeIds,
-    centerline: centerline.map((point) => point.clone()),
+    centerline: subdivided.map((point) => point.clone()),
     samples,
     width: widths.reduce((sum, width) => sum + width, 0) / widths.length,
     minWidth,
@@ -295,10 +342,24 @@ export function buildSkeletalTrapezoidation(
     trapezoids.push(...buildBoundaryGapFallbacks(edgeMap, voronoiGraph.sourceEdges, trapezoids.length));
   }
 
+  // Build vertex→trapezoid adjacency for the transition-zone calculations
+  // in beadStrategy. Each trapezoid contributes itself to every Voronoi
+  // vertex it touches; the bead-distribution stage uses this to find a
+  // trapezoid's neighbours at each centerline endpoint.
+  const adjacency = new Map<number, number[]>();
+  for (const trap of trapezoids) {
+    for (const vid of trap.voronoiVertexIds) {
+      let bucket = adjacency.get(vid);
+      if (!bucket) { bucket = []; adjacency.set(vid, bucket); }
+      bucket.push(trap.id);
+    }
+  }
+
   return {
     sourceEdges: voronoiGraph.sourceEdges,
     nodes,
     trapezoids,
     polygon: normalizedPolygon,
+    adjacency,
   };
 }

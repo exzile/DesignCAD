@@ -57,13 +57,56 @@ export type { VoronoiDebugLines } from './voronoiDebug';
  *  slicing doesn't spam the console. */
 const ARACHNE_DEBUG_GLOBAL_KEY = '__arachneDebug';
 
-/** If a layer-region has more than this many polygon edges, skip Arachne
- *  entirely and use classic. Even with the indexed Voronoi, very dense
- *  regions blow past the per-layer time budget — a 1000-edge region is
- *  multiple seconds in the brute-force-with-grid path. Real production
- *  layers rarely hit this in the typical case (50-200 edges per region)
- *  but a curved loft surface or imported STL with high tessellation can
- *  pile up edges quickly. Tunable; raise once Fortune sweep-line lands. */
+/** Worker-side accumulator for layer-by-layer Arachne diagnostics. Populated
+ *  whenever `__arachneDebug` is on. The slicer worker can postMessage this
+ *  back to the main thread on slice completion for inspection. */
+export interface ArachneRegionStat {
+  layerIndex: number;
+  outcome: 'arachne' | 'classic-fallback-no-paths' | 'classic-fallback-error' | 'classic-cap';
+  totalEdges: number;
+  voronoiVertices?: number;
+  trapezoids?: number;
+  paths?: number;
+  voronoiMs?: number;
+  trapMs?: number;
+  beadMs?: number;
+  pathMs?: number;
+}
+
+interface ArachneStatsBag { layerIndex: number; entries: ArachneRegionStat[] }
+const STATS_KEY = '__arachneStats';
+
+function getStats(): ArachneStatsBag {
+  const g = globalThis as Record<string, unknown>;
+  let bag = g[STATS_KEY] as ArachneStatsBag | undefined;
+  if (!bag) {
+    bag = { layerIndex: -1, entries: [] };
+    g[STATS_KEY] = bag;
+  }
+  return bag;
+}
+
+/** Slicer pipeline can call this each layer so the per-region entries
+ *  carry the right index. */
+export function setArachneStatsLayer(layerIndex: number): void {
+  getStats().layerIndex = layerIndex;
+}
+
+/** Read + clear the accumulated stats. Call from the worker right before
+ *  posting the slice result back to the main thread. */
+export function drainArachneStats(): ArachneRegionStat[] {
+  const bag = getStats();
+  const out = bag.entries;
+  bag.entries = [];
+  return out;
+}
+
+/** Edge-count cap before falling back to classic. The pure-JS indexed
+ *  Voronoi handles ~50-300 edges per region in milliseconds; above ~500
+ *  it scales superlinearly and a high-resolution STL import (1500+
+ *  edges per region) takes minutes per layer. Default cap stays at 400
+ *  so dense geometries silently fall to classic; users with simpler CAD
+ *  geometry get Arachne's transition-zone smoothing automatically. */
 const ARACHNE_MAX_EDGES = 400;
 
 export function generatePerimetersArachne(
@@ -80,10 +123,12 @@ export function generatePerimetersArachne(
   // single Clipper pass per wall depth which is effectively `O(N log N)`
   // via wasm). For very dense regions we'd just be paying the Arachne cost
   // and then falling back to classic anyway when it fails. Bail early.
-  const totalEdges = outerContour.length + holeContours.reduce((s, h) => s + h.length, 0);
   const debug = (globalThis as Record<string, unknown>)[ARACHNE_DEBUG_GLOBAL_KEY] === true;
+  const statsBag = debug ? getStats() : null;
+  const totalEdges = outerContour.length + holeContours.reduce((s, h) => s + h.length, 0);
+
   if (totalEdges > ARACHNE_MAX_EDGES) {
-    if (debug) console.log(`[arachne] ${totalEdges} edges > ${ARACHNE_MAX_EDGES}, falling back to classic`);
+    if (statsBag) statsBag.entries.push({ layerIndex: statsBag.layerIndex, outcome: 'classic-cap', totalEdges });
     return generatePerimetersEx(
       outerContour, holeContours, wallCount, lineWidth, outerWallInset,
       printProfile, deps,
@@ -105,22 +150,23 @@ export function generatePerimetersArachne(
     );
     const t4 = debug ? performance.now() : 0;
 
-    if (debug) {
-      console.log(
-        `[arachne] N=${totalEdges} V=${voronoi.vertices.length} ` +
-        `T=${trapezoids.trapezoids.length} P=${paths.length} | ` +
-        `voronoi=${(t1 - t0).toFixed(1)}ms trap=${(t2 - t1).toFixed(1)}ms ` +
-        `bead=${(t3 - t2).toFixed(1)}ms path=${(t4 - t3).toFixed(1)}ms`,
-      );
-    }
-
     if (paths.length === 0) {
-      if (debug) console.log('[arachne] no paths produced, falling back to classic');
+      if (statsBag) statsBag.entries.push({
+        layerIndex: statsBag.layerIndex, outcome: 'classic-fallback-no-paths',
+        totalEdges, voronoiVertices: voronoi.vertices.length, trapezoids: trapezoids.trapezoids.length, paths: 0,
+        voronoiMs: t1 - t0, trapMs: t2 - t1, beadMs: t3 - t2, pathMs: t4 - t3,
+      });
       return generatePerimetersEx(
         outerContour, holeContours, wallCount, lineWidth, outerWallInset,
         printProfile, deps,
       );
     }
+
+    if (statsBag) statsBag.entries.push({
+      layerIndex: statsBag.layerIndex, outcome: 'arachne',
+      totalEdges, voronoiVertices: voronoi.vertices.length, trapezoids: trapezoids.trapezoids.length, paths: paths.length,
+      voronoiMs: t1 - t0, trapMs: t2 - t1, beadMs: t3 - t2, pathMs: t4 - t3,
+    });
 
     const insetDistance = outerWallInset + wallCount * lineWidth;
     const { innermostHoles, infillRegions } = computeArachneInfillGeometry(
@@ -131,8 +177,10 @@ export function generatePerimetersArachne(
       innermostHoles,
       infillRegions,
     };
-  } catch (err) {
-    if (debug) console.log('[arachne] threw, falling back to classic', err);
+  } catch {
+    if (statsBag) statsBag.entries.push({
+      layerIndex: statsBag.layerIndex, outcome: 'classic-fallback-error', totalEdges,
+    });
     return generatePerimetersEx(
       outerContour, holeContours, wallCount, lineWidth, outerWallInset,
       printProfile, deps,

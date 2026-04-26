@@ -18,15 +18,50 @@ interface PathFragment {
 
 function beadPoint(trapezoid: BeadTrapezoid, bead: Bead, sampleIndex: number): THREE.Vector2 {
   const sample = trapezoid.samples[sampleIndex];
+  const sampleCount = trapezoid.samples.length;
+
+  // Snap first/last sample to the centerline (= the trapezoid's Voronoi
+  // vertex endpoints) so adjacent trapezoids' beads meet at exactly the
+  // same world coordinates. Without this, two trapezoids meeting at a
+  // junction have beads at DIFFERENT positions (different source-edge
+  // projections), and `mergeFragments` can either fail to connect them —
+  // leaving fragmented walls — or connect them with a chord that crosses
+  // through other walls. The interior samples (added by `subdivideCenterline`
+  // in trapezoidation) preserve the proper bead offset, so the path gets
+  // a small kink at each junction but stays topologically correct.
+  if (sampleIndex === 0 || sampleIndex === sampleCount - 1) {
+    const cl = trapezoid.centerline[Math.min(sampleIndex, trapezoid.centerline.length - 1)];
+    if (cl) return cl.clone();
+  }
+
   if (!sample || sample.width <= EPS) {
     return trapezoid.centerline[Math.min(sampleIndex, trapezoid.centerline.length - 1)]?.clone() ?? new THREE.Vector2();
   }
 
   const location = bead.sampleLocations[sampleIndex] ?? bead.location;
-  const t = Math.max(0, Math.min(1, location / sample.width));
+  const halfWidth = sample.width / 2;
+
+  // Project from whichever source edge is closer, *through* the trapezoid's
+  // centerline point. For non-parallel source edges — which arise around
+  // concave notches, breakthrough holes, and the inside corners of any
+  // non-convex polygon — `sourceA`, `sourceB`, and the centerline are NOT
+  // collinear, so the previous `sourceA + t·(sourceB - sourceA)` form
+  // produced bead points OUTSIDE material whenever the straight line
+  // between source projections crossed empty space (e.g. through a
+  // mounting-hole notch). Splitting the interpolation at the half-width
+  // and going via `sample.center` (which lies on the medial axis and is
+  // by construction inside material) keeps every bead inside the polygon.
+  if (location <= halfWidth) {
+    const t = location / halfWidth;
+    return new THREE.Vector2(
+      sample.sourceA.x + t * (sample.center.x - sample.sourceA.x),
+      sample.sourceA.y + t * (sample.center.y - sample.sourceA.y),
+    );
+  }
+  const t = (sample.width - location) / halfWidth;
   return new THREE.Vector2(
-    sample.sourceA.x + (sample.sourceB.x - sample.sourceA.x) * t,
-    sample.sourceA.y + (sample.sourceB.y - sample.sourceA.y) * t,
+    sample.sourceB.x + t * (sample.center.x - sample.sourceB.x),
+    sample.sourceB.y + t * (sample.center.y - sample.sourceB.y),
   );
 }
 
@@ -55,16 +90,46 @@ function fragmentFromBead(
   const sampleCount = Math.max(trapezoid.samples.length, trapezoid.centerline.length);
   if (sampleCount === 0) return null;
 
-  const points: THREE.Vector2[] = new Array(sampleCount);
-  const widths: number[] = new Array(sampleCount);
+  // Build the fragment, then trim runs of effectively-zero-width samples
+  // at the start and end. Those zero-width samples come from the bead
+  // strategy's transition zones (a bead that "dies" at one or both
+  // trapezoid endpoints because the adjacent trapezoid has fewer beads).
+  // We want the bead path to actually end where the bead's width
+  // reaches zero, not extend into the unsupported region.
+  const allPoints: THREE.Vector2[] = new Array(sampleCount);
+  const allWidths: number[] = new Array(sampleCount);
   for (let sampleIndex = 0; sampleIndex < sampleCount; sampleIndex++) {
-    points[sampleIndex] = beadPoint(trapezoid, bead, sampleIndex);
-    widths[sampleIndex] = bead.sampleWidths[sampleIndex] ?? bead.width;
+    allPoints[sampleIndex] = beadPoint(trapezoid, bead, sampleIndex);
+    allWidths[sampleIndex] = bead.sampleWidths[sampleIndex] ?? bead.width;
+  }
+
+  // Trim end-cap samples whose tapered width is effectively zero. A
+  // bead that's been fully transition-zoned at both ends would have its
+  // entire fragment trimmed away — that's expected for a "dying" bead
+  // and the caller filters those out.
+  //
+  // Single-sample trapezoids (corner / vertex-based) skip trimming
+  // because there's nothing to trim to — keep the single sample as-is.
+  const minMeaningfulWidth = (graph.minWidth || graph.lineWidth * 0.5) * 0.5;
+  let trimmedPoints: THREE.Vector2[];
+  let trimmedWidths: number[];
+  if (sampleCount <= 1) {
+    if (allWidths[0] < minMeaningfulWidth) return null;
+    trimmedPoints = allPoints;
+    trimmedWidths = allWidths;
+  } else {
+    let startIdx = 0;
+    let endIdx = sampleCount - 1;
+    while (startIdx < sampleCount && allWidths[startIdx] < minMeaningfulWidth) startIdx++;
+    while (endIdx >= 0 && allWidths[endIdx] < minMeaningfulWidth) endIdx--;
+    if (endIdx - startIdx < 1) return null;
+    trimmedPoints = allPoints.slice(startIdx, endIdx + 1);
+    trimmedWidths = allWidths.slice(startIdx, endIdx + 1);
   }
 
   return {
-    points,
-    widths,
+    points: trimmedPoints,
+    widths: trimmedWidths,
     depth: bead.depth,
     source: sourceForTrapezoid(graph, trapezoid, edgeMap),
   };

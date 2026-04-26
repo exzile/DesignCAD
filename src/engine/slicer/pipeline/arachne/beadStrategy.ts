@@ -165,21 +165,79 @@ function smoothSampleWidths(
   }
 }
 
+/** Cumulative centerline distances from start and from end for each
+ *  sample. Used by the transition-zone calculation to know how close a
+ *  given sample is to either trapezoid endpoint. */
+function computeSampleDistances(centerline: ReadonlyArray<{ x: number; y: number }>): { fromStart: Float64Array; fromEnd: Float64Array; total: number } {
+  const n = centerline.length;
+  const fromStart = new Float64Array(n);
+  const fromEnd = new Float64Array(n);
+  if (n < 2) return { fromStart, fromEnd, total: 0 };
+  let cum = 0;
+  fromStart[0] = 0;
+  for (let i = 1; i < n; i++) {
+    const dx = centerline[i].x - centerline[i - 1].x;
+    const dy = centerline[i].y - centerline[i - 1].y;
+    cum += Math.hypot(dx, dy);
+    fromStart[i] = cum;
+  }
+  for (let i = 0; i < n; i++) fromEnd[i] = cum - fromStart[i];
+  return { fromStart, fromEnd, total: cum };
+}
+
+/** Compute the transition-zone factor for a bead at the given depth in a
+ *  trapezoid sample. Returns 1.0 if the bead is fully supported, < 1.0
+ *  near a junction where the adjacent trapezoid has fewer beads, and 0.0
+ *  beyond the transition length from such a junction.
+ *
+ *  This is the single-most-important difference between full Cura/Orca
+ *  Arachne and the offset-cascade output we had: instead of every bead
+ *  having full width all the way to the trapezoid endpoint (producing
+ *  the "parallelogram end-cap" flap visible in narrow-neck regions),
+ *  beads that extend beyond what their neighbours support taper smoothly
+ *  to zero width within ~3·lineWidth of the unsupported endpoint.
+ */
+function transitionTaperFactor(
+  beadDepth: number,
+  supportAtStart: number,
+  supportAtEnd: number,
+  distFromStart: number,
+  distFromEnd: number,
+  transitionLength: number,
+): number {
+  let factor = 1.0;
+  if (beadDepth >= supportAtStart) {
+    factor = Math.min(factor, distFromStart / transitionLength);
+  }
+  if (beadDepth >= supportAtEnd) {
+    factor = Math.min(factor, distFromEnd / transitionLength);
+  }
+  return Math.max(0, Math.min(1, factor));
+}
+
 function buildBeadTrapezoid(
   trapezoid: SkeletalTrapezoid,
   lineWidth: number,
   minWidth: number,
   maxWidth: number,
+  supportAtStart: number,
+  supportAtEnd: number,
+  transitionLength: number,
 ): BeadTrapezoid {
   const representativeWidth = sanitizeWidth(trapezoid.width);
   const representativeBeading = computeBeading(representativeWidth, lineWidth, minWidth, maxWidth);
   const beadCount = representativeBeading.length;
 
-  // Build per-bead sample arrays in a single pass. The previous shape
-  // (`representativeBeading.map(...sampleBeadings.map(...))`) was O(N×M)
-  // allocations — one fresh array per bead per dimension. Here we
-  // pre-allocate M×2 arrays and fill them sample-by-sample.
   const sampleCount = trapezoid.samples.length;
+  const distances = computeSampleDistances(trapezoid.centerline);
+
+  // Build per-bead sample arrays. Each sample's beading is computed from
+  // the local thickness, then bead widths are tapered toward zero near
+  // any centerline endpoint where the adjacent trapezoid has a smaller
+  // bead count (i.e. the bead "dies" smoothly at the junction rather
+  // than leaving an abrupt parallelogram end-cap). For trapezoids where
+  // BOTH endpoints support the full bead count, the taper factor is 1
+  // everywhere and the output matches the pre-transitions behaviour.
   const sampleWidths: number[][] = Array.from({ length: beadCount }, () => new Array(sampleCount).fill(0));
   const sampleLocations: number[][] = Array.from({ length: beadCount }, () => new Array(sampleCount).fill(0));
   for (let s = 0; s < sampleCount; s++) {
@@ -189,7 +247,8 @@ function buildBeadTrapezoid(
     for (let b = 0; b < beadCount; b++) {
       const slot = beading[b];
       if (slot) {
-        sampleWidths[b][s] = slot.width;
+        const taper = transitionTaperFactor(b, supportAtStart, supportAtEnd, distances.fromStart[s], distances.fromEnd[s], transitionLength);
+        sampleWidths[b][s] = slot.width * taper;
         sampleLocations[b][s] = slot.location;
       }
     }
@@ -228,6 +287,15 @@ function buildBeadTrapezoid(
  * This follows the simplified Cura distributed strategy used in the task:
  * one bead below 1.5x nominal line width, two below 2.5x, and three or more
  * above that. Widths always sum to the local trapezoid thickness.
+ *
+ * **Transition zones** (added with full Arachne semantics): when an
+ * adjacent trapezoid at one of this trapezoid's centerline endpoints has a
+ * SMALLER bead count, the "extra" beads (those beyond the neighbour's
+ * count) taper smoothly to zero width over `transitionLength` (≈3·lineWidth)
+ * near that endpoint. Eliminates the parallelogram end-cap artifact that
+ * appears in narrow-neck regions of non-convex polygons (e.g. the material
+ * between adjacent mounting holes), matching the behaviour of full
+ * Cura/Orca Arachne.
  */
 export function distributeBeads(
   trapezoidGraph: TrapezoidGraph,
@@ -235,10 +303,48 @@ export function distributeBeads(
   minWidth = lineWidth * 0.5,
   maxWidth = lineWidth * 2,
 ): BeadGraph {
+  const traps = trapezoidGraph.trapezoids;
+  const adjacency = trapezoidGraph.adjacency;
+  const transitionLength = lineWidth * 3;
+
+  // Pass 1: compute each trapezoid's bead count from local thickness.
+  // Needed up-front so each trapezoid in pass 2 can look up its
+  // neighbours' counts to know which beads need to taper.
+  const beadCounts = traps.map((t) => chooseBeadCount(sanitizeWidth(t.width), lineWidth, minWidth, maxWidth));
+
+  const maxNeighborBeadCount = (vid: number, selfId: number): number => {
+    const neighbors = adjacency.get(vid);
+    if (!neighbors) return 0;
+    let max = 0;
+    for (const nid of neighbors) {
+      if (nid === selfId) continue;
+      const idx = traps.findIndex((t) => t.id === nid);
+      if (idx === -1) continue;
+      const c = beadCounts[idx];
+      if (c > max) max = c;
+    }
+    return max;
+  };
+
+  // Pass 2: build bead trapezoids with per-endpoint support counts.
+  const beadTraps: BeadTrapezoid[] = [];
+  for (let i = 0; i < traps.length; i++) {
+    const trap = traps[i];
+    const vIds = trap.voronoiVertexIds;
+    // For edge-based trapezoids, taper at each endpoint based on its
+    // neighbours' bead counts. For single-vertex (corner) and boundary-
+    // gap trapezoids we keep the support count == own count, which means
+    // no tapering — they stand alone and shouldn't fade out.
+    const ownCount = beadCounts[i];
+    const supportStart = vIds.length >= 2 ? maxNeighborBeadCount(vIds[0], trap.id) : ownCount;
+    const supportEnd = vIds.length >= 2 ? maxNeighborBeadCount(vIds[vIds.length - 1], trap.id) : ownCount;
+
+    const bt = buildBeadTrapezoid(trap, lineWidth, minWidth, maxWidth, supportStart, supportEnd, transitionLength);
+    if (bt.beadCount > 0) beadTraps.push(bt);
+  }
+
   return {
-    trapezoids: trapezoidGraph.trapezoids
-      .map((trapezoid) => buildBeadTrapezoid(trapezoid, lineWidth, minWidth, maxWidth))
-      .filter((trapezoid) => trapezoid.beadCount > 0),
+    trapezoids: beadTraps,
     sourceEdges: trapezoidGraph.sourceEdges,
     polygon: trapezoidGraph.polygon,
     lineWidth,

@@ -51,10 +51,12 @@ export function appendStartGCode({
   const startTemplateHasPrintMacro = /^\s*START_PRINT\b/m.test(startGCode);
   const startTemplateOwnsHeatup = printer.startGCodeMustBeFirst && startTemplateHasPrintMacro;
 
-  gcode.push('; ----- Start G-code -----');
   if (printer.startGCodeMustBeFirst && startGCode.trim()) {
     gcode.push(startGCode.trim());
     syncStateFromGCode(startGCode, startEndState);
+    gcode.push('; ----- Slicer startup continuation -----');
+  } else {
+    gcode.push('; ----- Start G-code -----');
   }
   if (!startTemplateOwnsHeatup) {
     gcode.push('G90 ; Absolute positioning');

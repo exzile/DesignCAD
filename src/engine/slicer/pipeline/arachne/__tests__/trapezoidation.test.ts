@@ -30,9 +30,17 @@ describe('buildSkeletalTrapezoidation', () => {
 
     expect(voronoi.vertices).toHaveLength(2);
     expect(graph.trapezoids).toHaveLength(1);
-    expect(graph.trapezoids[0].centerline).toHaveLength(2);
+    // Centerlines are subdivided so bead path extraction has interior
+    // samples that carry the bead offset while endpoints snap to Voronoi
+    // vertices for clean junction-to-junction merging.
+    expect(graph.trapezoids[0].centerline.length).toBeGreaterThanOrEqual(2);
     expect(graph.trapezoids[0].sourceEdgeIds).toEqual([0, 2]);
     expect(graph.trapezoids[0].width).toBeCloseTo(4, 6);
+    // First and last centerline points should still be the original
+    // Voronoi-vertex endpoints (subdivision only inserts in between).
+    const cl = graph.trapezoids[0].centerline;
+    expect(cl[0].distanceTo(voronoi.vertices[0].point)).toBeLessThan(1e-6);
+    expect(cl[cl.length - 1].distanceTo(voronoi.vertices[1].point)).toBeLessThan(1e-6);
   });
 
   it('captures varying local widths in a thin-neck polygon', () => {

@@ -335,7 +335,7 @@ export const DEFAULT_PRINT_PROFILES: PrintProfile[] = [
     combingMode: 'all',            // retraction_combing = 'all'
     avoidCrossingPerimeters: true, // travel_avoid_other_parts = true
     thinWallDetection: true,       // fill_outline_gaps = true
-    wallGenerator: 'arachne',
+    wallGenerator: 'classic',      // Arachne with transition zones is opt-in pending real-world validation
     ironingEnabled: false,         // ironing_enabled = false
     ironingSpeed: 15,
     ironingFlow: 10.0,             // ironing_flow = 10

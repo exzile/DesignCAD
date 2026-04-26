@@ -48,8 +48,14 @@ export function finalizeGCodeStats(
   const estimatedTime = totalTime * (printer.printTimeEstimationFactor ?? 1.0);
   const hours = Math.floor(estimatedTime / 3600);
   const minutes = Math.floor((estimatedTime % 3600) / 60);
-  gcode[1] = `; Estimated print time: ${hours}h ${minutes}m`;
-  gcode[2] = `; Filament used: ${totalExtruded.toFixed(1)}mm (${filamentWeight.toFixed(1)}g)`;
+  const timeIndex = gcode.findIndex((line) => line.includes('PRINT_TIME_PLACEHOLDER'));
+  const filamentIndex = gcode.findIndex((line) => line.includes('FILAMENT_USED_PLACEHOLDER'));
+  if (timeIndex >= 0) {
+    gcode[timeIndex] = `; Estimated print time: ${hours}h ${minutes}m`;
+  }
+  if (filamentIndex >= 0) {
+    gcode[filamentIndex] = `; Filament used: ${totalExtruded.toFixed(1)}mm (${filamentWeight.toFixed(1)}g)`;
+  }
 
   return {
     estimatedTime,

@@ -116,6 +116,13 @@ export function emitLayerStartState(pipeline: any, run: any, geometryState: any)
   emitter.currentLayerTravelSpeed = (li === 0 && (pp.initialLayerTravelSpeed ?? 0) > 0) ? pp.initialLayerTravelSpeed! : pp.travelSpeed;
   emitter.currentLayerFlow = isFirstLayer && (pp.initialLayerFlow ?? 0) > 0 ? pp.initialLayerFlow / 100 : 1.0;
 
+  // Pass this layer's hole contours to the emitter for avoidCrossingPerimeters
+  // routing. Each hole becomes an obstacle that travel moves detour around
+  // instead of cutting straight through (which previously made infill→infill
+  // travels appear as long lines crossing wall geometry in the preview).
+  const layerHoles = contours.filter((c: any) => !c.isOuter).map((c: any) => c.points);
+  emitter.setLayerObstacles(layerHoles);
+
   gcode.push('');
   gcode.push(`; ----- Layer ${li}, Z=${printZ.toFixed(3)} -----`);
   gcode.push(`G1 Z${printZ.toFixed(3)} F${(pp.travelSpeed * 60).toFixed(0)}`);

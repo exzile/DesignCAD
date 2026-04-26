@@ -76,6 +76,7 @@ const MITER_MAX = 1.0;
  *  g-code length so the visible wall ring stays exact. */
 export const TRIMMED_FILL_TYPES = new Set(['infill', 'top-bottom', 'bridge', 'ironing']);
 const FILL_END_TRIM_FACTOR = 0.5;
+const OPEN_WALL_END_TRIM_FACTOR = 0.18;
 
 /** Shared material for the extrusion-tube meshes. `vertexColors: true` lets
  *  each chain carry per-point colours via its BufferGeometry's colour
@@ -173,6 +174,10 @@ function subdivideChain(chain: TubeChain): TubeChain {
   };
 }
 
+function isWallType(type: string): boolean {
+  return type === 'wall-outer' || type === 'wall-inner';
+}
+
 export function buildChainTube(
   chain: TubeChain,
   layerHeight: number,
@@ -245,12 +250,13 @@ export function buildChainTube(
   }
 
   // Step 2: apply fill-end trim on open chain ends for fill-type chains.
-  const trim = !sourceChain.isClosed && TRIMMED_FILL_TYPES.has(sourceChain.type);
+  const trim = !sourceChain.isClosed && (TRIMMED_FILL_TYPES.has(sourceChain.type) || isWallType(sourceChain.type));
+  const trimFactor = TRIMMED_FILL_TYPES.has(sourceChain.type) ? FILL_END_TRIM_FACTOR : OPEN_WALL_END_TRIM_FACTOR;
   const pts = sourceChain.points.map((p) => ({ x: p.x, y: p.y, lw: p.lw }));
   if (trim && n >= 2) {
     const d0 = dir(sourceChain.points[0], sourceChain.points[1]);
     if (d0) {
-      const req = sourceChain.points[0].lw * FILL_END_TRIM_FACTOR;
+      const req = sourceChain.points[0].lw * trimFactor;
       const segLen = Math.hypot(
         sourceChain.points[1].x - sourceChain.points[0].x,
         sourceChain.points[1].y - sourceChain.points[0].y,
@@ -261,7 +267,7 @@ export function buildChainTube(
     }
     const dn = dir(sourceChain.points[n - 2], sourceChain.points[n - 1]);
     if (dn) {
-      const req = sourceChain.points[n - 1].lw * FILL_END_TRIM_FACTOR;
+      const req = sourceChain.points[n - 1].lw * trimFactor;
       const segLen = Math.hypot(
         sourceChain.points[n - 1].x - sourceChain.points[n - 2].x,
         sourceChain.points[n - 1].y - sourceChain.points[n - 2].y,

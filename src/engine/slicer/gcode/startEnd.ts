@@ -63,6 +63,26 @@ export function syncStateFromGCode(
       if (nextE !== undefined) state.currentE = nextE;
       continue;
     }
+    if (command === 'G28') {
+      const axisTokens = tokens.slice(1).map((token) => token[0]?.toUpperCase()).filter((axis) => axis === 'X' || axis === 'Y' || axis === 'Z');
+      const homesAll = axisTokens.length === 0;
+      const homesX = homesAll || axisTokens.includes('X');
+      const homesY = homesAll || axisTokens.includes('Y');
+      const homesZ = homesAll || axisTokens.includes('Z');
+      if (homesX) state.currentX = 0;
+      if (homesY) state.currentY = 0;
+      if (homesZ) state.currentZ = 0;
+      continue;
+    }
+    if (command === 'G10' && !tokens.slice(1).some((token) => token[0]?.toUpperCase() === 'P')) {
+      state.isRetracted = true;
+      state.extrudedSinceRetract = 0;
+      continue;
+    }
+    if (command === 'G11') {
+      state.isRetracted = false;
+      continue;
+    }
     if (command !== 'G0' && command !== 'G1') continue;
 
     if (nextX !== undefined) {

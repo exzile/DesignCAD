@@ -217,6 +217,12 @@ export function emitGroupedAndContourWalls(pipeline: any, run: any, layer: any) 
       // Walls that are intentional sharp corners (rectangles, slot ends)
       // also keep their corners — RDP only collapses points within the
       // tolerance, never adds vertices.
+      //
+      // NOTE: tolerance must stay consistent with the infill-region's
+      // boundary geometry, since the infill is clipped to the un-simplified
+      // region. If walls are smoothed more aggressively than the infill
+      // region, infill lines extend into the zigzag corners where walls
+      // no longer go — visible as "infill crossing walls" in the preview.
       const simplifyTol = Math.max(0.015, wallLW * 0.5);
       const wallLoop = Array.isArray(wallLWSpec) || !isClosed ? wallSets[wi] : pipeline.simplifyClosedContour(wallSets[wi], simplifyTol);
       if (wallLoop.length < 2) continue;

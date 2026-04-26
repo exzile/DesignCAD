@@ -3,6 +3,21 @@ import type { SlicerGCodeFlavor, StartEndMachineState } from '../../../../../typ
 import { GCodeEmitter } from '../../../gcode/emitter';
 import { appendHeaderPlaceholders, appendStartGCode } from '../../../gcode/startup';
 
+function appendToolSelection(gcode: string[], printer: any, pp: any): void {
+  const extruderIndex = Math.max(0, Math.floor(pp.extruderIndex ?? 0));
+  if (extruderIndex <= 0) return;
+
+  const toolChange = pp.toolChangeGCode?.trim();
+  gcode.push('; ----- Tool selection -----');
+  if (toolChange) gcode.push(toolChange.replace(/\{tool\}/g, String(extruderIndex)));
+  else gcode.push(`T${extruderIndex} ; Select tool`);
+  if (printer.applyExtruderOffsets) {
+    const x = printer.extruderOffsetX ?? 0;
+    const y = printer.extruderOffsetY ?? 0;
+    if (x !== 0 || y !== 0) gcode.push(`G10 P${extruderIndex} X${x.toFixed(3)} Y${y.toFixed(3)} ; Tool offset`);
+  }
+}
+
 export function prepareSliceRun(pipeline: any, geometries: { geometry: THREE.BufferGeometry; transform: THREE.Matrix4 }[]) {
   const pp = pipeline.printProfile;
   const mat = pipeline.materialProfile;
@@ -67,18 +82,9 @@ export function prepareSliceRun(pipeline: any, geometries: { geometry: THREE.Buf
     relativeExtrusion: relativeE,
   });
 
-  appendHeaderPlaceholders(gcode, printer, mat, pp);
-  const extruderIndex = Math.max(0, Math.floor(pp.extruderIndex ?? 0));
-  if (extruderIndex > 0) {
-    const toolChange = pp.toolChangeGCode?.trim();
-    gcode.push('; ----- Tool selection -----');
-    if (toolChange) gcode.push(toolChange.replace(/\{tool\}/g, String(extruderIndex)));
-    else gcode.push(`T${extruderIndex} ; Select tool`);
-    if (printer.applyExtruderOffsets) {
-      const x = printer.extruderOffsetX ?? 0;
-      const y = printer.extruderOffsetY ?? 0;
-      if (x !== 0 || y !== 0) gcode.push(`G10 P${extruderIndex} X${x.toFixed(3)} Y${y.toFixed(3)} ; Tool offset`);
-    }
+  if (!printer.startGCodeMustBeFirst) {
+    appendHeaderPlaceholders(gcode, printer, mat, pp);
+    appendToolSelection(gcode, printer, pp);
   }
   appendStartGCode({
     gcode,
@@ -89,6 +95,10 @@ export function prepareSliceRun(pipeline: any, geometries: { geometry: THREE.Buf
     flavor,
     startEndState: emitter.startEndState as StartEndMachineState,
   });
+  if (printer.startGCodeMustBeFirst) {
+    appendHeaderPlaceholders(gcode, printer, mat, pp);
+    appendToolSelection(gcode, printer, pp);
+  }
 
   return {
     pp,

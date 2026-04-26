@@ -31,6 +31,7 @@ function graphWithWidth(width: number): TrapezoidGraph {
       maxWidth: width,
     }],
     polygon: { outerContour: [] },
+    adjacency: new Map([[0, [0]]]),
   };
 }
 

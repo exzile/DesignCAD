@@ -42,6 +42,12 @@ export class GCodeEmitter {
   private lastExtrudeDy = 0;
   private readonly machineState: StartEndMachineState;
 
+  /** Obstacle approximations (one per hole) used by avoidCrossingPerimeters
+   *  to detour travel moves around the hole interior. Each obstacle is
+   *  the hole's enclosing circle (centroid + max-radius) — adequate for
+   *  the typical mounting-hole shape and cheap to test against. */
+  private layerObstacles: { cx: number; cy: number; r: number }[] | null = null;
+
   constructor({
     gcode,
     printer,
@@ -200,6 +206,28 @@ export class GCodeEmitter {
     this.currentY = y;
   }
 
+  /** Set the obstacle list for avoidCrossingPerimeters routing. Holes
+   *  are approximated as enclosing circles (centroid + max-radius). */
+  setLayerObstacles(holes: ReadonlyArray<ReadonlyArray<{ x: number; y: number }>>): void {
+    if (!holes || holes.length === 0) {
+      this.layerObstacles = null;
+      return;
+    }
+    this.layerObstacles = holes.map((h) => {
+      let cx = 0;
+      let cy = 0;
+      for (const p of h) { cx += p.x; cy += p.y; }
+      cx /= h.length;
+      cy /= h.length;
+      let r = 0;
+      for (const p of h) {
+        const d = Math.hypot(p.x - cx, p.y - cy);
+        if (d > r) r = d;
+      }
+      return { cx, cy, r };
+    });
+  }
+
   /**
    * Travel (non-extruding) move to (x, y).
    *
@@ -214,8 +242,26 @@ export class GCodeEmitter {
    *
    * Callers emitting extrusion features should pass their layer's `moves`
    * array so loop boundaries round-trip through the preview correctly.
+   *
+   * If `print.avoidCrossingPerimeters` is on AND `setLayerObstacles` has
+   * been called for this layer, the travel is routed around hole obstacles
+   * (each hole approximated as its enclosing circle). The detour passes
+   * `obstacleMargin` outside the circle on whichever side gives the
+   * shorter total path. Prevents the "infill jumping straight across the
+   * layer crosses through walls and holes" artifact that's visible as
+   * white travel lines passing through wall geometry in the preview.
    */
   travelTo(x: number, y: number, moves?: SliceMove[]): void {
+    const path = this.routeTravelAroundObstacles(x, y);
+    for (const wp of path) {
+      this.rawTravelMove(wp.x, wp.y, moves);
+    }
+  }
+
+  /** Internal — performs a single straight-line travel and pushes the
+   *  preview move. Factored out so `travelTo` can emit multiple sub-moves
+   *  when routing around obstacles. */
+  private rawTravelMove(x: number, y: number, moves?: SliceMove[]): void {
     const dx = x - this.currentX;
     const dy = y - this.currentY;
     const dist = Math.sqrt(dx * dx + dy * dy);
@@ -234,9 +280,6 @@ export class GCodeEmitter {
     }
     this.rawTravelTo(x, y, this.currentLayerTravelSpeed);
     if (moves) {
-      // A travel that triggered a retraction carries the retraction distance
-      // as a negative `extrusion` value — the preview renders those as
-      // retraction dots.
       const retractExtrusion = (!wasRetracted && this.isRetracted)
         ? -(this.material.retractionDistance ?? 0)
         : 0;
@@ -249,6 +292,77 @@ export class GCodeEmitter {
         lineWidth: 0,
       });
     }
+  }
+
+  /** Returns a list of waypoints for the travel from current position
+   *  to (toX, toY). If avoidCrossingPerimeters is off or no obstacles
+   *  block the path, this is just `[{toX, toY}]`. Otherwise the list
+   *  includes detour waypoints that route around blocking obstacles.
+   *  Uses an iterative loop with bounded iterations rather than true
+   *  recursion to avoid stack overflows on degenerate geometry. */
+  private routeTravelAroundObstacles(toX: number, toY: number): Array<{ x: number; y: number }> {
+    const obstacles = this.layerObstacles;
+    if (!this.print.avoidCrossingPerimeters || !obstacles || obstacles.length === 0) {
+      return [{ x: toX, y: toY }];
+    }
+
+    const path: Array<{ x: number; y: number }> = [];
+    let cursorX = this.currentX;
+    let cursorY = this.currentY;
+    const margin = 0.5;
+    const visited = new Set<number>();
+    // Bound the loop — no realistic layer has > 10 holes blocking a single
+    // travel path. The cap protects against degenerate geometry where a
+    // detour point lands inside another obstacle's blocking corridor and
+    // would otherwise loop forever.
+    for (let iteration = 0; iteration < 10; iteration++) {
+      const dx = toX - cursorX;
+      const dy = toY - cursorY;
+      const len = Math.hypot(dx, dy);
+      if (len < 1e-4) break;
+      const nx = dx / len;
+      const ny = dy / len;
+
+      let blockingT = Infinity;
+      let blockerIdx = -1;
+      let blocker: { cx: number; cy: number; r: number } | null = null;
+      for (let i = 0; i < obstacles.length; i++) {
+        if (visited.has(i)) continue;
+        const ob = obstacles[i];
+        const fcx = ob.cx - cursorX;
+        const fcy = ob.cy - cursorY;
+        const t = fcx * nx + fcy * ny;
+        if (t < -ob.r || t > len + ob.r) continue;
+        const px = cursorX + nx * t;
+        const py = cursorY + ny * t;
+        const perpDist = Math.hypot(ob.cx - px, ob.cy - py);
+        if (perpDist >= ob.r + margin) continue;
+        const enterT = t - Math.sqrt(Math.max(0, (ob.r + margin) * (ob.r + margin) - perpDist * perpDist));
+        if (enterT < blockingT) {
+          blockingT = enterT;
+          blocker = ob;
+          blockerIdx = i;
+        }
+      }
+      if (!blocker) break;
+      visited.add(blockerIdx);
+
+      const avoidDist = blocker.r + margin;
+      const perpX = -ny;
+      const perpY = nx;
+      const leftX = blocker.cx + perpX * avoidDist;
+      const leftY = blocker.cy + perpY * avoidDist;
+      const rightX = blocker.cx - perpX * avoidDist;
+      const rightY = blocker.cy - perpY * avoidDist;
+      const distLeft = Math.hypot(cursorX - leftX, cursorY - leftY) + Math.hypot(leftX - toX, leftY - toY);
+      const distRight = Math.hypot(cursorX - rightX, cursorY - rightY) + Math.hypot(rightX - toX, rightY - toY);
+      const detour = distLeft <= distRight ? { x: leftX, y: leftY } : { x: rightX, y: rightY };
+      path.push(detour);
+      cursorX = detour.x;
+      cursorY = detour.y;
+    }
+    path.push({ x: toX, y: toY });
+    return path;
   }
 
   extrudeTo(

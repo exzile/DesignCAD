@@ -18,6 +18,8 @@ const PREVIEW_LINE_SCALE = 1.0;
 
 // Endpoint match tolerance for chain detection.
 const PREVIEW_JOIN_EPSILON = 5e-4;
+const PREVIEW_LOOP_CLOSE_LW_FACTOR = 0.2;
+const PREVIEW_LOOP_CLOSE_MAX_MM = 0.08;
 
 // cos(threshold) for chain-splitting. Chain breaks are only for extreme
 // bends (> 135°, i.e. near-U-turns) where the miter math fundamentally
@@ -214,7 +216,8 @@ export function LayerLines({
       }
     }
 
-    // Detect loop closure: first point matches last point → closed chain.
+    // Detect loop closure: first point matches last point (or is visually
+    // within a small fraction of bead width) -> closed chain.
     // But ONLY close the loop if the bend at the closure vertex is also
     // gentle enough to miter — otherwise the closure produces the same spike
     // artefact we fought off elsewhere. For sharp closure bends, leave the
@@ -224,7 +227,11 @@ export function LayerLines({
       if (c.points.length < 3) continue;
       const first = c.points[0];
       const last = c.points[c.points.length - 1];
-      if (!samePoint(first, last)) continue;
+      const closeTol = Math.max(
+        PREVIEW_JOIN_EPSILON,
+        Math.min(PREVIEW_LOOP_CLOSE_MAX_MM, Math.min(first.lw, last.lw) * PREVIEW_LOOP_CLOSE_LW_FACTOR),
+      );
+      if (Math.hypot(first.x - last.x, first.y - last.y) > closeTol) continue;
 
       // Closure bend: in_dir = last segment (points[n-2] → points[n-1]),
       // out_dir = first segment (points[0] → points[1]). Both evaluated at
@@ -240,6 +247,8 @@ export function LayerLines({
         const dotInOut = (inDx * outDx + inDy * outDy) / (inLen * outLen);
         if (dotInOut < CHAIN_BREAK_DOT_THRESHOLD) continue; // too sharp — stay open
       }
+      first.x = (first.x + last.x) * 0.5;
+      first.y = (first.y + last.y) * 0.5;
       c.points.pop();
       c.isClosed = true;
     }

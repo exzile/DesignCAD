@@ -648,7 +648,16 @@ function segmentInsideMaterial(
   outerBBox: BBox,
   holeBBoxes: BBox[],
 ): boolean {
-  const samples = 5;
+  // Sample at 0.5mm intervals so this catches small holes (e.g. ~1mm
+  // mounting-hole diameters). The previous fixed `samples = 5` meant a
+  // 21mm Voronoi edge — common between distant source edges — got
+  // checked at 4.2mm steps, which can walk straight over a small hole
+  // and admit a Voronoi edge that crosses through empty space. The
+  // wall-extraction layer would then produce long chord-like wall
+  // segments cutting across the hole (visible as the "flap" / "lines
+  // through walls" artifact in non-convex polygons with mounting holes).
+  const length = Math.hypot(b.x - a.x, b.y - a.y);
+  const samples = Math.max(5, Math.ceil(length / 0.5));
   for (let i = 0; i <= samples; i++) {
     const t = i / samples;
     const point = new THREE.Vector2(
