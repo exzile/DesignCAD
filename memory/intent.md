@@ -1,8 +1,14 @@
 ---
 name: DesignCAD / Dzign3D Intent
-description: What the user is building, the parity targets, and the launch plan
+description: What the user is building, parity targets, launch plan, and what they expect from Claude
 type: project
 ---
+
+## User & expectations
+
+Senior developer building **Dzign3D** (repo: DesignCAD). Tracks all pending/done work in `TaskLists.txt` at the repo root. Expects autonomous operation: spawn agents, TSC-check, commit, iterate without asking permission for routine ops.
+
+## What's being built
 
 Web-based CAD + slicer + Duet3D printer-control app, branded **Dzign3D**.
 

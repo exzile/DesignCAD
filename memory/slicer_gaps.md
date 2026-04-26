@@ -1,31 +1,37 @@
 ---
 name: Slicer Engine Gaps vs UI
-description: Slicer settings that exist in the UI / PrintProfile but where the engine still ignores or stubs them
+description: Slicer settings that have UI/types but the engine still ignores or stubs them — check before claiming a feature works
 type: project
 ---
 
-The slicer UI exposes near-full Cura 5.x settings, but the engine in `src/engine/Slicer.ts` is a partial implementation. These are the known **setting-exists-but-engine-ignores-it** gaps — important so suggestions don't claim a feature works when only the toggle does.
+The UI exposes near-full Cura 5.x settings; the engine in `engine/slicer/` is partial. The authoritative gap list is `TaskLists.txt` (the `[s]` storage-only entries). This file is a quick scan for "does X actually do anything" — for the canonical state always check TaskLists first.
 
-**How to apply:** When the user reports "X doesn't seem to do anything," check this list before debugging.
+**How to apply:** When the user reports "X doesn't seem to do anything," check `TaskLists.txt` `[s]` entries first; this file lists the highest-impact ones.
 
-## Patterns named but not actually generated
-- **Gyroid, honeycomb, lightning, tetrahedral, octet, cross-3D, cubic-subdivision** — `infillPattern` accepts them, engine falls back to linear fills.
-- **Tree / organic support** — `supportType` accepts them, engine generates normal vertical supports.
+## Wired since this file was last refreshed (NOT gaps anymore)
 
-## Settings the engine reads but doesn't act on
-- **Adaptive layers** — fixed layer height regardless of `adaptiveLayersEnabled`.
+- Adaptive layers — engine generates variable layer heights via 45°-peak penalty.
+- Bridge detection — `bridgeMP = polygon-clipping.difference(currentLayerMaterial, prevLayerMaterial)` drives `bridgeSkinSpeed`/`bridgeSkinFlow`/`bridgeFanSpeed`.
+- Gyroid / honeycomb / concentric / cubic infill — real curve patterns, not linear fills.
+- Arachne thin-wall detection + sub-nominal centerline walls (classic offset cascade); full Arachne (`wallGenerator: 'arachne'`) lands with WASM via ARACHNE-9.
+- Z-seam shortest-mode nozzle threading.
+- Per-region overhang infill boost.
+- Closing-radius mesh repair, normal-direction mesh repair.
+
+## Still stubs / no-ops
+
+- **Tree / organic support** — `supportType` accepts; engine generates normal vertical supports.
+- **Lightning, tetrahedral, octet, cross-3D, cubic-subdivision infill** — fall back to linear/curve.
 - **One-at-a-time print sequence** — always all-at-once.
-- **Mold mode** — geometry is not converted.
-- **Fuzzy skin** — no noise applied to outer wall path.
-
-## Cura features with no equivalent at all
-- Per-object setting overrides (UI hooks exist on `PlateObject.perObjectSettings`, no editor)
-- Mesh modifiers: Infill Mesh, Cutting Mesh, Anti-Overhang Mesh, Support Mesh
-- Support / seam / blocker painting
-- Multi-extruder (prime tower, tool change G-code, per-extruder settings)
-- PostProcessingPlugin equivalent
-- Print time estimation before slicing (only available after slice completes)
-- `settingsSearch` filter — `show()` helper exists but isn't wired to individual `<Num>`/`<Check>`/`<Sel>` controls in `SettingsPanel`
+- **Mold mode** — geometry not converted.
+- **Fuzzy skin** — no noise on outer wall path.
+- **Per-object setting overrides** — UI hooks exist on `PlateObject.perObjectSettings`, no editor.
+- **Mesh modifiers** — Infill / Cutting / Anti-Overhang / Support Mesh — none implemented.
+- **Support / seam / blocker painting** — no UI.
+- **Multi-extruder** — prime tower, tool change G-code, per-extruder settings: not applicable (single-extruder architecture).
+- **PostProcessingPlugin equivalent** — none.
+- **Print time estimation before slice** — only available after slice completes.
 
 ## Print monitoring
-Live print monitoring is intentionally NOT in the slicer — it's handled by `DuetPrinterPanel`.
+
+Live print monitoring is intentionally NOT in the slicer — handled by the Duet panel.
