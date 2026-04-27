@@ -188,9 +188,13 @@ describe('Slicer dimensional accuracy — z-direction', () => {
     expect(result.layers[0].z).toBeCloseTo(lh, 4);
   });
 
-  it('uses firstLayerHeight (0.3) by default even when layerHeight differs', async () => {
+  it('uses firstLayerHeight (0.2) by default even when layerHeight differs', async () => {
+    // The Standard Quality profile's `firstLayerHeight` is 0.2 — matches
+    // OrcaSlicer's `initial_layer_print_height = 0.2` for PETG-grade
+    // initial-layer adhesion. (Older Cura-style profiles used 0.3 for
+    // PLA bed adhesion.) See `defaultProfiles.ts` Standard Quality.
     const result = await sliceGeometry(buildBox(10, 10, 2), { layerHeight: 0.2 });
-    expect(result.layers[0].z).toBeCloseTo(0.3, 4);
+    expect(result.layers[0].z).toBeCloseTo(0.2, 4);
   });
 });
 

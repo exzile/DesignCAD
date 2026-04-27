@@ -42,6 +42,35 @@ export const slicerPersistConfig = {
     if (!state.materialProfiles?.length) state.materialProfiles = DEFAULT_MATERIAL_PROFILES;
     if (!state.printProfiles?.length) state.printProfiles = DEFAULT_PRINT_PROFILES;
 
+    // First-layer flow sanity migration. Older builds shipped Cura-style
+    // first-layer flow boosts in the 130-150% range; under our current
+    // pipeline (which already accounts for first-layer extrusion via
+    // a slightly thicker initial layer) those values produce visible
+    // over-extrusion bulges on the bottom skin and walls. Cap the four
+    // first-layer flow knobs at 120% (matches OrcaSlicer's recommended
+    // ceiling); if the persisted value sits above that, snap it to 100%
+    // (=no override). Leaves user-edited values in the safe 80-120%
+    // range untouched.
+    const FLOW_KEYS = [
+      'initialLayerFlow',
+      'initialLayerBottomFlow',
+      'initialLayerOuterWallFlow',
+      'initialLayerInnerWallFlow',
+    ] as const;
+    for (const profile of state.printProfiles) {
+      const p = profile as unknown as Record<string, unknown>;
+      for (const key of FLOW_KEYS) {
+        const v = p[key];
+        if (typeof v === 'number' && v > 120) {
+          // 100 is a safer baseline than `undefined` because it leaves
+          // the field present in the serialized profile (so the UI's
+          // "first-layer flow override" toggle visibly reflects 100%
+          // rather than blanking out and confusing the user).
+          p[key] = 100;
+        }
+      }
+    }
+
     const hasPrinter = state.printerProfiles.some((profile) => profile.id === state.activePrinterProfileId);
     const hasMaterial = state.materialProfiles.some((profile) => profile.id === state.activeMaterialProfileId);
     const hasPrint = state.printProfiles.some((profile) => profile.id === state.activePrintProfileId);

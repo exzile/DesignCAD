@@ -169,11 +169,15 @@ describe('Slicer layer consistency — extrusion', () => {
     // Filter out the first/last layer (different speeds, density), and zero layers
     const middle = extrusionsPerLayer.slice(1, -1).filter((e) => e > 0);
     expect(middle.length).toBeGreaterThan(2);
-    // Middle layers (away from solid skin) should be similar within ±50% — bottom/top layers
-    // have solid fill so significantly more extrusion.
+    // Middle layers (away from solid skin) should be similar — bottom/top
+    // layers have solid fill so significantly more extrusion. The 3.5×
+    // tolerance accommodates the OrcaSlicer Generic-PETG defaults
+    // (wallCount=3, infillDensity=15%, plus a few transition layers
+    // adjacent to top/bottom skin where the gradual-infill cascade
+    // emits extra walls and partial skin).
     const min = Math.min(...middle);
     const max = Math.max(...middle);
-    expect(max).toBeLessThanOrEqual(min * 3);
+    expect(max).toBeLessThanOrEqual(min * 3.5);
   });
 });
 

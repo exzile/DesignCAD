@@ -13,7 +13,7 @@ import { createPreviewActions } from './slicer/actions/preview';
 import { slicerPersistConfig } from './slicer/persistConfig';
 import { createPlateActions } from './slicer/plateActions';
 import type { SlicerStore } from './slicer/types';
-import { getActiveSliceRequestId, getCurrentSlicerWorker, getSlicerWorker, isWorkerBusy, nextSliceRequestId, setWorkerBusy } from './slicer/worker';
+import { getActiveSliceRequestId, getCurrentSlicerWorker, getSlicerWorker, isWorkerBusy, nextSliceRequestId, resetSlicerWorker, setWorkerBusy } from './slicer/worker';
 
 export type { SlicerStore } from './slicer/types';
 
@@ -51,7 +51,11 @@ export const useSlicerStore = create<SlicerStore>()(persist((set, get) => ({
   previewLayerStart: 0,
   previewLayerMax: 0,
   previewShowTravel: false,
-  previewShowRetractions: true,
+  // Off by default — retraction markers are mostly debug/noise on a
+  // typical bottom-skin or dense-infill layer where every scanline-to-
+  // scanline travel can trigger a retract. Cura/Orca preview viewers
+  // also default this off; users opt in via the colour-scheme panel.
+  previewShowRetractions: false,
   previewSectionEnabled: false,
   previewSectionZ: 250,
   previewColorMode: 'type',
@@ -465,10 +469,48 @@ export const useSlicerStore = create<SlicerStore>()(persist((set, get) => ({
     if (isWorkerBusy() && worker) {
       worker.postMessage({ type: 'cancel', requestId });
     }
+    // Bump the active slice request id NOW so any in-flight messages
+    // from the cancelled slice (progress updates, a `complete` posted
+    // before the worker's `onmessage` got around to the cancel) are
+    // discarded by the requestId guard in the message handler. Without
+    // this, the worker's tail-end completion can race the cancel and
+    // overwrite the UI back to "Slicing complete" / show the partially-
+    // sliced result, making it look like cancel didn't work.
+    nextSliceRequestId();
+    setWorkerBusy(false);
     set({
       sliceProgress: {
         stage: 'idle', percent: 0, currentLayer: 0, totalLayers: 0,
         message: 'Slicing cancelled',
+      },
+    });
+    // Belt-and-suspenders: if the worker is stuck in a tight sync loop
+    // and our `cancel` message never gets processed, the user is owed
+    // a working "next slice" anyway. Force-reset the worker so the next
+    // `startSlice()` spawns a fresh one. The terminate also frees any
+    // WASM memory held by the cancelled run.
+    resetSlicerWorker();
+  },
+
+  /**
+   * Force the slicer worker to be torn down and respawned on the next
+   * slice. The store also clears the cached `sliceResult` so the
+   * preview won't show stale geometry from the killed worker.
+   *
+   * Use cases:
+   *   • Dev: a backstop in case the URL-mismatch + HMR auto-dispose in
+   *     `worker.ts` ever miss an edge case (worker source change that
+   *     somehow doesn't update Vite's URL hash).
+   *   • Prod: lets users recover from a worker that hangs or appears
+   *     to use stale state, without forcing a full page reload.
+   */
+  reloadSlicerWorker: () => {
+    resetSlicerWorker();
+    set({
+      sliceResult: null,
+      sliceProgress: {
+        stage: 'idle', percent: 0, currentLayer: 0, totalLayers: 0,
+        message: 'Slicer worker reloaded — slice again to regenerate moves',
       },
     });
   },

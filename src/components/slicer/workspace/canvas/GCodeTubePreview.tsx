@@ -365,8 +365,14 @@ export function LayerLines({
         </lineSegments>
       )}
       {showRetractions && retractGeo && (
+        // Retraction markers. `sizeAttenuation` makes the points scale
+        // with camera distance; at a 60 mm part the previous size of
+        // 1.2 mm rendered as visibly chunky squares (GL_POINTS rasterise
+        // as axis-aligned quads, so they look square not round at any
+        // zoom where the size exceeds ~1 px). Smaller world-size + lower
+        // opacity keeps them legible without dominating the preview.
         <points key={`${layer.layerIndex}-retract`} geometry={retractGeo} renderOrder={2}>
-          <pointsMaterial color="#ff3333" size={1.2} sizeAttenuation transparent opacity={0.9} depthWrite={false} />
+          <pointsMaterial color="#ff3333" size={0.35} sizeAttenuation transparent opacity={0.7} depthWrite={false} />
         </points>
       )}
     </>

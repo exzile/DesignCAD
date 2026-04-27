@@ -140,12 +140,25 @@ export function emitContourInfill(
     if (isFirstLayer && isSolid && pp.initialLayerBottomFlow != null) emitter.currentLayerFlow = pp.initialLayerBottomFlow / 100;
 
     if (isSolid) {
-      // On the first layer the visible bead footprint must not creep under
-      // walls. Region boundaries describe the wall-safe area, but scanline
-      // centerlines need an extra half-line inset because the actual bead has
-      // width. Keep first-layer skin overlap at zero; it was the blue fill
-      // extending into red/green wall strokes in preview.
-      const skinOverlap = isFirstLayer ? 0 : ((pp.skinOverlapPercent ?? 0) / 100) * lineWidth;
+      // Skin/wall bonding: the scanline centerline boundary needs to
+      // sit slightly INSIDE the wall stroke band so the bead's printed
+      // edge touches the inner-wall ring instead of leaving a visible
+      // gap in the preview (and a real gap in the print). We push the
+      // skin region outward by `skinOverlapPercent` × lineWidth (Cura
+      // / Orca call this `infill_wall_overlap` / `skin_overlap`).
+      //
+      // On the FIRST layer we previously forced this to zero, fearing
+      // that any creep onto the walls would print as visible blob on
+      // the bed. Result: the bottom skin floats unattached to walls
+      // (visible white gap between the blue scanlines and the green
+      // inner-wall ring). With our stroke-subtract pipeline the body
+      // is already inset by halfWidth + a 25% safety pad, so the skin
+      // centerline sits well clear of the actual bead — applying the
+      // normal overlap on layer 0 closes the gap without bulging onto
+      // the bed beyond the wall's footprint. Default `skinOverlapPercent`
+      // of 23% (Orca's standard) gives ~0.10 mm overlap at lineWidth
+      // 0.45 mm — enough to bond, not enough to print past the wall.
+      const skinOverlap = ((pp.skinOverlapPercent ?? 23) / 100) * lineWidth;
       const topSurfaceExpand = pp.topSurfaceSkinExpansion ?? pp.topSkinExpandDistance ?? 0;
       const totalExpand = skinOverlap + (isSolidTop ? topSurfaceExpand : 0) + (isSolidBottom ? (pp.bottomSkinExpandDistance ?? 0) : 0);
       for (const region of infillRegions) {

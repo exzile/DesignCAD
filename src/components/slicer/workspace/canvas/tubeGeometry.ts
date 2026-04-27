@@ -80,10 +80,23 @@ const OPEN_WALL_END_TRIM_FACTOR = 0.18;
 
 /** Shared material for the extrusion-tube meshes. `vertexColors: true` lets
  *  each chain carry per-point colours via its BufferGeometry's colour
- *  attribute (used by the speed / flow / width / layer-time modes). Tagged
- *  `shared` so the disposal path in LayerLines skips it. */
+ *  attribute (used by the speed / flow / width / layer-time modes).
+ *
+ *  Phong (not Lambert) so the bead has a soft specular highlight on its
+ *  top — matches OrcaSlicer / PrusaSlicer's preview where extrusion
+ *  lines look rounded and shaded rather than flat-colored. The
+ *  `shininess` is intentionally low (8) to keep the highlight gentle —
+ *  too high reads as "wet plastic", which is wrong for solid PETG.
+ *  `specular` is dim grey, not coloured, so the highlight tint stays
+ *  neutral across feature colours.
+ *
+ *  Tagged `shared` so the disposal path in LayerLines skips it. */
 export const TUBE_MATERIAL = Object.assign(
-  new THREE.MeshLambertMaterial({ vertexColors: true }),
+  new THREE.MeshPhongMaterial({
+    vertexColors: true,
+    shininess: 8,
+    specular: new THREE.Color(0x222222),
+  }),
   { userData: { shared: true } },
 );
 
@@ -336,28 +349,27 @@ export function buildChainTube(
     }
   }
 
-  // Step 6: pointed pyramid end caps for OPEN chains. Without these,
-  // an open tube (infill scanline, top/bottom skin line, gap-fill bead,
-  // bridge) ends in a FLAT disk that visually "pokes" past adjacent
-  // walls when the slicer applies infill/skin overlap (the deliberate
-  // few-tens-of-microns of bonding between fill and walls).
+  // Step 6: pointed pyramid end caps for OPEN FILL-type chains. Without
+  // these, an open fill tube (infill scanline, top/bottom skin line,
+  // gap-fill bead, bridge) ends in a FLAT disk that visually "pokes"
+  // past adjacent walls when the slicer applies infill/skin overlap.
   //
-  // Cura, OrcaSlicer, and PrusaSlicer all cap their open extrusion tube
-  // ends with a SINGLE forward-displaced apex vertex fanned to the
-  // cross-section ring (a flat-sided pyramid) — see
-  //   • Cura `plugins/SimulationView/layers3d.shader` (geometry41core)
-  //   • OrcaSlicer `src/libvgcode/src/SegmentTemplate.cpp` (vertices
-  //     2 and 7 are the "POINTY_CAPS" apexes)
-  //   • PrusaSlicer `src/slic3r/GUI/LibVGCode/` (vendored libvgcode).
+  // We deliberately do NOT cap open WALL chains. Real Arachne emits
+  // closed wall loops, but the chain assembler in `GCodeTubePreview`
+  // sometimes flags a closed loop as open (a libArachne path missing
+  // an explicit closing duplicate vertex, or a tiny float drift below
+  // the loop-closure tolerance). When that happens, capping every
+  // unclosed wall chain dots the entire perimeter with apex pyramids
+  // that look like bright per-segment markers in the preview at
+  // certain zoom levels — the bug we hit on a 60 mm disc with mounting
+  // holes. Walls are already trimmed back via OPEN_WALL_END_TRIM_FACTOR
+  // and look correct without an apex tip.
   //
-  // The apex sits one halfWidth past the tube end along the line's own
-  // direction. This costs RADIAL triangles per cap (8 with our default)
-  // — much cheaper than a hemisphere and visually identical at preview
-  // scale because the cap is only ever ~halfWidth long.
-  //
-  // Closed chains never need caps (they wrap onto themselves). Walls
-  // are already trimmed back via OPEN_WALL_END_TRIM_FACTOR.
-  if (!sourceChain.isClosed && n >= 2) {
+  // Cura/Orca cap shape we mirror: single forward-displaced apex vertex
+  // fanned to the cross-section ring (one apex + RADIAL triangles).
+  // See `Cura plugins/SimulationView/layers3d.shader` (geometry41core)
+  // and `OrcaSlicer src/libvgcode/src/SegmentTemplate.cpp` (POINTY_CAPS).
+  if (!sourceChain.isClosed && n >= 2 && TRIMMED_FILL_TYPES.has(sourceChain.type)) {
     appendApexCap(positions, normals, colors, indices, {
       isStart: true,
       anchorRingStart: 0,

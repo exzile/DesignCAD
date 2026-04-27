@@ -198,6 +198,23 @@ export async function runSlicePipeline(
   }
 
   for (let li = 0; li < run.totalLayers; li++) {
+    // Per-layer cancellation responsiveness:
+    //
+    // The wall and infill emit steps below are synchronous and can each
+    // take hundreds of milliseconds (libArachne WASM, scanline gen, etc.).
+    // While JS executes one of those long sync calls, the worker's
+    // `onmessage` handler is BLOCKED, so a `cancel` message sent by the
+    // UI sits in the message queue and `slicer.cancelled` stays `false`
+    // until the layer finishes. With dozens of layers each taking
+    // 100-500 ms, that adds up to multi-second cancel latency — which
+    // reads as "cancel doesn't work" to the user.
+    //
+    // We yield to the macrotask queue (setTimeout 0) at the TOP of every
+    // layer iteration so any pending `cancel` message is delivered
+    // before we start the next layer's heavy synchronous work. Yields
+    // cost ~1 ms per layer; in exchange, cancel reliably takes effect
+    // within one layer of the user's click.
+    await slicer.yieldToUI();
     if (slicer.cancelled) throw new Error('Slicing cancelled by user.');
     slicer.reportProgress('slicing', (li / run.totalLayers) * 80, li, run.totalLayers, `Emitting layer ${li + 1}/${run.totalLayers}...`);
     setArachneStatsLayer(li);
@@ -210,8 +227,15 @@ export async function runSlicePipeline(
       layer = await prepareLayerState(pipeline, run, li);
     }
     if (!layer) continue;
+    // Yield + recheck before each major synchronous emit step so the
+    // cancel message can land mid-layer too (a single very thick layer
+    // with hundreds of walls could otherwise still tie up the worker
+    // for a second or more).
+    if (slicer.cancelled) throw new Error('Slicing cancelled by user.');
     const contourData = emitGroupedAndContourWalls(pipeline, run, layer);
+    if (slicer.cancelled) throw new Error('Slicing cancelled by user.');
     emitContourInfill(pipeline, run, layer, contourData);
+    if (slicer.cancelled) throw new Error('Slicing cancelled by user.');
     finalizeLayer(pipeline, run, layer);
   }
 

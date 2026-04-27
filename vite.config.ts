@@ -111,9 +111,32 @@ function githubProxyPlugin(): Plugin {
   };
 }
 
+// Send `Cache-Control: no-cache` for .wasm files served by the dev
+// server. Without it the browser caches the binary by URL — and since
+// our wasm/dist/clipper2.wasm path is stable, rebuilding the binary is
+// invisible to a running tab until you hard-reload. Setting `no-cache`
+// (NOT `no-store` — we still want the disk cache + ETag revalidation)
+// makes every fetch validate against the server, so a rebuilt .wasm
+// arrives within the next slice. Only applies to the dev middleware;
+// production assets are content-hashed by `rollupOptions.output` above.
+function noCacheWasmPlugin(): Plugin {
+  return {
+    name: 'no-cache-wasm-dev',
+    apply: 'serve',
+    configureServer(server) {
+      server.middlewares.use((req, res, next) => {
+        if (req.url && /\.wasm(\?|$)/.test(req.url)) {
+          res.setHeader('Cache-Control', 'no-cache, must-revalidate');
+        }
+        next();
+      });
+    },
+  };
+}
+
 // https://vite.dev/config/
 export default defineConfig({
-  plugins: [react(), wasm(), duetProxyPlugin(), githubProxyPlugin()],
+  plugins: [react(), wasm(), duetProxyPlugin(), githubProxyPlugin(), noCacheWasmPlugin()],
   resolve: {
     alias: {
       module: fileURLToPath(new URL('./src/shims/nodeModule.ts', import.meta.url)),

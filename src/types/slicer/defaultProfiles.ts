@@ -192,24 +192,32 @@ export const DEFAULT_MATERIAL_PROFILES: MaterialProfile[] = [
     costPerKg: 22,
   },
   {
+    // Matches OrcaSlicer 'Generic PETG' filament profile
+    // (resources/profiles/OrcaFilamentLibrary/filament/Generic PETG.json).
+    // PETG-specific deltas vs PLA defaults: hotter nozzle, cooler bed
+    // (PETG warps less than ABS but doesn't need PLA's 60-65°C),
+    // restricted fan ceiling (max 50% — full fan delaminates PETG
+    // layers), longer Z-hop and slower retraction to fight PETG's
+    // characteristic stringing, and a 0.95 flow-ratio that compensates
+    // for PETG's slight over-extrusion at standard E-steps.
     id: 'petg-generic',
     name: 'PETG Generic',
     type: 'PETG',
     color: '#81c784',
-    nozzleTemp: 230,
-    nozzleTempFirstLayer: 235,
-    bedTemp: 80,
-    bedTempFirstLayer: 85,
+    nozzleTemp: 240,                    // OrcaSlicer: nozzle_temperature = 240
+    nozzleTempFirstLayer: 240,          // nozzle_temperature_initial_layer = 240
+    bedTemp: 70,                        // hot_plate_temp = 70
+    bedTempFirstLayer: 70,              // hot_plate_temp_initial_layer = 70
     chamberTemp: 0,
-    fanSpeedMin: 50,
-    fanSpeedMax: 70,
-    fanDisableFirstLayers: 2,
-    retractionDistance: 1.0,
-    retractionSpeed: 40,
-    retractionZHop: 0.2,
-    flowRate: 1.0,
-    density: 1.27,
-    costPerKg: 25,
+    fanSpeedMin: 0,                     // fan_min_speed = 0 (PETG runs cooler)
+    fanSpeedMax: 50,                    // fan_max_speed = 50 — DON'T max cooling
+    fanDisableFirstLayers: 1,           // close_fan_the_first_x_layers = 1
+    retractionDistance: 1.5,            // filament_retraction_length = 1.5
+    retractionSpeed: 30,                // filament_retraction_speed = 30
+    retractionZHop: 0.4,                // filament_z_hop = 0.4 (auto-lift)
+    flowRate: 0.95,                     // filament_flow_ratio = 0.95
+    density: 1.27,                      // filament_density = 1.27
+    costPerKg: 30,                      // filament_cost = 30
   },
   {
     id: 'tpu-generic',
@@ -275,71 +283,79 @@ export const DEFAULT_MATERIAL_PROFILES: MaterialProfile[] = [
 
 export const DEFAULT_PRINT_PROFILES: PrintProfile[] = [
   {
+    // Matches OrcaSlicer 'Generic PETG' + '0.20mm Standard @ 0.4 nozzle'
+    // process defaults. Where OrcaSlicer uses a thickness-based field
+    // (top_shell_thickness 1.0 mm, bottom_shell_thickness 0.6 mm) we
+    // translate to layer counts at 0.20 mm: 1.0/0.2=5 top, 0.6/0.2=3
+    // bottom. Speeds reflect the PETG ceiling — PETG strings at the
+    // PLA-grade 100-150 mm/s sparse infill rates, so the OrcaSlicer
+    // PETG profile lowers them.
     id: 'standard-quality',
     name: 'Standard Quality (0.2mm)',
     layerHeight: 0.2,
-    firstLayerHeight: 0.3,        // layer_height_0 = 0.3
-    wallCount: 2,                  // wall_line_count = 2
-    wallSpeed: 30,                 // speed_wall = 30
-    outerWallSpeed: 30,            // speed_wall_0 = 30
-    wallLineWidth: 0.4,            // wall_line_width = 0.4
-    topLayers: 8,                  // top_layers = 8
-    bottomLayers: 6,               // bottom_layers = 6
-    topBottomPattern: 'lines',     // top_bottom_pattern = 'lines'
-    topSpeed: 30,                  // speed_topbottom = 30
-    infillDensity: 20,             // infill_sparse_density = 20
-    infillPattern: 'grid',         // infill_pattern = 'grid'
-    infillSpeed: 60,               // speed_infill = 60
-    infillLineWidth: 0.4,          // infill_line_width = 0.4
-    infillOverlap: 10,             // infill_overlap = 10
-    printSpeed: 60,                // speed_print = 60
-    travelSpeed: 120,              // speed_travel = 120
-    firstLayerSpeed: 30,           // speed_print_layer_0 = 30
-    supportEnabled: false,         // support_enable = false
-    supportType: 'normal',         // support_structure = 'normal'
-    supportAngle: 50,              // support_angle = 50
-    supportDensity: 15,            // support_infill_rate = 15
-    supportPattern: 'zigzag',      // support_pattern = 'zigzag'
-    supportZDistance: 0.1,         // support_z_distance = 0.1
-    supportXYDistance: 0.7,        // support_xy_distance = 0.7
-    supportInterface: false,       // support_interface_enable = false
-    supportInterfaceLayers: 5,     // support_interface_height = 1mm / 0.2mm
-    adhesionType: 'brim',          // adhesion_type = 'brim'
-    skirtLines: 1,                 // skirt_line_count = 1
-    skirtDistance: 3,              // skirt_gap = 3
-    brimWidth: 8,                  // brim_width = 8
+    firstLayerHeight: 0.2,         // initial_layer_print_height = 0.2 (Orca)
+    wallCount: 3,                  // wall_loops = 3 (Orca PETG default)
+    wallSpeed: 60,                 // inner_wall_speed = 60 (PETG ceiling)
+    outerWallSpeed: 30,            // outer_wall_speed = 30
+    wallLineWidth: 0.45,           // line_width = 0.45 (PETG nominal)
+    topLayers: 5,                  // top_shell_thickness 1.0 / 0.2 = 5
+    bottomLayers: 3,               // bottom_shell_thickness 0.6 / 0.2 = 3
+    topBottomPattern: 'lines',     // top_surface_pattern = 'monotonic'
+    // monotonicTopBottomOrder set below — Orca defaults monotonic ON.
+    topSpeed: 30,                  // top_surface_speed = 30
+    infillDensity: 15,             // sparse_infill_density = 15 (Orca std)
+    infillPattern: 'grid',         // sparse_infill_pattern = 'grid'
+    infillSpeed: 80,               // sparse_infill_speed = 80 (PETG)
+    infillLineWidth: 0.45,         // matches wall to keep flow uniform
+    infillOverlap: 15,             // infill_wall_overlap = 15 (Orca std)
+    printSpeed: 80,                // default print speed (PETG ceiling)
+    travelSpeed: 150,              // travel_speed = 150 (PETG conservative)
+    firstLayerSpeed: 30,           // initial_layer_speed = 30
+    supportEnabled: false,
+    supportType: 'normal',         // support_type = 'normal(auto)'
+    supportAngle: 30,              // support_threshold_angle = 30 (Orca)
+    supportDensity: 15,            // support_infill_density = 15
+    supportPattern: 'zigzag',
+    supportZDistance: 0.2,         // support_top_z_distance = 0.2
+    supportXYDistance: 0.4,        // support_object_xy_distance = 0.4
+    supportInterface: false,
+    supportInterfaceLayers: 5,
+    adhesionType: 'skirt',         // brim_type = 'no_brim' (Orca PETG default)
+    skirtLines: 1,                 // skirt_loops = 1
+    skirtDistance: 2,              // skirt_distance = 2
+    brimWidth: 5,                  // brim_width = 5 (when used)
     raftLayers: 0,
-    enableBridgeFan: true,         // bridge_fan_speed > 0
+    enableBridgeFan: true,
     bridgeFanSpeed: 100,           // bridge_fan_speed = 100
-    minLayerTime: 5,               // cool_min_layer_time = 5
-    lineWidth: 0.4,                // line_width = 0.4
-    outerWallLineWidth: 0.4,       // wall_line_width_0 = 0.4
-    topBottomLineWidth: 0.4,       // skin_line_width = 0.4
-    initialLayerLineWidthFactor: 100, // initial_layer_line_width_factor = 100
-    outerWallFirst: false,
+    minLayerTime: 6,               // slow_down_layer_time = 6 (Orca)
+    lineWidth: 0.45,               // line_width = 0.45
+    outerWallLineWidth: 0.45,      // outer_wall_line_width = 0.45
+    topBottomLineWidth: 0.45,      // top_surface_line_width = 0.45
+    initialLayerLineWidthFactor: 100,
+    outerWallFirst: false,         // wall_sequence = inner-outer (Orca std)
     alternateExtraWall: false,
-    infillWallCount: 0,            // infill_wall_line_count = 0
-    gradualInfillSteps: 0,         // gradual_infill_steps = 0
-    supportSpeed: 60,              // speed_support = 60
-    smallAreaSpeed: 30,            // small_feature_speed_factor = 50% of 60
-    retractionMinTravel: 1.5,      // retraction_min_travel = 1.5
-    minPrintSpeed: 10,             // cool_min_speed = 10
-    fanFullLayer: 2,               // cool_fan_full_layer = 2
-    liftHeadEnabled: false,        // cool_lift_head = false
+    infillWallCount: 0,
+    gradualInfillSteps: 0,
+    supportSpeed: 50,              // support_speed = 50 (Orca PETG)
+    smallAreaSpeed: 30,            // small_perimeter_speed = 30
+    retractionMinTravel: 1.5,
+    minPrintSpeed: 20,             // slow_down_min_speed = 20 (Orca)
+    fanFullLayer: 1,               // close_fan_the_first_x_layers = 1
+    liftHeadEnabled: false,
     supportTreeAngle: 60,          // support_tree_angle = 60
     supportTreeBranchDiameter: 5,  // support_tree_branch_diameter = 5
-    brimGap: 0,                    // brim_gap = 0
-    brimLocation: 'outside',       // brim_location = 'outside'
-    raftMargin: 15,                // raft_margin = 15
-    zSeamAlignment: 'sharpest_corner', // z_seam_type = 'sharpest_corner'
-    combingMode: 'all',            // retraction_combing = 'all'
+    brimGap: 0.1,                  // brim_object_gap = 0.1 (Orca PETG)
+    brimLocation: 'outside',
+    raftMargin: 15,
+    zSeamAlignment: 'aligned',     // z_seam_position = 'aligned' (Orca default)
+    combingMode: 'all',            // reduce_infill_retraction = true (≈combing-all)
     avoidCrossingPerimeters: true, // travel_avoid_other_parts = true
     avoidPrintedParts: true,
-    thinWallDetection: true,       // fill_outline_gaps = true
-    wallGenerator: 'arachne',      // libArachne (WASM) variable-width walls with transition zones
-    arachneBackend: 'wasm',        // libArachne via WASM is the production backend post ARACHNE-9
-    minWallLengthFactor: 0.5,      // Orca-style tiny open wall filter threshold
-    preciseOuterWall: false,
+    thinWallDetection: true,       // detect_thin_wall = true
+    wallGenerator: 'arachne',      // OrcaSlicer ships Arachne by default
+    arachneBackend: 'wasm',
+    minWallLengthFactor: 0.5,      // Orca-style tiny open wall filter
+    preciseOuterWall: false,       // precise_outer_wall = false
     ironingEnabled: false,         // ironing_enabled = false
     ironingSpeed: 15,
     ironingFlow: 10.0,             // ironing_flow = 10
@@ -363,30 +379,31 @@ export const DEFAULT_PRINT_PROFILES: PrintProfile[] = [
     zSeamContinuityDistance: 2,
     roofingLayers: 0,              // roofing_layer_count = 0
     roofingPattern: 'lines',       // roofing_pattern = 'lines'
-    monotonicTopBottomOrder: false, // skin_monotonic = false
-    bridgeSkinSpeed: 15,           // bridge_skin_speed = 15
-    bridgeSkinFlow: 60,            // bridge_skin_material_flow = 60
+    skinOverlapPercent: 23,         // infill_wall_overlap = 23% (Orca std)
+    monotonicTopBottomOrder: true,  // top_surface_pattern = 'monotonic'
+    bridgeSkinSpeed: 25,            // bridge_speed = 25 (Orca PETG)
+    bridgeSkinFlow: 100,            // bridge_flow = 1.0
     bridgeAngle: 0,
-    bridgeWallSpeed: 15,           // bridge_wall_speed = 15
+    bridgeWallSpeed: 25,            // bridge_speed = 25
     skinEdgeSupportLayers: 0,
-    infillBeforeWalls: true,       // infill_before_walls = true
+    infillBeforeWalls: false,       // infill_before_walls = false (Orca std)
     multiplyInfill: 1,
     randomInfillStart: false,      // random_infill_start = false
     lightningInfillSupportAngle: 40, // lightning_infill_support_angle = 40
-    accelerationEnabled: false,    // acceleration_enabled = false
-    jerkEnabled: false,            // jerk_enabled = false
-    accelerationPrint: 3000,       // acceleration_print = 3000
-    accelerationTravel: 5000,      // acceleration_travel = 5000
-    accelerationWall: 3000,        // acceleration_wall = 3000
-    accelerationInfill: 3000,      // acceleration_infill = 3000
-    accelerationTopBottom: 3000,   // acceleration_topbottom = 3000
-    accelerationSupport: 3000,     // acceleration_support = 3000
-    jerkPrint: 20,                 // jerk_print = 20
-    jerkTravel: 30,                // jerk_travel = 30
-    jerkWall: 20,                  // jerk_wall = 20
-    jerkInfill: 20,                // jerk_infill = 20
-    jerkTopBottom: 20,             // jerk_topbottom = 20
-    skirtBrimSpeed: 30,            // skirt_brim_speed = 30
+    accelerationEnabled: true,     // OrcaSlicer ships per-feature accel ON
+    jerkEnabled: false,            // jerk_enabled = false (Marlin-only)
+    accelerationPrint: 6000,       // default_acceleration = 6000 (Orca std)
+    accelerationTravel: 10000,     // travel_acceleration = 10000
+    accelerationWall: 1500,        // inner_wall_acceleration ≈ default/4
+    accelerationInfill: 6000,      // sparse_infill_acceleration = default
+    accelerationTopBottom: 500,    // top_surface_acceleration = 500
+    accelerationSupport: 6000,
+    jerkPrint: 20,
+    jerkTravel: 30,
+    jerkWall: 20,
+    jerkInfill: 20,
+    jerkTopBottom: 20,
+    skirtBrimSpeed: 30,            // skirt_speed = 30
     retractAtLayerChange: false,   // retract_at_layer_change = false
     maxRetractionCount: 90,        // retraction_count_max = 90
     retractionExtraPrimeAmount: 0,

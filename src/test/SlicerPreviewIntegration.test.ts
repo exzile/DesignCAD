@@ -140,7 +140,21 @@ describe('Slicer → preview pipeline — width mode', () => {
   }, 60_000);
 
   it('classic walls render with uniform color in width mode (all moves at lineWidth)', async () => {
-    const result = await sliceGeometry(buildBox(20, 20, 1));
+    // Default profile is now Arachne (matching OrcaSlicer's "Generic
+    // PETG" defaults); this test specifically exercises the classic
+    // fixed-width generator with all line widths pinned to a single
+    // value, so opt out of Arachne and pin every per-feature line
+    // width explicitly.
+    const result = await sliceGeometry(buildBox(20, 20, 1), {
+      wallGenerator: 'classic',
+      lineWidth: 0.45,
+      wallLineWidth: 0.45,
+      outerWallLineWidth: 0.45,
+      innerWallLineWidth: 0.45,
+      infillLineWidth: 0.45,
+      topBottomLineWidth: 0.45,
+      initialLayerLineWidthFactor: 100,
+    });
     const layer = result.layers[2];
     const range = computeRange([layer], 0, 'width');
     const data = buildLayerGeometry(layer, 'width', range);

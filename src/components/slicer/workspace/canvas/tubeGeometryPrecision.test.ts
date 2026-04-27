@@ -204,23 +204,32 @@ describe('Preview tube — closed-loop precision', () => {
   });
 });
 
-// Open chains get a Cura/Orca-style apex cap at each end: one extra
+// Open FILL-type chains (infill / top-bottom / bridge / ironing /
+// gap-fill) get a Cura/Orca-style apex cap at each end: one extra
 // vertex displaced one halfWidth past the tube end along the line's
 // own direction, fanned to the anchor ring with RADIAL triangles.
-// Closed chains have NO caps.
+// Closed chains and OPEN WALL chains do NOT get caps — wall caps were
+// dotting the perimeter at certain zoom levels when libArachne walls
+// failed the loop-closure heuristic in `GCodeTubePreview`.
 
 describe('Preview tube — vertex count consistency', () => {
-  it('vertex count = body rings × ringSize + 2 apex verts (open chain)', () => {
-    const chain = makeChain([[0, 0], [10, 0], [20, 5]], 0.4, false, 'support');
+  it('vertex count for open INFILL chain = body rings × ringSize + 2 apex verts', () => {
+    const chain = makeChain([[0, 0], [10, 0], [20, 5]], 0.4, false, 'infill');
     const geo = buildChainTube(chain, 0.2, 0.2);
     const positions = geo!.getAttribute('position').array as Float32Array;
-    // 3 body rings × ringSize verts + 2 cap apex verts.
     expect(positions.length).toBe((3 * ringSize + 2) * 3);
   });
 
-  it.each([2, 3, 4, 5, 8, 16] as const)('chain of %d points produces N×ringSize body verts + 2 cap apex verts', (n) => {
+  it('open SUPPORT chain has no apex caps (caps gated to fill types only)', () => {
+    const chain = makeChain([[0, 0], [10, 0], [20, 5]], 0.4, false, 'support');
+    const geo = buildChainTube(chain, 0.2, 0.2);
+    const positions = geo!.getAttribute('position').array as Float32Array;
+    expect(positions.length).toBe(3 * ringSize * 3);
+  });
+
+  it.each([2, 3, 4, 5, 8, 16] as const)('open INFILL chain of %d points produces N×ringSize body verts + 2 cap apex verts', (n) => {
     const points: Array<[number, number]> = Array.from({ length: n }, (_, i) => [i * 5, 0] as [number, number]);
-    const chain = makeChain(points, 0.4, false, 'support');
+    const chain = makeChain(points, 0.4, false, 'infill');
     const geo = buildChainTube(chain, 0.2, 0.2);
     const positions = geo!.getAttribute('position').array as Float32Array;
     expect(positions.length).toBe((n * ringSize + 2) * 3);
@@ -228,12 +237,10 @@ describe('Preview tube — vertex count consistency', () => {
 });
 
 describe('Preview tube — index buffer correctness', () => {
-  it('index buffer = body loops × RADIAL × 6 + 2 × cap fans (RADIAL triangles each)', () => {
-    const chain = makeChain([[0, 0], [10, 0], [20, 0]], 0.4, false);
+  it('index buffer for open INFILL = body loops × RADIAL × 6 + 2 × cap fans (RADIAL triangles each)', () => {
+    const chain = makeChain([[0, 0], [10, 0], [20, 0]], 0.4, false, 'infill');
     const geo = buildChainTube(chain, 0.2, 0.2);
     const indices = geo!.getIndex();
-    // 2 body segments × RADIAL × 6 indices.
-    // 2 caps × RADIAL triangles × 3 indices.
     const bodyIndices = 2 * RADIAL * 6;
     const capIndices = 2 * RADIAL * 3;
     expect(indices!.count).toBe(bodyIndices + capIndices);

@@ -10,7 +10,11 @@ export const MOVE_TYPE_COLORS: Record<SliceMove['type'], string> = {
   // wall-inner so the user can spot quality concerns).
   'gap-fill':   '#bbcc22',
   infill:       '#cc6600',
-  'top-bottom': '#2255cc',
+  // Top/bottom skin — purple to match OrcaSlicer's bottom-skin color
+  // (resources/profiles/.../colors). The previous dark blue read as
+  // "another infill type" in the preview; OrcaSlicer's distinct purple
+  // visually separates the skin shells from sparse infill underneath.
+  'top-bottom': '#7878c8',
   support:      '#cc44bb',
   skirt:        '#999999',
   brim:         '#999999',

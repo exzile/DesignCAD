@@ -66,6 +66,9 @@ export interface SlicerStore {
   importFileToPlate: (file: File) => Promise<void>;
   startSlice: () => void;
   cancelSlice: () => void;
+  /** Terminate and respawn the slicer worker. Use to recover from a
+   *  hung worker or a stale-cache situation in dev. */
+  reloadSlicerWorker: () => void;
   setSliceProgress: (progress: SliceProgress) => void;
   setPreviewMode: (mode: 'model' | 'preview') => void;
   setPreviewLayer: (layer: number) => void;

@@ -122,19 +122,27 @@ describe('buildChainTube — geometric contract', () => {
     expect(ringN.x).toBeCloseTo(15 - 0.2, 4);
   });
 
-  it('a 4-segment open polyline produces 5 main-tube rings (one per vertex) plus 2 apex caps', () => {
+  it('a 4-segment open INFILL polyline produces 5 main-tube rings + 2 apex caps', () => {
+    // Use 'infill' so the apex-cap path applies — caps are gated to
+    // fill-type chains only (skin / infill / gap-fill / bridge), not
+    // walls, to avoid sprinkling apex pyramids along the perimeter
+    // when libArachne walls fail the loop-closure check.
     const chain = makeChain(
       [[0, 0], [10, 0], [10, 10], [0, 10], [0, 5]],
-      0.4, false,
+      0.4, false, 'infill',
     );
     const geo = buildChainTube(chain, 0.2, 0.2);
     const positions = geo!.getAttribute('position').array as Float32Array;
-    // Main tube body: 5 rings × ringSize vertices, plus 2 apex
-    // vertices for the open-end pyramidal caps (Cura/Orca/Prusa style:
-    // each cap is a single forward-displaced apex fanned to the
-    // anchor ring).
     const expectedVertices = 5 * ringSize + 2;
     expect(positions.length).toBe(expectedVertices * 3);
+  });
+
+  it('open WALL chain has NO apex caps (skipped to avoid perimeter-dot artefact)', () => {
+    const chain = makeChain([[0, 0], [10, 0], [10, 10]], 0.4, false, 'wall-outer');
+    const geo = buildChainTube(chain, 0.2, 0.2);
+    const positions = geo!.getAttribute('position').array as Float32Array;
+    // 3 rings × ringSize verts × 3 floats — no apex vertex.
+    expect(positions.length).toBe(3 * ringSize * 3);
   });
 
   it('center-Z of each ring equals the bead center (baseZ - layerHeight/2)', () => {
@@ -221,15 +229,12 @@ describe('buildChainTube — geometric contract', () => {
     expect(indexAttr!.count).toBe(4 * RADIAL * 6);
   });
 
-  it('open chains generate one fewer body loop than closed (n-1 segments) plus 2 apex caps', () => {
+  it('open INFILL chains generate one fewer body loop than closed (n-1 segments) plus 2 apex caps', () => {
     const open = buildChainTube(
-      makeChain([[0, 0], [10, 0], [10, 10], [0, 10]], 0.4, false),
+      makeChain([[0, 0], [10, 0], [10, 10], [0, 10]], 0.4, false, 'infill'),
       0.2, 0.2,
     )!;
     const indices = open.getIndex();
-    // Body: (n-1) = 3 loops × RADIAL × 6 indices (2 triangles per
-    // segment-radial face). Each pyramidal cap is a single fan of
-    // RADIAL triangles × 3 indices = RADIAL × 3 indices per cap.
     const bodyIndices = 3 * RADIAL * 6;
     const capIndices = 2 * RADIAL * 3;
     expect(indices!.count).toBe(bodyIndices + capIndices);
