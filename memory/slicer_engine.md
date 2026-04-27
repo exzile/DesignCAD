@@ -30,6 +30,14 @@ originSessionId: 768c4a3e-fc4c-4a2b-ba31-60db44f6dc31
 
 `bridgeMP = polygon-clipping.difference(currentLayerMaterial, prevLayerMaterial)` = regions over void. Skin scanlines whose midpoint falls in `bridgeMP` get `type: 'bridge'`, `bridgeSkinSpeed`, `bridgeSkinFlow`. Fan flips to `bridgeFanSpeed` on entry, restores on exit/layer end.
 
+## Slicing performance stop point (2026-04-27)
+
+Prepare-path benchmark used during the tuning pass: 200 layers, 135,248 tris. It started around 53s and is currently about 3.0s on the user's machine with 6 layer workers.
+
+Landed changes: native libArachne inner-contour infill regions, per-run Arachne perimeter cache, worker-side contour wall precompute/hydration, interleaved layer batches, extracted mesh/model-bbox cache for repeated unchanged slices, and a large-mesh worker cap of 6. `runSlicePipeline.ts` owns batching/worker-count policy; `SlicerLayerWorker.ts` owns worker Arachne warmup/precompute; `prepareSliceRun.ts` owns mesh extraction cache.
+
+Do not reintroduce these failed experiments without new evidence: topology precompute in workers, skipping triangle prefiltering for interleaved batches, or raising the large-mesh cap to 7. All were measured as neutral or slower on the benchmark.
+
 ## Z-seam — `geometry/seams.ts`
 
 `findSeamPosition(contour, pp, layerIndex, nozzleX?, nozzleY?)`. `shortest` mode picks vertex closest to nozzle. Modes: `random`, `aligned`/`back`, `user_specified`, `sharpest_corner` (hide/expose/smart_hide), `shortest`.

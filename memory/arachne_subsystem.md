@@ -18,6 +18,14 @@ WASM Voronoi is 9× faster than JS on 640-edge synthetic (`voronoiBench.test.ts`
 
 Adapters live at `engine/slicer/pipeline/arachne/{voronoiWasm,arachneWasm,backend}.ts` and `engine/slicer/geometry/{clipper2Wasm,clipper2Boolean}.ts`. Warm-ups in `SlicerWorker.ts` + `profileGeometry.ts`. polygon-clipping kept as fallback safety net — don't drop yet.
 
+## Post-optimization status (2026-04-27)
+
+Native libArachne inner contours are exposed through `arachneWasm.ts` and used by `computeArachneInfillGeometry` before falling back to stroke subtraction. This fixed the blue first-layer infill/skin overreach into walls and removed the expensive JS fallback for normal WASM output.
+
+Contour walls are now precomputed in `SlicerLayerWorker.ts`, serialized as `PrecomputedContourWall`, hydrated in `runSlicePipeline.ts`, and consumed by `emitGroupedAndContourWalls.ts`. Keep grouped-wall and inline-wall behavior identical; the worker precompute is a transport/cache optimization, not a second wall algorithm.
+
+`SlicePipelineGeometry` keeps a bounded Arachne perimeter cache for repeated contour/profile contexts. It is intentionally per-run and profile-sensitive; do not make it global unless geometry/profile invalidation is proven airtight.
+
 ## Pure-JS perf cliff (still relevant for js backend)
 
 `ARACHNE_MAX_EDGES = 400` falls back to classic above. JS Voronoi at N=2000 takes minutes/layer (verified empirically). Cura/Orca avoid this via `boost::polygon::voronoi` Fortune sweep (`O(N log N)`) — that's the WASM path.

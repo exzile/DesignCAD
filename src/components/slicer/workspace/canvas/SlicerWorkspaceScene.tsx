@@ -259,6 +259,7 @@ export function SlicerWorkspaceScene() {
         <>
           <InlineGCodePreview
             sliceResult={sliceResult}
+            filamentDiameter={printerProfile?.filamentDiameter ?? 1.75}
             startLayer={previewLayerStart}
             currentLayer={simState.layerIndex}
             currentLayerMoveCount={simState.moveCount}

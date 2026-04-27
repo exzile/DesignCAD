@@ -8,7 +8,13 @@ import {
   WIDTH_LOW_COLOR, WIDTH_HIGH_COLOR,
   LAYER_TIME_LOW_COLOR, LAYER_TIME_HIGH_COLOR,
 } from '../preview/constants';
-import { buildChainTube, TUBE_MATERIAL, TUBE_RADIAL_SEGMENTS } from './tubeGeometry';
+import {
+  buildChainTube,
+  DENSE_FILL_TUBE_MATERIAL,
+  TUBE_MATERIAL,
+  TUBE_RADIAL_SEGMENTS,
+  TRIMMED_FILL_TYPES,
+} from './tubeGeometry';
 
 // Single source of truth for bead colours — shared with the HTML legend panel.
 const MOVE_TYPE_COLORS = MOVE_TYPE_THREE_COLORS;
@@ -25,6 +31,9 @@ const PREVIEW_LINE_SCALE = 1.0;
 const PREVIEW_JOIN_EPSILON = 5e-4;
 const PREVIEW_LOOP_CLOSE_LW_FACTOR = 0.2;
 const PREVIEW_LOOP_CLOSE_MAX_MM = 0.08;
+const DEFAULT_FILAMENT_DIAMETER_MM = 1.75;
+const MIN_PREVIEW_LINE_WIDTH_MM = 0.02;
+const MAX_PREVIEW_LINE_WIDTH_FACTOR = 3;
 
 // cos(threshold) for chain-splitting. Chain breaks are only for extreme
 // bends (> 135°, i.e. near-U-turns) where the miter math fundamentally
@@ -60,6 +69,7 @@ type ColorMode = 'type' | 'speed' | 'flow' | 'width' | 'layer-time' | 'wall-qual
 export function LayerLines({
   layer,
   layerHeight,
+  filamentDiameter,
   isCurrentLayer,
   currentLayerMoveCount,
   showTravel,
@@ -71,6 +81,7 @@ export function LayerLines({
 }: {
   layer: SliceLayer;
   layerHeight: number;
+  filamentDiameter: number;
   isCurrentLayer: boolean;
   currentLayerMoveCount: number | undefined;
   showTravel: boolean;
@@ -187,6 +198,25 @@ export function LayerLines({
       Math.abs(a.x - b.x) <= PREVIEW_JOIN_EPSILON
       && Math.abs(a.y - b.y) <= PREVIEW_JOIN_EPSILON;
 
+    const lineWidthFromGCode = (move: SliceMove, segmentLength: number): number => {
+      const nominal = Math.max(MIN_PREVIEW_LINE_WIDTH_MM, move.lineWidth ?? 0.4);
+      const beadHeight = Math.max(0.02, move.layerHeight ?? layerHeight);
+      if (move.extrusion <= 0 || segmentLength <= 1e-6 || beadHeight <= 0) {
+        return nominal * PREVIEW_LINE_SCALE;
+      }
+      const filamentRadius = Math.max(0.1, filamentDiameter || DEFAULT_FILAMENT_DIAMETER_MM) * 0.5;
+      const filamentArea = Math.PI * filamentRadius * filamentRadius;
+      const volumeWidth = (move.extrusion * filamentArea) / (segmentLength * beadHeight);
+      if (!Number.isFinite(volumeWidth) || volumeWidth <= 0) {
+        return nominal * PREVIEW_LINE_SCALE;
+      }
+      const capped = Math.min(
+        Math.max(volumeWidth, MIN_PREVIEW_LINE_WIDTH_MM),
+        nominal * MAX_PREVIEW_LINE_WIDTH_FACTOR,
+      );
+      return capped * PREVIEW_LINE_SCALE;
+    };
+
     for (let i = 0; i < moves.length; i++) {
       const move = moves[i];
 
@@ -206,13 +236,13 @@ export function LayerLines({
       const segLen = Math.hypot(move.to.x - move.from.x, move.to.y - move.from.y);
       if (segLen < 1e-6) continue;
 
-      const lw = (move.lineWidth ?? 0.4) * PREVIEW_LINE_SCALE;
+      const lw = lineWidthFromGCode(move, segLen);
       const col = colorOf(move);
       const ref: ShaftMoveData = {
         type: move.type,
         speed: move.speed,
         extrusion: move.extrusion,
-        lineWidth: move.lineWidth ?? 0.4,
+        lineWidth: lw,
         length: segLen,
         moveIndex: i,
       };
@@ -301,6 +331,34 @@ export function LayerLines({
       c.isClosed = true;
     }
 
+    // Drop wall "flap" stubs — short isolated chains (typically 2 points,
+    // total length < ~1× lw) that Arachne's pure-JS variable-width pass
+    // emits at sharp polygon corners. They render as small tubes poking
+    // perpendicular to the main wall ring and read as visible "teeth"
+    // around circular features. OrcaSlicer's libArachne hides them by
+    // merging the flap into the main bead; until we wire libArachne in,
+    // we filter them at preview time so the visual matches Orca's
+    // smooth-tube look. Closed chains and non-wall chains are kept.
+    const isWallType = (t: string) => t === 'wall-outer' || t === 'wall-inner';
+    const FLAP_LENGTH_LW_RATIO = 1.0;
+    const filteredChains: TubeChain[] = [];
+    for (const chain of chains) {
+      if (!chain.isClosed && isWallType(chain.type)) {
+        let totalLen = 0;
+        for (let i = 0; i < chain.points.length - 1; i++) {
+          totalLen += Math.hypot(
+            chain.points[i + 1].x - chain.points[i].x,
+            chain.points[i + 1].y - chain.points[i].y,
+          );
+        }
+        let avgLw = 0;
+        for (const p of chain.points) avgLw += p.lw;
+        avgLw /= chain.points.length;
+        if (totalLen < avgLw * FLAP_LENGTH_LW_RATIO) continue;
+      }
+      filteredChains.push(chain);
+    }
+
     // Build a tube for each chain.
     const beadHeight = Math.max(0.02, layerHeight);
     const tubeList: Array<{
@@ -308,7 +366,7 @@ export function LayerLines({
       type: string;
       moveRefs: ShaftMoveData[];
     }> = [];
-    for (const chain of chains) {
+    for (const chain of filteredChains) {
       const geo = buildChainTube(chain, beadHeight, layer.z);
       if (!geo) continue;
       tubeList.push({ geometry: geo, type: chain.type, moveRefs: chain.moveRefs });
@@ -321,7 +379,7 @@ export function LayerLines({
     if (rg) rg.setAttribute('position', new THREE.Float32BufferAttribute(retractPos, 3));
 
     return { tubes: tubeList, travelGeo: tg, retractGeo: rg };
-  }, [layer, layerHeight, isCurrentLayer, currentLayerMoveCount, showTravel, colorMode, hiddenTypes, layerTimeT]);
+  }, [layer, layerHeight, filamentDiameter, isCurrentLayer, currentLayerMoveCount, showTravel, colorMode, hiddenTypes, layerTimeT]);
 
   useEffect(() => () => {
     for (const t of tubes) t.geometry.dispose();
@@ -335,7 +393,8 @@ export function LayerLines({
         <mesh
           key={`${layer.layerIndex}-${t.type}-${i}`}
           geometry={t.geometry}
-          material={TUBE_MATERIAL}
+          material={TRIMMED_FILL_TYPES.has(t.type) ? DENSE_FILL_TUBE_MATERIAL : TUBE_MATERIAL}
+          renderOrder={TRIMMED_FILL_TYPES.has(t.type) ? 1 : 0}
           frustumCulled={false}
           onPointerMove={onHoverMove ? (e: ThreeEvent<PointerEvent>) => {
             // Hover inspect: each segment owns RADIAL × 2 triangles
@@ -385,6 +444,7 @@ export function LayerLines({
 
 export function InlineGCodePreview({
   sliceResult,
+  filamentDiameter,
   startLayer,
   currentLayer,
   currentLayerMoveCount,
@@ -396,6 +456,7 @@ export function InlineGCodePreview({
   onHoverMove,
 }: {
   sliceResult: SliceResult;
+  filamentDiameter?: number;
   startLayer: number;
   currentLayer: number;
   currentLayerMoveCount?: number;
@@ -430,6 +491,7 @@ export function InlineGCodePreview({
             key={layer.layerIndex}
             layer={layer}
             layerHeight={layerH}
+            filamentDiameter={filamentDiameter ?? DEFAULT_FILAMENT_DIAMETER_MM}
             isCurrentLayer={layer.layerIndex === currentLayer}
             currentLayerMoveCount={currentLayerMoveCount}
             showTravel={showTravel}

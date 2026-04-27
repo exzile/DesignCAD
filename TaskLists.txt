@@ -7,6 +7,16 @@
 # As of 2026-04-26: ARACHNE-9 (libArachne + Boost.Voronoi WASM) is fully
 # closed. wallGenerator: arachne + arachneBackend: wasm is the production
 # default. polygon-clipping is no longer in the production bundle.
+#
+# As of 2026-04-27: current slicer performance pass is stopped in a good
+# state. 200-layer / 135k-triangle test dropped from ~53s to ~3.0s on the
+# Prepare path. Completed items: native libArachne inner contours for infill
+# regions, per-run Arachne wall cache, worker-side precomputed contour walls,
+# interleaved worker batches, 6-worker cap for large meshes, extracted mesh
+# cache for repeated unchanged slices, print summary/performance panel merge,
+# deeper preview zoom, and targeted unit coverage for the touched pipeline.
+# Tried and reverted: worker topology precompute, skipping per-batch triangle
+# prefiltering, and 7-worker large-mesh cap.
 # ============================================================================
 
 

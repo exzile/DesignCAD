@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 
 import {
   buildContiguousLayerBatches,
+  buildInterleavedLayerBatches,
   chooseLayerPrepWorkerCount,
   triangleIntersectsLayerBatch,
 } from './runSlicePipeline';
@@ -41,9 +42,9 @@ describe('chooseLayerPrepWorkerCount', () => {
     expect(chooseLayerPrepWorkerCount(makeRun(120, 50_000), 8)).toBe(5);
   });
 
-  it('uses a conservative pool for large meshes', () => {
-    expect(chooseLayerPrepWorkerCount(makeRun(120, 80_000), 8)).toBe(4);
-    expect(chooseLayerPrepWorkerCount(makeRun(120, 120_000), 16)).toBe(4);
+  it('uses extra workers for large meshes without exceeding the global cap', () => {
+    expect(chooseLayerPrepWorkerCount(makeRun(120, 80_000), 8)).toBe(6);
+    expect(chooseLayerPrepWorkerCount(makeRun(120, 120_000), 16)).toBe(6);
   });
 
   it('avoids cloning huge meshes into a worker pool', () => {
@@ -86,5 +87,19 @@ describe('buildContiguousLayerBatches', () => {
 
   it('does not create empty batches when there are more workers than layers', () => {
     expect(buildContiguousLayerBatches(3, 8)).toEqual([[0], [1], [2]]);
+  });
+});
+
+describe('buildInterleavedLayerBatches', () => {
+  it('distributes early layers across workers so sequential emission is not gated by one batch', () => {
+    expect(buildInterleavedLayerBatches(10, 3)).toEqual([
+      [0, 3, 6, 9],
+      [1, 4, 7],
+      [2, 5, 8],
+    ]);
+  });
+
+  it('does not create empty batches when there are more workers than layers', () => {
+    expect(buildInterleavedLayerBatches(3, 8)).toEqual([[0], [1], [2]]);
   });
 });

@@ -205,7 +205,7 @@ export function chooseLayerPrepWorkerCount(
   const workerBudget = Math.min(Math.max(1, availableCores - 1), run.totalLayers, MAX_LAYER_PREP_WORKERS);
   const triangleCount = run.triangles.length;
   if (triangleCount >= HUGE_MESH_LAYER_PREP_TRIANGLES) return 0;
-  if (triangleCount >= LARGE_MESH_LAYER_PREP_TRIANGLES) return Math.min(4, workerBudget);
+  if (triangleCount >= LARGE_MESH_LAYER_PREP_TRIANGLES) return Math.min(6, workerBudget);
   if (triangleCount >= MEDIUM_MESH_LAYER_PREP_TRIANGLES) return Math.min(5, workerBudget);
   if (triangleCount >= SMALL_MESH_LAYER_PREP_TRIANGLES) return Math.min(6, workerBudget);
   return workerBudget;

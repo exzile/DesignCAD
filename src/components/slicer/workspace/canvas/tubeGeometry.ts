@@ -131,6 +131,13 @@ export const TUBE_MATERIAL = Object.assign(
   { userData: { shared: true } },
 );
 
+export const DENSE_FILL_TUBE_MATERIAL = Object.assign(
+  new THREE.MeshLambertMaterial({
+    vertexColors: true,
+  }),
+  { userData: { shared: true } },
+);
+
 /**
  * Build an elliptical-cross-section mitered tube BufferGeometry for a chain.
  * `layerHeight` is the vertical extent of the bead (Z). `baseZ` is the layer

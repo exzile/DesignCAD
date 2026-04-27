@@ -6,6 +6,15 @@ import type { SlicerExecutionPipeline, SliceGeometryRun, SliceRun } from './type
 
 export type PreparedSliceGeometryRun = SliceGeometryRun & Pick<SliceRun, 'printer' | 'modelHeight'>;
 
+interface CachedMeshGeometry {
+  triangles: SliceGeometryRun['triangles'];
+  modelBBox: SliceRun['modelBBox'];
+  modelHeight: number;
+}
+
+const MAX_MESH_GEOMETRY_CACHE_ENTRIES = 8;
+const meshGeometryCache = new Map<string, CachedMeshGeometry>();
+
 function appendToolSelection(gcode: string[], printer: SliceRun['printer'], pp: SliceRun['pp']): void {
   const extruderIndex = Math.max(0, Math.floor(pp.extruderIndex ?? 0));
   if (extruderIndex <= 0) return;
@@ -19,6 +28,59 @@ function appendToolSelection(gcode: string[], printer: SliceRun['printer'], pp: 
     const y = printer.extruderOffsetY ?? 0;
     if (x !== 0 || y !== 0) gcode.push(`G10 P${extruderIndex} X${x.toFixed(3)} Y${y.toFixed(3)} ; Tool offset`);
   }
+}
+
+function attributeVersion(attr: THREE.BufferAttribute | THREE.InterleavedBufferAttribute | null | undefined): number {
+  if (!attr) return -1;
+  const version = (attr as THREE.BufferAttribute & { version?: number }).version;
+  return typeof version === 'number' ? version : 0;
+}
+
+function transformKey(transform: THREE.Matrix4): string {
+  return transform.elements.map((value) => Number.isFinite(value) ? value.toPrecision(12) : String(value)).join(',');
+}
+
+function geometryCacheKey(
+  geometries: { geometry: THREE.BufferGeometry; transform: THREE.Matrix4 }[],
+): string {
+  return geometries.map(({ geometry, transform }) => {
+    const position = geometry.getAttribute('position');
+    const index = geometry.getIndex();
+    return [
+      geometry.uuid,
+      geometry.id,
+      position?.count ?? 0,
+      attributeVersion(position),
+      index?.count ?? 0,
+      attributeVersion(index),
+      transformKey(transform),
+    ].join(':');
+  }).join('|');
+}
+
+function rememberMeshGeometry(cacheKey: string, value: CachedMeshGeometry): CachedMeshGeometry {
+  if (meshGeometryCache.size >= MAX_MESH_GEOMETRY_CACHE_ENTRIES) {
+    const oldestKey = meshGeometryCache.keys().next().value;
+    if (oldestKey) meshGeometryCache.delete(oldestKey);
+  }
+  meshGeometryCache.set(cacheKey, value);
+  return value;
+}
+
+function prepareMeshGeometry(
+  slicer: SlicerExecutionPipeline,
+  geometries: { geometry: THREE.BufferGeometry; transform: THREE.Matrix4 }[],
+): CachedMeshGeometry {
+  const cacheKey = geometryCacheKey(geometries);
+  const cached = meshGeometryCache.get(cacheKey);
+  if (cached) return cached;
+
+  const triangles = slicer.extractTriangles(geometries);
+  if (triangles.length === 0) throw new Error('No triangles found in provided geometry.');
+
+  const modelBBox = slicer.computeBBox(triangles);
+  const modelHeight = modelBBox.max.z - modelBBox.min.z;
+  return rememberMeshGeometry(cacheKey, { triangles, modelBBox, modelHeight });
 }
 
 export function prepareSliceRun(
@@ -98,11 +160,7 @@ export function prepareSliceGeometryRun(
   slicer.cancelled = false;
   slicer.reportProgress('preparing', 0, 0, 0, 'Extracting triangles...');
 
-  const triangles = slicer.extractTriangles(geometries);
-  if (triangles.length === 0) throw new Error('No triangles found in provided geometry.');
-
-  const modelBBox = slicer.computeBBox(triangles);
-  const modelHeight = modelBBox.max.z - modelBBox.min.z;
+  const { triangles, modelBBox, modelHeight } = prepareMeshGeometry(slicer, geometries);
   const bedCenterX = printer.originCenter ? 0 : printer.buildVolume.x / 2;
   const bedCenterY = printer.originCenter ? 0 : printer.buildVolume.y / 2;
   const modelCenterX = (modelBBox.min.x + modelBBox.max.x) / 2;

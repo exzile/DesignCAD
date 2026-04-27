@@ -5,7 +5,6 @@ import { Slicer } from '../engine/slicer/Slicer';
 import { prepareSliceGeometryRun } from '../engine/slicer/pipeline/execution/steps/prepareSliceRun';
 import { prepareLayerGeometryState } from '../engine/slicer/pipeline/execution/steps/prepareLayerState';
 import { loadArachneModule } from '../engine/slicer/pipeline/arachne';
-import { buildLayerStaticTopology } from '../engine/slicer/pipeline/execution/layerTopology';
 import type { SliceGeometryRun, SliceLayerGeometryState } from '../engine/slicer/pipeline/execution/steps/types';
 import type { Contour, Triangle } from '../types/slicer-pipeline.types';
 import type { GeneratedPerimeters } from '../types/slicer-pipeline.types';
@@ -170,17 +169,6 @@ function precomputeContourWalls(slicer: Slicer, layer: SliceLayerGeometryState):
   if (precomputed.length > 0) layer.precomputedContourWalls = precomputed;
 }
 
-function precomputeLayerTopology(slicer: Slicer, layer: SliceLayerGeometryState): void {
-  if (slicer.printProfile.optimizeWallOrder) return;
-  layer.precomputedTopology = buildLayerStaticTopology({
-    contours: layer.contours,
-    optimizeWallOrder: false,
-    currentX: 0,
-    currentY: 0,
-    pointInContour: (point, contour) => slicer.pointInContour(point, contour),
-  });
-}
-
 self.onmessage = async (event: MessageEvent<WorkerMessage>) => {
   const msg = event.data;
 
@@ -222,7 +210,6 @@ self.onmessage = async (event: MessageEvent<WorkerMessage>) => {
         yieldToUI: false,
       });
       if (layer) {
-        precomputeLayerTopology(slicer, layer);
         if (canPrecomputeArachne) precomputeContourWalls(slicer, layer);
       }
       const serializedLayer = serializeLayerGeometry(layer);
