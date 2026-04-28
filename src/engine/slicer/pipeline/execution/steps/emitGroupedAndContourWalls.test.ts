@@ -234,4 +234,98 @@ describe('emitGroupedAndContourWalls', () => {
       '; Inner wall 3',
     ]);
   });
+
+  it('orders separate contours by nearest reachable wall start', () => {
+    const farOuter = square(10).map((point) => point.add(new THREE.Vector2(100, 100)));
+    const farInner = square(5).map((point) => point.add(new THREE.Vector2(102, 102)));
+    const nearOuter = square(10).map((point) => point.add(new THREE.Vector2(5, 5)));
+    const nearInner = square(5).map((point) => point.add(new THREE.Vector2(7, 7)));
+    const farContour = { points: farOuter, area: 100, isOuter: true };
+    const nearContour = { points: nearOuter, area: 100, isOuter: true };
+    const generated = new Map<object, GeneratedPerimeters>([
+      [farContour, {
+        walls: [farOuter, farInner],
+        lineWidths: [0.45, 0.45],
+        wallClosed: [true, true],
+        wallDepths: [0, 1],
+        wallSources: ['outer', 'outer'],
+        outerCount: 1,
+        innermostHoles: [],
+        infillRegions: [],
+      }],
+      [nearContour, {
+        walls: [nearOuter, nearInner],
+        lineWidths: [0.45, 0.45],
+        wallClosed: [true, true],
+        wallDepths: [0, 1],
+        wallSources: ['outer', 'outer'],
+        outerCount: 1,
+        innermostHoles: [],
+        infillRegions: [],
+      }],
+    ]);
+    const travelStarts: Array<{ x: number; y: number }> = [];
+    const pipeline = {
+      findSeamPosition: () => 0,
+      reorderFromIndex: (points: THREE.Vector2[], index: number) => [
+        ...points.slice(index),
+        ...points.slice(0, index),
+      ],
+      simplifyClosedContour: (points: THREE.Vector2[]) => points,
+      filterPerimetersByMinOdd: (perimeters: GeneratedPerimeters) => perimeters,
+      generatePerimeters: (points: THREE.Vector2[]) => {
+        if (points === farContour.points) return generated.get(farContour)!;
+        if (points === nearContour.points) return generated.get(nearContour)!;
+        throw new Error('unexpected contour');
+      },
+    };
+    const run = {
+      pp: {
+        groupOuterWalls: false,
+        wallCount: 2,
+        wallLineWidth: 0.45,
+        outerWallFirst: false,
+      },
+      emitter: {
+        currentX: 0,
+        currentY: 0,
+        currentLayerFlow: 1,
+        setAccel: () => undefined,
+        setJerk: () => undefined,
+        travelTo(x: number, y: number) {
+          travelStarts.push({ x, y });
+          this.currentX = x;
+          this.currentY = y;
+        },
+        extrudeTo(x: number, y: number) {
+          this.currentX = x;
+          this.currentY = y;
+          return { time: 0 };
+        },
+        calculateExtrusion: () => 0,
+      },
+      gcode: [],
+      previousSeamPoints: [],
+      currentSeamPoints: [],
+    } as unknown as SliceRun;
+    const layer = {
+      li: 0,
+      layerZ: 0.2,
+      layerH: 0.2,
+      isFirstLayer: true,
+      isSolidTop: false,
+      isSolidBottom: false,
+      outerWallSpeed: 20,
+      innerWallSpeed: 30,
+      workContours: [farContour, nearContour],
+      holesByOuterContour: new Map(),
+      moves: [],
+      layerTime: 0,
+      hasBridgeRegions: false,
+    } as unknown as SliceLayerState;
+
+    emitGroupedAndContourWalls(pipeline, run, layer);
+
+    expect(travelStarts[0]).toEqual({ x: 7, y: 7 });
+  });
 });

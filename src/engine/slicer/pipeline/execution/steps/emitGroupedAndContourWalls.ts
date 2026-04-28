@@ -145,6 +145,55 @@ function orcaOrderedWallIndices(
   return [...ordered, ...gapFill];
 }
 
+function wallStartPoint(item: ContourWallData): THREE.Vector2 | null {
+  let best: THREE.Vector2 | null = null;
+  for (const wall of item.wallSets) {
+    if (wall.length === 0) continue;
+    if (!best) best = wall[0];
+    if (item.wallClosed?.[item.wallSets.indexOf(wall)] === false) return wall[0];
+  }
+  return best ?? item.contour.points[0] ?? null;
+}
+
+function wallEndPoint(item: ContourWallData): THREE.Vector2 | null {
+  for (let i = item.wallSets.length - 1; i >= 0; i--) {
+    const wall = item.wallSets[i];
+    if (!wall || wall.length === 0) continue;
+    return item.wallClosed?.[i] === false ? wall[wall.length - 1] : wall[0];
+  }
+  return item.contour.points[0] ?? null;
+}
+
+function orcaOrderedContourWallData(
+  items: ContourWallData[],
+  startPosition: { x: number; y: number },
+): ContourWallData[] {
+  if (items.length <= 1) return items;
+  const remaining = [...items];
+  const ordered: ContourWallData[] = [];
+  let current = startPosition;
+
+  while (remaining.length > 0) {
+    let bestIdx = 0;
+    let bestDist = Infinity;
+    for (let i = 0; i < remaining.length; i++) {
+      const point = wallStartPoint(remaining[i]);
+      if (!point) continue;
+      const dist = distanceSq(current, point);
+      if (dist < bestDist) {
+        bestDist = dist;
+        bestIdx = i;
+      }
+    }
+    const [next] = remaining.splice(bestIdx, 1);
+    ordered.push(next);
+    const end = wallEndPoint(next);
+    if (end) current = end;
+  }
+
+  return ordered;
+}
+
 function beginSeamLayer(run: SliceRun, li: number) {
   if (run.seamMemoryLayer === li) return;
   if (run.seamMemoryLayer !== undefined) run.previousSeamPoints = run.currentSeamPoints ?? [];
@@ -498,7 +547,12 @@ export function emitGroupedAndContourWalls(
       };
     });
 
-  for (const contourData of contourWallData) {
+  const orderedContourWallData = orcaOrderedContourWallData(
+    contourWallData,
+    { x: emitter.currentX, y: emitter.currentY },
+  );
+
+  for (const contourData of orderedContourWallData) {
     const { exWalls, wallSets, wallLineWidths, wallClosed } = contourData;
     if (!groupOW) perContour.push(contourData);
 

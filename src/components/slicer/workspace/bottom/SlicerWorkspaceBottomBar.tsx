@@ -124,6 +124,7 @@ export function SlicerWorkspaceBottomBar() {
     <div className="slicer-bottom-bar">
       {!isSlicing ? (
         <button
+          type="button"
           className="slicer-bottom-bar__slice-btn"
           onClick={() => startSlice()}
           disabled={plateObjects.length === 0}
@@ -131,7 +132,7 @@ export function SlicerWorkspaceBottomBar() {
           <Play size={16} /> Slice
         </button>
       ) : (
-        <button className="slicer-bottom-bar__cancel-btn" onClick={() => cancelSlice()}>
+        <button type="button" className="slicer-bottom-bar__cancel-btn" onClick={() => cancelSlice()}>
           <X size={14} /> Cancel
         </button>
       )}
@@ -176,6 +177,7 @@ export function SlicerWorkspaceBottomBar() {
 
       {hasResult && (
         <button
+          type="button"
           className={`slicer-bottom-bar__preview-btn${previewMode === 'preview' ? ' is-active' : ''}`}
           onClick={() => setPreviewMode(previewMode === 'model' ? 'preview' : 'model')}
           title="Toggle G-code layer preview"
@@ -187,6 +189,7 @@ export function SlicerWorkspaceBottomBar() {
 
       {previewMode === 'preview' && hasResult && (
         <button
+          type="button"
           className={`slicer-bottom-bar__preview-btn${colorSchemeOpen ? ' is-active' : ''}`}
           onClick={() => setColorSchemeOpen(!colorSchemeOpen)}
           title="Color scheme"
@@ -197,6 +200,7 @@ export function SlicerWorkspaceBottomBar() {
 
       {previewMode === 'preview' && hasResult && (
         <button
+          type="button"
           className={`slicer-bottom-bar__preview-btn${gcodeOpen ? ' is-active' : ''}`}
           onClick={() => setGCodeOpen(!gcodeOpen)}
           title="Toggle G-code preview"
@@ -208,6 +212,7 @@ export function SlicerWorkspaceBottomBar() {
 
       {previewMode === 'preview' && hasResult && (
         <button
+          type="button"
           className={`slicer-bottom-bar__btn${sectionEnabled ? ' is-active' : ''}`}
           title="Toggle section plane — clips everything above the slider Z"
           onClick={() => {
@@ -226,6 +231,7 @@ export function SlicerWorkspaceBottomBar() {
       {previewMode === 'preview' && hasResult && sectionEnabled && (
         <label className="slicer-bottom-bar__section" title="Section plane Z height">
           <button
+            type="button"
             className={`slicer-bottom-bar__section-snap${sectionSnap ? ' is-active' : ''}`}
             title={sectionSnap ? 'Snapping to layer boundaries (click to go continuous)' : 'Continuous Z (click to snap to layers)'}
             onClick={() => setSectionSnap((v) => !v)}
@@ -287,6 +293,7 @@ export function SlicerWorkspaceBottomBar() {
       {previewMode === 'preview' && hasResult && (
         <div className="slicer-bottom-bar__layer-step">
           <button
+            type="button"
             className="slicer-bottom-bar__sim-ctrl"
             title="Previous layer (−1)"
             disabled={previewLayer <= previewLayerStart}
@@ -295,6 +302,7 @@ export function SlicerWorkspaceBottomBar() {
             <ChevronLeft size={13} />
           </button>
           <button
+            type="button"
             className="slicer-bottom-bar__sim-ctrl"
             title="Next layer (+1)"
             disabled={previewLayer >= previewLayerMax}
@@ -307,6 +315,7 @@ export function SlicerWorkspaceBottomBar() {
 
       {previewMode === 'preview' && hasResult && (
         <button
+          type="button"
           className={`slicer-bottom-bar__sim-btn${simEnabled ? ' is-active' : ''}`}
           onClick={() => setSimEnabled(!simEnabled)}
           title="Toggle nozzle simulation"
@@ -318,6 +327,7 @@ export function SlicerWorkspaceBottomBar() {
       {previewMode === 'preview' && hasResult && simEnabled && (
         <div className="slicer-bottom-bar__sim-controls">
           <button
+            type="button"
             className="slicer-bottom-bar__sim-ctrl"
             onClick={() => { resetSim(); }}
             title="Reset simulation (0:00)"
@@ -325,6 +335,7 @@ export function SlicerWorkspaceBottomBar() {
             <SkipBack size={13} />
           </button>
           <button
+            type="button"
             className="slicer-bottom-bar__sim-ctrl is-primary"
             onClick={() => setSimPlaying(!simPlaying)}
             title={simPlaying ? 'Pause simulation' : 'Play simulation'}
@@ -360,6 +371,7 @@ export function SlicerWorkspaceBottomBar() {
           </span>
           {simTime >= totalPrintTime && totalPrintTime > 0 && (
             <button
+              type="button"
               className="slicer-bottom-bar__sim-ctrl"
               onClick={() => { resetSim(); setSimPlaying(true); }}
               title="Restart simulation"
@@ -372,11 +384,12 @@ export function SlicerWorkspaceBottomBar() {
 
       {hasResult && (
         <>
-          <button className="slicer-bottom-bar__btn" onClick={() => downloadGCode()}>
+          <button type="button" className="slicer-bottom-bar__btn" onClick={() => downloadGCode()}>
             <Download size={14} /> Export G-code
           </button>
           {connected && (
             <button
+              type="button"
               className={`slicer-bottom-bar__btn slicer-bottom-bar__btn--accent${sending === 'sending' ? ' is-sending' : ''}${sending === 'sent' ? ' is-sent' : ''}${sending === 'error' ? ' is-error' : ''}`}
               onClick={handleSend}
               disabled={sending === 'sending' || uploading}

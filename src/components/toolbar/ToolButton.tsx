@@ -46,6 +46,7 @@ export function ToolButton({ icon, label, tool, active, onClick, disabled, large
   return (
     <div className="ribbon-button-wrapper">
       <button
+        type="button"
         ref={btnRef}
         className={`ribbon-button ${isActive ? 'active' : ''} ${disabled ? 'disabled' : ''} ${large ? 'large' : ''}`}
         onClick={handleClick}
@@ -70,6 +71,7 @@ export function ToolButton({ icon, label, tool, active, onClick, disabled, large
         >
           {dropdown.map((item, i) => (
             <button
+              type="button"
               key={i}
               className={`ribbon-dropdown-item${item.divider ? ' ribbon-dropdown-item--divider' : ''}`}
               onClick={() => { item.onClick(); setDropdownOpen(false); }}

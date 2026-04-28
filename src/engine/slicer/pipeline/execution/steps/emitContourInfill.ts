@@ -202,6 +202,7 @@ export function shouldExpandSkinForRegion(
 export function sortSolidSkinLinesForEmission(
   lines: InfillLineSegment[],
   lineWidth: number,
+  startPosition?: { x: number; y: number },
 ): InfillLineSegment[] {
   if (lines.length <= 1) return lines;
 
@@ -261,7 +262,35 @@ export function sortSolidSkinLinesForEmission(
     }
   });
 
-  return sorted;
+  const remaining = sorted.slice();
+  const ordered: InfillLineSegment[] = [];
+  let cursor = startPosition ?? remaining[0].from;
+  while (remaining.length > 0) {
+    let bestIdx = 0;
+    let bestDist = Infinity;
+    let bestFlip = false;
+    for (let i = 0; i < remaining.length; i++) {
+      const line = remaining[i];
+      const fromDist = line.from.distanceToSquared(cursor);
+      const toDist = line.to.distanceToSquared(cursor);
+      if (fromDist < bestDist) {
+        bestDist = fromDist;
+        bestIdx = i;
+        bestFlip = false;
+      }
+      if (toDist < bestDist) {
+        bestDist = toDist;
+        bestIdx = i;
+        bestFlip = true;
+      }
+    }
+    const [line] = remaining.splice(bestIdx, 1);
+    const next = bestFlip ? flipLine(line) : line;
+    ordered.push(next);
+    cursor = next.to;
+  }
+
+  return ordered;
 }
 
 export function shouldConnectInfillLinesForEmission(
@@ -703,7 +732,7 @@ export function emitContourInfill(
     }
     gcode.push(`; ${isSolid ? 'Solid fill' : 'Infill'}`);
     const sorted = isSolid
-      ? sortSolidSkinLinesForEmission(infillLines, lineWidth)
+      ? sortSolidSkinLinesForEmission(infillLines, lineWidth, { x: emitter.currentX, y: emitter.currentY })
       : (pp.infillTravelOptimization ?? false)
         ? slicer.sortInfillLinesNN(infillLines, emitter.currentX, emitter.currentY)
         : slicer.sortInfillLines(infillLines);
