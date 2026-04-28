@@ -75,6 +75,32 @@ describe('Slicer parity fixes', () => {
     expect(pathLen).toBeLessThan(2.3);
   });
 
+  it('allows Orca-style solid-skin contour walks around small curved features', () => {
+    const outer = [
+      new THREE.Vector2(0, 0),
+      new THREE.Vector2(20, 0),
+      new THREE.Vector2(20, 20),
+      new THREE.Vector2(0, 20),
+    ];
+    const hole = Array.from({ length: 32 }, (_, i) => {
+      const a = (i / 32) * Math.PI * 2;
+      return new THREE.Vector2(10 + Math.cos(a), 10 + Math.sin(a));
+    });
+
+    const path = findSolidSkinContourConnectorPath(
+      new THREE.Vector2(9.05, 10),
+      new THREE.Vector2(10, 10.95),
+      outer,
+      [hole],
+      0.5,
+    );
+
+    expect(path).not.toBeNull();
+    const pathLen = path!.slice(1).reduce((sum, p, i) => sum + p.distanceTo(path![i]), 0);
+    expect(pathLen).toBeGreaterThan(1.2);
+    expect(pathLen).toBeLessThan(2.2);
+  });
+
   it('does not invent long solid-skin contour links across unrelated hole sides', () => {
     const outer = [
       new THREE.Vector2(0, 0),

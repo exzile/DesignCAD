@@ -1,6 +1,10 @@
 import { describe, expect, it } from 'vitest';
 
-import { skinRemovalWidthForLayer, solidSkinCenterlineInset } from './emitContourInfill';
+import {
+  skinRemovalWidthForLayer,
+  skipSkinForSmallRegion,
+  solidSkinCenterlineInset,
+} from './emitContourInfill';
 
 describe('skinRemovalWidthForLayer', () => {
   it('uses the generic skin removal width by default', () => {
@@ -33,5 +37,39 @@ describe('solidSkinCenterlineInset', () => {
 
   it('does not allow overlap to push the centerline inset negative', () => {
     expect(solidSkinCenterlineInset(0.45, 0.4)).toBe(0);
+  });
+});
+
+describe('skipSkinForSmallRegion (Cura: Small Top/Bottom Width)', () => {
+  const wide = { minX: 0, maxX: 10, minY: 0, maxY: 10 };
+  const narrow = { minX: 0, maxX: 10, minY: 0, maxY: 0.5 };
+  const tiny = { minX: 0, maxX: 0.4, minY: 0, maxY: 0.4 };
+
+  it('keeps skin emission when the threshold is unset', () => {
+    expect(skipSkinForSmallRegion(wide, undefined)).toBe(false);
+    expect(skipSkinForSmallRegion(tiny, undefined)).toBe(false);
+  });
+
+  it('keeps skin emission when the threshold is zero', () => {
+    expect(skipSkinForSmallRegion(tiny, 0)).toBe(false);
+  });
+
+  it('keeps skin emission when both bbox dimensions exceed the threshold', () => {
+    expect(skipSkinForSmallRegion(wide, 1.0)).toBe(false);
+  });
+
+  it('skips skin when the smaller bbox dimension is below the threshold', () => {
+    expect(skipSkinForSmallRegion(narrow, 1.0)).toBe(true);
+  });
+
+  it('skips skin when both bbox dimensions are below the threshold', () => {
+    expect(skipSkinForSmallRegion(tiny, 1.0)).toBe(true);
+  });
+
+  it('uses the smaller dimension, not the larger, for the comparison', () => {
+    // 10 mm long but only 0.5 mm wide — should be skipped at threshold 1.0
+    expect(skipSkinForSmallRegion(narrow, 1.0)).toBe(true);
+    // and kept at threshold 0.4
+    expect(skipSkinForSmallRegion(narrow, 0.4)).toBe(false);
   });
 });

@@ -365,7 +365,7 @@ export interface PrintProfile {
   bottomSurfaceSkinLayers?: number;    // storage-only — extra ultra-quality bottom layers
   topSkinRemovalWidth?: number;        // wired — mm; separate top skin removal width
   bottomSkinRemovalWidth?: number;     // wired — mm; separate bottom skin removal width
-  smallTopBottomWidth?: number;        // storage-only — mm; min width to generate skin
+  smallTopBottomWidth?: number;        // wired — mm; skip skin on regions narrower than this
   maxSkinAngleForExpansion?: number;   // storage-only — deg
   minSkinWidthForExpansion?: number;   // storage-only — mm
   layerStartAtSeam?: boolean;          // storage-only — start each layer at the seam
@@ -436,7 +436,7 @@ export interface PrintProfile {
   supportFloorLineDistance?: number;   // storage-only — mm
   supportRoofPattern?: 'lines' | 'grid' | 'concentric' | 'zigzag'; // storage-only
   supportFloorPattern?: 'lines' | 'grid' | 'concentric' | 'zigzag'; // storage-only
-  minSupportInterfaceArea?: number;    // storage-only — mm²
+  minSupportInterfaceArea?: number;    // wired — mm² — demote interface to body density when bbox area falls below this
   supportInterfaceHorizontalExpansion?: number; // storage-only — mm
   supportInterfaceLineDirections?: number[]; // storage-only — degrees
   useTowers?: boolean;                 // storage-only

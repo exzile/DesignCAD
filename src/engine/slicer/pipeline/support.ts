@@ -186,6 +186,24 @@ export function supportDensityForLayer(
   return Math.min(100, Math.max(0, baseDensity * (multiplier / 100)));
 }
 
+/**
+ * Cura's "Minimum Support Interface Area" filter: when a roof/floor
+ * island's expanded bbox area falls below the threshold the dense
+ * interface ribbon is suppressed and the island is emitted at normal
+ * (body) support settings. Returns true when the interface should be
+ * demoted to non-interface; false when it should print as interface.
+ */
+export function shouldDemoteSupportInterface(
+  bbox: { minX: number; maxX: number; minY: number; maxY: number },
+  minSupportInterfaceArea: number | undefined,
+): boolean {
+  const threshold = minSupportInterfaceArea ?? 0;
+  if (threshold <= 0) return false;
+  const w = Math.max(0, bbox.maxX - bbox.minX);
+  const h = Math.max(0, bbox.maxY - bbox.minY);
+  return w * h < threshold;
+}
+
 function supportLineSettings(pp: PrintProfile, layerIndex: number, isRoof: boolean, isFloor: boolean) {
   const supLW = pp.supportLineWidth ?? pp.wallLineWidth;
   const supportDensity = supportDensityForLayer(pp, layerIndex);
@@ -248,16 +266,30 @@ function emitSupportIsland(
   isFloor: boolean,
 ): number | undefined {
   let bbox = { ...bboxIn };
-  if (isRoof || isFloor) {
+  let effRoof = isRoof;
+  let effFloor = isFloor;
+  if (effRoof || effFloor) {
     const ifHorizExp = pp.supportInterfaceHorizontalExpansion ?? 0;
     bbox = { minX: bbox.minX - ifHorizExp, maxX: bbox.maxX + ifHorizExp, minY: bbox.minY - ifHorizExp, maxY: bbox.maxY + ifHorizExp };
+
+    // Drop interface (roof/floor) regions that fall below the user's
+    // minimum interface area. Mirrors `minimumSupportArea` but applies
+    // only to the dense interface band — tiny dense patches over a
+    // small overhang would otherwise blob and are generally unhelpful.
+    // The body of the support (non-interface) still emits at normal
+    // density; we just demote this island to non-interface settings.
+    if (shouldDemoteSupportInterface(bbox, pp.minSupportInterfaceArea)) {
+      bbox = { ...bboxIn };
+      effRoof = false;
+      effFloor = false;
+    }
   }
 
-  const settings = supportLineSettings(pp, layerIndex, isRoof, isFloor);
+  const settings = supportLineSettings(pp, layerIndex, effRoof, effFloor);
   const { supLW, spacing, pattern, speed, flowOverride } = settings;
   if (!(spacing > 0) || !isFinite(spacing)) return flowOverride;
 
-  const wallCount = isRoof || isFloor
+  const wallCount = effRoof || effFloor
     ? pp.supportInterfaceWallCount ?? pp.supportWallLineCount ?? pp.supportWallCount ?? 0
     : pp.supportWallLineCount ?? pp.supportWallCount ?? 0;
   for (let w = 0; w < wallCount; w++) {
@@ -274,7 +306,7 @@ function emitSupportIsland(
     }
   }
 
-  const angle = patternAngle(pp, layerIndex, pattern, isRoof || isFloor);
+  const angle = patternAngle(pp, layerIndex, pattern, effRoof || effFloor);
   const cos = Math.cos(angle);
   const sin = Math.sin(angle);
   const maxDim = Math.max(bbox.maxX - bbox.minX, bbox.maxY - bbox.minY) * 1.5;

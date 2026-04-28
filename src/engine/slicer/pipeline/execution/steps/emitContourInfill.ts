@@ -151,6 +151,25 @@ export function skinRemovalWidthForLayer(
   return pp.skinRemovalWidth ?? 0;
 }
 
+/**
+ * Cura's "Small Top/Bottom Width": when the smaller bbox dimension of a
+ * skin region is below the threshold the region is too narrow to print a
+ * clean solid skin (would just be a single short scanline), so skin
+ * emission is skipped for that region. Sparse infill emitted afterward
+ * still fills the area, matching Cura's behavior.
+ *
+ * Returns true when the region should be skipped (region is too small).
+ */
+export function skipSkinForSmallRegion(
+  bbox: { minX: number; maxX: number; minY: number; maxY: number },
+  smallTopBottomWidth: number | undefined,
+): boolean {
+  const threshold = smallTopBottomWidth ?? 0;
+  if (threshold <= 0) return false;
+  const minSpan = Math.min(bbox.maxX - bbox.minX, bbox.maxY - bbox.minY);
+  return minSpan < threshold;
+}
+
 export function sortSolidSkinLinesForEmission(
   lines: InfillLineSegment[],
   lineWidth: number,
@@ -310,7 +329,11 @@ export function findSolidSkinContourConnectorPath(
   lineWidth: number,
 ): THREE.Vector2[] | null {
   const maxProjectionDistSq = (lineWidth * 0.8) ** 2;
-  const maxWalkLength = lineWidth * 8;
+  // Contour-walk connectors are not straight chords: they follow the same
+  // validated boundary arcs Orca's monotonic fill uses between clipped
+  // scanline ends. Give them enough room to wrap around small circular
+  // features, while still rejecting opposite-side walks around larger holes.
+  const maxWalkLength = Math.max(lineWidth * 16, 4);
   let bestPath: THREE.Vector2[] | null = null;
   let bestLength = Infinity;
 
@@ -378,7 +401,13 @@ export function emitContourInfill(
       const skinOverlap = ((pp.skinOverlapPercent ?? 23) / 100) * lineWidth;
       const topSurfaceExpand = pp.topSurfaceSkinExpansion ?? pp.topSkinExpandDistance ?? 0;
       const totalExpand = skinOverlap + (isSolidTop ? topSurfaceExpand : 0) + (isSolidBottom ? (pp.bottomSkinExpandDistance ?? 0) : 0);
+      // Cura's "Small Top/Bottom Width" — when the smaller bbox dimension
+      // of a skin region is below this threshold, the region is too narrow
+      // to print a clean solid skin (would just be a single short line),
+      // so we skip skin emission for that region. Sparse infill emitted
+      // afterward still fills it, which is the same behavior Cura ships.
       for (const region of infillRegions) {
+        if (skipSkinForSmallRegion(slicer.contourBBox(region.contour), pp.smallTopBottomWidth)) continue;
         let skinContour = totalExpand > 0 ? offsetContourFast(slicer, region.contour, -totalExpand) : region.contour;
         const srw = skinRemovalWidthForLayer(pp, isSolidTop, isSolidBottom);
         if (srw > 0 && skinContour.length >= 3) {
