@@ -2,17 +2,18 @@
   position: absolute;
   right: 12px;
   top: 12px;
-  z-index: 12;
-  width: min(460px, calc(100% - 24px));
-  max-height: calc(100% - 24px);
+  z-index: 24;
+  width: min(720px, calc(100% - 24px));
+  max-height: min(760px, calc(100% - 24px));
   display: flex;
   flex-direction: column;
   overflow: hidden;
   color: var(--text-primary);
-  background: color-mix(in srgb, var(--bg-panel) 96%, transparent);
+  background: color-mix(in srgb, var(--bg-panel) 98%, var(--bg-primary));
   border: 1px solid var(--border);
   border-radius: 8px;
   box-shadow: 0 12px 32px rgba(0, 0, 0, 0.32);
+  backdrop-filter: blur(8px);
 }
 
 .slicer-gcode-panel__header {
@@ -31,6 +32,21 @@
   gap: 7px;
   font-size: 12px;
   font-weight: 700;
+}
+
+.slicer-gcode-panel__title-block {
+  min-width: 0;
+  display: grid;
+  gap: 2px;
+}
+
+.slicer-gcode-panel__subtitle {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--text-muted);
+  font-size: 10.5px;
+  font-variant-numeric: tabular-nums;
 }
 
 .slicer-gcode-panel__header-actions {
@@ -60,10 +76,10 @@
   background: var(--bg-hover);
 }
 
-.slicer-gcode-panel__meta,
+.slicer-gcode-panel__summary,
 .slicer-gcode-panel__stats {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 6px;
   padding: 8px 10px;
   color: var(--text-muted);
@@ -71,8 +87,33 @@
   border-bottom: 1px solid color-mix(in srgb, var(--border) 65%, transparent);
 }
 
+.slicer-gcode-panel__summary > div {
+  min-width: 0;
+  padding: 6px 8px;
+  background: color-mix(in srgb, var(--bg-input) 72%, var(--bg-panel));
+  border: 1px solid color-mix(in srgb, var(--border) 72%, transparent);
+  border-radius: 6px;
+}
+
+.slicer-gcode-panel__summary span {
+  display: block;
+  margin-bottom: 2px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.slicer-gcode-panel__summary b {
+  color: var(--text-primary);
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
+}
+
+.slicer-gcode-panel__summary .is-extrusion b { color: #43a047; }
+.slicer-gcode-panel__summary .is-travel b { color: #78909c; }
+
 .slicer-gcode-panel__stats {
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-columns: repeat(5, minmax(0, 1fr));
   padding-top: 6px;
   padding-bottom: 6px;
 }
@@ -82,18 +123,25 @@
   font-weight: 700;
 }
 
+.slicer-gcode-panel__toolbar {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 8px;
+  padding: 8px 10px 0;
+}
+
 .slicer-gcode-panel__scope,
 .slicer-gcode-panel__filters {
   display: flex;
   gap: 4px;
-  padding: 8px 10px 0;
 }
 
 .slicer-gcode-panel__scope button,
 .slicer-gcode-panel__filters button {
-  flex: 1;
+  flex: 0 0 auto;
   min-width: 0;
-  padding: 4px 6px;
+  min-height: 28px;
+  padding: 4px 9px;
   color: var(--text-secondary);
   background: var(--bg-input);
   border: 1px solid var(--border);
@@ -103,6 +151,7 @@
 }
 
 .slicer-gcode-panel__filters {
+  padding: 8px 10px 0;
   flex-wrap: wrap;
 }
 
@@ -122,7 +171,6 @@
   display: flex;
   align-items: center;
   gap: 6px;
-  margin: 8px 10px 0;
   padding: 0 6px;
   background: var(--bg-input);
   border: 1px solid var(--border);
@@ -161,7 +209,7 @@
 
 .slicer-gcode-panel__body {
   flex: 1;
-  min-height: 180px;
+  min-height: 260px;
   overflow: auto;
   padding: 6px 0 8px;
   background: color-mix(in srgb, var(--bg-primary) 56%, var(--bg-panel));
@@ -172,10 +220,11 @@
 
 .slicer-gcode-panel__line {
   display: grid;
-  grid-template-columns: 48px minmax(0, 1fr);
+  grid-template-columns: 54px max-content;
   gap: 8px;
   padding: 0 10px;
   border-left: 3px solid transparent;
+  min-width: max-content;
 }
 
 .slicer-gcode-panel__line:hover {
@@ -190,8 +239,26 @@
 
 .slicer-gcode-panel__line code {
   min-width: 0;
-  overflow-wrap: anywhere;
+  white-space: pre;
+  overflow-wrap: normal;
   color: var(--text-primary);
+}
+
+@media (max-width: 760px) {
+  .slicer-gcode-panel {
+    left: 8px;
+    right: 8px;
+    width: auto;
+  }
+
+  .slicer-gcode-panel__toolbar {
+    grid-template-columns: 1fr;
+  }
+
+  .slicer-gcode-panel__summary,
+  .slicer-gcode-panel__stats {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
 }
 
 .slicer-gcode-panel__line.is-comment code { color: var(--text-muted); }

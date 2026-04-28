@@ -1,0 +1,63 @@
+.slicer-calibration-menu {
+  position: relative;
+  width: 100%;
+}
+
+.slicer-calibration-menu__button {
+  width: 100%;
+  min-height: 28px;
+  justify-content: center;
+  background: var(--bg-toolbar);
+  color: var(--text-primary);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 4px 10px;
+  cursor: pointer;
+  font-size: 12px;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.slicer-calibration-menu__button:hover,
+.slicer-calibration-menu__button.is-active {
+  color: var(--accent);
+  border-color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 10%, var(--bg-toolbar));
+}
+
+.slicer-calibration-menu__popover {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: calc(100% + 6px);
+  min-width: 190px;
+  background: var(--bg-panel);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  box-shadow: 0 10px 28px rgba(0, 0, 0, 0.25);
+  padding: 6px;
+  display: grid;
+  gap: 4px;
+  z-index: 20;
+}
+
+.slicer-calibration-menu__item {
+  background: transparent;
+  color: var(--text-primary);
+  border: 0;
+  border-radius: 6px;
+  padding: 8px 10px;
+  text-align: left;
+  cursor: pointer;
+  font-size: 12px;
+}
+
+.slicer-calibration-menu__item:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--accent) 12%, var(--bg-toolbar));
+}
+
+.slicer-calibration-menu__item:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}

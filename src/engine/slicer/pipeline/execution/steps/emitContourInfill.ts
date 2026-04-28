@@ -142,6 +142,15 @@ type InfillLineSegment = {
   boundaryHoles?: THREE.Vector2[][];
 };
 type RingProjection = { ring: THREE.Vector2[]; seg: number; t: number; point: THREE.Vector2; distSq: number };
+type SolidSkinOrderOptions = {
+  canTransition?: (
+    from: THREE.Vector2,
+    to: THREE.Vector2,
+    previous: InfillLineSegment,
+    next: InfillLineSegment,
+  ) => boolean;
+  transitionPenaltySq?: number;
+};
 
 export function solidSkinCenterlineInset(lineWidth: number, skinOverlap: number): number {
   return Math.max(0, lineWidth * 0.5 - skinOverlap);
@@ -203,6 +212,7 @@ export function sortSolidSkinLinesForEmission(
   lines: InfillLineSegment[],
   lineWidth: number,
   startPosition?: { x: number; y: number },
+  options: SolidSkinOrderOptions = {},
 ): InfillLineSegment[] {
   if (lines.length <= 1) return lines;
 
@@ -265,21 +275,33 @@ export function sortSolidSkinLinesForEmission(
   const remaining = sorted.slice();
   const ordered: InfillLineSegment[] = [];
   let cursor = startPosition ?? remaining[0].from;
+  let previousLine: InfillLineSegment | undefined;
+  const transitionPenaltySq = options.transitionPenaltySq ?? Math.max(lineWidth * 80, 20) ** 2;
+  const transitionScore = (line: InfillLineSegment, flip: boolean): number => {
+    const candidate = flip ? flipLine(line) : line;
+    const distSq = candidate.from.distanceToSquared(cursor);
+    if (!previousLine || !options.canTransition) return distSq;
+    const from = cursor instanceof THREE.Vector2 ? cursor : new THREE.Vector2(cursor.x, cursor.y);
+    return options.canTransition(from, candidate.from, previousLine, candidate)
+      ? distSq
+      : distSq + transitionPenaltySq;
+  };
+
   while (remaining.length > 0) {
     let bestIdx = 0;
-    let bestDist = Infinity;
+    let bestScore = Infinity;
     let bestFlip = false;
     for (let i = 0; i < remaining.length; i++) {
       const line = remaining[i];
-      const fromDist = line.from.distanceToSquared(cursor);
-      const toDist = line.to.distanceToSquared(cursor);
-      if (fromDist < bestDist) {
-        bestDist = fromDist;
+      const fromScore = transitionScore(line, false);
+      const toScore = transitionScore(line, true);
+      if (fromScore < bestScore) {
+        bestScore = fromScore;
         bestIdx = i;
         bestFlip = false;
       }
-      if (toDist < bestDist) {
-        bestDist = toDist;
+      if (toScore < bestScore) {
+        bestScore = toScore;
         bestIdx = i;
         bestFlip = true;
       }
@@ -288,6 +310,7 @@ export function sortSolidSkinLinesForEmission(
     const next = bestFlip ? flipLine(line) : line;
     ordered.push(next);
     cursor = next.to;
+    previousLine = next;
   }
 
   return ordered;
@@ -308,10 +331,10 @@ export function solidSkinConnectorLinkLimit(lineWidth: number): number {
   // Orca's rectilinear/monotonic fill can accept long links because
   // `polylines_from_paths()` emits the connector along validated
   // contour/perimeter segments. Our current connector is a direct
-  // straight extrusion between scanline endpoints, so it must stay
-  // limited to neighboring rows; otherwise a valid Orca contour-walk
-  // turns into a wrong chord across holes.
-  return lineWidth * 2.1;
+  // straight extrusion between scanline endpoints, so keep it limited to
+  // neighboring rows plus a little room for first-layer widened beads.
+  // Longer hole-edge transitions are handled by contour-walk connectors.
+  return lineWidth * 3.25;
 }
 
 export function sparseInfillConnectorLinkLimit(lineWidth: number): number {
@@ -443,12 +466,12 @@ export function findSolidSkinContourConnectorPath(
   holes: THREE.Vector2[][],
   lineWidth: number,
 ): THREE.Vector2[] | null {
-  const maxProjectionDistSq = (lineWidth * 0.8) ** 2;
+  const maxProjectionDistSq = (lineWidth * 1.35) ** 2;
   // Contour-walk connectors are not straight chords: they follow the same
   // validated boundary arcs Orca's monotonic fill uses between clipped
   // scanline ends. Give them enough room to wrap around small circular
   // features, while still rejecting opposite-side walks around larger holes.
-  const maxWalkLength = Math.max(lineWidth * 16, 4);
+  const maxWalkLength = Math.max(lineWidth * 24, 6);
   let bestPath: THREE.Vector2[] | null = null;
   let bestLength = Infinity;
 
@@ -473,7 +496,7 @@ export function findSolidSkinContourAnchorPath(
   holes: THREE.Vector2[][],
   lineWidth: number,
 ): THREE.Vector2[] | null {
-  const maxProjectionDistSq = (lineWidth * 0.8) ** 2;
+  const maxProjectionDistSq = (lineWidth * 1.35) ** 2;
   let best: RingProjection | null = null;
   for (const ring of [outer, ...holes]) {
     const projection = closestPointOnRing(from, ring);
@@ -731,11 +754,6 @@ export function emitContourInfill(
       emitter.setJerk(isFirstLayer ? pp.jerkInitialLayer : pp.jerkInfill, pp.jerkPrint);
     }
     gcode.push(`; ${isSolid ? 'Solid fill' : 'Infill'}`);
-    const sorted = isSolid
-      ? sortSolidSkinLinesForEmission(infillLines, lineWidth, { x: emitter.currentX, y: emitter.currentY })
-      : (pp.infillTravelOptimization ?? false)
-        ? slicer.sortInfillLinesNN(infillLines, emitter.currentX, emitter.currentY)
-        : slicer.sortInfillLines(infillLines);
     const connect = shouldConnectInfillLinesForEmission(
       isSolid,
       pp.connectTopBottomPolygons,
@@ -745,6 +763,22 @@ export function emitContourInfill(
     const connectTol = isSolid
       ? solidSkinConnectorLinkLimit(lineWidth)
       : sparseInfillConnectorLinkLimit(lineWidth);
+    const sorted = isSolid
+      ? sortSolidSkinLinesForEmission(infillLines, lineWidth, { x: emitter.currentX, y: emitter.currentY }, {
+        canTransition: (from, to, previous, next) => {
+          const canUseSkinBoundary = previous.boundaryContour !== undefined
+            && previous.boundaryContour === next.boundaryContour;
+          const boundary = canUseSkinBoundary ? next.boundaryContour! : contour.points;
+          const holes = canUseSkinBoundary ? (next.boundaryHoles ?? []) : infillHoles;
+          if (connect && findSolidSkinContourConnectorPath(from, to, boundary, holes, lineWidth)) return true;
+          return connect
+            && from.distanceTo(to) < connectTol
+            && slicer.segmentInsideMaterial(from, to, boundary, holes);
+        },
+      })
+      : (pp.infillTravelOptimization ?? false)
+        ? slicer.sortInfillLinesNN(infillLines, emitter.currentX, emitter.currentY)
+        : slicer.sortInfillLines(infillLines);
     const startExt = pp.infillStartMoveInwardsLength ?? 0;
     const endExt = pp.infillEndMoveInwardsLength ?? 0;
     // Cura "Bridge Skin Density" — apply to bridge lines only (not non-bridge
@@ -872,7 +906,9 @@ export function emitContourInfill(
           );
           if (anchorPath) emitContourPath(anchorPath);
         }
-        emitter.travelTo(effFrom.x, effFrom.y, moves);
+        emitter.travelTo(effFrom.x, effFrom.y, moves, {
+          avoidPrintedParts: !(isSolid && idx > 0),
+        });
       }
       const flowSaved = emitter.currentLayerFlow;
       emitter.currentLayerFlow = flowSaved * thisFlowScale;

@@ -376,6 +376,19 @@ describe('GCodeEmitter — printed-part travel routing', () => {
     expect(moves).toHaveLength(1);
   });
 
+  it('can bypass printed-segment detours for a specific internal travel', () => {
+    const { emitter, gcode } = directTravelTestSetup({ avoidPrintedParts: true });
+    const moves: SliceMove[] = [];
+
+    emitter.travelTo(0, -5, moves, { avoidPrintedParts: false });
+
+    const travelLines = gcode.filter((line) => line.startsWith('G0 '));
+    expect(travelLines).toHaveLength(1);
+    expect(moves).toHaveLength(1);
+    expect(emitter.currentX).toBe(0);
+    expect(emitter.currentY).toBe(-5);
+  });
+
   it('treats missing avoidPrintedParts as enabled for safer default routing', () => {
     const { emitter, gcode } = directTravelTestSetup();
     const moves: SliceMove[] = [];

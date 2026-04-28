@@ -28,7 +28,8 @@ export function SlicerViewportOverlays() {
   const sliceResult = useSlicerStore((s) => s.sliceResult);
 
   const obj = plateObjects.find((plateObject) => plateObject.id === selectedId) ?? null;
-  const toolbar = <ObjectToolbar mode={mode} onModeChange={setMode} />;
+  const showObjectEditing = previewMode !== 'preview';
+  const toolbar = showObjectEditing ? <ObjectToolbar mode={mode} onModeChange={setMode} /> : null;
   const gcodePanel = previewMode === 'preview' && gcodeOpen && sliceResult
     ? <SlicerGCodePreviewPanel />
     : null;
@@ -72,7 +73,7 @@ export function SlicerViewportOverlays() {
     <>
       {toolbar}
       {gcodePanel}
-      {!gcodePanel && panels[mode]}
+      {showObjectEditing && !gcodePanel && panels[mode]}
       <SlicerPrintabilityPanel />
       <SlicerCostBreakdown />
     </>

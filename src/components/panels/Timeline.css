@@ -34,19 +34,25 @@
   flex: 1;
   overflow-y: auto;
   padding: 4px;
+  scrollbar-color:
+    color-mix(in srgb, var(--border) 72%, var(--accent))
+    var(--bg-toolbar);
+  scrollbar-width: thin;
 }
 
 .timeline-list::-webkit-scrollbar {
-  width: 6px;
+  width: 10px;
 }
 
 .timeline-list::-webkit-scrollbar-track {
-  background: var(--bg-secondary);
+  background: var(--bg-toolbar);
 }
 
 .timeline-list::-webkit-scrollbar-thumb {
-  background: var(--border);
-  border-radius: 3px;
+  background: color-mix(in srgb, var(--border) 72%, var(--accent));
+  border: 2px solid var(--bg-toolbar);
+  border-radius: 999px;
+  background-clip: padding-box;
 }
 
 .timeline-item {

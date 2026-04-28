@@ -85,17 +85,23 @@
   gap: 10px;
   overflow-y: auto;
   max-height: calc(85vh - 60px);
+  scrollbar-color:
+    color-mix(in srgb, var(--border) 72%, var(--accent))
+    var(--bg-panel);
+  scrollbar-width: thin;
 }
 
 .settings-help-modal__content::-webkit-scrollbar {
-  width: 4px;
+  width: 8px;
 }
 .settings-help-modal__content::-webkit-scrollbar-track {
-  background: transparent;
+  background: var(--bg-panel);
 }
 .settings-help-modal__content::-webkit-scrollbar-thumb {
-  background: var(--border);
-  border-radius: 2px;
+  background: color-mix(in srgb, var(--border) 72%, var(--accent));
+  border: 2px solid var(--bg-panel);
+  border-radius: 999px;
+  background-clip: padding-box;
 }
 
 /* ── Brief — bold lead sentence, no box ─────────────────────────────────── */

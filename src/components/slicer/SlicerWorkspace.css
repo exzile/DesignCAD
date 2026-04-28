@@ -41,6 +41,16 @@
   background: var(--bg-hover);
 }
 
+.slicer-workspace-nav__tab:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.slicer-workspace-nav__tab:disabled:hover {
+  color: var(--text-secondary);
+  background: transparent;
+}
+
 .slicer-workspace-nav__tab.is-active {
   color: var(--accent);
   border-bottom-color: var(--accent);

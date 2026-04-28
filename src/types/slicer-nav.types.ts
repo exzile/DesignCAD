@@ -1,1 +1,1 @@
-export type SlicerPage = 'prepare' | 'plugins';
+export type SlicerPage = 'prepare';

@@ -7,6 +7,7 @@ import {
   generateTemperatureTowerGCode,
 } from '../../../../engine/calibration';
 import type { MaterialProfile, PrinterProfile, PrintProfile } from '../../../../types/slicer';
+import './CalibrationMenu.css';
 
 export function CalibrationMenu({
   activePrinter,
@@ -54,18 +55,18 @@ export function CalibrationMenu({
   }, [activeMaterial, activePrint, activePrinter, downloadCalibration]);
 
   return (
-    <div className="slicer-bottom-bar__calibration" ref={menuRef}>
+    <div className="slicer-calibration-menu" ref={menuRef}>
       <button
-        className={`slicer-bottom-bar__btn${open ? ' is-active' : ''}`}
+        className={`slicer-calibration-menu__button${open ? ' is-active' : ''}`}
         onClick={() => setOpen((value) => !value)}
         title="Generate calibration G-code"
       >
         <FlaskConical size={14} /> Calibration
       </button>
       {open && (
-        <div className="slicer-bottom-bar__calibration-menu">
+        <div className="slicer-calibration-menu__popover">
           <button
-            className="slicer-bottom-bar__calibration-item"
+            className="slicer-calibration-menu__item"
             disabled={!canGenerate}
             onClick={() => generateCalibration(
               'calibration-retraction-tower.gcode',
@@ -75,7 +76,7 @@ export function CalibrationMenu({
             Retraction tower
           </button>
           <button
-            className="slicer-bottom-bar__calibration-item"
+            className="slicer-calibration-menu__item"
             disabled={!canGenerate}
             onClick={() => generateCalibration(
               'calibration-temperature-tower.gcode',
@@ -85,7 +86,7 @@ export function CalibrationMenu({
             Temperature tower
           </button>
           <button
-            className="slicer-bottom-bar__calibration-item"
+            className="slicer-calibration-menu__item"
             disabled={!canGenerate}
             onClick={() => generateCalibration(
               'calibration-flow-tower.gcode',
@@ -95,7 +96,7 @@ export function CalibrationMenu({
             Flow tower
           </button>
           <button
-            className="slicer-bottom-bar__calibration-item"
+            className="slicer-calibration-menu__item"
             disabled={!canGenerate}
             onClick={() => generateCalibration(
               'calibration-pressure-advance-pattern.gcode',

@@ -13,6 +13,9 @@ type TravelPoint = { x: number; y: number };
 type CircleObstacle = { kind: 'circle'; cx: number; cy: number; r: number };
 type SegmentObstacle = { kind: 'segment'; x1: number; y1: number; x2: number; y2: number; r: number };
 type TravelObstacle = CircleObstacle | SegmentObstacle;
+type TravelRouteOptions = {
+  avoidPrintedParts?: boolean;
+};
 
 function createStartEndState(
   stateOwner: GCodeEmitter,
@@ -264,8 +267,8 @@ export class GCodeEmitter {
    * layer crosses through walls and holes" artifact that's visible as
    * white travel lines passing through wall geometry in the preview.
    */
-  travelTo(x: number, y: number, moves?: SliceMove[]): void {
-    const path = this.routeTravelAroundObstacles(x, y);
+  travelTo(x: number, y: number, moves?: SliceMove[], options: TravelRouteOptions = {}): void {
+    const path = this.routeTravelAroundObstacles(x, y, options);
     for (const wp of path) {
       this.rawTravelMove(wp.x, wp.y, moves);
     }
@@ -313,8 +316,8 @@ export class GCodeEmitter {
    *  includes detour waypoints that route around blocking obstacles.
    *  Uses an iterative loop with bounded iterations rather than true
    *  recursion to avoid stack overflows on degenerate geometry. */
-  private routeTravelAroundObstacles(toX: number, toY: number): TravelPoint[] {
-    const obstacles = this.getTravelObstacles();
+  private routeTravelAroundObstacles(toX: number, toY: number, options: TravelRouteOptions = {}): TravelPoint[] {
+    const obstacles = this.getTravelObstacles(options.avoidPrintedParts ?? true);
     if (!this.print.avoidCrossingPerimeters || obstacles.length === 0) {
       return [{ x: toX, y: toY }];
     }
@@ -381,10 +384,10 @@ export class GCodeEmitter {
     return path;
   }
 
-  private getTravelObstacles(): TravelObstacle[] {
+  private getTravelObstacles(includePrintedSegments: boolean): TravelObstacle[] {
     const obstacles: TravelObstacle[] = [];
     if (this.layerObstacles) obstacles.push(...this.layerObstacles);
-    if ((this.print.avoidPrintedParts ?? true) || this.print.avoidSupports) {
+    if (includePrintedSegments && ((this.print.avoidPrintedParts ?? true) || this.print.avoidSupports)) {
       obstacles.push(...this.printedSegments);
     }
     return obstacles;

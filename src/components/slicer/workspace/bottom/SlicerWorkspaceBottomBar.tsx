@@ -1,12 +1,10 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import {
-  Eye, EyeOff, Download, Send, Play, Pause, X, Clapperboard,
-  SkipBack, RotateCcw, Gauge, Palette, Scissors,
-  ChevronLeft, ChevronRight, Magnet, FileCode2,
+  Send, Play, Pause, X, Clapperboard,
+  SkipBack, RotateCcw, Gauge, Scissors, Magnet,
 } from 'lucide-react';
 import { useSlicerStore } from '../../../../store/slicerStore';
 import { usePrinterStore } from '../../../../store/printerStore';
-import { CalibrationMenu } from './CalibrationMenu';
 import { formatSlicerLength, formatSlicerTime } from './format';
 import './SlicerWorkspaceBottomBar.css';
 
@@ -18,32 +16,18 @@ export function SlicerWorkspaceBottomBar() {
   const plateObjects = useSlicerStore((s) => s.plateObjects);
   const previewMode = useSlicerStore((s) => s.previewMode);
   const previewLayer = useSlicerStore((s) => s.previewLayer);
-  const previewLayerStart = useSlicerStore((s) => s.previewLayerStart);
-  const previewLayerMax = useSlicerStore((s) => s.previewLayerMax);
   const startSlice = useSlicerStore((s) => s.startSlice);
   const cancelSlice = useSlicerStore((s) => s.cancelSlice);
-  const setPreviewMode = useSlicerStore((s) => s.setPreviewMode);
-  const setPreviewLayer = useSlicerStore((s) => s.setPreviewLayer);
-  const setPreviewLayerStart = useSlicerStore((s) => s.setPreviewLayerStart);
-  const setPreviewLayerRange = useSlicerStore((s) => s.setPreviewLayerRange);
-  const downloadGCode = useSlicerStore((s) => s.downloadGCode);
   const sendToPrinter = useSlicerStore((s) => s.sendToPrinter);
   const activePrinter = useSlicerStore((s) => s.getActivePrinterProfile());
-  const activeMaterial = useSlicerStore((s) => s.getActiveMaterialProfile());
-  const activePrint = useSlicerStore((s) => s.getActivePrintProfile());
   const connected = usePrinterStore((s) => s.connected);
   const uploading = usePrinterStore((s) => s.uploading);
   const uploadProgress = usePrinterStore((s) => s.uploadProgress);
-  const colorSchemeOpen = useSlicerStore((s) => s.previewColorSchemeOpen);
-  const setColorSchemeOpen = useSlicerStore((s) => s.setPreviewColorSchemeOpen);
-  const gcodeOpen = useSlicerStore((s) => s.previewGCodeOpen);
-  const setGCodeOpen = useSlicerStore((s) => s.setPreviewGCodeOpen);
   const sectionEnabled = useSlicerStore((s) => s.previewSectionEnabled);
   const sectionZ = useSlicerStore((s) => s.previewSectionZ);
   const setSectionEnabled = useSlicerStore((s) => s.setPreviewSectionEnabled);
   const setSectionZ = useSlicerStore((s) => s.setPreviewSectionZ);
 
-  // Simulation
   const simEnabled = useSlicerStore((s) => s.previewSimEnabled);
   const simPlaying = useSlicerStore((s) => s.previewSimPlaying);
   const simSpeed = useSlicerStore((s) => s.previewSimSpeed);
@@ -59,7 +43,9 @@ export function SlicerWorkspaceBottomBar() {
   const [sectionSnap, setSectionSnap] = useState(true);
   const sendResetTimerRef = useRef<number | null>(null);
 
-  const isSlicing = sliceProgress.stage === 'preparing' || sliceProgress.stage === 'slicing' || sliceProgress.stage === 'generating';
+  const isSlicing = sliceProgress.stage === 'preparing'
+    || sliceProgress.stage === 'slicing'
+    || sliceProgress.stage === 'generating';
   const hasResult = sliceResult !== null;
   const totalPrintTime = sliceResult?.printTime ?? 0;
 
@@ -89,26 +75,11 @@ export function SlicerWorkspaceBottomBar() {
     }
   }, []);
 
-  // Dual-range slider: two overlapping range inputs, store enforces clamping.
-  const handleRangeMin = useCallback((v: number) => {
-    if (v > previewLayer) setPreviewLayerRange(previewLayer, previewLayer);
-    else setPreviewLayerStart(v);
-  }, [previewLayer, setPreviewLayerStart, setPreviewLayerRange]);
-
-  const handleRangeMax = useCallback((v: number) => {
-    if (v < previewLayerStart) setPreviewLayerRange(previewLayerStart, previewLayerStart);
-    else setPreviewLayer(v);
-  }, [previewLayerStart, setPreviewLayer, setPreviewLayerRange]);
-
-  // Percentage fill for the dual-range track.
-  const rangeLo = previewLayerMax > 0 ? (previewLayerStart / previewLayerMax) * 100 : 0;
-  const rangeHi = previewLayerMax > 0 ? (previewLayer / previewLayerMax) * 100 : 100;
-
-  // Binary search: find the layer Z closest to rawZ among the sorted layer list.
   const snapToLayerZ = useCallback((rawZ: number): number => {
     const layers = sliceResult?.layers;
     if (!layers || layers.length === 0) return rawZ;
-    let lo = 0, hi = layers.length - 1;
+    let lo = 0;
+    let hi = layers.length - 1;
     while (lo < hi) {
       const mid = (lo + hi + 1) >> 1;
       if (layers[mid].z <= rawZ) lo = mid;
@@ -151,13 +122,13 @@ export function SlicerWorkspaceBottomBar() {
         </div>
       )}
 
-      {hasResult && !isSlicing && (
+      {hasResult && !isSlicing && connected && (
         <div className="slicer-bottom-bar__stats">
-          <span>Time: <span className="slicer-bottom-bar__stat-value">{formatSlicerTime(sliceResult!.printTime)}</span></span>
-          <span>Filament: <span className="slicer-bottom-bar__stat-value">{formatSlicerLength(sliceResult!.filamentUsed)}</span></span>
-          <span>Weight: <span className="slicer-bottom-bar__stat-value">{sliceResult!.filamentWeight.toFixed(1)}g</span></span>
-          <span>Cost: <span className="slicer-bottom-bar__stat-value">${sliceResult!.filamentCost.toFixed(2)}</span></span>
-          <span>Layers: <span className="slicer-bottom-bar__stat-value">{sliceResult!.layerCount}</span></span>
+          <span>Time: <span className="slicer-bottom-bar__stat-value">{formatSlicerTime(sliceResult.printTime)}</span></span>
+          <span>Filament: <span className="slicer-bottom-bar__stat-value">{formatSlicerLength(sliceResult.filamentUsed)}</span></span>
+          <span>Weight: <span className="slicer-bottom-bar__stat-value">{sliceResult.filamentWeight.toFixed(1)}g</span></span>
+          <span>Cost: <span className="slicer-bottom-bar__stat-value">${sliceResult.filamentCost.toFixed(2)}</span></span>
+          <span>Layers: <span className="slicer-bottom-bar__stat-value">{sliceResult.layerCount}</span></span>
         </div>
       )}
 
@@ -169,63 +140,31 @@ export function SlicerWorkspaceBottomBar() {
 
       <div className="slicer-bottom-bar__spacer" />
 
-      <CalibrationMenu
-        activePrinter={activePrinter}
-        activeMaterial={activeMaterial}
-        activePrint={activePrint}
-      />
-
-      {hasResult && (
-        <button
-          type="button"
-          className={`slicer-bottom-bar__preview-btn${previewMode === 'preview' ? ' is-active' : ''}`}
-          onClick={() => setPreviewMode(previewMode === 'model' ? 'preview' : 'model')}
-          title="Toggle G-code layer preview"
-        >
-          {previewMode === 'preview' ? <Eye size={14} /> : <EyeOff size={14} />}
-          Preview
-        </button>
-      )}
-
-      {previewMode === 'preview' && hasResult && (
-        <button
-          type="button"
-          className={`slicer-bottom-bar__preview-btn${colorSchemeOpen ? ' is-active' : ''}`}
-          onClick={() => setColorSchemeOpen(!colorSchemeOpen)}
-          title="Color scheme"
-        >
-          <Palette size={14} />
-        </button>
-      )}
-
-      {previewMode === 'preview' && hasResult && (
-        <button
-          type="button"
-          className={`slicer-bottom-bar__preview-btn${gcodeOpen ? ' is-active' : ''}`}
-          onClick={() => setGCodeOpen(!gcodeOpen)}
-          title="Toggle G-code preview"
-        >
-          <FileCode2 size={14} />
-          G-code
-        </button>
-      )}
-
-      {previewMode === 'preview' && hasResult && (
-        <button
-          type="button"
-          className={`slicer-bottom-bar__btn${sectionEnabled ? ' is-active' : ''}`}
-          title="Toggle section plane — clips everything above the slider Z"
-          onClick={() => {
-            if (!sectionEnabled && sliceResult) {
-              // Snap to the current layer Z so the user immediately sees a cut.
-              const snap = sliceResult.layers[previewLayer]?.z ?? sectionZ;
-              setSectionZ(snap);
-            }
-            setSectionEnabled(!sectionEnabled);
-          }}
-        >
-          <Scissors size={14} /> Section
-        </button>
+      {previewMode === 'preview' && hasResult && !isSlicing && (
+        <div className="slicer-bottom-bar__group slicer-bottom-bar__group--view" aria-label="Preview controls">
+          <button
+            type="button"
+            className={`slicer-bottom-bar__sim-btn${simEnabled ? ' is-active' : ''}`}
+            onClick={() => setSimEnabled(!simEnabled)}
+            title="Toggle nozzle simulation"
+          >
+            <Clapperboard size={14} /> Simulate
+          </button>
+          <button
+            type="button"
+            className={`slicer-bottom-bar__btn${sectionEnabled ? ' is-active' : ''}`}
+            title="Toggle section plane - clips everything above the slider Z"
+            onClick={() => {
+              if (!sectionEnabled && sliceResult) {
+                const snap = sliceResult.layers[previewLayer]?.z ?? sectionZ;
+                setSectionZ(snap);
+              }
+              setSectionEnabled(!sectionEnabled);
+            }}
+          >
+            <Scissors size={14} /> Section
+          </button>
+        </div>
       )}
 
       {previewMode === 'preview' && hasResult && sectionEnabled && (
@@ -253,77 +192,6 @@ export function SlicerWorkspaceBottomBar() {
         </label>
       )}
 
-      {previewMode === 'preview' && hasResult && (
-        <div
-          className="slicer-bottom-bar__layer-slider slicer-bottom-bar__layer-slider--range"
-          title="Drag handles to set start and end layer"
-        >
-          <span className="slicer-bottom-bar__layer-label">Layers:</span>
-          <div
-            className="slicer-bottom-bar__dualrange"
-            style={{
-              ['--lo' as string]: `${rangeLo}%`,
-              ['--hi' as string]: `${rangeHi}%`,
-            }}
-          >
-            <input
-              type="range"
-              min={0}
-              max={previewLayerMax}
-              value={previewLayerStart}
-              onChange={(e) => handleRangeMin(parseInt(e.target.value))}
-              aria-label="Start layer"
-            />
-            <input
-              type="range"
-              min={0}
-              max={previewLayerMax}
-              value={previewLayer}
-              onChange={(e) => handleRangeMax(parseInt(e.target.value))}
-              aria-label="End layer"
-            />
-          </div>
-          <span className="slicer-bottom-bar__layer-count">
-            {previewLayerStart}–{previewLayer}/{previewLayerMax}
-          </span>
-        </div>
-      )}
-
-      {/* Step-by-layer buttons — quick ±1 navigation without touching the slider */}
-      {previewMode === 'preview' && hasResult && (
-        <div className="slicer-bottom-bar__layer-step">
-          <button
-            type="button"
-            className="slicer-bottom-bar__sim-ctrl"
-            title="Previous layer (−1)"
-            disabled={previewLayer <= previewLayerStart}
-            onClick={() => setPreviewLayer(previewLayer - 1)}
-          >
-            <ChevronLeft size={13} />
-          </button>
-          <button
-            type="button"
-            className="slicer-bottom-bar__sim-ctrl"
-            title="Next layer (+1)"
-            disabled={previewLayer >= previewLayerMax}
-            onClick={() => setPreviewLayer(previewLayer + 1)}
-          >
-            <ChevronRight size={13} />
-          </button>
-        </div>
-      )}
-
-      {previewMode === 'preview' && hasResult && (
-        <button
-          type="button"
-          className={`slicer-bottom-bar__sim-btn${simEnabled ? ' is-active' : ''}`}
-          onClick={() => setSimEnabled(!simEnabled)}
-          title="Toggle nozzle simulation"
-        >
-          <Clapperboard size={14} /> Simulate
-        </button>
-      )}
-
       {previewMode === 'preview' && hasResult && simEnabled && (
         <div className="slicer-bottom-bar__sim-controls">
           <button
@@ -349,7 +217,7 @@ export function SlicerWorkspaceBottomBar() {
               onChange={(e) => setSimSpeed(Number(e.target.value))}
             >
               {SIM_SPEEDS.map((sp) => (
-                <option key={sp} value={sp}>{sp}×</option>
+                <option key={sp} value={sp}>{sp}x</option>
               ))}
             </select>
           </label>
@@ -382,27 +250,22 @@ export function SlicerWorkspaceBottomBar() {
         </div>
       )}
 
-      {hasResult && (
-        <>
-          <button type="button" className="slicer-bottom-bar__btn" onClick={() => downloadGCode()}>
-            <Download size={14} /> Export G-code
+      {hasResult && !isSlicing && connected && (
+        <div className="slicer-bottom-bar__group slicer-bottom-bar__group--export" aria-label="Output controls">
+          <button
+            type="button"
+            className={`slicer-bottom-bar__btn slicer-bottom-bar__btn--accent${sending === 'sending' ? ' is-sending' : ''}${sending === 'sent' ? ' is-sent' : ''}${sending === 'error' ? ' is-error' : ''}`}
+            onClick={handleSend}
+            disabled={sending === 'sending' || uploading}
+            title={sendError ?? undefined}
+          >
+            <Send size={14} />{' '}
+            {(sending === 'sending' || uploading) ? `Uploading ${Math.round(uploadProgress)}%`
+              : sending === 'sent' ? 'Sent'
+              : sending === 'error' ? 'Send failed'
+              : 'Send to Printer'}
           </button>
-          {connected && (
-            <button
-              type="button"
-              className={`slicer-bottom-bar__btn slicer-bottom-bar__btn--accent${sending === 'sending' ? ' is-sending' : ''}${sending === 'sent' ? ' is-sent' : ''}${sending === 'error' ? ' is-error' : ''}`}
-              onClick={handleSend}
-              disabled={sending === 'sending' || uploading}
-              title={sendError ?? undefined}
-            >
-              <Send size={14} />{' '}
-              {(sending === 'sending' || uploading) ? `Uploading ${Math.round(uploadProgress)}%`
-                : sending === 'sent' ? 'Sent ✓'
-                : sending === 'error' ? 'Send failed'
-                : 'Send to Printer'}
-            </button>
-          )}
-        </>
+        </div>
       )}
     </div>
   );

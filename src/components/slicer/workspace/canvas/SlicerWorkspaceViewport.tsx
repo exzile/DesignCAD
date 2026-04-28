@@ -5,6 +5,7 @@ import { Check, Box, Loader2, Layers } from 'lucide-react';
 import { SlicerWorkspaceScene } from './SlicerWorkspaceScene';
 import { SlicerViewportOverlays } from '../overlays/SlicerViewportOverlays';
 import { SlicerColorSchemePanel } from '../overlays/SlicerColorSchemePanel';
+import { SlicerPreviewCanvasControls } from '../overlays/SlicerPreviewCanvasControls';
 import { useSlicerStore } from '../../../../store/slicerStore';
 
 // Granular boot steps shown in the viewport loading overlay.
@@ -131,6 +132,7 @@ export function SlicerWorkspaceViewport() {
         <SlicerWorkspaceScene />
       </Canvas>
       <SlicerViewportOverlays />
+      <SlicerPreviewCanvasControls />
       {previewMode === 'preview' && colorSchemeOpen && <SlicerColorSchemePanel />}
     </div>
   );

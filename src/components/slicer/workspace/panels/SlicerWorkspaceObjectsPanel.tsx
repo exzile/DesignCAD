@@ -6,6 +6,7 @@ import { useCADStore } from '../../../../store/cadStore';
 import type { PlateObject } from '../../../../types/slicer';
 import { normalizeRotationRadians, normalizeScale } from '../../../../utils/slicerTransforms';
 import { NON_BODY_FEATURE_TYPES } from '../../slicerFeatureTypes';
+import { CalibrationMenu } from '../bottom/CalibrationMenu';
 import './SlicerWorkspaceObjectsPanel.css';
 
 export function SlicerWorkspaceObjectsPanel() {
@@ -19,6 +20,8 @@ export function SlicerWorkspaceObjectsPanel() {
   const updatePlateObject = useSlicerStore((s) => s.updatePlateObject);
   const importFileToPlate = useSlicerStore((s) => s.importFileToPlate);
   const getActivePrinterProfile = useSlicerStore((s) => s.getActivePrinterProfile);
+  const getActiveMaterialProfile = useSlicerStore((s) => s.getActiveMaterialProfile);
+  const getActivePrintProfile = useSlicerStore((s) => s.getActivePrintProfile);
   const features = useCADStore((s) => s.features);
 
   const [showAddMenu, setShowAddMenu] = useState(false);
@@ -226,6 +229,11 @@ export function SlicerWorkspaceObjectsPanel() {
       )}
 
       <div className="slicer-workspace-objects-panel__actions">
+        <CalibrationMenu
+          activePrinter={getActivePrinterProfile()}
+          activeMaterial={getActiveMaterialProfile()}
+          activePrint={getActivePrintProfile()}
+        />
         <div className="slicer-workspace-objects-panel__add-wrap">
           <button className="slicer-workspace-objects-panel__action-button" onClick={() => setShowAddMenu((prev) => !prev)}>
             <Plus size={14} /> Add from CAD

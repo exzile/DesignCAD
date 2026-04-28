@@ -73,12 +73,6 @@ function formatTime(seconds: number): string {
   return `${s}s`;
 }
 
-function formatMs(ms: number): string {
-  if (!isFinite(ms) || ms < 0) ms = 0;
-  if (ms >= 1000) return `${(ms / 1000).toFixed(ms >= 10_000 ? 1 : 2)}s`;
-  return `${Math.round(ms)}ms`;
-}
-
 type IssueGroup = {
   kind: PrintIssue['kind'];
   severity: PrintIssue['severity'];
@@ -122,7 +116,7 @@ export function SlicerCostBreakdown() {
   const previewLayer = useSlicerStore((s) => s.previewLayer);
   const setPreviewLayer = useSlicerStore((s) => s.setPreviewLayer);
 
-  const [expanded, setExpanded] = useState(true);
+  const [expanded, setExpanded] = useState(false);
   const [dismissed, setDismissed] = useState(false);
   const [laborRate, setLaborRate] = useState<number>(() => {
     const saved = Number(localStorage.getItem('dzign3d-labor-rate'));
@@ -133,16 +127,6 @@ export function SlicerCostBreakdown() {
     () => (sliceResult ? computeTimeBreakdown(sliceResult.layers) : []),
     [sliceResult],
   );
-  const slicingPerformance = sliceResult?.slicingPerformance;
-  const timingBuckets = useMemo(
-    () => (slicingPerformance?.buckets ?? [])
-      .filter((bucket) => bucket.ms >= 0.5)
-      .slice()
-      .sort((a, b) => b.ms - a.ms)
-      .slice(0, 8),
-    [slicingPerformance],
-  );
-
   const totalSeconds = breakdown.reduce((n, b) => n + b.seconds, 0);
 
   const sliceStats = useMemo(
@@ -273,31 +257,6 @@ export function SlicerCostBreakdown() {
             </>
           )}
 
-          {slicingPerformance && timingBuckets.length > 0 && (
-            <>
-              <div className="slicer-cost-breakdown__section-title">Slicing performance</div>
-              <div className="slicer-cost-breakdown__perf-meta">
-                {formatMs(slicingPerformance.totalMs)}
-                {' total · '}
-                {slicingPerformance.layerPrepMode === 'parallel'
-                  ? `${slicingPerformance.workerCount} layer workers`
-                  : slicingPerformance.layerPrepMode}
-                {' · '}
-                {slicingPerformance.triangleCount.toLocaleString()} tris
-              </div>
-              <div className="slicer-cost-breakdown__perf-list">
-                {timingBuckets.map((bucket) => (
-                  <div key={bucket.key} className="slicer-cost-breakdown__perf-row">
-                    <span className="slicer-cost-breakdown__perf-label">{bucket.label}</span>
-                    <span className="slicer-cost-breakdown__perf-count">
-                      {bucket.count > 1 ? `x${bucket.count}` : ''}
-                    </span>
-                    <span className="slicer-cost-breakdown__perf-value">{formatMs(bucket.ms)}</span>
-                  </div>
-                ))}
-              </div>
-            </>
-          )}
 
           <div className="slicer-cost-breakdown__section-title">
             Print issues

@@ -32,6 +32,7 @@ export function RibbonPrepareTab() {
   const printerConnected     = usePrinterStore((s) => s.connected);
   const sliceProgress        = useSlicerStore((s) => s.sliceProgress);
   const sliceResult          = useSlicerStore((s) => s.sliceResult);
+  const plateObjects         = useSlicerStore((s) => s.plateObjects);
   const previewMode          = useSlicerStore((s) => s.previewMode);
   const printerProfiles      = useSlicerStore((s) => s.printerProfiles);
   const materialProfiles     = useSlicerStore((s) => s.materialProfiles);
@@ -69,6 +70,20 @@ export function RibbonPrepareTab() {
   const isSlicing = sliceProgress.stage === 'preparing'
     || sliceProgress.stage === 'slicing'
     || sliceProgress.stage === 'generating';
+
+  const handlePreview = () => {
+    const store = useSlicerStore.getState();
+    if (store.previewMode === 'preview') {
+      store.setPreviewMode('model');
+      return;
+    }
+    if (store.sliceResult) {
+      store.setPreviewMode('preview');
+      return;
+    }
+    setStatusMessage('Slicing model for preview...');
+    store.startSlice();
+  };
 
   return (
     <>
@@ -164,12 +179,9 @@ export function RibbonPrepareTab() {
           icon={<Eye size={ICON_LG} />}
           label="Preview"
           active={previewMode === 'preview'}
-          onClick={() => {
-            const store = useSlicerStore.getState();
-            store.setPreviewMode(store.previewMode === 'preview' ? 'model' : 'preview');
-          }}
+          onClick={handlePreview}
           large
-          disabled={!sliceResult}
+          disabled={isSlicing || plateObjects.length === 0}
           colorClass="icon-green"
         />
       </RibbonSection>

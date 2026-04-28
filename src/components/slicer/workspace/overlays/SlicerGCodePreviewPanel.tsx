@@ -42,13 +42,15 @@ function summarize(lines: GCodeLine[]) {
   let travel = 0;
   let fan = 0;
   let temp = 0;
+  let comments = 0;
   for (const line of lines) {
     if (line.isExtrusion) extrusion += 1;
     if (line.isTravel) travel += 1;
+    if (line.isComment) comments += 1;
     if (line.command === 'M106' || line.command === 'M107') fan += 1;
     if (['M104', 'M109', 'M140', 'M190'].includes(line.command)) temp += 1;
   }
-  return { extrusion, travel, fan, temp };
+  return { extrusion, travel, fan, temp, comments };
 }
 
 export function SlicerGCodePreviewPanel() {
@@ -66,14 +68,17 @@ export function SlicerGCodePreviewPanel() {
   );
   const currentLayerZ = sliceResult?.layers[previewLayer]?.z ?? 0;
   const normalizedQuery = query.trim().toLowerCase();
-  const lines = useMemo(() => parsed.filter((line) => {
-    if (scope === 'layer' && line.layerIndex !== previewLayer) return false;
+  const scopedLines = useMemo(() => parsed.filter((line) => (
+    scope === 'full' || line.layerIndex === previewLayer
+  )), [parsed, previewLayer, scope]);
+  const lines = useMemo(() => scopedLines.filter((line) => {
     if (!showComments && line.isComment) return false;
     if (!lineMatchesFilter(line, filter)) return false;
     if (normalizedQuery && !line.text.toLowerCase().includes(normalizedQuery)) return false;
     return true;
-  }), [filter, normalizedQuery, parsed, previewLayer, scope, showComments]);
+  }), [filter, normalizedQuery, scopedLines, showComments]);
   const stats = useMemo(() => summarize(lines), [lines]);
+  const scopeStats = useMemo(() => summarize(scopedLines), [scopedLines]);
 
   const copyVisible = async () => {
     if (typeof navigator === 'undefined' || !navigator.clipboard) return;
@@ -85,9 +90,15 @@ export function SlicerGCodePreviewPanel() {
   return (
     <section className="slicer-gcode-panel" aria-label="G-code preview">
       <div className="slicer-gcode-panel__header">
-        <div className="slicer-gcode-panel__title">
-          <FileCode2 size={14} />
-          G-code Preview
+        <div className="slicer-gcode-panel__title-block">
+          <div className="slicer-gcode-panel__title">
+            <FileCode2 size={14} />
+            G-code Preview
+          </div>
+          <div className="slicer-gcode-panel__subtitle">
+            {scope === 'layer' ? `Layer ${previewLayer}/${sliceResult.layerCount - 1}` : 'Full file'}
+            <span>Z {currentLayerZ.toFixed(2)} mm</span>
+          </div>
         </div>
         <div className="slicer-gcode-panel__header-actions">
           <button type="button" onClick={copyVisible} title="Copy visible G-code" aria-label="Copy visible G-code">
@@ -99,33 +110,48 @@ export function SlicerGCodePreviewPanel() {
         </div>
       </div>
 
-      <div className="slicer-gcode-panel__meta">
-        <span>Layer {previewLayer}/{sliceResult.layerCount - 1}</span>
-        <span>Z {currentLayerZ.toFixed(2)} mm</span>
-        <span>{lines.length} lines</span>
+      <div className="slicer-gcode-panel__summary" aria-label="G-code summary">
+        <div>
+          <span>Visible</span>
+          <b>{lines.length}</b>
+        </div>
+        <div>
+          <span>Scope</span>
+          <b>{scopedLines.length}</b>
+        </div>
+        <div className="is-extrusion">
+          <span>Extrude</span>
+          <b>{scopeStats.extrusion}</b>
+        </div>
+        <div className="is-travel">
+          <span>Travel</span>
+          <b>{scopeStats.travel}</b>
+        </div>
       </div>
 
-      <div className="slicer-gcode-panel__scope" role="tablist" aria-label="G-code preview scope">
-        <button type="button" className={scope === 'layer' ? 'is-active' : ''} onClick={() => setScope('layer')}>
-          Current layer
-        </button>
-        <button type="button" className={scope === 'full' ? 'is-active' : ''} onClick={() => setScope('full')}>
-          Full file
-        </button>
-      </div>
-
-      <div className="slicer-gcode-panel__search">
-        <Search size={12} />
-        <input
-          value={query}
-          onChange={(event) => setQuery(event.target.value)}
-          placeholder="Find command, coordinate, comment..."
-        />
-        {query && (
-          <button type="button" onClick={() => setQuery('')} aria-label="Clear G-code search">
-            <X size={12} />
+      <div className="slicer-gcode-panel__toolbar">
+        <div className="slicer-gcode-panel__scope" role="tablist" aria-label="G-code preview scope">
+          <button type="button" className={scope === 'layer' ? 'is-active' : ''} onClick={() => setScope('layer')}>
+            Layer
           </button>
-        )}
+          <button type="button" className={scope === 'full' ? 'is-active' : ''} onClick={() => setScope('full')}>
+            Full file
+          </button>
+        </div>
+
+        <div className="slicer-gcode-panel__search">
+          <Search size={12} />
+          <input
+            value={query}
+            onChange={(event) => setQuery(event.target.value)}
+            placeholder="Find command, coordinate, comment..."
+          />
+          {query && (
+            <button type="button" onClick={() => setQuery('')} aria-label="Clear G-code search">
+              <X size={12} />
+            </button>
+          )}
+        </div>
       </div>
 
       <div className="slicer-gcode-panel__filters" aria-label="G-code filters">
@@ -155,6 +181,7 @@ export function SlicerGCodePreviewPanel() {
         <span><b>{stats.travel}</b> travel</span>
         <span><b>{stats.temp}</b> temp</span>
         <span><b>{stats.fan}</b> fan</span>
+        <span><b>{stats.comments}</b> comments</span>
       </div>
 
       <div className="slicer-gcode-panel__body">

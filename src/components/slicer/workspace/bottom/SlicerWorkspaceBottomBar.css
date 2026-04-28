@@ -4,8 +4,9 @@
   padding: 8px 16px;
   display: flex;
   align-items: center;
-  gap: 12px;
-  min-height: 48px;
+  gap: 8px;
+  min-height: 56px;
+  flex-wrap: wrap;
 }
 
 .slicer-bottom-bar__slice-btn {
@@ -67,7 +68,8 @@
 
 .slicer-bottom-bar__stats {
   display: flex;
-  gap: 16px;
+  gap: 10px;
+  flex-wrap: wrap;
   font-size: 11px;
   color: var(--text-muted);
 }
@@ -83,6 +85,26 @@
 
 .slicer-bottom-bar__spacer {
   flex: 1;
+  min-width: 12px;
+}
+
+.slicer-bottom-bar__group {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  min-height: 32px;
+  padding: 3px;
+  background: color-mix(in srgb, var(--bg-toolbar) 80%, var(--bg-panel));
+  border: 1px solid color-mix(in srgb, var(--border) 82%, transparent);
+  border-radius: 7px;
+}
+
+.slicer-bottom-bar__group--view {
+  order: 10;
+}
+
+.slicer-bottom-bar__group--export {
+  order: 40;
 }
 
 .slicer-bottom-bar__preview-btn {
@@ -90,12 +112,19 @@
   color: var(--text-primary);
   border: 1px solid var(--border);
   border-radius: 4px;
-  padding: 4px 10px;
+  min-height: 26px;
+  padding: 4px 9px;
   cursor: pointer;
   font-size: 12px;
   display: flex;
   align-items: center;
   gap: 4px;
+}
+
+.slicer-bottom-bar__preview-btn--icon {
+  width: 28px;
+  justify-content: center;
+  padding-inline: 0;
 }
 
 .slicer-bottom-bar__preview-btn.is-active {
@@ -108,6 +137,11 @@
   display: flex;
   align-items: center;
   gap: 6px;
+  padding: 3px 6px;
+  min-height: 32px;
+  background: color-mix(in srgb, var(--bg-toolbar) 80%, var(--bg-panel));
+  border: 1px solid color-mix(in srgb, var(--border) 82%, transparent);
+  border-radius: 7px;
 }
 
 .slicer-bottom-bar__layer-label {
@@ -131,7 +165,8 @@
   color: var(--text-primary);
   border: 1px solid var(--border);
   border-radius: 4px;
-  padding: 4px 10px;
+  min-height: 26px;
+  padding: 4px 9px;
   cursor: pointer;
   font-size: 12px;
   display: flex;
@@ -274,6 +309,10 @@
   display: inline-flex;
   align-items: center;
   gap: 3px;
+  padding: 3px;
+  background: color-mix(in srgb, var(--bg-toolbar) 80%, var(--bg-panel));
+  border: 1px solid color-mix(in srgb, var(--border) 82%, transparent);
+  border-radius: 7px;
 }
 
 /* -------- Section plane -------- */
@@ -285,6 +324,11 @@
   font-size: 11px;
   color: var(--text-muted);
   cursor: default;
+  padding: 3px 6px;
+  min-height: 32px;
+  background: color-mix(in srgb, var(--bg-toolbar) 80%, var(--bg-panel));
+  border: 1px solid color-mix(in srgb, var(--border) 82%, transparent);
+  border-radius: 7px;
 }
 
 .slicer-bottom-bar__section input[type="range"] {
@@ -332,7 +376,8 @@
   color: var(--text-primary);
   border: 1px solid var(--border);
   border-radius: 4px;
-  padding: 4px 10px;
+  min-height: 26px;
+  padding: 4px 9px;
   cursor: pointer;
   font-size: 12px;
   display: inline-flex;
@@ -360,6 +405,7 @@
   border: 1px solid var(--border);
   background: color-mix(in srgb, var(--accent) 6%, var(--bg-toolbar));
   border-radius: 6px;
+  min-height: 32px;
   animation: sim-controls-in 0.18s ease;
 }
 
@@ -431,4 +477,18 @@
   font-variant-numeric: tabular-nums;
   min-width: 90px;
   text-align: right;
+}
+
+@media (max-width: 1100px) {
+  .slicer-bottom-bar__spacer {
+    display: none;
+  }
+
+  .slicer-bottom-bar__layer-slider--range .slicer-bottom-bar__dualrange {
+    width: 140px;
+  }
+
+  .slicer-bottom-bar__sim-scrub input[type="range"] {
+    width: 120px;
+  }
 }
