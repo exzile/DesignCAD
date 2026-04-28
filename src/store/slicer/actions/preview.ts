@@ -15,6 +15,7 @@ export function createPreviewActions(api: SlicerStoreApi): Pick<
   | 'setPreviewColorMode'
   | 'togglePreviewType'
   | 'setPreviewColorSchemeOpen'
+  | 'setPreviewGCodeOpen'
   | 'setPreviewSimEnabled'
   | 'setPreviewSimPlaying'
   | 'setPreviewSimSpeed'
@@ -55,6 +56,7 @@ export function createPreviewActions(api: SlicerStoreApi): Pick<
         : [...state.previewHiddenTypes, type],
     })),
     setPreviewColorSchemeOpen: (open) => set({ previewColorSchemeOpen: open }),
+    setPreviewGCodeOpen: (open) => set({ previewGCodeOpen: open }),
 
     setPreviewSimEnabled: (enabled) => set((state) => ({
       previewSimEnabled: enabled,

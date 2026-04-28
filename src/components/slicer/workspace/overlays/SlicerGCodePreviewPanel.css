@@ -1,0 +1,209 @@
+.slicer-gcode-panel {
+  position: absolute;
+  right: 12px;
+  top: 12px;
+  z-index: 12;
+  width: min(460px, calc(100% - 24px));
+  max-height: calc(100% - 24px);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  color: var(--text-primary);
+  background: color-mix(in srgb, var(--bg-panel) 96%, transparent);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.32);
+}
+
+.slicer-gcode-panel__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 9px 10px 8px 12px;
+  border-bottom: 1px solid var(--border);
+  background: color-mix(in srgb, var(--bg-toolbar) 78%, var(--bg-panel));
+}
+
+.slicer-gcode-panel__title {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.slicer-gcode-panel__header-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.slicer-gcode-panel__header-actions button,
+.slicer-gcode-panel__search button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  color: var(--text-muted);
+  background: transparent;
+  border: 0;
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+.slicer-gcode-panel__header-actions button:hover,
+.slicer-gcode-panel__search button:hover {
+  color: var(--text-primary);
+  background: var(--bg-hover);
+}
+
+.slicer-gcode-panel__meta,
+.slicer-gcode-panel__stats {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 6px;
+  padding: 8px 10px;
+  color: var(--text-muted);
+  font-size: 11px;
+  border-bottom: 1px solid color-mix(in srgb, var(--border) 65%, transparent);
+}
+
+.slicer-gcode-panel__stats {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  padding-top: 6px;
+  padding-bottom: 6px;
+}
+
+.slicer-gcode-panel__stats b {
+  color: var(--text-primary);
+  font-weight: 700;
+}
+
+.slicer-gcode-panel__scope,
+.slicer-gcode-panel__filters {
+  display: flex;
+  gap: 4px;
+  padding: 8px 10px 0;
+}
+
+.slicer-gcode-panel__scope button,
+.slicer-gcode-panel__filters button {
+  flex: 1;
+  min-width: 0;
+  padding: 4px 6px;
+  color: var(--text-secondary);
+  background: var(--bg-input);
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  font-size: 11px;
+  cursor: pointer;
+}
+
+.slicer-gcode-panel__filters {
+  flex-wrap: wrap;
+}
+
+.slicer-gcode-panel__filters button {
+  flex: 0 0 auto;
+}
+
+.slicer-gcode-panel__scope button.is-active,
+.slicer-gcode-panel__filters button.is-active {
+  color: var(--accent);
+  border-color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 14%, var(--bg-input));
+}
+
+.slicer-gcode-panel__search {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 8px 10px 0;
+  padding: 0 6px;
+  background: var(--bg-input);
+  border: 1px solid var(--border);
+  border-radius: 5px;
+}
+
+.slicer-gcode-panel__search svg {
+  flex: 0 0 auto;
+  color: var(--text-muted);
+}
+
+.slicer-gcode-panel__search input {
+  min-width: 0;
+  flex: 1;
+  height: 28px;
+  color: var(--text-primary);
+  background: transparent;
+  border: 0;
+  outline: 0;
+  font-size: 11.5px;
+}
+
+.slicer-gcode-panel__toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 7px 10px;
+  color: var(--text-secondary);
+  font-size: 11px;
+  cursor: pointer;
+}
+
+.slicer-gcode-panel__toggle input {
+  accent-color: var(--accent);
+}
+
+.slicer-gcode-panel__body {
+  flex: 1;
+  min-height: 180px;
+  overflow: auto;
+  padding: 6px 0 8px;
+  background: color-mix(in srgb, var(--bg-primary) 56%, var(--bg-panel));
+  font-family: Consolas, 'Cascadia Mono', 'Courier New', monospace;
+  font-size: 11px;
+  line-height: 1.55;
+}
+
+.slicer-gcode-panel__line {
+  display: grid;
+  grid-template-columns: 48px minmax(0, 1fr);
+  gap: 8px;
+  padding: 0 10px;
+  border-left: 3px solid transparent;
+}
+
+.slicer-gcode-panel__line:hover {
+  background: var(--bg-hover);
+}
+
+.slicer-gcode-panel__line-no {
+  color: var(--text-muted);
+  text-align: right;
+  user-select: none;
+}
+
+.slicer-gcode-panel__line code {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  color: var(--text-primary);
+}
+
+.slicer-gcode-panel__line.is-comment code { color: var(--text-muted); }
+.slicer-gcode-panel__line.is-extrusion { border-left-color: #43a047; }
+.slicer-gcode-panel__line.is-travel { border-left-color: #546e7a; }
+.slicer-gcode-panel__line.is-temperature { border-left-color: #ef6c00; }
+.slicer-gcode-panel__line.is-fan { border-left-color: #0288d1; }
+
+.slicer-gcode-panel__empty {
+  padding: 18px 12px;
+  color: var(--text-muted);
+  font-size: 12px;
+  text-align: center;
+  font-family: inherit;
+}

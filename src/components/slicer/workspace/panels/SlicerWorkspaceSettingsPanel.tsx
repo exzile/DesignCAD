@@ -1,5 +1,5 @@
 import { useState, useCallback } from 'react';
-import { Edit3, Settings, Search, Sliders } from 'lucide-react';
+import { Edit3, Settings, Search, Sliders, X } from 'lucide-react';
 import { useSlicerStore } from '../../../../store/slicerStore';
 import { useSlicerVisibilityStore } from '../../../../store/slicerVisibilityStore';
 import type { PrintProfile } from '../../../../types/slicer';
@@ -87,11 +87,22 @@ export function SlicerWorkspaceSettingsPanel({ onEditProfile }: { onEditProfile:
             onChange={(e) => setSettingsSearch(e.target.value)}
             className="slicer-workspace-settings-panel__search-input"
           />
+          {settingsSearch && (
+            <button
+              type="button"
+              className="slicer-workspace-settings-panel__search-clear"
+              onClick={() => setSettingsSearch('')}
+              title="Clear search"
+              aria-label="Clear search"
+            >
+              <X size={12} />
+            </button>
+          )}
         </div>
       </div>
 
       <div className="slicer-workspace-settings-panel__content">
-        {print && <SlicerPrintProfileSettings print={print} upd={upd} />}
+        {print && <SlicerPrintProfileSettings print={print} upd={upd} searchQuery={settingsSearch} />}
       </div>
 
       {showVisibilityModal && (

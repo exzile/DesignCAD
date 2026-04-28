@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   Eye, EyeOff, Download, Send, Play, Pause, X, Clapperboard,
   SkipBack, RotateCcw, Gauge, Palette, Scissors,
-  ChevronLeft, ChevronRight, Magnet,
+  ChevronLeft, ChevronRight, Magnet, FileCode2,
 } from 'lucide-react';
 import { useSlicerStore } from '../../../../store/slicerStore';
 import { usePrinterStore } from '../../../../store/printerStore';
@@ -36,6 +36,8 @@ export function SlicerWorkspaceBottomBar() {
   const uploadProgress = usePrinterStore((s) => s.uploadProgress);
   const colorSchemeOpen = useSlicerStore((s) => s.previewColorSchemeOpen);
   const setColorSchemeOpen = useSlicerStore((s) => s.setPreviewColorSchemeOpen);
+  const gcodeOpen = useSlicerStore((s) => s.previewGCodeOpen);
+  const setGCodeOpen = useSlicerStore((s) => s.setPreviewGCodeOpen);
   const sectionEnabled = useSlicerStore((s) => s.previewSectionEnabled);
   const sectionZ = useSlicerStore((s) => s.previewSectionZ);
   const setSectionEnabled = useSlicerStore((s) => s.setPreviewSectionEnabled);
@@ -190,6 +192,17 @@ export function SlicerWorkspaceBottomBar() {
           title="Color scheme"
         >
           <Palette size={14} />
+        </button>
+      )}
+
+      {previewMode === 'preview' && hasResult && (
+        <button
+          className={`slicer-bottom-bar__preview-btn${gcodeOpen ? ' is-active' : ''}`}
+          onClick={() => setGCodeOpen(!gcodeOpen)}
+          title="Toggle G-code preview"
+        >
+          <FileCode2 size={14} />
+          G-code
         </button>
       )}
 

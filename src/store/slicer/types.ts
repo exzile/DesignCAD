@@ -33,6 +33,7 @@ export interface SlicerStore {
   previewColorMode: 'type' | 'speed' | 'flow' | 'width' | 'layer-time' | 'wall-quality';
   previewHiddenTypes: string[];
   previewColorSchemeOpen: boolean;
+  previewGCodeOpen: boolean;
   previewSimEnabled: boolean;
   previewSimPlaying: boolean;
   previewSimSpeed: number;
@@ -81,6 +82,7 @@ export interface SlicerStore {
   setPreviewColorMode: (mode: 'type' | 'speed' | 'flow' | 'width' | 'layer-time' | 'wall-quality') => void;
   togglePreviewType: (type: string) => void;
   setPreviewColorSchemeOpen: (open: boolean) => void;
+  setPreviewGCodeOpen: (open: boolean) => void;
   setPreviewSimEnabled: (on: boolean) => void;
   setPreviewSimPlaying: (playing: boolean) => void;
   setPreviewSimSpeed: (speed: number) => void;

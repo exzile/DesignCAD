@@ -61,6 +61,7 @@ export const useSlicerStore = create<SlicerStore>()(persist((set, get) => ({
   previewColorMode: 'type',
   previewHiddenTypes: [],
   previewColorSchemeOpen: false,
+  previewGCodeOpen: false,
 
   // Simulation
   previewSimEnabled: false,

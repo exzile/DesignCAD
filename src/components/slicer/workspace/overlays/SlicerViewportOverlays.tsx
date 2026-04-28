@@ -12,6 +12,7 @@ import { ObjectToolbar } from './objectControls/ObjectToolbar';
 import { RotateObjectPanel } from './objectControls/RotateObjectPanel';
 import { ScaleObjectPanel } from './objectControls/ScaleObjectPanel';
 import type { TransformMode } from './objectControls/types';
+import { SlicerGCodePreviewPanel } from './SlicerGCodePreviewPanel';
 
 export function SlicerViewportOverlays() {
   const [uniformScale, setUniform] = useState(true);
@@ -22,14 +23,21 @@ export function SlicerViewportOverlays() {
   const updatePlateObject = useSlicerStore((s) => s.updatePlateObject);
   const mode = useSlicerStore((s) => s.transformMode) as TransformMode;
   const setMode = useSlicerStore((s) => s.setTransformMode);
+  const previewMode = useSlicerStore((s) => s.previewMode);
+  const gcodeOpen = useSlicerStore((s) => s.previewGCodeOpen);
+  const sliceResult = useSlicerStore((s) => s.sliceResult);
 
   const obj = plateObjects.find((plateObject) => plateObject.id === selectedId) ?? null;
   const toolbar = <ObjectToolbar mode={mode} onModeChange={setMode} />;
+  const gcodePanel = previewMode === 'preview' && gcodeOpen && sliceResult
+    ? <SlicerGCodePreviewPanel />
+    : null;
 
   if (!obj) {
     return (
       <>
         {toolbar}
+        {gcodePanel}
         <SlicerPrintabilityPanel />
         <SlicerCostBreakdown />
       </>
@@ -63,7 +71,8 @@ export function SlicerViewportOverlays() {
   return (
     <>
       {toolbar}
-      {panels[mode]}
+      {gcodePanel}
+      {!gcodePanel && panels[mode]}
       <SlicerPrintabilityPanel />
       <SlicerCostBreakdown />
     </>

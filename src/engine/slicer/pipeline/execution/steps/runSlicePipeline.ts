@@ -522,9 +522,11 @@ export async function runSlicePipeline(
   const gcode = applyPostProcessingScripts(run.gcode.join('\n'), run.pp);
   addTiming('postprocess', nowMs() - timingStartMs);
 
+  const emittedLayerCount = run.sliceLayers.length;
+
   return {
     gcode,
-    layerCount: run.totalLayers,
+    layerCount: emittedLayerCount,
     printTime: stats.estimatedTime,
     filamentUsed: run.emitter.totalExtruded,
     filamentWeight: stats.filamentWeight,
@@ -535,7 +537,7 @@ export async function runSlicePipeline(
       layerPrepMode: layerPrepWorkerCount > 0 ? 'parallel' : 'sequential',
       workerCount: layerPrepWorkerCount,
       triangleCount: run.triangles.length,
-      layerCount: run.totalLayers,
+      layerCount: emittedLayerCount,
       buckets: [...timings.entries()]
         .map(([key, value]) => ({
           key,
