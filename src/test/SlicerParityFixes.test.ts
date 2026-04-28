@@ -16,7 +16,14 @@ import {
 } from '../engine/slicer/pipeline/execution/steps/emitContourInfill';
 
 describe('Slicer parity fixes', () => {
-  it('orders split solid-skin scanlines row-by-row around holes', () => {
+  it('orders split solid-skin scanlines minimising travel between rows', () => {
+    // sortSolidSkinLinesForEmission first row-sorts boustrophedon-style,
+    // then runs a nearest-neighbour pass to pick the cheapest connector
+    // from the current cursor to any remaining line. With the cursor
+    // starting at sorted[0].from = (0,0), the NN pass climbs straight to
+    // the row above before scanning across the gap, then comes back along
+    // the bottom row — shorter than zig-zagging within each row when the
+    // gap (here 2mm) is wider than the row spacing (0.45mm).
     const lines = [
       { from: new THREE.Vector2(0, 0), to: new THREE.Vector2(4, 0) },
       { from: new THREE.Vector2(6, 0), to: new THREE.Vector2(10, 0) },
@@ -28,12 +35,12 @@ describe('Slicer parity fixes', () => {
 
     expect(sorted[0].from.x).toBe(0);
     expect(sorted[0].to.x).toBe(4);
-    expect(sorted[1].from.x).toBe(6);
-    expect(sorted[1].to.x).toBe(10);
-    expect(sorted[2].from.x).toBe(10);
-    expect(sorted[2].to.x).toBe(6);
-    expect(sorted[3].from.x).toBe(4);
-    expect(sorted[3].to.x).toBe(0);
+    expect(sorted[1].from.x).toBe(4);
+    expect(sorted[1].to.x).toBe(0);
+    expect(sorted[2].from.x).toBe(6);
+    expect(sorted[2].to.x).toBe(10);
+    expect(sorted[3].from.x).toBe(10);
+    expect(sorted[3].to.x).toBe(6);
   });
 
   it('keeps solid-skin boundary ownership when rows are reversed for emission', () => {
@@ -70,7 +77,9 @@ describe('Slicer parity fixes', () => {
   });
 
   it('keeps direct solid-skin connector links limited until contour-walk linking is implemented', () => {
-    expect(solidSkinConnectorLinkLimit(0.5)).toBeCloseTo(1.05, 5);
+    // solidSkin = lineWidth × 3.25 (relaxed from 2.1 to allow first-layer
+    // widened beads to bridge the typical row spacing); sparse = lineWidth × 1.5.
+    expect(solidSkinConnectorLinkLimit(0.5)).toBeCloseTo(1.625, 5);
     expect(sparseInfillConnectorLinkLimit(0.5)).toBeCloseTo(0.75, 5);
   });
 
