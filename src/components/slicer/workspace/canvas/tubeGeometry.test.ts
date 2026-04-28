@@ -148,6 +148,34 @@ describe('buildChainTube — geometric contract', () => {
     expect(positions.length).toBe(3 * ringSize * 3);
   });
 
+  it('open TOP/BOTTOM skin chains have NO apex caps (avoids chunky skin line-end artefacts)', () => {
+    const chain = makeChain([[0, 0], [10, 0], [10, 10]], 0.4, false, 'top-bottom');
+    const geo = buildChainTube(chain, 0.2, 0.2, { usePressedRoadTemplate: false });
+    const positions = geo!.getAttribute('position').array as Float32Array;
+    expect(positions.length).toBe(3 * ringSize * 3);
+  });
+
+  it('keeps the pressed-road template available for first-layer skin preview', () => {
+    const chain = makeChain([[0, 0], [10, 0], [10, 10]], 0.4, false, 'top-bottom');
+    const geo = buildChainTube(chain, 0.2, 0.2, { usePressedRoadTemplate: true });
+    const positions = geo!.getAttribute('position').array as Float32Array;
+    expect(positions.length).toBe(16 * 3);
+  });
+
+  it('can render wall chains through the Orca-style segment template', () => {
+    const chain = makeChain([[0, 0], [10, 0], [10, 10]], 0.4, false, 'wall-inner');
+    const geo = buildChainTube(chain, 0.2, 0.2, { useSegmentTemplate: true });
+    const positions = geo!.getAttribute('position').array as Float32Array;
+    expect(positions.length).toBe(16 * 3);
+  });
+
+  it('can render gap-fill chains through the Orca-style segment template', () => {
+    const chain = makeChain([[0, 0], [1, 0], [1.5, 0.25]], 0.25, false, 'gap-fill');
+    const geo = buildChainTube(chain, 0.2, 0.2, { useSegmentTemplate: true });
+    const positions = geo!.getAttribute('position').array as Float32Array;
+    expect(positions.length).toBe(16 * 3);
+  });
+
   it('center-Z of each ring equals the bead center (baseZ - layerHeight/2)', () => {
     const chain = makeChain([[0, 0], [10, 0]], 0.4, false);
     const layerH = 0.2;

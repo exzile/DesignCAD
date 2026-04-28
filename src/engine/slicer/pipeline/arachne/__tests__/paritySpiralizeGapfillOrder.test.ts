@@ -5,9 +5,9 @@
 //   2. Arachne `source: 'gapfill'` paths surface as `wallSources` on
 //      `GeneratedPerimeters` so the emit step can route them through the
 //      `gap-fill` move type.
-//   3. `variableWidthPathsToPerimeters` orders walls outer → hole →
-//      gap-fill (matches CuraEngine's `InsetOrderOptimizer` convention
-//      of running gap-fill last, after the wall structure is laid down).
+//   3. `variableWidthPathsToPerimeters` orders walls by Arachne inset
+//      depth first, with odd/gap-fill paths after their enclosing wall
+//      at the same depth.
 
 import { describe, expect, it } from 'vitest';
 import * as THREE from 'three';
@@ -43,11 +43,11 @@ describe('variableWidthPathsToPerimeters — wallSources plumbing', () => {
     ]);
     expect(result.wallSources).toBeDefined();
     expect(result.wallSources!.length).toBe(result.walls.length);
-    // Order: outer, hole, gapfill (see sort key in the converter).
+    // Same depth: outer, hole, gapfill (see sort key in the converter).
     expect(result.wallSources).toEqual(['outer', 'hole', 'gapfill']);
   });
 
-  it('puts gap-fill paths last, even if input order interleaves them', () => {
+  it('keeps gap-fill paths with their inset depth instead of forcing them all last', () => {
     // Input order intentionally scrambled: gapfill before outer/hole.
     const result = variableWidthPathsToPerimeters([
       path('gapfill', 1, 0.2, false),
@@ -56,17 +56,9 @@ describe('variableWidthPathsToPerimeters — wallSources plumbing', () => {
       path('hole', 0),
       path('outer', 1),
     ]);
-    // Final sources sequence: outers, then holes, then gapfills.
     const sources = result.wallSources ?? [];
-    const lastTwo = sources.slice(-2);
-    expect(lastTwo.every((s) => s === 'gapfill')).toBe(true);
-    // First several are non-gapfill.
-    const nonFill = sources.filter((s) => s !== 'gapfill');
-    expect(nonFill.length).toBe(3);
-    // Outer walls precede hole walls within the non-gapfill prefix.
-    const firstHole = sources.indexOf('hole');
-    const lastOuter = sources.lastIndexOf('outer');
-    expect(lastOuter).toBeLessThan(firstHole);
+    expect(sources).toEqual(['outer', 'hole', 'outer', 'gapfill', 'gapfill']);
+    expect(result.wallDepths).toEqual([0, 0, 1, 1, 2]);
   });
 
   it('outerCount counts only `outer` source paths, not gapfill', () => {

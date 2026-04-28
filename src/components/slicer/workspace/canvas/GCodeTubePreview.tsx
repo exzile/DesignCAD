@@ -63,6 +63,10 @@ const _col = new THREE.Color();
 
 type ColorMode = 'type' | 'speed' | 'flow' | 'width' | 'layer-time' | 'wall-quality';
 
+function usesOrcaSegmentTemplate(type: string): boolean {
+  return type === 'wall-outer' || type === 'wall-inner' || type === 'gap-fill';
+}
+
 // eslint-disable-next-line react-refresh/only-export-components
 export function inferDenseSkinPitchWidths(
   moves: readonly SliceMove[],
@@ -393,34 +397,6 @@ export function LayerLines({
       c.isClosed = true;
     }
 
-    // Drop wall "flap" stubs — short isolated chains (typically 2 points,
-    // total length < ~1× lw) that Arachne's pure-JS variable-width pass
-    // emits at sharp polygon corners. They render as small tubes poking
-    // perpendicular to the main wall ring and read as visible "teeth"
-    // around circular features. OrcaSlicer's libArachne hides them by
-    // merging the flap into the main bead; until we wire libArachne in,
-    // we filter them at preview time so the visual matches Orca's
-    // smooth-tube look. Closed chains and non-wall chains are kept.
-    const isWallType = (t: string) => t === 'wall-outer' || t === 'wall-inner';
-    const FLAP_LENGTH_LW_RATIO = 1.0;
-    const filteredChains: TubeChain[] = [];
-    for (const chain of chains) {
-      if (!chain.isClosed && isWallType(chain.type)) {
-        let totalLen = 0;
-        for (let i = 0; i < chain.points.length - 1; i++) {
-          totalLen += Math.hypot(
-            chain.points[i + 1].x - chain.points[i].x,
-            chain.points[i + 1].y - chain.points[i].y,
-          );
-        }
-        let avgLw = 0;
-        for (const p of chain.points) avgLw += p.lw;
-        avgLw /= chain.points.length;
-        if (totalLen < avgLw * FLAP_LENGTH_LW_RATIO) continue;
-      }
-      filteredChains.push(chain);
-    }
-
     // Build a tube for each chain.
     const beadHeight = Math.max(0.02, layerHeight);
     const tubeList: Array<{
@@ -428,8 +404,11 @@ export function LayerLines({
       type: string;
       moveRefs: ShaftMoveData[];
     }> = [];
-    for (const chain of filteredChains) {
-      const geo = buildChainTube(chain, beadHeight, layer.z);
+    for (const chain of chains) {
+      const geo = buildChainTube(chain, beadHeight, layer.z, {
+        useSegmentTemplate: usesOrcaSegmentTemplate(chain.type),
+        usePressedRoadTemplate: layer.layerIndex === 0,
+      });
       if (!geo) continue;
       tubeList.push({ geometry: geo, type: chain.type, moveRefs: chain.moveRefs });
     }
@@ -561,7 +540,7 @@ export function InlineGCodePreview({
             colorMode={colorMode}
             hiddenTypes={hiddenTypes}
             layerTimeT={layerTimeT}
-            onHoverMove={onHoverMove}
+            onHoverMove={layer.layerIndex === currentLayer ? onHoverMove : undefined}
           />
         );
       })}

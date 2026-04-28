@@ -174,10 +174,10 @@ describe('G-code numerical precision — extrusion math', () => {
     // E per mm = 0.08 / 2.405 ≈ 0.0333
     expect(ratios.length).toBeGreaterThan(0);
     const avg = ratios.reduce((s, r) => s + r, 0) / ratios.length;
-    // Material flowRate in default profile may not be exactly 1.0; allow
-    // a generous range.
+    // Material flowRate in default profile may not be exactly 1.0, and
+    // Arachne variable-width inner walls can briefly run above nominal width.
     expect(avg).toBeGreaterThan(0.025);
-    expect(avg).toBeLessThan(0.045);
+    expect(avg).toBeLessThan(0.047);
   }, 60_000);
 });
 

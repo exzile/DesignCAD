@@ -385,8 +385,12 @@ export function buildChainTube(
   chain: TubeChain,
   layerHeight: number,
   baseZ: number,
+  options: { usePressedRoadTemplate?: boolean; useSegmentTemplate?: boolean } = {},
 ): THREE.BufferGeometry | null {
-  if (chain.type === 'top-bottom') {
+  if (
+    options.useSegmentTemplate
+    || (chain.type === 'top-bottom' && options.usePressedRoadTemplate !== false)
+  ) {
     return buildOrcaSegmentTemplateGeometry(chain, layerHeight, baseZ);
   }
 
@@ -568,7 +572,11 @@ export function buildChainTube(
   // fanned to the cross-section ring (one apex + RADIAL triangles).
   // See `Cura plugins/SimulationView/layers3d.shader` (geometry41core)
   // and `OrcaSlicer src/libvgcode/src/SegmentTemplate.cpp` (POINTY_CAPS).
-  if (!sourceChain.isClosed && n >= 2 && TRIMMED_FILL_TYPES.has(sourceChain.type)) {
+  const shouldApexCap = !sourceChain.isClosed
+    && n >= 2
+    && TRIMMED_FILL_TYPES.has(sourceChain.type)
+    && sourceChain.type !== 'top-bottom';
+  if (shouldApexCap) {
     appendApexCap(positions, normals, colors, indices, {
       isStart: true,
       anchorRingStart: 0,

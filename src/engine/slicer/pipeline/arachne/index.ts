@@ -514,16 +514,16 @@ export function variableWidthPathsToPerimeters(
   const wallSources: Array<'outer' | 'hole' | 'gapfill'> = [];
   let outerCount = 0;
 
-  // Order: outer-contour walls first, hole walls next, gap-fill paths
-  // LAST. This mirrors CuraEngine's `InsetOrderOptimizer`: gap-fill
-  // beads run after the wall structure they live inside, because (a)
-  // they lock in dimensional accuracy of the surrounding walls, and
-  // (b) putting them at the end means the next move likely starts a
-  // travel into a different region anyway, so the open-path tip of
-  // the gap-fill bead doesn't disrupt a clean wall seam.
+  // Order by Arachne inset depth first. Orca keeps odd/open Arachne paths
+  // inside the wall scheduler as variable-width inner walls; they should
+  // run after the enclosing wall at the same depth, not after every wall
+  // in the whole contour.
   const sortKey = (s: 'outer' | 'hole' | 'gapfill') =>
     s === 'outer' ? 0 : s === 'hole' ? 1 : 2;
-  const sorted = [...paths].sort((a, b) => sortKey(a.source) - sortKey(b.source));
+  const sorted = [...paths].sort((a, b) => {
+    if (a.depth !== b.depth) return a.depth - b.depth;
+    return sortKey(a.source) - sortKey(b.source);
+  });
 
   for (const path of sorted) {
     if (path.points.length < 2) continue;

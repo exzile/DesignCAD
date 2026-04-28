@@ -235,6 +235,87 @@ describe('emitGroupedAndContourWalls', () => {
     ]);
   });
 
+  it('emits Arachne odd paths as Orca-style inner walls instead of separate gap fill', () => {
+    const outer = square(20);
+    const inner = square(12).map((point) => point.add(new THREE.Vector2(4, 4)));
+    const odd = [
+      new THREE.Vector2(7, 7),
+      new THREE.Vector2(9, 8),
+      new THREE.Vector2(11, 7),
+    ];
+    const contour = { points: outer, area: 400, isOuter: true };
+    const generated: GeneratedPerimeters = {
+      walls: [outer, inner, odd],
+      lineWidths: [0.45, 0.45, [0.22, 0.28, 0.22]],
+      wallClosed: [true, true, false],
+      wallDepths: [0, 1, 1],
+      wallSources: ['outer', 'outer', 'gapfill'],
+      outerCount: 1,
+      innermostHoles: [],
+      infillRegions: [],
+    };
+    const pipeline = {
+      findSeamPosition: () => 0,
+      reorderFromIndex: (points: THREE.Vector2[], index: number) => [
+        ...points.slice(index),
+        ...points.slice(0, index),
+      ],
+      simplifyClosedContour: (points: THREE.Vector2[]) => points,
+      filterPerimetersByMinOdd: (perimeters: GeneratedPerimeters) => perimeters,
+      generatePerimeters: () => generated,
+    };
+    const run = {
+      pp: {
+        groupOuterWalls: false,
+        wallCount: 3,
+        wallLineWidth: 0.45,
+        outerWallFirst: true,
+      },
+      emitter: {
+        currentX: 0,
+        currentY: 0,
+        currentLayerFlow: 1,
+        setAccel: () => undefined,
+        setJerk: () => undefined,
+        travelTo(x: number, y: number) {
+          this.currentX = x;
+          this.currentY = y;
+        },
+        extrudeTo(x: number, y: number) {
+          this.currentX = x;
+          this.currentY = y;
+          return { time: 0 };
+        },
+        calculateExtrusion: () => 0,
+      },
+      gcode: [],
+      previousSeamPoints: [],
+      currentSeamPoints: [],
+    } as unknown as SliceRun;
+    const layer = {
+      li: 0,
+      layerZ: 0.2,
+      layerH: 0.2,
+      isFirstLayer: true,
+      isSolidTop: false,
+      isSolidBottom: false,
+      outerWallSpeed: 20,
+      innerWallSpeed: 30,
+      workContours: [contour],
+      holesByOuterContour: new Map(),
+      moves: [],
+      layerTime: 0,
+      hasBridgeRegions: false,
+    } as unknown as SliceLayerState;
+
+    emitGroupedAndContourWalls(pipeline, run, layer);
+
+    expect(run.gcode.some((line) => line.startsWith('; Gap fill'))).toBe(false);
+    expect(run.gcode.filter((line) => line.startsWith('; Inner wall'))).toContain('; Inner wall 2');
+    expect(layer.moves.map((move) => move.type)).not.toContain('gap-fill');
+    expect(layer.moves.some((move) => move.type === 'wall-inner')).toBe(true);
+  });
+
   it('orders separate contours by nearest reachable wall start', () => {
     const farOuter = square(10).map((point) => point.add(new THREE.Vector2(100, 100)));
     const farInner = square(5).map((point) => point.add(new THREE.Vector2(102, 102)));

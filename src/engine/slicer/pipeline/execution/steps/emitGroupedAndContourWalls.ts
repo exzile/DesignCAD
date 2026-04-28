@@ -64,8 +64,7 @@ function orcaOrderedWallIndices(
   const sourceWeight = (s?: 'outer' | 'hole' | 'gapfill') =>
     s === 'gapfill' ? 2 : s === 'hole' ? 1 : 0;
   const indices = Array.from({ length: wallSets.length - 1 }, (_, i) => i + 1);
-  const gapFill = indices.filter((idx) => wallSources?.[idx] === 'gapfill');
-  const walls = indices.filter((idx) => wallSources?.[idx] !== 'gapfill');
+  const walls = indices;
   const blocked = new Map<number, number>();
   const blocking = new Map<number, number[]>();
   for (const idx of walls) {
@@ -137,12 +136,7 @@ function orcaOrderedWallIndices(
     }
   }
 
-  gapFill.sort((a, b) => {
-    const da = distanceSq(current, wallSets[a]?.[0] ?? current);
-    const db = distanceSq(current, wallSets[b]?.[0] ?? current);
-    return da - db;
-  });
-  return [...ordered, ...gapFill];
+  return ordered;
 }
 
 function wallStartPoint(item: ContourWallData): THREE.Vector2 | null {
@@ -584,8 +578,9 @@ export function emitGroupedAndContourWalls(
     //
     // Orca-style region scheduling: depth constraints decide which walls
     // are currently unblocked, then the next path is the nearest available
-    // start point from the nozzle. Gap-fill remains last so its tapered
-    // open tips don't interrupt closed wall-loop ordering.
+    // start point from the nozzle. Arachne odd/open paths stay in this same
+    // wall scheduler; Orca emits them as variable-width inner walls rather
+    // than splitting them into a separate gap-fill phase.
     // Spiralize / vase mode: above the solid bottom layers, emit only the
     // outer wall — no inner walls, no gap-fill, no hole-outer walls. This
     // is what produces the single-pass hollow shell. The bottom layers
@@ -617,16 +612,13 @@ export function emitGroupedAndContourWalls(
       // (red) next to the empty hole, matching how OrcaSlicer / Cura render.
       const isGapFill = wallSources?.[wi] === 'gapfill';
       const isHoleOuterWall = !isGapFill && (wallDepths[wi] ?? 1) === 0;
-      // Gap-fill moves get their own type so the preview colours them
-      // distinctly, the bridge detector skips them (they're not real
-      // walls), the seam optimizer ignores them, and stats report
-      // gap-fill volume separately from wall volume.
-      const moveType: 'wall-outer' | 'wall-inner' | 'gap-fill' = isGapFill
-        ? 'gap-fill'
-        : (isHoleOuterWall ? 'wall-outer' : 'wall-inner');
-      // Gap-fill prints at the inner-wall speed — they're short, narrow,
-      // and pushing them at outer-wall speed risks under-extrusion at
-      // the medial-axis tips where the bead width has already tapered.
+      // Orca labels Arachne odd/open paths as inner-wall extrusion in G-code.
+      // Keeping that classification prevents a separate visible "gap-fill"
+      // path from being appended over the wall band in preview/simulation.
+      const moveType: 'wall-outer' | 'wall-inner' = isHoleOuterWall ? 'wall-outer' : 'wall-inner';
+      // Arachne odd/open paths print at inner-wall speed; they're short,
+      // narrow variable-width wall beads and pushing them at outer-wall
+      // speed risks under-extrusion at the medial-axis tips.
       const wallSpeed = isGapFill ? innerWallSpeed
         : isHoleOuterWall ? outerWallSpeed : innerWallSpeed;
       const wallLWSpec: WallLineWidthSpec = wallLineWidths[wi] ?? (isHoleOuterWall ? pp.wallLineWidth : innerLW);
@@ -666,7 +658,7 @@ export function emitGroupedAndContourWalls(
         pp.jerkPrint,
       );
       emitter.travelTo(wallLoop[0].x, wallLoop[0].y, moves);
-      gcode.push(`; ${isGapFill ? 'Gap fill' : isHoleOuterWall ? 'Hole outer wall' : 'Inner wall'} ${wi}`);
+      gcode.push(`; ${isHoleOuterWall ? 'Hole outer wall' : 'Inner wall'} ${wi}`);
       for (let pi = 1; pi < wallLoop.length; pi++) {
         const from = wallLoop[pi - 1], to = wallLoop[pi];
         const segLW = segmentLineWidth(wallLWSpec, pi - 1, pi);
