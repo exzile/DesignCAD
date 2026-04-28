@@ -41,6 +41,15 @@ function segmentLineWidth(lineWidth: WallLineWidthSpec, fromIndex: number, toInd
   return (from + to) / 2;
 }
 
+function shouldPreserveVariableWallWidth(
+  lineWidth: WallLineWidthSpec,
+  isFirstLayer: boolean,
+  isClosed: boolean,
+  isArachneOddPath = false,
+): boolean {
+  return Array.isArray(lineWidth) && (isFirstLayer || !isClosed || isArachneOddPath);
+}
+
 function centroid(points: THREE.Vector2[]): THREE.Vector2 {
   const center = new THREE.Vector2();
   for (const point of points) center.add(point);
@@ -368,9 +377,14 @@ function subdivideLoop(loop: THREE.Vector2[], maxSegLen: number): THREE.Vector2[
 
 function emitOuterLoop(params: EmitOuterLoopParams): number {
   const { pp, li, layerZ, layerH, isFirstLayer, outerWallSpeed, gcode, emitter, moves } = params;
-  const variableLineWidth = Array.isArray(params.lineWidth);
   const isClosed = params.isClosed ?? true;
-  const fallbackLineWidth = representativeLineWidth(params.lineWidth, pp.wallLineWidth);
+  const outerNominalLineWidth = isFirstLayer
+    ? representativeLineWidth(params.lineWidth, pp.wallLineWidth)
+    : (pp.outerWallLineWidth ?? pp.wallLineWidth);
+  const variableLineWidth = shouldPreserveVariableWallWidth(params.lineWidth, isFirstLayer, isClosed);
+  const fallbackLineWidth = variableLineWidth
+    ? representativeLineWidth(params.lineWidth, outerNominalLineWidth)
+    : outerNominalLineWidth;
   let reordered = variableLineWidth
     ? params.loop
     : reorderOuterLoop(pp, params.pipeline, params.run, params.layer, emitter, params.loop, fallbackLineWidth, li);
@@ -621,9 +635,23 @@ export function emitGroupedAndContourWalls(
       // speed risks under-extrusion at the medial-axis tips.
       const wallSpeed = isGapFill ? innerWallSpeed
         : isHoleOuterWall ? outerWallSpeed : innerWallSpeed;
-      const wallLWSpec: WallLineWidthSpec = wallLineWidths[wi] ?? (isHoleOuterWall ? pp.wallLineWidth : innerLW);
-      const wallLW = representativeLineWidth(wallLWSpec, isHoleOuterWall ? pp.wallLineWidth : innerLW);
       const isClosed = wallClosed?.[wi] ?? true;
+      const nominalWallLW = isHoleOuterWall ? (pp.outerWallLineWidth ?? pp.wallLineWidth) : innerLW;
+      const rawWallLWSpec: WallLineWidthSpec = wallLineWidths[wi] ?? nominalWallLW;
+      // libArachne emits per-vertex widths for all walls, but Orca's normal
+      // wall bands stay visually/physically uniform while the odd/open
+      // transition beads carry the variable width. Keep the variable widths
+      // where they matter (first layer and odd/open Arachne paths), and emit
+      // closed regular wall loops at their configured nominal width.
+      const wallLWSpec: WallLineWidthSpec = shouldPreserveVariableWallWidth(
+        rawWallLWSpec,
+        isFirstLayer,
+        isClosed,
+        isGapFill,
+      )
+        ? rawWallLWSpec
+        : nominalWallLW;
+      const wallLW = representativeLineWidth(wallLWSpec, nominalWallLW);
       // Aggressive simplification (≈half the line width) acts as a poor-
       // man's Arachne for narrow regions: any perimeter "finger" or notch
       // narrower than ~lw/2 gets straightened out by RDP, so the wall no
