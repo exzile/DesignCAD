@@ -26,6 +26,20 @@
 #     treatment for any layer)
 #   - bottomSurfaceSkinLayers — wired (symmetric flag exposed on the
 #     LayerState, ready for future bottom-surface override fields)
+#   - useTowers / towerDiameter / towerRoofAngle — wired (small overhang
+#     islands now print as a circular tower with a flared roof governed
+#     by the roof angle; bypasses the conical / stair-step / horizontal-
+#     expansion modifiers since towers are user-controlled column width)
+#   - breakUpSupportInChunks / breakUpSupportChunkSize /
+#     breakUpSupportChunkLineCount — wired (body-only scanline emitter
+#     jumps a chunk-size-mm gap every chunk-line-count lines; interface
+#     bands stay continuous so the supported model surface keeps a solid
+#     bed of support beneath it)
+#   - minSkinWidthForExpansion — wired (per-region check; tiny regions
+#     keep the skin overlap but skip the top/bottom expansion offset)
+#   - supportDistancePriority — wired (z_overrides_xy relaxes XY clearance
+#     to 0 in roof/floor interface bands so support fully covers tight
+#     overhangs; xy_overrides_z keeps the existing behavior)
 #   - Audited the [s] list: connectTopBottomPolygons, enableSupportBrim /
 #     supportBrimLineCount, supportInfillLayerThickness, connectSupportLines /
 #     connectSupportZigZags, and the supportRoof*/supportFloor* family
@@ -47,18 +61,11 @@
 
 
 ## TOP / BOTTOM
-- [s] Maximum Skin Angle for Expansion (`maxSkinAngleForExpansion`) - type only (deferred)
-- [s] Minimum Skin Width for Expansion (`minSkinWidthForExpansion`) - type only (deferred)
+- [s] Maximum Skin Angle for Expansion (`maxSkinAngleForExpansion`) - type only (deferred — needs surrounding-overhang slope detection)
 - [s] noSkinInZGaps - intentional no-op (inherent behavior)
 
 ## INFILL
 - [skip] Infill Support (`infillSupport`) - major feature; deferred
-
-
-## SUPPORT
-- [s] Support Distance Priority (`supportDistancePriority`) - type + UI exists; engine deferred
-- [s] Use Towers (`useTowers`) - type + UI exists; engine deferred
-- [s] Tower Diameter / Tower Roof Angle - type + UI exists; engine deferred
 
 
 ## MESH FIXES
@@ -74,7 +81,6 @@
 - [s] Infill Mesh / Cutting Mesh / Support Mesh / Anti-Overhang Mesh - type scaffold + UI exists; engine wiring deferred (per-object override system)
 
 ## EXPERIMENTAL
-- [s] Break Up Support In Chunks (`breakUpSupportInChunks`) + Chunk Size + Chunk Line Count - type + UI exists; engine deferred
 - [s] Fuzzy Skin Outside Only (`fuzzySkinOutsideOnly`) - type + UI exists; engine deferred (fuzzySkinsEnabled itself not yet wired)
 - [s] Adaptive Layers Topography Size (`adaptiveLayersTopographySize`) - type + UI exists; engine deferred
 - [s] Bridge Skin Density (`bridgeSkinDensity`) - storage-only; needs scanline regen at bridge density (deferred - invasive change to infill generation)

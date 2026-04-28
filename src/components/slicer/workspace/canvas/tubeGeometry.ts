@@ -577,10 +577,14 @@ export function buildChainTube(
     }
   }
 
-  // Step 6: pointed pyramid end caps for OPEN FILL-type chains. Without
-  // these, an open fill tube (infill scanline, top/bottom skin line,
-  // gap-fill bead, bridge) ends in a FLAT disk that visually "pokes"
-  // past adjacent walls when the slicer applies infill/skin overlap.
+  // Step 6: pointed pyramid end caps for OPEN non-solid fill chains.
+  // Without these, open infill/gap-fill/bridge tubes end in a FLAT disk that
+  // visually "pokes" past adjacent walls when the slicer applies overlap.
+  //
+  // Do NOT apex-cap top/bottom skin. Orca's solid-skin preview renders those
+  // roads as continuous flattened beads; its shader hides the per-segment cap
+  // at connected transitions. Baking a point cap into each open solid-skin
+  // chain creates the chunky connector blocks visible at line ends.
   //
   // We deliberately do NOT cap open WALL chains. Real Arachne emits
   // closed wall loops, but the chain assembler in `GCodeTubePreview`
@@ -593,7 +597,7 @@ export function buildChainTube(
   // holes. Walls are already trimmed back via OPEN_WALL_END_TRIM_FACTOR
   // and look correct without an apex tip.
   //
-  // Cura/Orca cap shape we mirror: single forward-displaced apex vertex
+  // Cura/Orca cap shape we mirror for non-solid fill: single forward-displaced apex vertex
   // fanned to the cross-section ring (one apex + RADIAL triangles).
   // See `Cura plugins/SimulationView/layers3d.shader` (geometry41core)
   // and `OrcaSlicer src/libvgcode/src/SegmentTemplate.cpp` (POINTY_CAPS).

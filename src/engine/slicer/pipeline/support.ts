@@ -204,6 +204,122 @@ export function shouldDemoteSupportInterface(
   return w * h < threshold;
 }
 
+/**
+ * Cura's "Use Towers" eligibility check: when `useTowers` is on AND the
+ * overhang island is small enough that a tower would cover it, the
+ * island is replaced by a circular tower of `towerDiameter` (with a
+ * roof flare governed by `towerRoofAngle`) instead of the normal
+ * scanline support pattern. Returns true when the island should print
+ * as a tower.
+ *
+ * The threshold is the larger of the two bbox dimensions: we route any
+ * island whose largest extent fits within the tower diameter through
+ * the tower path. Mirrors Cura's `support_minimal_diameter` default of
+ * `support_tower_diameter`.
+ */
+export function shouldEmitSupportTower(
+  bbox: { minX: number; maxX: number; minY: number; maxY: number },
+  useTowers: boolean | undefined,
+  towerDiameter: number | undefined,
+): boolean {
+  if (!useTowers) return false;
+  const d = towerDiameter ?? 0;
+  if (d <= 0) return false;
+  const w = Math.max(0, bbox.maxX - bbox.minX);
+  const h = Math.max(0, bbox.maxY - bbox.minY);
+  return Math.max(w, h) <= d;
+}
+
+/**
+ * Cura's tower roof flare: the tower's effective radius widens from
+ * `baseRadius` (the column radius, `towerDiameter / 2`) up to
+ * `islandRadius` (just enough to cover the overhang) over a roof of
+ * height `(islandRadius - baseRadius) * tan(towerRoofAngle)` measured
+ * from horizontal. Layers below the flare zone use `baseRadius`; layers
+ * inside the flare zone interpolate linearly toward `islandRadius` at
+ * the top.
+ *
+ * `distFromTop` is the vertical distance from the current layer up to
+ * the topmost overhang surface (`island.maxZ - layerZ`).
+ */
+export function towerRadiusForLayer(
+  baseRadius: number,
+  islandRadius: number,
+  towerRoofAngleDeg: number | undefined,
+  distFromTop: number,
+): number {
+  if (islandRadius <= baseRadius) return baseRadius;
+  const angleRad = ((towerRoofAngleDeg ?? 65) * Math.PI) / 180;
+  // tan(angle) maps a delta-radius to the flare height. Higher angle =
+  // taller flare per unit of widening (Cura: "higher value will result
+  // in pointed tower roofs" — pointed because the flare is taller, the
+  // taper happens over more layers, and the column stays narrow longer).
+  const flareHeight = (islandRadius - baseRadius) * Math.tan(angleRad);
+  const dz = Math.max(0, distFromTop);
+  if (flareHeight <= 0 || dz >= flareHeight) return baseRadius;
+  const t = 1 - dz / flareHeight; // 0 at the bottom of the flare, 1 at the top
+  return baseRadius + t * (islandRadius - baseRadius);
+}
+
+/**
+ * Cura's "Break Up Support In Chunks": instead of a single dense pattern
+ * that runs the full width of an island, the scanline emitter walks N
+ * lines (`chunkLineCount`), then jumps a `chunkSize`-mm gap before the
+ * next chunk starts. This keeps the support easier to remove and makes
+ * cooler regions of the print less likely to lift off the bed during
+ * the support pass.
+ *
+ * Returns the d-axis advance to apply after the just-emitted line and
+ * whether the per-chunk line counter should reset. When chunking is
+ * disabled (or any required parameter is missing/non-positive) the
+ * advance is just the regular scanline `spacing` and the counter never
+ * resets — equivalent to the legacy behavior.
+ */
+export interface ChunkStepResult { advance: number; resetCount: boolean; }
+export function chunkStep(
+  spacing: number,
+  linesEmittedInChunk: number,
+  chunkLineCount: number | undefined,
+  chunkSize: number | undefined,
+  enabled: boolean | undefined,
+): ChunkStepResult {
+  const N = chunkLineCount ?? 0;
+  const gap = chunkSize ?? 0;
+  if (!enabled || N <= 0 || gap <= 0 || linesEmittedInChunk < N) {
+    return { advance: spacing, resetCount: false };
+  }
+  return { advance: gap, resetCount: true };
+}
+
+/**
+ * Cura's "Support Distance Priority": resolves the conflict between the
+ * XY-clearance gap (`supportXYDistance`) and the vertical Z-gap
+ * (`supportZDistance` / `supportTopDistance`) when they overlap at a
+ * model corner.
+ *
+ * - `xy_overrides_z` (default): XY clearance always wins; the support
+ *   stays away from the model walls in XY even at the cost of less
+ *   vertical coverage. This is our existing behavior — the helper
+ *   returns the user's `supportXYDistance` unchanged.
+ * - `z_overrides_xy`: the Z gap does the separation work, so XY
+ *   clearance is relaxed to 0 in the layers where the Z gap is
+ *   actively in play (roof / floor interface bands). Result: support
+ *   covers more of the overhang at the cost of touching walls in XY.
+ *
+ * `isInterfaceLayer` is true when the current layer is a roof or floor
+ * band (the Z-gap zone). Body layers always keep the full XY clearance
+ * regardless of priority — there's no "Z gap" actively in play down
+ * there to take over the separation duty.
+ */
+export function effectiveSupportXYDistance(
+  baseXYDistance: number,
+  priority: PrintProfile['supportDistancePriority'] | undefined,
+  isInterfaceLayer: boolean,
+): number {
+  if (priority === 'z_overrides_xy' && isInterfaceLayer) return 0;
+  return baseXYDistance;
+}
+
 function supportLineSettings(pp: PrintProfile, layerIndex: number, isRoof: boolean, isFloor: boolean) {
   const supLW = pp.supportLineWidth ?? pp.wallLineWidth;
   const supportDensity = supportDensityForLayer(pp, layerIndex);
@@ -312,10 +428,22 @@ function emitSupportIsland(
   const maxDim = Math.max(bbox.maxX - bbox.minX, bbox.maxY - bbox.minY) * 1.5;
   const centerX = (bbox.minX + bbox.maxX) / 2;
   const centerY = (bbox.minY + bbox.maxY) / 2;
-  const xyDist = pp.supportXYDistance;
+  const xyDist = effectiveSupportXYDistance(
+    pp.supportXYDistance,
+    pp.supportDistancePriority,
+    effRoof || effFloor,
+  );
   let scanCount = 0;
 
-  for (let d = -maxDim / 2; d <= maxDim / 2; d += spacing) {
+  // Chunked scanline emission — when `breakUpSupportInChunks` is on,
+  // every `breakUpSupportChunkLineCount` lines we jump ahead by
+  // `breakUpSupportChunkSize` mm in the d-axis to leave a gap. Roof and
+  // floor interface bands NEVER chunk: those need to stay continuous so
+  // the model surface above/below them sees a solid bed of support.
+  const chunkEnabled = !(effRoof || effFloor) && (pp.breakUpSupportInChunks ?? false);
+  let linesInChunk = 0;
+  let d = -maxDim / 2;
+  while (d <= maxDim / 2) {
     if (++scanCount > 50000) break;
     const p1x = centerX + cos * (-maxDim) - sin * d;
     const p1y = centerY + sin * (-maxDim) + cos * d;
@@ -325,18 +453,33 @@ function emitSupportIsland(
     const toX = Math.min(Math.max(p1x, p2x), bbox.maxX - xyDist);
     const fromY = Math.max(Math.min(p1y, p2y), bbox.minY + xyDist);
     const toY = Math.min(Math.max(p1y, p2y), bbox.maxY - xyDist);
-    if (Math.abs(fromX - toX) <= 0.5 && Math.abs(fromY - toY) <= 0.5) continue;
+    const tooShort = Math.abs(fromX - toX) <= 0.5 && Math.abs(fromY - toY) <= 0.5;
+    let emitted = false;
+    if (!tooShort) {
+      const midPt = new THREE.Vector2((fromX + toX) / 2, (fromY + toY) / 2);
+      if (!pointInsideMaterial(midPt, modelContours, deps)) {
+        moves.push({
+          type: 'support',
+          from: { x: fromX, y: fromY },
+          to: { x: toX, y: toY },
+          speed,
+          extrusion: 0,
+          lineWidth: supLW,
+        });
+        emitted = true;
+      }
+    }
 
-    const midPt = new THREE.Vector2((fromX + toX) / 2, (fromY + toY) / 2);
-    if (pointInsideMaterial(midPt, modelContours, deps)) continue;
-    moves.push({
-      type: 'support',
-      from: { x: fromX, y: fromY },
-      to: { x: toX, y: toY },
-      speed,
-      extrusion: 0,
-      lineWidth: supLW,
-    });
+    if (emitted) linesInChunk += 1;
+    const step = chunkStep(
+      spacing,
+      linesInChunk,
+      pp.breakUpSupportChunkLineCount,
+      pp.breakUpSupportChunkSize,
+      chunkEnabled,
+    );
+    d += step.advance;
+    if (step.resetCount) linesInChunk = 0;
   }
 
   return flowOverride;
@@ -456,6 +599,106 @@ function generateTreeSupportForLayer(
   return moves;
 }
 
+function rawIslandBBox(island: SupportIsland): BBox2 {
+  let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
+  for (const p of island.points) {
+    if (p.x < minX) minX = p.x;
+    if (p.x > maxX) maxX = p.x;
+    if (p.y < minY) minY = p.y;
+    if (p.y > maxY) maxY = p.y;
+  }
+  return { minX, maxX, minY, maxY };
+}
+
+function emitTowerSupport(
+  moves: SliceMove[],
+  island: SupportIsland,
+  layerIndex: number,
+  layerZ: number,
+  pp: PrintProfile,
+  modelContours: Contour[],
+  deps: SupportDeps,
+): void {
+  const supLW = pp.supportLineWidth ?? pp.wallLineWidth;
+  const speed = pp.supportInfillSpeed ?? pp.supportSpeed ?? pp.printSpeed * 0.8;
+  const baseR = Math.max(supLW, (pp.towerDiameter ?? 3) / 2);
+
+  // Effective overhang radius — half the larger bbox dimension.
+  const bb = rawIslandBBox(island);
+  const islandR = Math.max((bb.maxX - bb.minX), (bb.maxY - bb.minY)) / 2;
+
+  const distFromTop = Math.max(0, island.maxZ - layerZ);
+  const r = towerRadiusForLayer(baseR, islandR, pp.towerRoofAngle, distFromTop);
+  if (r < supLW * 0.5) return;
+
+  // Outer wall: one circular loop at radius r centered on the island
+  // centroid. Segment count keeps each side ~one line-width long, with a
+  // floor of 12 to keep tiny columns visibly round.
+  const center = island.centroid;
+  const segs = Math.max(12, Math.round((2 * Math.PI * r) / supLW));
+  const ring: THREE.Vector2[] = [];
+  for (let i = 0; i < segs; i++) {
+    const a = (i / segs) * Math.PI * 2;
+    ring.push(new THREE.Vector2(center.x + Math.cos(a) * r, center.y + Math.sin(a) * r));
+  }
+  for (let i = 0; i < segs; i++) {
+    moves.push({
+      type: 'support',
+      from: ring[i],
+      to: ring[(i + 1) % segs],
+      speed,
+      extrusion: 0,
+      lineWidth: supLW,
+    });
+  }
+
+  // Optional inner walls so the tower has a solid cross-section above
+  // tiny diameters. Cap at supportInterfaceWallCount/supportWallLineCount,
+  // matching how scanline support handles the wall count.
+  const wallCount = Math.max(0, (pp.supportInterfaceWallCount ?? pp.supportWallLineCount ?? pp.supportWallCount ?? 0) - 1);
+  for (let w = 1; w <= wallCount; w++) {
+    const wr = r - w * supLW;
+    if (wr < supLW * 0.5) break;
+    const innerSegs = Math.max(8, Math.round((2 * Math.PI * wr) / supLW));
+    const innerRing: THREE.Vector2[] = [];
+    for (let i = 0; i < innerSegs; i++) {
+      const a = (i / innerSegs) * Math.PI * 2;
+      innerRing.push(new THREE.Vector2(center.x + Math.cos(a) * wr, center.y + Math.sin(a) * wr));
+    }
+    for (let i = 0; i < innerSegs; i++) {
+      moves.push({
+        type: 'support',
+        from: innerRing[i],
+        to: innerRing[(i + 1) % innerSegs],
+        speed,
+        extrusion: 0,
+        lineWidth: supLW,
+      });
+    }
+  }
+
+  // Fill the column interior with parallel scanlines at the layer's
+  // density. Reuses generateScanLines so the existing support-density
+  // ramp / first-layer override apply identically.
+  const density = supportDensityForLayer(pp, layerIndex);
+  if (density > 0) {
+    const angle = layerIndex % 2 === 0 ? 0 : Math.PI / 2;
+    const lines = deps.generateScanLines(ring, density, supLW, angle);
+    for (const line of lines) {
+      const mid = new THREE.Vector2((line.from.x + line.to.x) / 2, (line.from.y + line.to.y) / 2);
+      if (pointInsideMaterial(mid, modelContours, deps)) continue;
+      moves.push({
+        type: 'support',
+        from: line.from,
+        to: line.to,
+        speed,
+        extrusion: 0,
+        lineWidth: supLW,
+      });
+    }
+  }
+}
+
 export function generateSupportForLayer(
   triangles: Triangle[],
   sliceZ: number,
@@ -479,6 +722,15 @@ export function generateSupportForLayer(
   const { roof, floor } = supportInterfaceState(triangles, sliceZ, pp);
   let flowOverride: number | undefined;
   for (const island of islands) {
+    // Tower path: small islands print as circular columns with a flared
+    // roof instead of bbox-scanline support. Bypasses the conical /
+    // stair-step / horizontal-expansion modifiers — those don't apply
+    // to a single-column tower whose width is already user-controlled
+    // via `towerDiameter`.
+    if (shouldEmitSupportTower(rawIslandBBox(island), pp.useTowers, pp.towerDiameter)) {
+      emitTowerSupport(moves, island, layerIndex, layerZ, pp, modelContours, deps);
+      continue;
+    }
     const bbox = islandBBox(island, pp, layerZ, layerIndex, modelHeight);
     if (!bbox) continue;
     const islandFlow = emitSupportIsland(moves, bbox, layerIndex, pp, modelContours, deps, roof, floor);

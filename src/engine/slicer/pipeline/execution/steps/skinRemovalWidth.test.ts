@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import {
+  shouldExpandSkinForRegion,
   skinRemovalWidthForLayer,
   skipSkinForSmallRegion,
   solidSkinCenterlineInset,
@@ -71,5 +72,37 @@ describe('skipSkinForSmallRegion (Cura: Small Top/Bottom Width)', () => {
     expect(skipSkinForSmallRegion(narrow, 1.0)).toBe(true);
     // and kept at threshold 0.4
     expect(skipSkinForSmallRegion(narrow, 0.4)).toBe(false);
+  });
+});
+
+describe('shouldExpandSkinForRegion (Cura: Minimum Skin Width for Expansion)', () => {
+  const wide = { minX: 0, maxX: 10, minY: 0, maxY: 10 };
+  const narrow = { minX: 0, maxX: 10, minY: 0, maxY: 0.5 };
+  const tiny = { minX: 0, maxX: 0.4, minY: 0, maxY: 0.4 };
+
+  it('always expands when threshold is unset', () => {
+    expect(shouldExpandSkinForRegion(wide, undefined)).toBe(true);
+    expect(shouldExpandSkinForRegion(tiny, undefined)).toBe(true);
+  });
+
+  it('always expands when threshold is zero', () => {
+    expect(shouldExpandSkinForRegion(tiny, 0)).toBe(true);
+  });
+
+  it('expands when both bbox dimensions meet the threshold', () => {
+    expect(shouldExpandSkinForRegion(wide, 1.0)).toBe(true);
+  });
+
+  it('skips expansion when the smaller bbox dimension is below the threshold', () => {
+    expect(shouldExpandSkinForRegion(narrow, 1.0)).toBe(false);
+  });
+
+  it('skips expansion when both dimensions are below the threshold', () => {
+    expect(shouldExpandSkinForRegion(tiny, 1.0)).toBe(false);
+  });
+
+  it('boundary: equal-to threshold expands (>=, not >)', () => {
+    const exact = { minX: 0, maxX: 1, minY: 0, maxY: 1 };
+    expect(shouldExpandSkinForRegion(exact, 1.0)).toBe(true);
   });
 });

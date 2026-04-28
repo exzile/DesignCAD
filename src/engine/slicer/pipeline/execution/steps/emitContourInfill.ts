@@ -170,6 +170,29 @@ export function skipSkinForSmallRegion(
   return minSpan < threshold;
 }
 
+/**
+ * Cura's "Minimum Skin Width for Expansion": the skin-expansion offset
+ * (`topSkinExpandDistance` / `bottomSkinExpandDistance` /
+ * `topSurfaceSkinExpansion`) is only applied to skin regions whose
+ * smaller bbox dimension meets this threshold. For tiny regions the
+ * expansion would either eat the entire region or push the bead out
+ * past the wall, so we leave them at their native size and just emit
+ * the standard skin overlap.
+ *
+ * Returns true when expansion SHOULD be applied; false when it should
+ * be skipped for this region. A threshold of 0 (or undefined) keeps
+ * the legacy behavior — every region gets expansion.
+ */
+export function shouldExpandSkinForRegion(
+  bbox: { minX: number; maxX: number; minY: number; maxY: number },
+  minSkinWidthForExpansion: number | undefined,
+): boolean {
+  const threshold = minSkinWidthForExpansion ?? 0;
+  if (threshold <= 0) return true;
+  const minSpan = Math.min(bbox.maxX - bbox.minX, bbox.maxY - bbox.minY);
+  return minSpan >= threshold;
+}
+
 export function sortSolidSkinLinesForEmission(
   lines: InfillLineSegment[],
   lineWidth: number,
@@ -418,8 +441,16 @@ export function emitContourInfill(
       // so we skip skin emission for that region. Sparse infill emitted
       // afterward still fills it, which is the same behavior Cura ships.
       for (const region of infillRegions) {
-        if (skipSkinForSmallRegion(slicer.contourBBox(region.contour), pp.smallTopBottomWidth)) continue;
-        let skinContour = totalExpand > 0 ? offsetContourFast(slicer, region.contour, -totalExpand) : region.contour;
+        const regionBBox = slicer.contourBBox(region.contour);
+        if (skipSkinForSmallRegion(regionBBox, pp.smallTopBottomWidth)) continue;
+        // Cura's "Minimum Skin Width for Expansion" — keep the skin
+        // overlap (so the skin still bonds to the wall) but drop the
+        // top/bottom expansion offset for regions narrower than the
+        // user's threshold. The expansion would otherwise eat tiny
+        // regions or push them past the wall.
+        const allowExpand = shouldExpandSkinForRegion(regionBBox, pp.minSkinWidthForExpansion);
+        const regionExpand = allowExpand ? totalExpand : skinOverlap;
+        let skinContour = regionExpand > 0 ? offsetContourFast(slicer, region.contour, -regionExpand) : region.contour;
         const srw = skinRemovalWidthForLayer(pp, isSolidTop, isSolidBottom);
         if (srw > 0 && skinContour.length >= 3) {
           const eroded = offsetContourFast(slicer, skinContour, srw);

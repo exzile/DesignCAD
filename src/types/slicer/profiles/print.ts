@@ -367,7 +367,7 @@ export interface PrintProfile {
   bottomSkinRemovalWidth?: number;     // wired — mm; separate bottom skin removal width
   smallTopBottomWidth?: number;        // wired — mm; skip skin on regions narrower than this
   maxSkinAngleForExpansion?: number;   // storage-only — deg
-  minSkinWidthForExpansion?: number;   // storage-only — mm
+  minSkinWidthForExpansion?: number;   // wired — mm; suppress skin expansion for regions narrower than this
   layerStartAtSeam?: boolean;          // storage-only — start each layer at the seam
   minimumExtrusionDistanceWindow?: number; // wired — mm window for maxRetractionCount
   topThickness?: number;               // wired — mm; overrides topLayers when set
@@ -425,7 +425,7 @@ export interface PrintProfile {
   gradualSupportStepHeight?: number;   // wired — mm — height of each gradual support step
   minSupportXYDistance?: number;       // wired — mm — hard minimum XY gap (on top of supportXYDistance)
   supportWallLineCount?: number;       // wired — perimeter walls around support infill
-  supportDistancePriority?: 'xy_overrides_z' | 'z_overrides_xy'; // storage-only
+  supportDistancePriority?: 'xy_overrides_z' | 'z_overrides_xy'; // wired — z_overrides_xy relaxes XY clearance in roof/floor interface zones
   supportStairStepMaxWidth?: number;   // storage-only — mm
   supportInterfaceThickness?: number;  // storage-only — mm
   supportRoofThickness?: number;       // storage-only — mm
@@ -439,9 +439,9 @@ export interface PrintProfile {
   minSupportInterfaceArea?: number;    // wired — mm² — demote interface to body density when bbox area falls below this
   supportInterfaceHorizontalExpansion?: number; // storage-only — mm
   supportInterfaceLineDirections?: number[]; // storage-only — degrees
-  useTowers?: boolean;                 // storage-only
-  towerDiameter?: number;              // storage-only — mm
-  towerRoofAngle?: number;             // storage-only — degrees
+  useTowers?: boolean;                 // wired — emit small overhang islands as circular towers
+  towerDiameter?: number;              // wired — mm — tower column diameter (also the tiny-island threshold)
+  towerRoofAngle?: number;             // wired — deg — angle from horizontal of the tower's roof flare
   supportHorizontalExpansion?: number; // wired — mm — inflate support regions
   enableConicalSupport?: boolean;      // storage-only
   conicalSupportAngle?: number;        // storage-only — degrees
@@ -475,9 +475,9 @@ export interface PrintProfile {
   draftShieldLimitation?: 'full' | 'limited'; // wired — cap draft shield height
   draftShieldHeight?: number;          // wired — mm — max Z for draft shield when limitation = limited
   infillTravelOptimization?: boolean;  // storage-only — reorder infill to minimize travel (already default behavior)
-  breakUpSupportInChunks?: boolean;    // storage-only
-  breakUpSupportChunkSize?: number;    // storage-only — mm
-  breakUpSupportChunkLineCount?: number; // storage-only
+  breakUpSupportInChunks?: boolean;    // wired — chunk support scanlines (body only; interface stays continuous)
+  breakUpSupportChunkSize?: number;    // wired — mm — gap inserted between chunks
+  breakUpSupportChunkLineCount?: number; // wired — number of consecutive scanlines per chunk before the gap
   conicalSupportMinWidth?: number;     // storage-only — mm (companion to conicalSupportAngle)
   adaptiveLayersTopographySize?: number; // storage-only — mm
   minLayerTimeWithOverhang?: number;   // wired — seconds
