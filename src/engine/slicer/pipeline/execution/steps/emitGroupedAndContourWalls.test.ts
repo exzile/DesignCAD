@@ -316,6 +316,100 @@ describe('emitGroupedAndContourWalls', () => {
     expect(layer.moves.some((move) => move.type === 'wall-inner')).toBe(true);
   });
 
+  it('emits closed wall loops at nominal width while preserving odd transition bead widths', () => {
+    const outer = square(20);
+    const inner = square(12).map((point) => point.add(new THREE.Vector2(4, 4)));
+    const odd = [
+      new THREE.Vector2(7, 7),
+      new THREE.Vector2(9, 8),
+      new THREE.Vector2(11, 7),
+    ];
+    const contour = { points: outer, area: 400, isOuter: true };
+    const generated: GeneratedPerimeters = {
+      walls: [outer, inner, odd],
+      lineWidths: [
+        [0.34, 0.58, 0.52, 0.37],
+        [0.39, 0.64, 0.61, 0.4],
+        [0.22, 0.3, 0.24],
+      ],
+      wallClosed: [true, true, false],
+      wallDepths: [0, 1, 1],
+      wallSources: ['outer', 'outer', 'gapfill'],
+      outerCount: 1,
+      innermostHoles: [],
+      infillRegions: [],
+    };
+    const pipeline = {
+      findSeamPosition: () => 0,
+      reorderFromIndex: (points: THREE.Vector2[], index: number) => [
+        ...points.slice(index),
+        ...points.slice(0, index),
+      ],
+      simplifyClosedContour: (points: THREE.Vector2[]) => points,
+      filterPerimetersByMinOdd: (perimeters: GeneratedPerimeters) => perimeters,
+      generatePerimeters: () => generated,
+    };
+    const run = {
+      pp: {
+        groupOuterWalls: false,
+        wallCount: 3,
+        wallLineWidth: 0.4,
+        outerWallLineWidth: 0.4,
+        innerWallLineWidth: 0.45,
+        outerWallFirst: true,
+      },
+      emitter: {
+        currentX: 0,
+        currentY: 0,
+        currentLayerFlow: 1,
+        setAccel: () => undefined,
+        setJerk: () => undefined,
+        travelTo(x: number, y: number) {
+          this.currentX = x;
+          this.currentY = y;
+        },
+        extrudeTo(x: number, y: number) {
+          this.currentX = x;
+          this.currentY = y;
+          return { time: 0 };
+        },
+        calculateExtrusion: (_dist: number, lineWidth: number) => lineWidth,
+      },
+      gcode: [],
+      previousSeamPoints: [],
+      currentSeamPoints: [],
+    } as unknown as SliceRun;
+    const layer = {
+      li: 58,
+      layerZ: 11.8,
+      layerH: 0.2,
+      isFirstLayer: false,
+      isSolidTop: false,
+      isSolidBottom: false,
+      outerWallSpeed: 20,
+      innerWallSpeed: 30,
+      workContours: [contour],
+      holesByOuterContour: new Map(),
+      moves: [],
+      layerTime: 0,
+      hasBridgeRegions: false,
+    } as unknown as SliceLayerState;
+
+    emitGroupedAndContourWalls(pipeline, run, layer);
+
+    const outerWallWidths = layer.moves
+      .filter((move) => move.type === 'wall-outer')
+      .map((move) => move.lineWidth);
+    const innerWidths = layer.moves
+      .filter((move) => move.type === 'wall-inner')
+      .map((move) => move.lineWidth);
+
+    expect(new Set(outerWallWidths)).toEqual(new Set([0.4]));
+    expect(innerWidths).toContain(0.45);
+    expect(innerWidths).toContain(0.26);
+    expect(innerWidths).toContain(0.27);
+  });
+
   it('orders separate contours by nearest reachable wall start', () => {
     const farOuter = square(10).map((point) => point.add(new THREE.Vector2(100, 100)));
     const farInner = square(5).map((point) => point.add(new THREE.Vector2(102, 102)));
