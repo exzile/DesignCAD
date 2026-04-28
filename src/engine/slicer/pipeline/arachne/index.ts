@@ -4,6 +4,7 @@ import type { PrintProfile } from '../../../../types/slicer';
 import type { PerimeterDeps } from '../../../../types/slicer-pipeline-deps.types';
 import type { GeneratedPerimeters, InfillRegion } from '../../../../types/slicer-pipeline.types';
 import { booleanMultiPolygonClipper2Sync } from '../../geometry/clipper2Boolean';
+import { pointInContour } from '../../geometry/contourUtils';
 import { strokeOpenPathsClipper2Sync } from '../../geometry/clipper2Wasm';
 import { generatePerimetersEx } from '../perimeters';
 import { resolveArachneBackend } from './backend';
@@ -17,19 +18,6 @@ function toRing(pts: THREE.Vector2[]): PCRing {
     if (f[0] !== l[0] || f[1] !== l[1]) ring.push([f[0], f[1]]);
   }
   return ring;
-}
-
-function pointInPolygon(point: THREE.Vector2, polygon: THREE.Vector2[]): boolean {
-  let inside = false;
-  for (let i = 0, j = polygon.length - 1; i < polygon.length; j = i++) {
-    const a = polygon[i];
-    const b = polygon[j];
-    if (((a.y > point.y) !== (b.y > point.y))
-      && point.x < ((b.x - a.x) * (point.y - a.y)) / (b.y - a.y) + a.x) {
-      inside = !inside;
-    }
-  }
-  return inside;
 }
 
 export function innerContoursToInfillRegions(
@@ -49,7 +37,7 @@ export function innerContoursToInfillRegions(
     const probe = hole[0];
     let owner: typeof outers[number] | null = null;
     for (const outer of outers) {
-      if (!pointInPolygon(probe, outer.contour)) continue;
+      if (!pointInContour(probe, outer.contour)) continue;
       if (!owner || Math.abs(outer.area) < Math.abs(owner.area)) owner = outer;
     }
     owner?.holes.push(hole);

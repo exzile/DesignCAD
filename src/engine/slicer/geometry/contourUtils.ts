@@ -2,7 +2,7 @@ import * as THREE from 'three';
 
 import type { BBox2 } from '../../../types/slicer-pipeline.types';
 
-export function signedArea(points: THREE.Vector2[]): number {
+export function signedArea(points: ReadonlyArray<{ x: number; y: number }>): number {
   let area = 0;
   const n = points.length;
   for (let i = 0; i < n; i++) {
@@ -61,7 +61,10 @@ export function lineContourIntersections(
   return results;
 }
 
-export function pointInContour(pt: THREE.Vector2, contour: THREE.Vector2[]): boolean {
+export function pointInContour(
+  pt: { x: number; y: number },
+  contour: ReadonlyArray<{ x: number; y: number }>,
+): boolean {
   let inside = false;
   const n = contour.length;
   for (let i = 0, j = n - 1; i < n; j = i++) {
