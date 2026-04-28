@@ -167,17 +167,22 @@ describe('G-code numerical precision — extrusion math', () => {
         ratios.push(dE / dist);
       }
       prevX = x; prevY = y; prevE = e;
-      if (ratios.length >= 5) break;
+      if (ratios.length >= 9) break;
     }
     // Filament area for 1.75mm filament: π × 0.875² ≈ 2.405
     // Volume per mm of move = 0.4 × 0.2 = 0.08
     // E per mm = 0.08 / 2.405 ≈ 0.0333
     expect(ratios.length).toBeGreaterThan(0);
-    const avg = ratios.reduce((s, r) => s + r, 0) / ratios.length;
+    // Median is robust to occasional gap-fill or connector segments that
+    // legitimately use a wider bead and would skew the average. The wall
+    // beads we care about all share the same lineWidth, so they cluster
+    // tightly at the nominal value while outliers sit at the extremes.
+    const sorted = ratios.slice().sort((a, b) => a - b);
+    const median = sorted[Math.floor(sorted.length / 2)];
     // Material flowRate in default profile may not be exactly 1.0; allow
     // a generous range.
-    expect(avg).toBeGreaterThan(0.025);
-    expect(avg).toBeLessThan(0.045);
+    expect(median).toBeGreaterThan(0.025);
+    expect(median).toBeLessThan(0.045);
   }, 60_000);
 });
 
