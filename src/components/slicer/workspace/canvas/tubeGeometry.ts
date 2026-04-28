@@ -273,8 +273,9 @@ function buildOrcaSegmentTemplateGeometry(
   const normals: number[] = [];
   const colors: number[] = [];
   const indices: number[] = [];
-  const topZ = baseZ;
-  const bottomZ = baseZ - layerHeight;
+  const centerZ = baseZ - layerHeight * 0.5;
+  const halfH = layerHeight * 0.5;
+  const vertexTemplate = [0, 1, 2, 0, 2, 3, 0, 3, 4, 0, 4, 5, 0, 5, 6, 0, 6, 1, 5, 4, 7, 5, 7, 6];
 
   const endpointAngle = (pointIndex: number): number => {
     const prevIndex = pointIndex > 0 ? pointIndex - 1 : (chain.isClosed ? n - 1 : -1);
@@ -296,42 +297,6 @@ function buildOrcaSegmentTemplateGeometry(
     );
   };
 
-  const pushTri = (
-    a: THREE.Vector3,
-    b: THREE.Vector3,
-    c: THREE.Vector3,
-    normal: THREE.Vector3,
-    color: [number, number, number],
-    shade: number,
-  ) => {
-    const start = positions.length / 3;
-    positions.push(a.x, a.y, a.z, b.x, b.y, b.z, c.x, c.y, c.z);
-    normals.push(
-      normal.x, normal.y, normal.z,
-      normal.x, normal.y, normal.z,
-      normal.x, normal.y, normal.z,
-    );
-    colors.push(
-      color[0] * shade, color[1] * shade, color[2] * shade,
-      color[0] * shade, color[1] * shade, color[2] * shade,
-      color[0] * shade, color[1] * shade, color[2] * shade,
-    );
-    indices.push(start, start + 1, start + 2);
-  };
-
-  const pushQuad = (
-    a: THREE.Vector3,
-    b: THREE.Vector3,
-    c: THREE.Vector3,
-    d: THREE.Vector3,
-    normal: THREE.Vector3,
-    color: [number, number, number],
-    shade: number,
-  ) => {
-    pushTri(a, b, c, normal, color, shade);
-    pushTri(a, c, d, normal, color, shade);
-  };
-
   const segCount = chain.isClosed ? n : n - 1;
   for (let i = 0; i < segCount; i++) {
     const a = chain.points[i];
@@ -343,66 +308,68 @@ function buildOrcaSegmentTemplateGeometry(
 
     const tx = dx / len;
     const ty = dy / len;
-    const px = -ty;
-    const py = tx;
     const rx = ty;
     const ry = -tx;
     const width = Math.max(0.01, ((a.lw + b.lw) * 0.5));
     const halfW = width / 2;
     const color = chain.segColors[i] ?? chain.segColors[chain.segColors.length - 1] ?? [1, 1, 1];
-
-    const startLeftTop = new THREE.Vector3(a.x + px * halfW, a.y + py * halfW, topZ);
-    const startRightTop = new THREE.Vector3(a.x - px * halfW, a.y - py * halfW, topZ);
-    const endLeftTop = new THREE.Vector3(b.x + px * halfW, b.y + py * halfW, topZ);
-    const endRightTop = new THREE.Vector3(b.x - px * halfW, b.y - py * halfW, topZ);
-    const startLeftBottom = new THREE.Vector3(a.x + px * halfW, a.y + py * halfW, bottomZ);
-    const startRightBottom = new THREE.Vector3(a.x - px * halfW, a.y - py * halfW, bottomZ);
-    const endLeftBottom = new THREE.Vector3(b.x + px * halfW, b.y + py * halfW, bottomZ);
-    const endRightBottom = new THREE.Vector3(b.x - px * halfW, b.y - py * halfW, bottomZ);
     const startAngle = endpointAngle(i);
     const endAngle = endpointAngle((i + 1) % n);
-    const capPoint = (
+
+    const pushVertex = (
       endpoint: { x: number; y: number },
+      vertexId: number,
       angle: number,
       lineDirSign: -1 | 1,
     ) => {
-      if (Math.abs(angle) < 1e-6) {
-        return new THREE.Vector3(endpoint.x + lineDirSign * tx * halfW, endpoint.y + lineDirSign * ty * halfW, topZ);
+      let horizontalSign = 0;
+      let verticalSign = 0;
+      switch (vertexId) {
+        case 0: verticalSign = 1; break;
+        case 1: horizontalSign = -1; break;
+        case 2: break;
+        case 3: horizontalSign = 1; break;
+        case 4: horizontalSign = 1; break;
+        case 5: verticalSign = 1; break;
+        case 6: horizontalSign = -1; break;
+        case 7: break;
       }
-      const s = Math.sin(Math.abs(angle) * 0.5);
-      const c = Math.cos(Math.abs(angle) * 0.5);
-      const turnSign = Math.sign(angle);
-      return new THREE.Vector3(
-        endpoint.x + lineDirSign * tx * halfW * s + turnSign * rx * halfW * c,
-        endpoint.y + lineDirSign * ty * halfW * s + turnSign * ry * halfW * c,
-        topZ,
-      );
+
+      let x = endpoint.x + horizontalSign * rx * halfW;
+      let y = endpoint.y + horizontalSign * ry * halfW;
+      let z = centerZ + verticalSign * halfH;
+
+      if (vertexId === 2 || vertexId === 7) {
+        if (Math.abs(angle) < 1e-6) {
+          x += lineDirSign * tx * halfW;
+          y += lineDirSign * ty * halfW;
+        } else {
+          const s = Math.sin(Math.abs(angle) * 0.5);
+          const c = Math.cos(Math.abs(angle) * 0.5);
+          const turnSign = Math.sign(angle);
+          x += lineDirSign * tx * halfW * s + turnSign * rx * halfW * c;
+          y += lineDirSign * ty * halfW * s + turnSign * ry * halfW * c;
+        }
+      }
+
+      positions.push(x, y, z);
+      const nx = x - endpoint.x;
+      const ny = y - endpoint.y;
+      const nz = z - centerZ;
+      const nl = Math.hypot(nx, ny, nz) || 1;
+      normals.push(nx / nl, ny / nl, nz / nl);
+      const shade = verticalSign > 0 ? 1 : 0.68;
+      colors.push(color[0] * shade, color[1] * shade, color[2] * shade);
     };
-    const startApex = capPoint(a, startAngle, -1);
-    const endApex = capPoint(b, endAngle, 1);
-    const startApexBottom = new THREE.Vector3(startApex.x, startApex.y, bottomZ);
-    const endApexBottom = new THREE.Vector3(endApex.x, endApex.y, bottomZ);
 
-    const topN = new THREE.Vector3(0, 0, 1);
-    const bottomN = new THREE.Vector3(0, 0, -1);
-    const leftN = new THREE.Vector3(px, py, 0);
-    const rightN = new THREE.Vector3(-px, -py, 0);
-    const startN = new THREE.Vector3(-tx, -ty, 0);
-    const endN = new THREE.Vector3(tx, ty, 0);
-
-    pushQuad(startLeftTop, endLeftTop, endRightTop, startRightTop, topN, color, 1.0);
-    pushQuad(startRightBottom, endRightBottom, endLeftBottom, startLeftBottom, bottomN, color, 0.45);
-    pushQuad(startLeftBottom, endLeftBottom, endLeftTop, startLeftTop, leftN, color, 0.72);
-    pushQuad(startRightTop, endRightTop, endRightBottom, startRightBottom, rightN, color, 0.72);
-
-    pushTri(startApex, startRightTop, startLeftTop, topN, color, 1.0);
-    pushTri(startApexBottom, startLeftBottom, startRightBottom, bottomN, color, 0.45);
-    pushQuad(startApex, startLeftTop, startLeftBottom, startApexBottom, startN, color, 0.72);
-    pushQuad(startApexBottom, startRightBottom, startRightTop, startApex, startN, color, 0.72);
-    pushTri(endApex, endLeftTop, endRightTop, topN, color, 1.0);
-    pushTri(endApexBottom, endRightBottom, endLeftBottom, bottomN, color, 0.45);
-    pushQuad(endApexBottom, endLeftBottom, endLeftTop, endApex, endN, color, 0.72);
-    pushQuad(endApex, endRightTop, endRightBottom, endApexBottom, endN, color, 0.72);
+    const baseIndex = positions.length / 3;
+    for (let vertexId = 0; vertexId < 4; vertexId++) {
+      pushVertex(a, vertexId, startAngle, -1);
+    }
+    for (let vertexId = 4; vertexId < 8; vertexId++) {
+      pushVertex(b, vertexId, endAngle, 1);
+    }
+    for (const idx of vertexTemplate) indices.push(baseIndex + idx);
   }
 
   if (positions.length === 0) return null;

@@ -121,8 +121,8 @@ describe('Preview tube — Orca-style solid skin ends', () => {
     expect(box.min.x).toBeCloseTo(-0.2, 5);
     expect(box.max.x).toBeCloseTo(10.2, 5);
     expect(box.max.y - box.min.y).toBeCloseTo(0.4, 5);
-    expect(box.max.z - box.min.z).toBeCloseTo(0.2, 5);
-    expect(positions.length).toBe(20 * 3 * 3);
+    expect(box.max.z - box.min.z).toBeCloseTo(0.1, 5);
+    expect(positions.length).toBe(8 * 3);
   });
 
   it('uses Orca-style endpoint turn angles for top-bottom connector caps', () => {
