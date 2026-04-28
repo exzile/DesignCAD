@@ -61,7 +61,10 @@ export function lineContourIntersections(
   return results;
 }
 
-export function pointInContour(pt: THREE.Vector2, contour: THREE.Vector2[]): boolean {
+export function pointInContour(
+  pt: { x: number; y: number },
+  contour: ReadonlyArray<{ x: number; y: number }>,
+): boolean {
   let inside = false;
   const n = contour.length;
   for (let i = 0, j = n - 1; i < n; j = i++) {
