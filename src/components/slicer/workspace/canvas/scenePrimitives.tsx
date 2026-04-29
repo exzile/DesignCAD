@@ -4,6 +4,7 @@ import { type ThreeEvent } from '@react-three/fiber';
 import * as THREE from 'three';
 import type { PlateObject } from '../../../../types/slicer';
 import { normalizeRotationRadians, normalizeScale } from '../../../../utils/slicerTransforms';
+import { useSlicerStore } from '../../../../store/slicerStore';
 
 export function BuildPlateGrid({ sizeX, sizeY }: { sizeX: number; sizeY: number }) {
   const gridGeo = useMemo(() => {
@@ -36,16 +37,18 @@ export function BuildPlateGrid({ sizeX, sizeY }: { sizeX: number; sizeY: number 
   );
 }
 
-export function BuildVolumeWireframe({ x, y, z }: { x: number; y: number; z: number }) {
+export function BuildVolumeWireframe({ x, y, z, warning = false }: { x: number; y: number; z: number; warning?: boolean }) {
   const geo = useMemo(() => new THREE.BoxGeometry(x, y, z), [x, y, z]);
   useEffect(() => () => { geo.dispose(); }, [geo]);
+  const baseColor = warning ? '#cc4444' : '#3344aa';
+  const lineOpacity = warning ? 0.6 : 0.25;
   return (
     <mesh position={[x / 2, y / 2, z / 2]}>
       <boxGeometry args={[x, y, z]} />
-      <meshBasicMaterial color="#3344aa" transparent opacity={0.06} wireframe={false} />
+      <meshBasicMaterial color={baseColor} transparent opacity={warning ? 0.1 : 0.06} wireframe={false} />
       <lineSegments>
         <edgesGeometry args={[geo]} />
-        <lineBasicMaterial color="#3344aa" transparent opacity={0.25} />
+        <lineBasicMaterial color={baseColor} transparent opacity={lineOpacity} />
       </lineSegments>
     </mesh>
   );
@@ -101,10 +104,38 @@ export function PlateObjectMesh({
     z: rawScl.z * (mir.mirrorZ ? -1 : 1),
   };
 
+  const handleContextMenu = useCallback((e: ThreeEvent<MouseEvent>) => {
+    e.stopPropagation();
+    const native = e.nativeEvent as MouseEvent;
+    native.preventDefault();
+    onClick(); // also select so the panel highlights the right row
+    window.dispatchEvent(new CustomEvent('slicer:object-context-menu', {
+      detail: { id: obj.id, x: native.clientX, y: native.clientY },
+    }));
+  }, [obj.id, onClick]);
+
   const handleClick = useCallback((e: ThreeEvent<MouseEvent>) => {
     e.stopPropagation();
+    const store = useSlicerStore.getState();
+    if (store.viewportPickMode === 'lay-flat' && e.face) {
+      // Build the local-space face normal from the picked triangle. e.face
+      // gives the THREE.Face object; its `.normal` is the precomputed
+      // per-face normal in mesh-local space, exactly what layFlatByFace
+      // expects.
+      store.layFlatByFace(obj.id, {
+        x: e.face.normal.x,
+        y: e.face.normal.y,
+        z: e.face.normal.z,
+      });
+      store.setViewportPickMode('none');
+      return;
+    }
+    if (store.viewportPickMode === 'measure' && e.point) {
+      store.pushMeasurePoint({ x: e.point.x, y: e.point.y, z: e.point.z });
+      return;
+    }
     onClick();
-  }, [onClick]);
+  }, [obj.id, onClick]);
 
   const geometry = obj.geometry as unknown;
   const hasGeometry =
@@ -180,6 +211,7 @@ export function PlateObjectMesh({
         scale={[scl.x, scl.y, scl.z]}
         geometry={hasGeometry ? obj.geometry : undefined}
         onClick={handleClick}
+        onContextMenu={handleContextMenu}
       >
         {!hasGeometry && <boxGeometry args={boxArgs} />}
         <meshStandardMaterial

@@ -1,11 +1,15 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { OrbitControls } from '@react-three/drei';
 import { useThree } from '@react-three/fiber';
+import * as THREE from 'three';
+import { cameraPresetEvent, type CameraPreset } from '../overlays/CameraPresets';
 import { useSlicerStore } from '../../../../store/slicerStore';
 import type { MoveHoverInfo } from '../../../../types/slicer-preview.types';
 import { buildMoveTimeline } from './previewTimeline';
 import { AxisIndicators, BuildPlateGrid, BuildVolumeWireframe, PlateObjectMesh } from './scenePrimitives';
 import { computeRange, computeLayerTimeRange } from '../preview/utils';
+import { validatePlate } from '../../../../store/slicer/plateValidation';
+import { MeasurementMarkers } from '../overlays/PickToolsOverlay';
 import { Legend } from '../preview/Legend';
 import { computeSliceStats, detectPrintIssues, extractZSeamPoints } from '../preview/sliceStats';
 import { ZSeamMarkers } from '../preview/ZSeamMarkers';
@@ -17,7 +21,13 @@ import { InlineGCodePreview } from './GCodeTubePreview';
 import { HoverTooltip } from './HoverTooltip';
 
 export function SlicerWorkspaceScene() {
-  const { invalidate } = useThree();
+  const three = useThree();
+  const invalidate = three.invalidate;
+  const camera = three.camera;
+  // useThree's type includes `controls` but typed as unknown; the
+  // OrbitControls registers itself via makeDefault and exposes a target +
+  // update() method we use to retarget on a camera-preset change.
+  const controls = (three as unknown as { controls: { target: THREE.Vector3; update: () => void } | null }).controls;
 
   const printerProfile = useSlicerStore((s) => s.getActivePrinterProfile());
   const materialProfile = useSlicerStore((s) => s.getActiveMaterialProfile());
@@ -97,6 +107,41 @@ export function SlicerWorkspaceScene() {
   ]);
 
   const bv = printerProfile?.buildVolume ?? { x: 220, y: 220, z: 250 };
+
+  // Camera-preset listener. Snaps the camera to a fixed offset around the
+  // bed centre. The OrbitControls picks up the new target via its update().
+  useEffect(() => {
+    const handler = (ev: Event) => {
+      const preset = (ev as CustomEvent<CameraPreset>).detail;
+      const target = new THREE.Vector3(bv.x / 2, bv.y / 2, 0);
+      const dist = Math.max(bv.x, bv.y) * 1.5;
+      let pos: THREE.Vector3;
+      switch (preset) {
+        case 'top':
+          pos = target.clone().add(new THREE.Vector3(0, 0, dist));
+          break;
+        case 'front':
+          pos = target.clone().add(new THREE.Vector3(0, -dist, bv.z * 0.5));
+          break;
+        case 'right':
+          pos = target.clone().add(new THREE.Vector3(dist, 0, bv.z * 0.5));
+          break;
+        case 'iso':
+        default:
+          pos = target.clone().add(new THREE.Vector3(dist * 0.6, -dist * 0.6, dist * 0.5));
+      }
+      camera.position.copy(pos);
+      camera.up.set(0, 0, 1);
+      camera.lookAt(target);
+      if (controls) {
+        controls.target.copy(target);
+        controls.update();
+      }
+      invalidate();
+    };
+    window.addEventListener(cameraPresetEvent, handler);
+    return () => window.removeEventListener(cameraPresetEvent, handler);
+  }, [camera, controls, invalidate, bv.x, bv.y, bv.z]);
 
   // Build the full move timeline once per slice result. Shared by
   // NozzleSimulator and the sim-state lookup below so we pay the O(n) build
@@ -215,7 +260,12 @@ export function SlicerWorkspaceScene() {
     return computeLayerTimeRange(sliceResult.layers, simState.layerIndex, previewLayerStart);
   }, [sliceResult, simState.layerIndex, previewLayerStart, previewColorMode]);
 
-  const handleMiss = useCallback(() => {
+  const handleMiss = useCallback((e?: { point?: { x: number; y: number; z: number } }) => {
+    const store = useSlicerStore.getState();
+    if (store.viewportPickMode === 'measure' && e?.point) {
+      store.pushMeasurePoint({ x: e.point.x, y: e.point.y, z: e.point.z });
+      return;
+    }
     selectPlateObject(null);
   }, [selectPlateObject]);
 
@@ -240,21 +290,30 @@ export function SlicerWorkspaceScene() {
       />
 
       <BuildPlateGrid sizeX={bv.x} sizeY={bv.y} />
-      <BuildVolumeWireframe x={bv.x} y={bv.y} z={bv.z} />
+      <BuildVolumeWireframe
+        x={bv.x}
+        y={bv.y}
+        z={bv.z}
+        warning={previewMode === 'model' && validatePlate(plateObjects, bv, { originCenter: printerProfile?.originCenter }).hasIssues}
+      />
       <AxisIndicators />
+      <MeasurementMarkers />
 
-      {previewMode === 'model' && plateObjects.map((obj) => (
-        <PlateObjectMesh
-          key={obj.id}
-          obj={obj}
-          isSelected={obj.id === selectedId}
-          materialColor={materialProfile?.color ?? '#4fc3f7'}
-          highlightedTriangles={highlightByObject.get(obj.id)}
-          onClick={() => selectPlateObject(obj.id)}
-          transformMode={transformMode}
-          onTransformCommit={handleTransformCommit}
-        />
-      ))}
+      {previewMode === 'model' && plateObjects.map((obj) => {
+        if (obj.hidden) return null;
+        return (
+          <PlateObjectMesh
+            key={obj.id}
+            obj={obj}
+            isSelected={obj.id === selectedId}
+            materialColor={obj.color ?? materialProfile?.color ?? '#4fc3f7'}
+            highlightedTriangles={highlightByObject.get(obj.id)}
+            onClick={() => selectPlateObject(obj.id)}
+            transformMode={transformMode}
+            onTransformCommit={handleTransformCommit}
+          />
+        );
+      })}
 
       {previewMode === 'preview' && sliceResult && (
         <>

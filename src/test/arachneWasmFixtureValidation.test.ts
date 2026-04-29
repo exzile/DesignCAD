@@ -14,6 +14,7 @@ const maybeProcess = (globalThis as { process?: { env?: Record<string, string | 
 const RUN_FIXTURE = maybeProcess?.env?.ARACHNE_FIXTURE === '1';
 const describeFixture = RUN_FIXTURE ? describe : describe.skip;
 const DISPLAY_LAYER_21_INDEX = 20;
+const SUSPECT_WALL_LAYERS = [171, 177, 197];
 
 async function loadFixtureGeometry(): Promise<THREE.BufferGeometry> {
   const nodePrefix = 'node';
@@ -30,7 +31,7 @@ async function loadFixtureGeometry(): Promise<THREE.BufferGeometry> {
 }
 
 describeFixture('Arachne WASM adjustable_support_foot validation', () => {
-  it('slices layer 21 with finite tapered wall moves', async () => {
+  it('slices fixture wall layers without sub-bead wall fragments', async () => {
     const printer = {
       ...DEFAULT_PRINTER_PROFILES.find((profile) => profile.id === 'marlin-generic')!,
       buildVolume: { x: 300, y: 300, z: 300 },
@@ -80,7 +81,37 @@ describeFixture('Arachne WASM adjustable_support_foot validation', () => {
         widthSpan: layerWidths.length > 0 ? Math.max(...layerWidths) - Math.min(...layerWidths) : 0,
       };
     });
-    console.info('ARACHNE fixture validation', {
+    const suspectLayerStats = SUSPECT_WALL_LAYERS.map((layerIndex) => {
+      const layer = result.layers[layerIndex];
+      const paths: Array<{ type: string; length: number; moves: number }> = [];
+      let current: { type: string; length: number; moves: number } | null = null;
+      for (const move of layer.moves) {
+        if (move.type !== 'wall-outer' && move.type !== 'wall-inner') {
+          if (current) paths.push(current);
+          current = null;
+          continue;
+        }
+        const length = Math.hypot(move.to.x - move.from.x, move.to.y - move.from.y);
+        if (!current || current.type !== move.type) {
+          if (current) paths.push(current);
+          current = { type: move.type, length: 0, moves: 0 };
+        }
+        current.length += length;
+        current.moves++;
+      }
+      if (current) paths.push(current);
+      const shortest = paths
+        .map((path) => path.length)
+        .sort((a, b) => a - b)
+        .slice(0, 8);
+      return {
+        layerIndex,
+        wallPaths: paths.length,
+        shortPaths: paths.filter((path) => path.length < 0.75).length,
+        shortest,
+      };
+    });
+    console.info('ARACHNE fixture validation', JSON.stringify({
       layerCount: result.layerCount,
       elapsedMs,
       avgLayerMs: elapsedMs / Math.max(1, result.layerCount),
@@ -88,9 +119,13 @@ describeFixture('Arachne WASM adjustable_support_foot validation', () => {
       layer21WidthSpan: maxWidth - minWidth,
       layer21Stats,
       nearbyLayerWidthSpans,
-    });
+      suspectLayerStats,
+    }, null, 2));
     expect(layer21Stats.some((entry) => entry.backend === 'wasm' && entry.outcome === 'arachne')).toBe(true);
     expect(maxWidth - minWidth).toBeGreaterThan(0.01);
+    for (const stat of suspectLayerStats) {
+      expect(stat.shortPaths).toBe(0);
+    }
     expect(elapsedMs / Math.max(1, result.layerCount)).toBeLessThan(200);
   }, 120_000);
 });

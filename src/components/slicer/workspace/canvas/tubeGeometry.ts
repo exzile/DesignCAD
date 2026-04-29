@@ -134,7 +134,6 @@ export const TRIMMED_FILL_TYPES = new Set(['infill', 'top-bottom', 'bridge', 'ir
 const FILL_END_TRIM_FACTOR = 0;
 const SOLID_SKIN_END_TRIM_FACTOR = 0;
 const OPEN_WALL_END_TRIM_FACTOR = 0;
-const OPEN_WALL_END_TAPER_FACTOR = 0.12;
 
 /** Shared material for the extrusion-tube meshes. `vertexColors: true` lets
  *  each chain carry per-point colours via its BufferGeometry's colour
@@ -551,9 +550,9 @@ export function buildChainTube(
     miterX[i] = miter;
   }
 
-  // Step 2: keep open endpoints faithful to the G-code coordinate. Open wall
-  // fragments get a small terminal taper so their ends don't stack into
-  // visible perimeter notches in the preview.
+  // Step 2: keep open endpoints faithful to the G-code coordinate. Orca keeps
+  // wall endpoints at their real bead width; shrinking them makes near-seam
+  // wall fragments read as dents when many layers are visible.
   const trim = !sourceChain.isClosed && (TRIMMED_FILL_TYPES.has(sourceChain.type) || isWallType(sourceChain.type));
   const trimFactor = endTrimFactorForType(sourceChain.type);
   const pts = sourceChain.points.map((p) => ({ x: p.x, y: p.y, lw: p.lw }));
@@ -571,11 +570,6 @@ export function buildChainTube(
       pts[n - 1].y = sourceChain.points[n - 1].y - dn.y * req;
     }
   }
-  if (!sourceChain.isClosed && isWallType(sourceChain.type) && n >= 2) {
-    pts[0].lw *= OPEN_WALL_END_TAPER_FACTOR;
-    pts[n - 1].lw *= OPEN_WALL_END_TAPER_FACTOR;
-  }
-
   // Step 3: per-RING colour = avg of adjacent segment colours for smooth
   // transitions.
   const segN = sourceChain.segColors.length;
@@ -651,8 +645,8 @@ export function buildChainTube(
   // unclosed wall chain dots the entire perimeter with apex pyramids
   // that look like bright per-segment markers in the preview at
   // certain zoom levels — the bug we hit on a 60 mm disc with mounting
-  // holes. Open walls use a terminal taper instead, which keeps the seam
-  // readable without inventing a full-width end blob.
+  // holes. Near-loop walls are closed before this builder runs; remaining
+  // open walls keep their real width so the preview does not invent seam dents.
   //
   const geo = new THREE.BufferGeometry();
   geo.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));

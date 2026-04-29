@@ -100,10 +100,9 @@ describe('buildChainTube — geometric contract', () => {
     expect(ringN.y).toBeCloseTo(5, 5);
   });
 
-  it('open wall chains keep endpoint centers exact but taper terminal rings', () => {
-    // Keep the centerline faithful to the G-code endpoint, but taper the
-    // terminal ring so split wall fragments don't render as full-width
-    // notches when many layers stack in the preview.
+  it('open wall chains keep endpoint centers exact and retain bead width', () => {
+    // Keep the centerline and width faithful to the G-code endpoint. Tapering
+    // wall endpoints makes near-seam fragments read as dents in stacked views.
     const chain = makeChain([[5, 5], [15, 5]], 0.4, false, 'wall-outer');
     const geo = buildChainTube(chain, 0.2, 0.2);
     const positions = geo!.getAttribute('position').array as Float32Array;
@@ -111,8 +110,8 @@ describe('buildChainTube — geometric contract', () => {
     const ringN = getRingCenter(positions, 1);
     expect(ring0.x).toBeCloseTo(5, 5);
     expect(ringN.x).toBeCloseTo(15, 5);
-    expect(ringSpan(positions, 0, 1)).toBeLessThan(0.08);
-    expect(ringSpan(positions, 1, 1)).toBeLessThan(0.08);
+    expect(ringSpan(positions, 0, 1)).toBeCloseTo(0.4, 4);
+    expect(ringSpan(positions, 1, 1)).toBeCloseTo(0.4, 4);
   });
 
   it('fill chains render at their exact gcode endpoints (no trim)', () => {

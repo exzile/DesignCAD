@@ -89,6 +89,33 @@ describe('variableWidthPathsToPerimeters — wallSources plumbing', () => {
     expect(result.walls.length).toBe(2);
     expect(result.wallSources).toEqual(['outer', 'gapfill']);
   });
+
+  it('omits sub-bead odd gap-fill slivers instead of emitting wall artifacts', () => {
+    const tinyOdd: VariableWidthPath = {
+      points: [v(0, 0), v(0.1, 0), v(0.2, 0)],
+      widths: [0.45, 0.45, 0.45],
+      depth: 1,
+      isClosed: false,
+      source: 'gapfill',
+    };
+    const printableOdd: VariableWidthPath = {
+      points: [v(2, 0), v(4, 0), v(6, 0)],
+      widths: [0.45, 0.45, 0.45],
+      depth: 1,
+      isClosed: false,
+      source: 'gapfill',
+    };
+
+    const result = variableWidthPathsToPerimeters([
+      path('outer', 0),
+      tinyOdd,
+      printableOdd,
+    ]);
+
+    expect(result.wallSources).toEqual(['outer', 'gapfill']);
+    expect(result.walls).toHaveLength(2);
+    expect(result.walls[1]).toEqual(printableOdd.points);
+  });
 });
 
 describe('Spiralize / Arachne incompatibility — generatePerimeters dispatcher', () => {

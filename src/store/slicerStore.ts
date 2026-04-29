@@ -34,6 +34,9 @@ export const useSlicerStore = create<SlicerStore>()(persist((set, get) => ({
   // Plate objects
   plateObjects: [],
   selectedPlateObjectId: null,
+  additionalSelectedIds: [],
+  plateHistory: [],
+  plateFuture: [],
 
   // Slice state
   sliceProgress: {
@@ -76,6 +79,8 @@ export const useSlicerStore = create<SlicerStore>()(persist((set, get) => ({
   // UI state
   settingsPanel: null,
   transformMode: 'move',
+  viewportPickMode: 'none',
+  measurePoints: [],
 
   // --- Getters ---
 
@@ -279,6 +284,7 @@ export const useSlicerStore = create<SlicerStore>()(persist((set, get) => ({
     }[] = [];
 
     for (const obj of state.plateObjects) {
+      if (obj.hidden) continue;
       if (!obj.geometry) continue;
       const geo = obj.geometry as THREE.BufferGeometry;
       const posAttr = geo.getAttribute('position');

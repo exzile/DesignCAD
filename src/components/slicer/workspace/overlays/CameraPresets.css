@@ -1,0 +1,30 @@
+.slicer-camera-presets {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  z-index: 10;
+  display: flex;
+  gap: 4px;
+  background: var(--bg-panel);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 4px;
+}
+
+.slicer-camera-presets button {
+  width: 26px;
+  height: 26px;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 4px;
+  color: var(--text-secondary);
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.slicer-camera-presets button:hover {
+  background: var(--bg-hover);
+  color: var(--text-primary);
+}

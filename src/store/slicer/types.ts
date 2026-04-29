@@ -21,6 +21,11 @@ export interface SlicerStore {
   printerLastPrint: Record<string, string>;
   plateObjects: PlateObject[];
   selectedPlateObjectId: string | null;
+  /** Additional selected ids (multi-select). Anchor is `selectedPlateObjectId`. */
+  additionalSelectedIds: string[];
+  /** Undo/redo history of plateObjects snapshots. */
+  plateHistory: PlateObject[][];
+  plateFuture: PlateObject[][];
   sliceProgress: SliceProgress;
   sliceResult: SliceResult | null;
   previewMode: 'model' | 'preview';
@@ -43,6 +48,12 @@ export interface SlicerStore {
   printabilityHighlight: boolean;
   settingsPanel: 'printer' | 'material' | 'print' | null;
   transformMode: 'move' | 'scale' | 'rotate' | 'mirror' | 'settings';
+  /** Transient viewport "pick mode" for tools that capture a click on the
+   *  3D scene (lay-flat-by-face, measurement). 'none' when idle. */
+  viewportPickMode: 'none' | 'lay-flat' | 'measure';
+  /** Accumulator for the measurement tool — populated as the user clicks.
+   *  Reset whenever pick mode leaves 'measure'. */
+  measurePoints: Array<{ x: number; y: number; z: number }>;
   getActivePrinterProfile: () => PrinterProfile;
   getActiveMaterialProfile: () => MaterialProfile;
   getActivePrintProfile: () => PrintProfile;
@@ -62,7 +73,33 @@ export interface SlicerStore {
   addToPlate: (featureId: string, name: string, geometry: THREE.BufferGeometry | null | unknown) => void;
   removeFromPlate: (id: string) => void;
   selectPlateObject: (id: string | null) => void;
+  togglePlateObjectInSelection: (id: string) => void;
+  selectPlateObjectRange: (anchorId: string | null, targetId: string) => void;
+  clearPlateSelection: () => void;
+  getSelectedIds: () => string[];
   updatePlateObject: (id: string, updates: Partial<PlateObject>) => void;
+  duplicatePlateObject: (id: string) => void;
+  duplicateSelectedPlateObjects: () => void;
+  layFlatPlateObject: (id: string) => void;
+  layFlatByFace: (id: string, localFaceNormal: { x: number; y: number; z: number }) => void;
+  autoOrientPlateObject: (id: string) => void;
+  dropToBedPlateObject: (id: string) => void;
+  centerPlateObject: (id: string) => void;
+  scaleToHeight: (id: string, targetHeight: number) => void;
+  reorderPlateObjects: (orderedIds: string[]) => void;
+  resolveOverlapForObject: (id: string) => void;
+  hollowPlateObject: (id: string, wallThicknessMm: number) => Promise<void>;
+  cutPlateObjectByPlane: (
+    id: string,
+    planePoint: { x: number; y: number; z: number },
+    planeNormal: { x: number; y: number; z: number },
+  ) => Promise<void>;
+  removeSelectedPlateObjects: () => void;
+  undoPlate: () => void;
+  redoPlate: () => void;
+  pushPlateHistory: () => void;
+  exportPlateJson: () => string;
+  importPlateJson: (json: string) => void;
   autoArrange: () => void;
   clearPlate: () => void;
   importFileToPlate: (file: File) => Promise<void>;
@@ -97,4 +134,7 @@ export interface SlicerStore {
   sendToPrinter: () => Promise<void>;
   setSettingsPanel: (panel: 'printer' | 'material' | 'print' | null) => void;
   setTransformMode: (mode: 'move' | 'scale' | 'rotate' | 'mirror' | 'settings') => void;
+  setViewportPickMode: (mode: 'none' | 'lay-flat' | 'measure') => void;
+  pushMeasurePoint: (point: { x: number; y: number; z: number }) => void;
+  clearMeasurePoints: () => void;
 }

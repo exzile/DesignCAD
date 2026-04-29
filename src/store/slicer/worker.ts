@@ -4,14 +4,9 @@ let activeSliceRequestId = 0;
 let workerBusy = false;
 
 export function getSlicerWorker(onMessage: (e: MessageEvent) => void): Worker {
-  // Vite rewrites the URL of `new URL('./worker.ts', import.meta.url)`
-  // to include a content hash. After a hot rebuild of the worker source
-  // (or any of its transitive imports), the URL Vite resolves NOW
-  // differs from the URL we used when we first constructed the cached
-  // worker. Detecting that mismatch lets us terminate the stale worker
-  // and respawn with the new code, without forcing the user to hard-
-  // reload the tab. In production builds the URL is content-hashed
-  // once at build time, so the mismatch never fires.
+  // In production builds this URL is content-hashed. In Vite dev it remains
+  // the source URL, so transitive worker edits are handled by the HMR reset
+  // hooks below instead of relying on a URL mismatch.
   const currentUrl = new URL('../../workers/SlicerWorker.ts', import.meta.url).href;
   if (slicerWorker && slicerWorkerUrl !== currentUrl) {
     slicerWorker.terminate();
@@ -52,14 +47,8 @@ export function getActiveSliceRequestId(): number {
  * Force-terminate and reset the slicer worker. The next call to
  * `getSlicerWorker` will spawn a fresh one with the latest code.
  *
- * Wired to:
- *   • Vite HMR (dev-only) so source-file edits recreate the worker
- *     instead of leaving the old one running with stale code. This is
- *     the cause we ran into where rebuilds of `SlicerWorker.ts` or its
- *     transitive imports kept showing old slicer behaviour until the
- *     entire page was hard-reloaded.
- *   • A user-facing "Reload Slicer" debug action (callable via the
- *     store) so users can manually nuke a stuck worker.
+ * Wired to Vite HMR in dev and a user-facing reload action, so stale
+ * workers can be removed without hard-reloading the whole app.
  */
 export function resetSlicerWorker(): void {
   if (slicerWorker) {
@@ -70,22 +59,12 @@ export function resetSlicerWorker(): void {
   workerBusy = false;
 }
 
-// Vite HMR dispose hook — tear the worker down whenever this module's
-// HMR boundary fires. Combined with the URL-mismatch check above,
-// covers two distinct staleness paths:
-//   • This module changes (e.g. its surrounding store glue) → dispose.
-//   • The worker source or its deps change → URL hash differs → reset
-//     fires inside `getSlicerWorker` on next call.
-//
-// Production builds strip `import.meta.hot` entirely, so this is dev-
-// only behaviour.
+// Vite HMR hooks: workers are long-lived and do not automatically reload
+// when their transitive imports change. Terminate the slicer worker for any
+// dev-server update so the next Slice uses the latest wall/infill logic.
+// Production builds strip `import.meta.hot` entirely.
 if (import.meta.hot) {
-  import.meta.hot.dispose(() => {
-    if (slicerWorker) {
-      slicerWorker.terminate();
-      slicerWorker = null;
-      slicerWorkerUrl = null;
-    }
-    workerBusy = false;
-  });
+  import.meta.hot.on('vite:beforeUpdate', resetSlicerWorker);
+  import.meta.hot.on('vite:beforeFullReload', resetSlicerWorker);
+  import.meta.hot.dispose(resetSlicerWorker);
 }

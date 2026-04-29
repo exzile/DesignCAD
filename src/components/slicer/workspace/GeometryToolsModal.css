@@ -1,0 +1,99 @@
+.geom-tools-modal__backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.5);
+  z-index: 1100;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.geom-tools-modal {
+  width: 360px;
+  background: var(--bg-panel);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  box-shadow: 0 16px 48px rgba(0, 0, 0, 0.4);
+  display: flex;
+  flex-direction: column;
+  font-size: 12px;
+  color: var(--text-primary);
+}
+
+.geom-tools-modal__header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--border);
+  font-weight: 600;
+}
+
+.geom-tools-modal__close {
+  background: none;
+  border: none;
+  color: var(--error, #e35d6a);
+  cursor: pointer;
+  padding: 2px;
+  display: inline-flex;
+}
+
+.geom-tools-modal__body {
+  padding: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.geom-tools-modal__body label {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  color: var(--text-secondary);
+}
+
+.geom-tools-modal__body input,
+.geom-tools-modal__body select {
+  padding: 5px 6px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: var(--bg-input);
+  color: var(--text-primary);
+  font-size: 12px;
+}
+
+.geom-tools-modal__note {
+  color: var(--text-muted);
+  font-size: 11px;
+  margin: 0;
+  line-height: 1.4;
+}
+
+.geom-tools-modal__footer {
+  padding: 10px 12px;
+  border-top: 1px solid var(--border);
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.geom-tools-modal__footer button {
+  padding: 6px 12px;
+  border-radius: 4px;
+  border: 1px solid var(--border);
+  background: var(--bg-input);
+  color: var(--text-primary);
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.geom-tools-modal__footer button.is-primary {
+  background: var(--accent, #2f80ed);
+  border-color: var(--accent, #2f80ed);
+  color: white;
+}
+
+.geom-tools-modal__footer button:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}

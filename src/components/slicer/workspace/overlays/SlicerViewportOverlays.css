@@ -48,6 +48,14 @@
   color: var(--accent, #2f80ed);
   border-color: var(--accent, #2f80ed);
 }
+.slicer-overlay-toolbar-button--danger:hover {
+  color: var(--error, #e35d6a);
+}
+.slicer-overlay-toolbar-divider {
+  height: 1px;
+  background: var(--border);
+  margin: 4px 2px;
+}
 
 .slicer-overlay-panel {
   position: absolute;
@@ -99,6 +107,25 @@
 .slicer-overlay-lock-button:hover {
   background: var(--bg-hover);
   color: var(--text-primary);
+}
+
+.slicer-overlay-close-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 4px;
+  color: var(--error, #e35d6a);
+  cursor: pointer;
+  margin-left: 4px;
+}
+.slicer-overlay-close-button:hover {
+  background: color-mix(in srgb, var(--error, #e35d6a) 18%, transparent);
+  border-color: var(--error, #e35d6a);
+  color: var(--error, #e35d6a);
 }
 
 .slicer-overlay-row {

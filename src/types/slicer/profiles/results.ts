@@ -18,6 +18,7 @@ export interface PlateObject {
   color?: string;
   // Flags
   locked?: boolean; // prevent accidental moves/transforms
+  hidden?: boolean; // not rendered; still on plate, still slices unless excluded
   // Computed
   boundingBox: { min: { x: number; y: number; z: number }; max: { x: number; y: number; z: number } };
   selected?: boolean;

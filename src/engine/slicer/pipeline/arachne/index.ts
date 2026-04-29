@@ -10,6 +10,9 @@ import { generatePerimetersEx } from '../perimeters';
 import { resolveArachneBackend } from './backend';
 import type { ArachneBackendName, ArachneGenerationContext, ArachnePathResult, VariableWidthPath } from './types';
 
+const MIN_ARACHNE_ODD_PATH_LENGTH_FACTOR = 1.5;
+const MIN_ARACHNE_ODD_PATH_LENGTH_MM = 0.75;
+
 function toRing(pts: THREE.Vector2[]): PCRing {
   const ring: PCRing = pts.map((p) => [p.x, p.y] as [number, number]);
   if (ring.length > 0) {
@@ -527,6 +530,7 @@ export function variableWidthPathsToPerimeters(
   });
 
   for (const path of sorted) {
+    if (shouldDropTinyOddArachnePath(path)) continue;
     const normalized = normalizeClosedArachnePath(path);
     if (normalized.points.length < 2) continue;
     walls.push(normalized.points);
@@ -566,4 +570,31 @@ function normalizeClosedArachnePath(path: VariableWidthPath): Pick<VariableWidth
     points: path.points.slice(0, -1),
     widths: path.widths.slice(0, -1),
   };
+}
+
+function variablePathLength(path: VariableWidthPath): number {
+  let length = 0;
+  for (let i = 1; i < path.points.length; i++) {
+    length += path.points[i - 1].distanceTo(path.points[i]);
+  }
+  if (path.isClosed && path.points.length > 2) {
+    length += path.points[path.points.length - 1].distanceTo(path.points[0]);
+  }
+  return length;
+}
+
+function averageVariablePathWidth(path: VariableWidthPath): number {
+  if (path.widths.length === 0) return 0;
+  return path.widths.reduce((sum, width) => sum + width, 0) / path.widths.length;
+}
+
+function shouldDropTinyOddArachnePath(path: VariableWidthPath): boolean {
+  if (path.source !== 'gapfill' || path.isClosed) return false;
+  const width = averageVariablePathWidth(path);
+  if (!Number.isFinite(width) || width <= 0) return false;
+  const minLength = Math.max(
+    MIN_ARACHNE_ODD_PATH_LENGTH_MM,
+    width * MIN_ARACHNE_ODD_PATH_LENGTH_FACTOR,
+  );
+  return variablePathLength(path) < minLength;
 }

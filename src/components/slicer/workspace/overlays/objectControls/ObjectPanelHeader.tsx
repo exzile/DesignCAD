@@ -1,4 +1,4 @@
-import { Lock, Unlock } from 'lucide-react';
+import { Lock, Unlock, X } from 'lucide-react';
 import type { PlateObject } from '../../../../../types/slicer';
 import type { ObjectUpdate } from './types';
 
@@ -6,10 +6,12 @@ export function ObjectPanelHeader({
   obj,
   locked,
   onUpdate,
+  onClose,
 }: {
   obj: PlateObject;
   locked: boolean;
   onUpdate: ObjectUpdate;
+  onClose?: () => void;
 }) {
   return (
     <div className="slicer-overlay-header">
@@ -23,6 +25,16 @@ export function ObjectPanelHeader({
       >
         {locked ? <Lock size={13} /> : <Unlock size={13} />}
       </button>
+      {onClose && (
+        <button
+          title="Close panel"
+          onClick={onClose}
+          className="slicer-overlay-close-button"
+          aria-label="Close panel"
+        >
+          <X size={14} />
+        </button>
+      )}
     </div>
   );
 }

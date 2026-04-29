@@ -29,6 +29,9 @@ export function createPreviewActions(api: SlicerStoreApi): Pick<
   | 'sendToPrinter'
   | 'setSettingsPanel'
   | 'setTransformMode'
+  | 'setViewportPickMode'
+  | 'pushMeasurePoint'
+  | 'clearMeasurePoints'
 > {
   const { get, set } = api;
 
@@ -123,5 +126,16 @@ export function createPreviewActions(api: SlicerStoreApi): Pick<
 
     setSettingsPanel: (panel) => set({ settingsPanel: panel }),
     setTransformMode: (mode) => set({ transformMode: mode }),
+    setViewportPickMode: (mode) => set((state) => ({
+      viewportPickMode: mode,
+      // Reset measurement accumulator when leaving measurement mode.
+      measurePoints: mode === 'measure' ? state.measurePoints : [],
+    })),
+    pushMeasurePoint: (point) => set((state) => {
+      // Keep only the last two so the line just shows the most recent pair.
+      const next = [...state.measurePoints, point].slice(-2);
+      return { measurePoints: next };
+    }),
+    clearMeasurePoints: () => set({ measurePoints: [] }),
   };
 }

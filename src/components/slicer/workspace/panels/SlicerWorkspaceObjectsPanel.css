@@ -369,3 +369,125 @@
   opacity: 0.6;
   cursor: not-allowed;
 }
+
+.slicer-workspace-objects-panel__plate-io {
+  display: flex;
+  gap: 4px;
+}
+
+.slicer-workspace-objects-panel__plate-io > button {
+  flex: 1;
+}
+
+/* multi-select highlight */
+.slicer-workspace-objects-panel__row.is-multi {
+  border-left-color: var(--accent);
+}
+
+/* row icon swatches (visibility / lock / color / duplicate) */
+.slicer-workspace-objects-panel__row-icons {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  margin-left: auto;
+}
+
+.slicer-workspace-objects-panel__icon-btn {
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  padding: 3px;
+  border-radius: 3px;
+  display: inline-flex;
+  align-items: center;
+  cursor: pointer;
+}
+
+.slicer-workspace-objects-panel__icon-btn:hover {
+  color: var(--text-primary);
+  background: var(--bg-hover);
+}
+
+.slicer-workspace-objects-panel__icon-btn.is-active {
+  color: var(--accent);
+}
+
+.slicer-workspace-objects-panel__color-swatch {
+  width: 14px;
+  height: 14px;
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  cursor: pointer;
+  padding: 0;
+  background: transparent;
+}
+
+.slicer-workspace-objects-panel__color-input {
+  position: absolute;
+  width: 0;
+  height: 0;
+  opacity: 0;
+  pointer-events: none;
+}
+
+/* uniform-scale link toggle */
+.slicer-workspace-objects-panel__scale-link {
+  background: none;
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  color: var(--text-muted);
+  padding: 2px 4px;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+}
+
+.slicer-workspace-objects-panel__scale-link.is-active {
+  color: var(--accent);
+  border-color: var(--accent);
+}
+
+/* feature search box for "Add from CAD" menu */
+.slicer-workspace-objects-panel__menu-search {
+  width: 100%;
+  padding: 4px 6px;
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  background: var(--bg-input);
+  color: var(--text-primary);
+  font-size: 11px;
+  margin-bottom: 4px;
+  box-sizing: border-box;
+}
+
+/* validation banner */
+.slicer-workspace-objects-panel__validation {
+  margin: 4px 8px;
+  padding: 6px 8px;
+  border-radius: 4px;
+  font-size: 11px;
+  background: color-mix(in srgb, var(--warning, #d68a00) 18%, transparent);
+  color: var(--text-primary);
+  border: 1px solid color-mix(in srgb, var(--warning, #d68a00) 60%, transparent);
+}
+
+/* small inline orient/snap button group */
+.slicer-workspace-objects-panel__rot-snap {
+  display: flex;
+  gap: 2px;
+  margin-top: 2px;
+}
+
+.slicer-workspace-objects-panel__rot-snap button {
+  font-size: 10px;
+  padding: 2px 4px;
+  background: var(--bg-input);
+  border: 1px solid var(--border);
+  color: var(--text-muted);
+  border-radius: 3px;
+  cursor: pointer;
+}
+
+.slicer-workspace-objects-panel__rot-snap button:hover {
+  color: var(--text-primary);
+}

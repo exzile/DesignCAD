@@ -1,10 +1,11 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   Send, Play, Pause, X, Clapperboard,
-  SkipBack, RotateCcw, Gauge, Scissors, Magnet,
+  SkipBack, RotateCcw, Gauge, Scissors, Magnet, Download,
 } from 'lucide-react';
 import { useSlicerStore } from '../../../../store/slicerStore';
 import { usePrinterStore } from '../../../../store/printerStore';
+import { validatePlate } from '../../../../store/slicer/plateValidation';
 import { formatSlicerLength, formatSlicerTime } from './format';
 import './SlicerWorkspaceBottomBar.css';
 
@@ -23,6 +24,7 @@ export function SlicerWorkspaceBottomBar() {
   const connected = usePrinterStore((s) => s.connected);
   const uploading = usePrinterStore((s) => s.uploading);
   const uploadProgress = usePrinterStore((s) => s.uploadProgress);
+  const downloadGCode = useSlicerStore((s) => s.downloadGCode);
   const sectionEnabled = useSlicerStore((s) => s.previewSectionEnabled);
   const sectionZ = useSlicerStore((s) => s.previewSectionZ);
   const setSectionEnabled = useSlicerStore((s) => s.setPreviewSectionEnabled);
@@ -48,6 +50,19 @@ export function SlicerWorkspaceBottomBar() {
     || sliceProgress.stage === 'generating';
   const hasResult = sliceResult !== null;
   const totalPrintTime = sliceResult?.printTime ?? 0;
+
+  // Validate the plate up front so we can both disable and explain the
+  // Slice button. We re-derive on every render because the plate changes
+  // are infrequent compared to other render triggers; computing this is
+  // cheap (O(N²) overlap test on AABBs of ~1-10 plate objects).
+  const buildVolume = activePrinter?.buildVolume ?? { x: 220, y: 220, z: 250 };
+  const validation = validatePlate(plateObjects, buildVolume, { originCenter: activePrinter?.originCenter });
+  const sliceDisabledReason: string | null = (() => {
+    if (plateObjects.length === 0) return 'Add an object to the plate before slicing';
+    if (validation.outOfBounds.length > 0) return `${validation.outOfBounds.length} object${validation.outOfBounds.length === 1 ? '' : 's'} outside build volume`;
+    if (validation.overlapping.length > 0) return 'Objects overlap — move or auto-arrange before slicing';
+    return null;
+  })();
 
   const handleSend = async () => {
     if (sendResetTimerRef.current !== null) {
@@ -98,7 +113,8 @@ export function SlicerWorkspaceBottomBar() {
           type="button"
           className="slicer-bottom-bar__slice-btn"
           onClick={() => startSlice()}
-          disabled={plateObjects.length === 0}
+          disabled={sliceDisabledReason !== null}
+          title={sliceDisabledReason ?? 'Slice the plate'}
         >
           <Play size={16} /> Slice
         </button>
@@ -122,7 +138,7 @@ export function SlicerWorkspaceBottomBar() {
         </div>
       )}
 
-      {hasResult && !isSlicing && connected && (
+      {hasResult && !isSlicing && (
         <div className="slicer-bottom-bar__stats">
           <span>Time: <span className="slicer-bottom-bar__stat-value">{formatSlicerTime(sliceResult.printTime)}</span></span>
           <span>Filament: <span className="slicer-bottom-bar__stat-value">{formatSlicerLength(sliceResult.filamentUsed)}</span></span>
@@ -250,21 +266,31 @@ export function SlicerWorkspaceBottomBar() {
         </div>
       )}
 
-      {hasResult && !isSlicing && connected && (
+      {hasResult && !isSlicing && (
         <div className="slicer-bottom-bar__group slicer-bottom-bar__group--export" aria-label="Output controls">
           <button
             type="button"
-            className={`slicer-bottom-bar__btn slicer-bottom-bar__btn--accent${sending === 'sending' ? ' is-sending' : ''}${sending === 'sent' ? ' is-sent' : ''}${sending === 'error' ? ' is-error' : ''}`}
-            onClick={handleSend}
-            disabled={sending === 'sending' || uploading}
-            title={sendError ?? undefined}
+            className="slicer-bottom-bar__btn"
+            onClick={() => downloadGCode()}
+            title="Export .gcode to file"
           >
-            <Send size={14} />{' '}
-            {(sending === 'sending' || uploading) ? `Uploading ${Math.round(uploadProgress)}%`
-              : sending === 'sent' ? 'Sent'
-              : sending === 'error' ? 'Send failed'
-              : 'Send to Printer'}
+            <Download size={14} /> Export
           </button>
+          {connected && (
+            <button
+              type="button"
+              className={`slicer-bottom-bar__btn slicer-bottom-bar__btn--accent${sending === 'sending' ? ' is-sending' : ''}${sending === 'sent' ? ' is-sent' : ''}${sending === 'error' ? ' is-error' : ''}`}
+              onClick={handleSend}
+              disabled={sending === 'sending' || uploading}
+              title={sendError ?? undefined}
+            >
+              <Send size={14} />{' '}
+              {(sending === 'sending' || uploading) ? `Uploading ${Math.round(uploadProgress)}%`
+                : sending === 'sent' ? 'Sent'
+                : sending === 'error' ? 'Send failed'
+                : 'Send to Printer'}
+            </button>
+          )}
         </div>
       )}
     </div>

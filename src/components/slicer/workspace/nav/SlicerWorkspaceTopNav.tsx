@@ -1,4 +1,4 @@
-import { Eye, Layers } from 'lucide-react';
+import { Eye, Layers, Undo2, Redo2 } from 'lucide-react';
 import { useSlicerStore } from '../../../../store/slicerStore';
 export type { SlicerPage } from '../../../../types/slicer-nav.types';
 
@@ -6,6 +6,10 @@ export function SlicerWorkspaceTopNav() {
   const sliceResult = useSlicerStore((s) => s.sliceResult);
   const previewMode = useSlicerStore((s) => s.previewMode);
   const setPreviewMode = useSlicerStore((s) => s.setPreviewMode);
+  const undoPlate = useSlicerStore((s) => s.undoPlate);
+  const redoPlate = useSlicerStore((s) => s.redoPlate);
+  const plateHistory = useSlicerStore((s) => s.plateHistory);
+  const plateFuture = useSlicerStore((s) => s.plateFuture);
   const hasSlice = sliceResult !== null;
 
   return (
@@ -27,6 +31,27 @@ export function SlicerWorkspaceTopNav() {
       >
         <Eye size={13} />
         Preview
+      </button>
+
+      <div style={{ flex: 1 }} />
+
+      <button
+        type="button"
+        className="slicer-workspace-nav__tab"
+        onClick={undoPlate}
+        disabled={plateHistory.length === 0}
+        title="Undo (Ctrl+Z)"
+      >
+        <Undo2 size={13} />
+      </button>
+      <button
+        type="button"
+        className="slicer-workspace-nav__tab"
+        onClick={redoPlate}
+        disabled={plateFuture.length === 0}
+        title="Redo (Ctrl+Y)"
+      >
+        <Redo2 size={13} />
       </button>
     </div>
   );

@@ -209,6 +209,61 @@ describe('closePreviewChainIfLoop', () => {
     expect(chain.moveRefs).toHaveLength(3);
   });
 
+  it('closes near-loop wall chains so seam endpoints do not dent round walls', () => {
+    const ref: ShaftMoveData = {
+      type: 'wall-outer',
+      speed: 30,
+      extrusion: 0.01,
+      lineWidth: 0.4,
+      length: 1,
+      moveIndex: 0,
+    };
+    const chain: TubeChain = {
+      type: 'wall-outer',
+      points: [
+        { x: 0, y: 0, lw: 0.4 },
+        { x: 10, y: 0, lw: 0.4 },
+        { x: 10, y: 10, lw: 0.4 },
+        { x: 0.25, y: 0.2, lw: 0.4 },
+      ],
+      segColors: [[1, 0, 0], [1, 0, 0], [1, 0, 0]],
+      moveRefs: [ref, { ...ref, moveIndex: 1 }, { ...ref, moveIndex: 2 }],
+      isClosed: false,
+    };
+
+    closePreviewChainIfLoop(chain);
+
+    expect(chain.isClosed).toBe(true);
+    expect(chain.points).toHaveLength(4);
+  });
+
+  it('does not close near-ended non-wall chains', () => {
+    const ref: ShaftMoveData = {
+      type: 'infill',
+      speed: 30,
+      extrusion: 0.01,
+      lineWidth: 0.4,
+      length: 1,
+      moveIndex: 0,
+    };
+    const chain: TubeChain = {
+      type: 'infill',
+      points: [
+        { x: 0, y: 0, lw: 0.4 },
+        { x: 10, y: 0, lw: 0.4 },
+        { x: 10, y: 10, lw: 0.4 },
+        { x: 0.25, y: 0.2, lw: 0.4 },
+      ],
+      segColors: [[0, 1, 0], [0, 1, 0], [0, 1, 0]],
+      moveRefs: [ref, { ...ref, moveIndex: 1 }, { ...ref, moveIndex: 2 }],
+      isClosed: false,
+    };
+
+    closePreviewChainIfLoop(chain);
+
+    expect(chain.isClosed).toBe(false);
+  });
+
   it('leaves short backtracks open instead of inventing a loop', () => {
     const ref: ShaftMoveData = {
       type: 'wall-inner',

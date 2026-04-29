@@ -1,0 +1,63 @@
+.slicer-pick-tools {
+  position: absolute;
+  top: 12px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 10;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  background: var(--bg-panel);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 4px 8px;
+  font-size: 12px;
+}
+
+.slicer-pick-tools__btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 4px;
+  color: var(--text-secondary);
+  padding: 3px 6px;
+  cursor: pointer;
+  font-size: 12px;
+}
+
+.slicer-pick-tools__btn:hover:not(:disabled) {
+  background: var(--bg-hover);
+  color: var(--text-primary);
+}
+
+.slicer-pick-tools__btn.is-active {
+  background: color-mix(in srgb, var(--accent) 18%, transparent);
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.slicer-pick-tools__btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.slicer-pick-tools__hint {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  color: var(--text-primary);
+  border-left: 1px solid var(--border);
+  padding-left: 8px;
+  margin-left: 4px;
+}
+
+.slicer-pick-tools__cancel {
+  background: none;
+  border: none;
+  color: var(--error, #e35d6a);
+  cursor: pointer;
+  padding: 2px;
+  display: inline-flex;
+}

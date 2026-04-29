@@ -17,6 +17,12 @@ import { SlicerGCodePreviewPanel } from './SlicerGCodePreviewPanel';
 export function SlicerViewportOverlays() {
   const [uniformScale, setUniform] = useState(true);
   const [snapScale, setSnap] = useState(false);
+  // Locally tracked "is the floating mode panel currently expanded?". The
+  // store's `transformMode` still drives which gizmo is active; this just
+  // hides the right-hand details panel without losing the mode selection.
+  // Re-clicking the active toolbar button toggles this, and the panel's X
+  // button forces it false.
+  const [panelOpen, setPanelOpen] = useState(true);
 
   const selectedId = useSlicerStore((s) => s.selectedPlateObjectId);
   const plateObjects = useSlicerStore((s) => s.plateObjects);
@@ -29,7 +35,19 @@ export function SlicerViewportOverlays() {
 
   const obj = plateObjects.find((plateObject) => plateObject.id === selectedId) ?? null;
   const showObjectEditing = previewMode !== 'preview';
-  const toolbar = showObjectEditing ? <ObjectToolbar mode={mode} onModeChange={setMode} /> : null;
+
+  const handleModeChange = (next: TransformMode) => {
+    if (next === mode && panelOpen) {
+      setPanelOpen(false);
+    } else {
+      setMode(next);
+      setPanelOpen(true);
+    }
+  };
+
+  const toolbar = showObjectEditing
+    ? <ObjectToolbar mode={mode} panelOpen={panelOpen} onModeChange={handleModeChange} />
+    : null;
   const gcodePanel = previewMode === 'preview' && gcodeOpen && sliceResult
     ? <SlicerGCodePreviewPanel />
     : null;
@@ -49,7 +67,14 @@ export function SlicerViewportOverlays() {
   const onUpdate = (changes: Partial<PlateObject>) => {
     updatePlateObject(obj.id, changes);
   };
-  const header = <ObjectPanelHeader obj={obj} locked={locked} onUpdate={onUpdate} />;
+  const header = (
+    <ObjectPanelHeader
+      obj={obj}
+      locked={locked}
+      onUpdate={onUpdate}
+      onClose={() => setPanelOpen(false)}
+    />
+  );
   const divider = <div className="slicer-overlay-divider" />;
   const panelProps = { obj, locked, onUpdate, header, divider };
 
@@ -73,7 +98,7 @@ export function SlicerViewportOverlays() {
     <>
       {toolbar}
       {gcodePanel}
-      {showObjectEditing && !gcodePanel && panels[mode]}
+      {showObjectEditing && !gcodePanel && panelOpen && panels[mode]}
       <SlicerPrintabilityPanel />
       <SlicerCostBreakdown />
     </>
