@@ -61,5 +61,4 @@ export const LAYER_TIME_HIGH_COLOR = new THREE.Color('#cc2222');
 // Z-seam mode: dim paths so wall start points stand out clearly.
 export const Z_SEAM_COLOR = '#ffaa44';
 export const Z_SEAM_THREE_COLOR = new THREE.Color(Z_SEAM_COLOR);
-export const Z_SEAM_DIM_COLOR = '#4a3b30';
-export const Z_SEAM_DIM_THREE_COLOR = new THREE.Color(Z_SEAM_DIM_COLOR);
+export const Z_SEAM_DIM_THREE_COLOR = new THREE.Color('#4a3b30');

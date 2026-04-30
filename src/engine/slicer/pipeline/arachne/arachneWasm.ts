@@ -111,7 +111,10 @@ export function configValues(
   const minFeature = printProfile.minFeatureSize ?? minWallLW * 0.5;
   const transitionLength = printProfile.wallTransitionLength ?? lineWidth;
   const transitionAngle = printProfile.wallTransitionAngle ?? 10;
-  const transitionFilterDist = printProfile.wallTransitionFilterDistance ?? lineWidth * 0.25;
+  // Orca hardcodes 100 mm — merges all transitions within a typical part so
+  // no spurs appear at wall-count change zones (our default of lineWidth*0.25
+  // ≈ 0.11 mm was ~900× too tight and produced a spur at every transition).
+  const transitionFilterDist = printProfile.wallTransitionFilterDistance ?? 100;
   const transitionFilterMargin = printProfile.wallTransitionFilterMargin ?? lineWidth * 0.0625;
   const wallDistribution = printProfile.wallDistributionCount ?? 1;
   const sectionType = SECTION_TYPE_ID[context.sectionType ?? 'wall'];
