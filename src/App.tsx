@@ -6,6 +6,7 @@ import StatusBar from './components/panels/StatusBar';
 import ExportDialog from './components/dialogs/ExportDialog';
 import DuetPrinterPanel from './components/printer/DuetPrinterPanel';
 import SlicerWorkspace from './components/slicer/SlicerWorkspace';
+import UpdatePanel from './components/updater/UpdatePanel';
 import { useCADStore } from './store/cadStore';
 import ActiveDialog from './app/ActiveDialog';
 import './App.css';
@@ -38,6 +39,7 @@ export default function App() {
       {workspaceMode === 'design' && <StatusBar />}
       <ExportDialog />
       <ActiveDialog />
+      <UpdatePanel />
     </div>
   );
 }

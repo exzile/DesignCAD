@@ -12,6 +12,7 @@ dist
 !wasm/dist/
 !wasm/dist/**
 dist-ssr
+obj/
 *.local
 
 # Editor directories and files
@@ -28,10 +29,14 @@ dist-ssr
 
 # Visual Studio JS project files (Windows-specific, not needed by contributors)
 *.esproj
+*.esproj.user
 .vs/
+nuget.config
 
 # Claude Code — personal AI assistant config and dev notes (never commit)
 .claude/
+CLAUDE.md
+.codex/
 memory/
 
 # GitNexus local code graph cache
@@ -41,4 +46,3 @@ memory/
 .env
 .env.*
 !.env.example
-/obj/Debug/package.g.props

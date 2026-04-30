@@ -2,6 +2,8 @@
 
 A web-based parametric CAD application inspired by Fusion 360, built with React, Three.js, and TypeScript.
 
+DesignCAD is open source under the MIT License.
+
 ## Features
 
 - **3D Viewport** with orbit, pan, zoom controls and a view cube
@@ -31,7 +33,7 @@ A web-based parametric CAD application inspired by Fusion 360, built with React,
 ## Getting Started
 
 ```bash
-npm install
+npm ci
 npm run dev
 ```
 
@@ -62,3 +64,34 @@ npm run build
 ```
 
 Output is in the `dist/` directory, ready for static hosting.
+
+## Quality Checks
+
+```bash
+npm run typecheck
+npm run lint
+npm run test:run
+```
+
+## Orange Pi Hosting
+
+The app can be hosted as static files on a small Linux board such as an Orange Pi:
+
+```bash
+npm run build
+rsync -av --delete dist/ user@device:/var/www/designcad/
+```
+
+The optional updater service in `scripts/designcad-updater.mjs` can check GitHub for the latest branch commit or release asset and install it on the device. See `.env.example` for its environment variables.
+
+## Contributing
+
+Contributions are welcome. See `CONTRIBUTING.md` for local setup, pull request expectations, and testing guidance.
+
+Please report security issues privately using the guidance in `SECURITY.md`.
+
+## License
+
+DesignCAD is released under the MIT License. See `LICENSE`.
+
+The bundled Roboto font is licensed separately by Google under Apache-2.0. See `THIRD_PARTY_NOTICES.md`.
