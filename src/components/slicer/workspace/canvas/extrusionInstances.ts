@@ -176,6 +176,13 @@ export interface LayerInstanceData {
   retractPositions: Float32Array;
   // Per-instance source metadata for picking / hover. moveRefs[i] corresponds to instance i.
   moveRefs: ShaftMoveData[];
+  // World-space bounds spanning every instance. Three.js's instanced raycaster
+  // rejects rays against the geometry's bounding sphere before iterating
+  // instances; the unit-radius template sphere covers (0,0,0) only, so without
+  // an instance-aware sphere here every hover ray would be rejected and
+  // picking would silently fail.
+  boundsCenter: { x: number; y: number; z: number };
+  boundsRadius: number;
 }
 
 export interface BuildLayerInstancesOptions {
@@ -234,6 +241,9 @@ export function buildLayerInstances(opts: BuildLayerInstancesOptions): LayerInst
   // still set both so a future "smooth between adjacent segments" pass can
   // taper across joints by averaging neighbours.
   let ext = 0, trv = 0, ret = 0;
+  let minX = Infinity, minY = Infinity, minZ = Infinity;
+  let maxX = -Infinity, maxY = -Infinity, maxZ = -Infinity;
+  let maxRadius = 0;
   for (let i = 0; i < moves.length; i++) {
     const m = moves[i];
 
@@ -300,7 +310,35 @@ export function buildLayerInstances(opts: BuildLayerInstancesOptions): LayerInst
       length: segLen,
       moveIndex: i,
     };
+    if (m.from.x < minX) minX = m.from.x; if (m.from.x > maxX) maxX = m.from.x;
+    if (m.to.x   < minX) minX = m.to.x;   if (m.to.x   > maxX) maxX = m.to.x;
+    if (m.from.y < minY) minY = m.from.y; if (m.from.y > maxY) maxY = m.from.y;
+    if (m.to.y   < minY) minY = m.to.y;   if (m.to.y   > maxY) maxY = m.to.y;
+    if (beadCenterZ < minZ) minZ = beadCenterZ;
+    if (beadCenterZ > maxZ) maxZ = beadCenterZ;
+    if (radius > maxRadius) maxRadius = radius;
     ext++;
+  }
+
+  // Center the bounds on the AABB midpoint, radius = half-diagonal + maxRadius
+  // so every capsule (including its hemisphere caps and Z-extent of the bead)
+  // sits inside the sphere. Three.js's raycaster uses this for early
+  // rejection; an undersized sphere = silent picking failure on instances
+  // outside the rejection volume.
+  let boundsCenter = { x: 0, y: 0, z: 0 };
+  let boundsRadius = 0;
+  if (extrusionCount > 0) {
+    boundsCenter = {
+      x: (minX + maxX) * 0.5,
+      y: (minY + maxY) * 0.5,
+      z: (minZ + maxZ) * 0.5,
+    };
+    const halfDiag = Math.hypot(
+      (maxX - minX) * 0.5,
+      (maxY - minY) * 0.5,
+      (maxZ - minZ) * 0.5,
+    );
+    boundsRadius = halfDiag + maxRadius;
   }
 
   return {
@@ -309,6 +347,8 @@ export function buildLayerInstances(opts: BuildLayerInstancesOptions): LayerInst
     travelPositions,
     retractPositions,
     moveRefs,
+    boundsCenter,
+    boundsRadius,
   };
 }
 

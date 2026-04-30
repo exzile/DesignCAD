@@ -14,9 +14,9 @@ import * as THREE from 'three';
 // caps overlap into adjacent segments which is what makes joints look
 // seamless without any CPU stitching — the depth buffer handles the rest.
 //
-// Lighting: a soft Phong-ish term using two directional lights. Matches the
-// look of OrcaSlicer/PrusaSlicer previews — bead reads as a rounded tube
-// with a top highlight, not a flat ribbon.
+// Lighting: world-space Blinn-Phong with two directional lights + ambient.
+// Matches the look of OrcaSlicer/PrusaSlicer previews — bead reads as a
+// rounded tube with a soft top highlight, not a flat ribbon.
 
 const VERTEX_SHADER = /* glsl */ `
   attribute float aSide;
@@ -27,8 +27,8 @@ const VERTEX_SHADER = /* glsl */ `
   attribute vec3  iColor;
 
   varying vec3 vWorldNormal;
+  varying vec3 vWorldPos;
   varying vec3 vColor;
-  varying vec3 vViewPos;
 
   void main() {
     vec3 axis = iB - iA;
@@ -52,33 +52,37 @@ const VERTEX_SHADER = /* glsl */ `
       + right   * (aLocal.y * radius)
       + up      * (aLocal.z * radius);
 
-    vec3 worldPos = anchor + worldOffset;
+    // Instance positions are baked in world space, so transform by the
+    // mesh's modelMatrix (typically identity in our scene tree) to allow
+    // for any future repositioning of the preview group.
+    vec4 worldPos4 = modelMatrix * vec4(anchor + worldOffset, 1.0);
 
     // Normal: aLocal is unit-length on the capsule surface so its rotation
     // into the world frame is the surface normal. Tapered cones get a tiny
     // axial bias on the cylinder body — ignored, the visual difference is
     // sub-pixel at slicer-preview line-width ratios.
-    vec3 worldNormal = normalize(
+    vec3 localNormal = normalize(
         forward * aLocal.x
       + right   * aLocal.y
       + up      * aLocal.z
     );
-
-    vec4 mvPos = modelViewMatrix * vec4(worldPos, 1.0);
-    vWorldNormal = normalize((modelMatrix * vec4(worldNormal, 0.0)).xyz);
+    vWorldNormal = normalize((modelMatrix * vec4(localNormal, 0.0)).xyz);
+    vWorldPos = worldPos4.xyz;
     vColor = iColor;
-    vViewPos = mvPos.xyz;
-    gl_Position = projectionMatrix * mvPos;
+    gl_Position = projectionMatrix * viewMatrix * worldPos4;
   }
 `;
 
 const FRAGMENT_SHADER = /* glsl */ `
   varying vec3 vWorldNormal;
+  varying vec3 vWorldPos;
   varying vec3 vColor;
-  varying vec3 vViewPos;
 
   // Two directional lights + ambient — same character as the rest of the
   // scene's directionalLights so bead shading matches plate object shading.
+  // All three vectors here live in world space and so do n / viewDir below;
+  // any cross-space mix would produce flickery highlights as the camera
+  // rotates, so the entire lighting eval is kept in world coordinates.
   const vec3 LIGHT_KEY_DIR  = vec3(0.408, 0.408, 0.816);
   const vec3 LIGHT_FILL_DIR = vec3(-0.4,  -0.4,  0.825);
   const float AMBIENT = 0.42;
@@ -89,13 +93,15 @@ const FRAGMENT_SHADER = /* glsl */ `
 
   void main() {
     vec3 n = normalize(vWorldNormal);
-    float keyDiff  = max(dot(n, normalize(LIGHT_KEY_DIR)),  0.0);
-    float fillDiff = max(dot(n, normalize(LIGHT_FILL_DIR)), 0.0);
+    vec3 keyDir  = normalize(LIGHT_KEY_DIR);
+    vec3 fillDir = normalize(LIGHT_FILL_DIR);
+    float keyDiff  = max(dot(n, keyDir),  0.0);
+    float fillDiff = max(dot(n, fillDir), 0.0);
 
-    // Specular from key light only — soft top highlight.
-    vec3 viewDir = normalize(-vViewPos);
-    vec3 reflectDir = reflect(-normalize(LIGHT_KEY_DIR), n);
-    float spec = pow(max(dot(viewDir, reflectDir), 0.0), SHININESS) * SPEC_INT;
+    // Blinn-Phong specular from the key light, all in world space.
+    vec3 viewDir = normalize(cameraPosition - vWorldPos);
+    vec3 halfDir = normalize(keyDir + viewDir);
+    float spec = pow(max(dot(n, halfDir), 0.0), SHININESS) * SPEC_INT;
 
     float light = AMBIENT + keyDiff * KEY_INT + fillDiff * FILL_INT;
     vec3 color = vColor * light + vec3(spec);

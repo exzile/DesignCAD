@@ -216,6 +216,44 @@ describe('buildLayerInstances', () => {
     expect(data.count).toBe(1);
   });
 
+  it('emits a bounding sphere that contains every instance endpoint plus its radius', () => {
+    const l = layer([
+      move({ type: 'wall-outer', from: { x: 10, y: 10 }, to: { x: 20, y: 10 } }),
+      move({ type: 'wall-outer', from: { x: 20, y: 10 }, to: { x: 20, y: 30 }, lineWidth: 0.6 }),
+      move({ type: 'wall-outer', from: { x: 20, y: 30 }, to: { x: 5, y: 30 }, lineWidth: 0.5 }),
+    ]);
+    const ctx = buildColorContext(l, 'type', undefined);
+    const data = buildLayerInstances({
+      layer: l, layerHeight: 0.2, filamentDiameter: 1.75,
+      isCurrentLayer: false, currentLayerMoveCount: undefined,
+      showTravel: false, hiddenTypes: HIDDEN, colorContext: ctx,
+    });
+    expect(data.boundsRadius).toBeGreaterThan(0);
+    // Every endpoint must lie inside the sphere (with capsule radius slack).
+    for (let i = 0; i < data.count; i++) {
+      const dx = data.iA[i * 3]     - data.boundsCenter.x;
+      const dy = data.iA[i * 3 + 1] - data.boundsCenter.y;
+      const dz = data.iA[i * 3 + 2] - data.boundsCenter.z;
+      expect(Math.hypot(dx, dy, dz)).toBeLessThanOrEqual(data.boundsRadius + 1e-6);
+      const ex = data.iB[i * 3]     - data.boundsCenter.x;
+      const ey = data.iB[i * 3 + 1] - data.boundsCenter.y;
+      const ez = data.iB[i * 3 + 2] - data.boundsCenter.z;
+      expect(Math.hypot(ex, ey, ez)).toBeLessThanOrEqual(data.boundsRadius + 1e-6);
+    }
+  });
+
+  it('returns zero bounds radius when there are no extrusion instances', () => {
+    const l = layer([move({ type: 'travel' })]);
+    const ctx = buildColorContext(l, 'type', undefined);
+    const data = buildLayerInstances({
+      layer: l, layerHeight: 0.2, filamentDiameter: 1.75,
+      isCurrentLayer: false, currentLayerMoveCount: undefined,
+      showTravel: false, hiddenTypes: HIDDEN, colorContext: ctx,
+    });
+    expect(data.count).toBe(0);
+    expect(data.boundsRadius).toBe(0);
+  });
+
   it('captures retractions (travel moves with extrusion < 0)', () => {
     const l = layer([
       move({ type: 'travel', from: { x: 5, y: 5 }, to: { x: 5, y: 5 }, extrusion: -0.5 }),
