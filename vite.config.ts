@@ -175,6 +175,9 @@ export default defineConfig({
   server: {
     port: 5173,
     strictPort: true,
+    // Bind all interfaces so the dev server is reachable from desktop
+    // browsers when it's running on a Pi / Orange Pi over the LAN.
+    host: true,
     watch: {
       // wasm/.toolchain/ holds emsdk + Boost + Clipper2 + CuraEngine
       // sources (~1.5GB total, gitignored). Rolldown's file watcher
