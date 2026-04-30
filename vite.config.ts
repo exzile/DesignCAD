@@ -173,8 +173,8 @@ export default defineConfig({
     },
   },
   server: {
-    port: 5173,
-    strictPort: true,
+    port: process.env.PORT ? parseInt(process.env.PORT) : 5173,
+    strictPort: false,
     // Bind all interfaces so the dev server is reachable from desktop
     // browsers when it's running on a Pi / Orange Pi over the LAN.
     host: true,
