@@ -2,13 +2,13 @@ import * as THREE from 'three';
 import type { MaterialAppearance } from '../../types/cad';
 
 export const defaultComponentMaterial: MaterialAppearance = {
-  id: 'aluminum',
-  name: 'Aluminum',
-  color: '#B0B8C0',
-  metalness: 0.8,
-  roughness: 0.3,
+  id: 'default-blue',
+  name: 'Default Blue',
+  color: '#4F8FD8',
+  metalness: 0.08,
+  roughness: 0.58,
   opacity: 1,
-  category: 'metal',
+  category: 'plastic',
 };
 
 export function createRootComponent(rootId: string) {

@@ -42,7 +42,7 @@ function optimizeContourOrder(
   return [...ordered, ...holes];
 }
 
-function buildHoleMap(
+export function buildHoleMap(
   workContours: Contour[],
   allContours: Contour[],
   pointInContour: (point: THREE.Vector2, contour: THREE.Vector2[]) => boolean,
@@ -62,7 +62,7 @@ function buildHoleMap(
   return holesByOuterContour;
 }
 
-function buildLayerMaterial(
+export function buildLayerMaterial(
   workContours: Contour[],
   holesByOuterContour: Map<Contour, THREE.Vector2[][]>,
 ): PCMultiPolygon {
@@ -161,6 +161,7 @@ export function buildLayerTopology({
   currentX,
   currentY,
   previousLayerMaterial,
+  nextLayerMaterial,
   isFirstLayer,
   pointInContour,
   pointInRing,
@@ -176,11 +177,40 @@ export function buildLayerTopology({
     isFirstLayer,
     pointInRing,
   );
+
+  // Top-skin region = current layer's material MINUS next layer's material.
+  // Symmetric with the bridge-region operation (current MINUS previous).
+  // The result is exactly the part of this layer that has empty space
+  // above it, i.e. visible top surface — wherever Cura/Orca would emit a
+  // solid top-skin band. Caller passes `undefined` for the topmost layer
+  // or when the lookahead failed; we fall back to an empty region (no
+  // surfaces to skin).
+  let topSkinRegion: PCMultiPolygon = [];
+  if (nextLayerMaterial !== undefined && currentLayerMaterial.length > 0) {
+    if (nextLayerMaterial.length === 0) {
+      // The next layer has nothing — the entire current material is top
+      // surface. Skip the boolean call (Clipper2 trivially returns the
+      // first operand) and use the material directly.
+      topSkinRegion = currentLayerMaterial;
+    } else {
+      try {
+        const result = booleanMultiPolygonClipper2Sync(
+          currentLayerMaterial, nextLayerMaterial, 'difference',
+        );
+        if (result !== null) topSkinRegion = result;
+      } catch {
+        topSkinRegion = [];
+      }
+    }
+  }
+
   return {
     workContours,
     holesByOuterContour,
     currentLayerMaterial,
     hasBridgeRegions: bridgeRegions.hasBridgeRegions,
     isInBridgeRegion: bridgeRegions.isInBridgeRegion,
+    topSkinRegion,
+    hasTopSkinRegion: topSkinRegion.length > 0,
   };
 }

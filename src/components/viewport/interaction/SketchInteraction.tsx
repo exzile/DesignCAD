@@ -150,20 +150,34 @@ export default function SketchInteraction() {
       return new THREE.Plane(n, -n.dot(o));
     }
 
+    const origin = activeSketch.planeOrigin ?? new THREE.Vector3(0, 0, 0);
+
     // Normals must match getPlaneNormal() in cadStore and the visual plane selector:
     //   XY = horizontal ground   → Y-normal  (0, 1, 0)
     //   XZ = vertical front wall → Z-normal  (0, 0, 1)
     //   YZ = vertical side wall  → X-normal  (1, 0, 0)
     //   custom = face plane → use stored planeNormal & planeOrigin
     switch (activeSketch.plane) {
-      case 'XY': return new THREE.Plane(new THREE.Vector3(0, 1, 0), 0);
-      case 'XZ': return new THREE.Plane(new THREE.Vector3(0, 0, 1), 0);
-      case 'YZ': return new THREE.Plane(new THREE.Vector3(1, 0, 0), 0);
+      case 'XY': {
+        const n = new THREE.Vector3(0, 1, 0);
+        return new THREE.Plane(n, -n.dot(origin));
+      }
+      case 'XZ': {
+        const n = new THREE.Vector3(0, 0, 1);
+        return new THREE.Plane(n, -n.dot(origin));
+      }
+      case 'YZ': {
+        const n = new THREE.Vector3(1, 0, 0);
+        return new THREE.Plane(n, -n.dot(origin));
+      }
       case 'custom': {
         const n = activeSketch.planeNormal.clone().normalize();
         return new THREE.Plane(n, -n.dot(activeSketch.planeOrigin));
       }
-      default:   return new THREE.Plane(new THREE.Vector3(0, 1, 0), 0);
+      default: {
+        const n = new THREE.Vector3(0, 1, 0);
+        return new THREE.Plane(n, -n.dot(origin));
+      }
     }
   }, [activeSketch, sketch3DActivePlane]);
 

@@ -1,10 +1,10 @@
 import * as THREE from 'three';
 
 /** Shared material for all CSG-evaluated bodies. Module-level singleton — never dispose. */
-export const BODY_MATERIAL = new THREE.MeshPhysicalMaterial({
-  color: 0x8899aa,
-  metalness: 0.3,
-  roughness: 0.4,
+export const BODY_MATERIAL = new THREE.MeshStandardMaterial({
+  color: 0x4f8fd8,
+  metalness: 0.08,
+  roughness: 0.58,
   side: THREE.DoubleSide,
 });
 

@@ -171,11 +171,6 @@ export interface LayerInstanceData {
   iB: Float32Array;        // end xyz
   iRadius: Float32Array;   // (rStart, rEnd) — half the bead width
   iColor: Float32Array;    // rgb
-  // (capStart, capEnd) — 1 = render hemisphere cap, 0 = suppress (cap fragments
-  // are discarded in the shader). Internal junctions in a continuous wall path
-  // suppress both sides so the bead reads as one tube instead of a chain of
-  // sausage links; free path ends keep their hemispheres.
-  iCap: Float32Array;
   // Travel + retraction (rendered as line segments / points outside the capsule pipeline).
   travelPositions: Float32Array;
   retractPositions: Float32Array;
@@ -237,9 +232,6 @@ export function buildLayerInstances(opts: BuildLayerInstancesOptions): LayerInst
   const iB = new Float32Array(extrusionCount * 3);
   const iRadius = new Float32Array(extrusionCount * 2);
   const iColor = new Float32Array(extrusionCount * 3);
-  // Default both endpoint caps to "free end with hemisphere"; the junction
-  // pass below flips this to 0 wherever two capsules meet inside one wall.
-  const iCap = new Float32Array(extrusionCount * 2).fill(1);
   const travelPositions = new Float32Array(travelCount * 6);
   const retractPositions = new Float32Array(retractCount * 3);
   const moveRefs: ShaftMoveData[] = new Array(extrusionCount);
@@ -254,6 +246,8 @@ export function buildLayerInstances(opts: BuildLayerInstancesOptions): LayerInst
   // each capsule into a tapered cone whose ends meet the neighbouring
   // capsule at the same diameter — kills the "sausage links" you otherwise
   // see when Arachne hands us variable line widths around a wall ring.
+  // Tight epsilon: prev's `to` matches curr's `from` to float precision —
+  // i.e. they're the same point in the wallLoop array.
   const JOIN_EPSILON = 5e-4;
   // Same set the old chain renderer used for intra-wall continuity. Skin /
   // infill / bridge / support keep their hard endpoint diameters because
@@ -319,13 +313,12 @@ export function buildLayerInstances(opts: BuildLayerInstancesOptions): LayerInst
     iRadius[rOff    ] = radius;
     iRadius[rOff + 1] = radius;
 
-    // Junction smoothing. If the previous rendered instance ended at this
-    // one's start XY AND both are wall-ish types, this is an internal joint
-    // in a continuous wall — average the two radii so the capsule body
-    // tapers smoothly across the joint, AND suppress the hemisphere caps on
-    // both sides of the joint so we don't paint two overlapping balls there.
-    // The result: one continuous tube whose diameter at every point matches
-    // the gcode line width along the path.
+    // Same-vertex junction smoothing only — average radii where prev's `to`
+    // exactly matches this `from` (consecutive vertices in one wall loop).
+    // Spatial gap-bridging across separate Arachne paths happens in the
+    // post-pass below, since those paths can be far apart in emission order
+    // (e.g. a gap-fill bead emitted after several inner walls but spatially
+    // adjacent to a break in the main outer wall).
     if (
       prevExt >= 0
       && prevTo !== null
@@ -335,10 +328,8 @@ export function buildLayerInstances(opts: BuildLayerInstancesOptions): LayerInst
       && Math.abs(prevTo.y - m.from.y) < JOIN_EPSILON
     ) {
       const avg = (prevRadius + radius) * 0.5;
-      iRadius[prevExt * 2 + 1] = avg;  // previous capsule's end-radius
-      iRadius[rOff]            = avg;  // this capsule's start-radius
-      iCap[prevExt * 2 + 1] = 0;       // suppress prev's end hemisphere
-      iCap[ext * 2]         = 0;       // suppress current's start hemisphere
+      iRadius[prevExt * 2 + 1] = avg;
+      iRadius[rOff]            = avg;
     }
     prevExt = ext;
     prevTo = m.to;
@@ -392,7 +383,7 @@ export function buildLayerInstances(opts: BuildLayerInstancesOptions): LayerInst
 
   return {
     count: extrusionCount,
-    iA, iB, iRadius, iColor, iCap,
+    iA, iB, iRadius, iColor,
     travelPositions,
     retractPositions,
     moveRefs,

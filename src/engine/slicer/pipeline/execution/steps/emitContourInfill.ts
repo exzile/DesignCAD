@@ -535,7 +535,21 @@ export function emitContourInfill(
 ): void {
   const slicer = pipeline as SlicerExecutionPipeline;
   const { pp, mat, triangles, offsetX, offsetY, emitter, gcode } = run;
-  const { li, layerH, isFirstLayer, isSolid, isSolidBottom, isSolidTop, isTopSurfaceLayer, infillSpeed, topBottomSpeed, hasBridgeRegions, isInBridgeRegion, moves } = layer;
+  const { li, layerH, isFirstLayer, isSolidBottom, isSolidTop, isTopSurfaceLayer, infillSpeed, topBottomSpeed, hasBridgeRegions, isInBridgeRegion, moves } = layer;
+  // Layer-wide top-skin promotion. The topology pass computes
+  // `topSkinRegion = currentLayerMaterial - nextLayerMaterial` (visible top
+  // surfaces). When that region is non-empty the WHOLE layer is treated
+  // as solid skin. Per-region splitting (only the regions that actually
+  // overlap topSkinRegion become solid) was tried and reverted — the
+  // lightweight next-layer lookahead in `prepareLayerGeometryState`
+  // doesn't apply the same horizontal-expansion / modifier-mesh / mold
+  // transforms the current-layer prep does, so the boolean difference
+  // produces large spurious topSkinRegions on every layer (over-fill on
+  // hollow-cylinder middle layers). Per-region splitting needs the
+  // lookahead to share the full prep pipeline first (a deeper refactor:
+  // cache full materials in a pre-pass) before it produces correct
+  // results. Layer-wide promotion is approximate but never under-fills.
+  const isSolid = layer.isSolid || layer.hasTopSkinRegion;
 
   // Spiralize / vase mode: keep solid bottom skin (the "base") for the first
   // `bottomLayers` layers so the part has a flat floor, then suppress all

@@ -296,41 +296,6 @@ describe('buildLayerInstances', () => {
     expect(data.iRadius[3]).toBeCloseTo(0.15, 5);
   });
 
-  it('suppresses hemisphere caps at internal wall junctions, keeps them on free ends', () => {
-    // Two consecutive wall segments meeting at (5,0). The shared joint is an
-    // internal junction → suppress prev's end-cap and current's start-cap.
-    // The two free ends (start of first, end of last) keep their hemispheres.
-    const l = layer([
-      move({ type: 'wall-inner', from: { x: 0, y: 0 }, to: { x: 5, y: 0 } }),
-      move({ type: 'wall-inner', from: { x: 5, y: 0 }, to: { x: 5, y: 5 } }),
-    ]);
-    const ctx = buildColorContext(l, 'type', undefined);
-    const data = buildLayerInstances({
-      layer: l, layerHeight: 0.2, filamentDiameter: 1.75,
-      isCurrentLayer: false, currentLayerMoveCount: undefined,
-      showTravel: false, hiddenTypes: HIDDEN, colorContext: ctx,
-    });
-    expect(data.iCap[0]).toBe(1);  // capsule 0 start: free end
-    expect(data.iCap[1]).toBe(0);  // capsule 0 end: junction → suppressed
-    expect(data.iCap[2]).toBe(0);  // capsule 1 start: junction → suppressed
-    expect(data.iCap[3]).toBe(1);  // capsule 1 end: free end
-  });
-
-  it('keeps caps on isolated wall fragments separated by travels', () => {
-    const l = layer([
-      move({ type: 'wall-inner', from: { x: 0, y: 0 }, to: { x: 5, y: 0 } }),
-      move({ type: 'travel',     from: { x: 5, y: 0 }, to: { x: 50, y: 50 } }),
-      move({ type: 'wall-inner', from: { x: 50, y: 50 }, to: { x: 55, y: 50 } }),
-    ]);
-    const ctx = buildColorContext(l, 'type', undefined);
-    const data = buildLayerInstances({
-      layer: l, layerHeight: 0.2, filamentDiameter: 1.75,
-      isCurrentLayer: false, currentLayerMoveCount: undefined,
-      showTravel: false, hiddenTypes: HIDDEN, colorContext: ctx,
-    });
-    // Both fragments are isolated paths — every cap stays on.
-    for (let i = 0; i < data.iCap.length; i++) expect(data.iCap[i]).toBe(1);
-  });
 
   it('does not smooth across feature-type boundaries (e.g. wall → top-bottom)', () => {
     // wall-inner meeting top-bottom at the same point — these are independent

@@ -2,23 +2,28 @@ import { useState } from 'react';
 import { ChevronRight, ChevronDown, Eye, EyeOff, FolderOpen } from 'lucide-react';
 import { useComponentStore } from '../../../store/componentStore';
 import { BodyNode } from './BodyNode';
+import { isComponentVisible } from '../../viewport/scene/componentVisibility';
 
 /**
  * Collapsible "Bodies" folder in the component tree — mirrors SketchesFolder.
  * Renders all bodies from all components in a single folder at the tree root.
  */
-export function BodiesFolder() {
+export function BodiesFolder({ componentId }: { componentId?: string }) {
   const bodies = useComponentStore((s) => s.bodies);
+  const components = useComponentStore((s) => s.components);
+  const component = useComponentStore((s) => (componentId ? s.components[componentId] : undefined));
   const toggleVis = useComponentStore((s) => s.toggleBodyVisibility);
   const [expanded, setExpanded] = useState(true);
 
-  const bodyIds = Object.keys(bodies);
+  const bodyIds = componentId ? component?.bodyIds ?? [] : Object.keys(bodies);
   if (bodyIds.length === 0) return null;
 
-  const allVisible = bodyIds.every((id) => bodies[id]?.visible !== false);
+  const componentVisible = isComponentVisible(components, componentId);
+  const allVisible = componentVisible && bodyIds.every((id) => bodies[id]?.visible !== false);
 
   const handleToggleAll = (e: React.MouseEvent) => {
     e.stopPropagation();
+    if (!componentVisible) return;
     // Toggle all bodies to the opposite of current "allVisible" state
     for (const id of bodyIds) {
       const body = bodies[id];
@@ -35,7 +40,7 @@ export function BodiesFolder() {
         <button
           className="browser-vis-btn"
           onClick={handleToggleAll}
-          title={allVisible ? 'Hide Bodies' : 'Show Bodies'}
+          title={!componentVisible ? 'Hidden by Component' : allVisible ? 'Hide Bodies' : 'Show Bodies'}
         >
           {allVisible ? <Eye size={11} /> : <EyeOff size={11} />}
         </button>
@@ -50,7 +55,7 @@ export function BodiesFolder() {
 
       {/* Body rows */}
       {expanded && bodyIds.map((id) => (
-        <BodyNode key={id} bodyId={id} />
+        <BodyNode key={id} bodyId={id} inheritedVisible={componentVisible} />
       ))}
     </div>
   );

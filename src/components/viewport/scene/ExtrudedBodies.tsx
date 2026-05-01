@@ -10,6 +10,7 @@ import { useComponentStore } from '../../../store/componentStore';
 import { GeometryEngine } from '../../../engine/GeometryEngine';
 import type { Feature, Sketch } from '../../../types/cad';
 import { BODY_MATERIAL, SURFACE_MATERIAL, DIM_MATERIAL } from './bodyMaterial';
+import { isComponentVisible } from './componentVisibility';
 
 /**
  * Wraps a single body mesh and pulses an emissive highlight when its bodyId
@@ -174,11 +175,12 @@ export default function ExtrudedBodies() {
   const rollbackIndex = useCADStore((s) => s.rollbackIndex);
   const activeComponentId = useComponentStore((s) => s.activeComponentId);
   const rootComponentId = useComponentStore((s) => s.rootComponentId);
+  const components = useComponentStore((s) => s.components);
 
   const bodiesById = useComponentStore((s) => s.bodies);
 
   // When a non-root component is active, dim features that belong to other components.
-  const editingInPlace = !!activeComponentId && activeComponentId !== rootComponentId;
+  const editingInPlace = !!activeComponentId && activeComponentId !== rootComponentId && !!components[activeComponentId];
 
   // Per-body cloned MeshStandardMaterial cache. Cloned materials are disposed
   // when the appearance changes or the component unmounts. Singletons
@@ -206,10 +208,11 @@ export default function ExtrudedBodies() {
 
   const getMaterial = useCallback(
     (featureComponentId: string | undefined, bodyId: string | undefined, isSurface = false): THREE.Material => {
-      if (editingInPlace && featureComponentId !== activeComponentId) return DIM_MATERIAL;
       const fallback: THREE.Material = isSurface ? SURFACE_MATERIAL : BODY_MATERIAL;
+      const body = bodyId ? bodiesById[bodyId] : undefined;
+      const ownerComponentId = body?.componentId ?? featureComponentId;
+      if (editingInPlace && ownerComponentId && ownerComponentId !== activeComponentId) return DIM_MATERIAL;
       if (!bodyId) return fallback;
-      const body = bodiesById[bodyId];
       if (!body || !body.material) return fallback;
       const m = body.material;
       // CTX-7: per-body display opacity (independent of material.opacity)
@@ -410,7 +413,11 @@ export default function ExtrudedBodies() {
   // Apply dim / appearance materials on pre-built stored meshes in an effect,
   // never in render, so cleanup is guaranteed when Edit In Place exits.
   useEffect(() => {
-    const storedMeshFeatures = features.filter((f) => isActive(f) && f.mesh);
+    const storedMeshFeatures = features.filter((f) => {
+      if (!isActive(f) || !f.mesh) return false;
+      const ownerComponentId = f.bodyId ? bodiesById[f.bodyId]?.componentId : undefined;
+      return isComponentVisible(components, ownerComponentId ?? f.componentId);
+    });
     storedMeshFeatures.forEach((feature) => {
       const mesh = feature.mesh!;
       const isSurface = feature.bodyKind === 'surface';
@@ -418,14 +425,18 @@ export default function ExtrudedBodies() {
       mesh.material = getMaterial(feature.componentId, feature.bodyId, isSurface);
     });
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [features, editingInPlace, activeComponentId, rollbackIndex, bodiesById, getMaterial]);
+  }, [features, editingInPlace, activeComponentId, rollbackIndex, bodiesById, components, getMaterial]);
 
   return (
     <>
       {bodies.map((geom, i) => {
         const fId = featureIds[i];
         const bodyId = featureBodyIds[i];
-        const bodySelectable = bodyId ? (bodiesById[bodyId]?.selectable !== false) : true;
+        const body = bodyId ? bodiesById[bodyId] : undefined;
+        const ownerComponentId = body?.componentId ?? featureComponentIds[i];
+        if (!isComponentVisible(components, ownerComponentId)) return null;
+        if (bodyId && body?.visible === false) return null;
+        const bodySelectable = bodyId ? (body?.selectable !== false) : true;
         return (
           <BodyMesh
             // Always include the index — when a feature's split produces more
@@ -442,6 +453,9 @@ export default function ExtrudedBodies() {
         );
       })}
       {features.filter((f) => f.type === 'revolve' && isActive(f)).map((feature) => {
+        const body = feature.bodyId ? bodiesById[feature.bodyId] : undefined;
+        if (!isComponentVisible(components, body?.componentId ?? feature.componentId)) return null;
+        if (feature.bodyId && body?.visible === false) return null;
         if (feature.params.faceRevolve) {
           return <RevolveItem key={feature.id} feature={feature} sketch={undefined} />;
         }
@@ -453,14 +467,21 @@ export default function ExtrudedBodies() {
           D69 Taper Extrude, D73 Rib). All these set feature.mesh at commit time.
           Material assignment is done in a useEffect below — never in render. */}
       {features.filter((f) => isActive(f) && f.mesh).map((feature) => (
-        <primitive
-          key={feature.id}
-          object={feature.mesh!}
-          onUpdate={(m: THREE.Object3D) => {
-            m.userData.pickable = true;
-            m.userData.featureId = feature.id;
-          }}
-        />
+        !isComponentVisible(
+          components,
+          (feature.bodyId ? bodiesById[feature.bodyId]?.componentId : undefined) ?? feature.componentId,
+        ) || (feature.bodyId && bodiesById[feature.bodyId]?.visible === false)
+          ? null
+          : (
+            <primitive
+              key={feature.id}
+              object={feature.mesh!}
+              onUpdate={(m: THREE.Object3D) => {
+                m.userData.pickable = true;
+                m.userData.featureId = feature.id;
+              }}
+            />
+          )
       ))}
     </>
   );

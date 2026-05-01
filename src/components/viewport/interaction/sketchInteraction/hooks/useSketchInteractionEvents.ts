@@ -8,6 +8,39 @@ import type { SketchPoint } from '../../../../../types/cad';
 import { commitDraggedTangentArc, finalizeSplineFromContextMenu } from './sketchEventHelpers';
 import { handleSpecialSketchClick } from './specialSketchClickHandlers';
 
+const focusSketchEvent = 'cad:focus-sketch';
+const EDGE_ON_VIEW_DOT = 0.45;
+
+function getSketchFocusCenter(activeSketch: NonNullable<ReturnType<typeof useCADStore.getState>['activeSketch']>): [number, number, number] {
+  let minX = Number.POSITIVE_INFINITY;
+  let minY = Number.POSITIVE_INFINITY;
+  let minZ = Number.POSITIVE_INFINITY;
+  let maxX = Number.NEGATIVE_INFINITY;
+  let maxY = Number.NEGATIVE_INFINITY;
+  let maxZ = Number.NEGATIVE_INFINITY;
+
+  const include = (point: SketchPoint, radius = 0) => {
+    minX = Math.min(minX, point.x - radius);
+    minY = Math.min(minY, point.y - radius);
+    minZ = Math.min(minZ, point.z - radius);
+    maxX = Math.max(maxX, point.x + radius);
+    maxY = Math.max(maxY, point.y + radius);
+    maxZ = Math.max(maxZ, point.z + radius);
+  };
+
+  activeSketch.entities.forEach((entity) => {
+    const radius = entity.type === 'circle' || entity.type === 'arc' ? entity.radius ?? 0 : 0;
+    entity.points.forEach((point) => include(point, radius));
+  });
+
+  if (!Number.isFinite(minX)) {
+    const origin = activeSketch.planeOrigin;
+    return [origin.x, origin.y, origin.z];
+  }
+
+  return [(minX + maxX) / 2, (minY + maxY) / 2, (minZ + maxZ) / 2];
+}
+
 interface UseSketchInteractionEventsParams {
   activeSketch: ReturnType<typeof useCADStore.getState>['activeSketch'];
   activeTool: string;
@@ -112,6 +145,17 @@ export function useSketchInteractionEvents({
     void cancelSketchProjectSurfaceTool;
 
     const { t1, t2 } = GeometryEngine.getSketchAxes(activeSketch);
+    const viewDir = new THREE.Vector3(0, 0, -1).applyQuaternion(camera.quaternion).normalize();
+    const sketchNormal = activeSketch.planeNormal.clone().normalize();
+    if (Math.abs(viewDir.dot(sketchNormal)) < EDGE_ON_VIEW_DOT) {
+      window.dispatchEvent(new CustomEvent(focusSketchEvent, {
+        detail: {
+          center: getSketchFocusCenter(activeSketch),
+          normal: [sketchNormal.x, sketchNormal.y, sketchNormal.z],
+        },
+      }));
+    }
+
     const projectToPlane = (pt: SketchPoint, origin: SketchPoint) => {
       const d = new THREE.Vector3(pt.x - origin.x, pt.y - origin.y, pt.z - origin.z);
       return { u: d.dot(t1), v: d.dot(t2) };
