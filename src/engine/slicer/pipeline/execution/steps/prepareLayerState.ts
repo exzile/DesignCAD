@@ -1,8 +1,8 @@
 import type * as THREE from 'three';
-import type { MultiPolygon as PCMultiPolygon, Ring as PCRing } from 'polygon-clipping';
+import type { Ring as PCRing } from 'polygon-clipping';
 import type { SliceMove } from '../../../../../types/slicer';
 import { applyLayerStartControls } from '../../layerControls';
-import { buildHoleMap, buildLayerMaterial, buildLayerTopology } from '../layerTopology';
+import { buildLayerTopology } from '../layerTopology';
 import {
   applyCuttingMeshSubtraction,
   buildModifierRegionsForLayer,
@@ -423,58 +423,19 @@ export function emitLayerStartState(
     }
   }
 
-  // Lookahead: compute the layer above's material polygon so the topology
-  // step can derive a top-skin region (= current material − next material).
-  // Cura/Orca emit solid skin in those regions because they're the visible
-  // top surface of every feature that ends mid-print (e.g. the top of a
-  // baseplate that has cylinder walls extending up from it). Our pipeline
-  // didn't have this lookahead before; without it, only the outermost
-  // `topLayers` layers of the entire model got top skin.
-  //
-  // Implementation: re-slice the triangle set at layer N+1's Z and build
-  // a material polygon via the same outer-minus-holes pipeline that
-  // `buildLayerTopology` uses for the current layer. Skips the heavier
-  // prep stages (small-feature filtering, modifier meshes, horizontal
-  // expansion, mold mode) — they only matter when the user configures
-  // them, in which case the next-layer material may be slightly off and
-  // top skin in those advanced cases is approximate.
-  const totalLayersForLookahead = run.totalLayers;
-  let nextLayerMaterial: PCMultiPolygon | undefined;
-  if (li + 1 < totalLayersForLookahead) {
-    const nextLayerZ = run.layerZs[li + 1];
-    const nextSliceZ = run.modelBBox.min.z + nextLayerZ;
-    const nextLayerTriangles = activeTrianglesForLayer(run, li + 1);
-    const nextSegments = slicer.sliceTrianglesAtZ(
-      nextLayerTriangles,
-      nextSliceZ,
-      run.offsetX,
-      run.offsetY,
-      run.offsetZ,
-    );
-    const nextRawContours = slicer.connectSegments(nextSegments);
-    if (nextRawContours.length > 0) {
-      const nextContours = slicer.classifyContours(nextRawContours);
-      const nextHoleMap = buildHoleMap(
-        nextContours,
-        nextContours,
-        (point: THREE.Vector2, contour: THREE.Vector2[]) => slicer.pointInContour(point, contour),
-      );
-      nextLayerMaterial = buildLayerMaterial(
-        nextContours.filter((c) => c.isOuter),
-        nextHoleMap,
-      );
-    } else {
-      nextLayerMaterial = []; // empty next layer = entire current is top surface
-    }
-  }
+  const previousLayerMaterial = run.layerMaterialCache[li - 1] ?? [];
+  const nextLayerMaterial = run.layerMaterialCache[li + 1];
 
   const topology = buildLayerTopology({
     contours,
     optimizeWallOrder: pp.optimizeWallOrder ?? false,
+    layerIndex: li,
     currentX: emitter.currentX,
     currentY: emitter.currentY,
-    previousLayerMaterial: run.prevLayerMaterial,
+    previousLayerMaterial,
     nextLayerMaterial,
+    layerMaterialCache: run.layerMaterialCache,
+    topLayers: pp.topLayers,
     isFirstLayer,
     pointInContour: (point: THREE.Vector2, contour: THREE.Vector2[]) => slicer.pointInContour(point, contour),
     pointInRing: (x: number, y: number, ring: PCRing) => slicer.pointInRing(x, y, ring),

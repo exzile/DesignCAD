@@ -155,13 +155,66 @@ function buildBridgeRegionChecker(
   };
 }
 
+function differenceMaterial(subject: PCMultiPolygon, clip: PCMultiPolygon): PCMultiPolygon {
+  if (subject.length === 0) return [];
+  if (clip.length === 0) return subject;
+  const result = booleanMultiPolygonClipper2Sync(subject, clip, 'difference');
+  if (result === null) throw new Error('layerTopology: Clipper2 WASM not loaded');
+  return result;
+}
+
+function unionMaterial(a: PCMultiPolygon, b: PCMultiPolygon): PCMultiPolygon {
+  if (a.length === 0) return b;
+  if (b.length === 0) return a;
+  const result = booleanMultiPolygonClipper2Sync(a, b, 'union');
+  if (result === null) throw new Error('layerTopology: Clipper2 WASM not loaded');
+  return result;
+}
+
+function intersectMaterial(a: PCMultiPolygon, b: PCMultiPolygon): PCMultiPolygon {
+  if (a.length === 0 || b.length === 0) return [];
+  const result = booleanMultiPolygonClipper2Sync(a, b, 'intersection');
+  if (result === null) throw new Error('layerTopology: Clipper2 WASM not loaded');
+  return result;
+}
+
+function buildTopSkinRegion(
+  currentLayerMaterial: PCMultiPolygon,
+  layerIndex: number,
+  nextLayerMaterial: PCMultiPolygon | undefined,
+  layerMaterialCache: PCMultiPolygon[] | undefined,
+  topLayers: number | undefined,
+): PCMultiPolygon {
+  if (currentLayerMaterial.length === 0) return [];
+  if (!layerMaterialCache) {
+    if (nextLayerMaterial === undefined) return [];
+    return differenceMaterial(currentLayerMaterial, nextLayerMaterial);
+  }
+
+  const skinLayerCount = Math.max(1, Math.floor(topLayers ?? 1));
+  let topSkinRegion: PCMultiPolygon = [];
+  for (let k = 0; k < skinLayerCount; k++) {
+    const layerMaterial = layerMaterialCache[layerIndex + k];
+    if (!layerMaterial) continue;
+    const layerAboveMaterial = layerMaterialCache[layerIndex + k + 1];
+    const band = layerAboveMaterial
+      ? differenceMaterial(layerMaterial, layerAboveMaterial)
+      : layerMaterial;
+    topSkinRegion = unionMaterial(topSkinRegion, band);
+  }
+  return intersectMaterial(topSkinRegion, currentLayerMaterial);
+}
+
 export function buildLayerTopology({
   contours,
   optimizeWallOrder,
+  layerIndex,
   currentX,
   currentY,
   previousLayerMaterial,
   nextLayerMaterial,
+  layerMaterialCache,
+  topLayers,
   isFirstLayer,
   pointInContour,
   pointInRing,
@@ -178,30 +231,23 @@ export function buildLayerTopology({
     pointInRing,
   );
 
-  // Top-skin region = current layer's material MINUS next layer's material.
-  // Symmetric with the bridge-region operation (current MINUS previous).
-  // The result is exactly the part of this layer that has empty space
-  // above it, i.e. visible top surface — wherever Cura/Orca would emit a
-  // solid top-skin band. Caller passes `undefined` for the topmost layer
-  // or when the lookahead failed; we fall back to an empty region (no
-  // surfaces to skin).
+  // Top-skin region: the part of this layer that's a visible top surface.
+  // With multi-layer thickening (`topLayers > 1` and a material cache),
+  // `buildTopSkinRegion` unions per-transition bands across N future layers:
+  //   topSkinRegion = ∪_{k=0..topLayers-1} (cache[N+k] − cache[N+k+1])
+  // intersected with currentLayerMaterial. Without the cache, falls back
+  // to single-layer comparison: currentLayerMaterial − nextLayerMaterial.
   let topSkinRegion: PCMultiPolygon = [];
-  if (nextLayerMaterial !== undefined && currentLayerMaterial.length > 0) {
-    if (nextLayerMaterial.length === 0) {
-      // The next layer has nothing — the entire current material is top
-      // surface. Skip the boolean call (Clipper2 trivially returns the
-      // first operand) and use the material directly.
-      topSkinRegion = currentLayerMaterial;
-    } else {
-      try {
-        const result = booleanMultiPolygonClipper2Sync(
-          currentLayerMaterial, nextLayerMaterial, 'difference',
-        );
-        if (result !== null) topSkinRegion = result;
-      } catch {
-        topSkinRegion = [];
-      }
-    }
+  try {
+    topSkinRegion = buildTopSkinRegion(
+      currentLayerMaterial,
+      layerIndex,
+      nextLayerMaterial,
+      layerMaterialCache,
+      topLayers,
+    );
+  } catch {
+    topSkinRegion = [];
   }
 
   return {

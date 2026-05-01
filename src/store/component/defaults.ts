@@ -2,11 +2,11 @@ import * as THREE from 'three';
 import type { MaterialAppearance } from '../../types/cad';
 
 export const defaultComponentMaterial: MaterialAppearance = {
-  id: 'default-blue',
-  name: 'Default Blue',
-  color: '#4F8FD8',
-  metalness: 0.08,
-  roughness: 0.58,
+  id: 'warm-plastic',
+  name: 'Warm Plastic',
+  color: '#F2A23A',
+  metalness: 0.02,
+  roughness: 0.68,
   opacity: 1,
   category: 'plastic',
 };

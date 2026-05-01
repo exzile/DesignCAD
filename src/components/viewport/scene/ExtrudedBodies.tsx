@@ -1,16 +1,25 @@
 import { useCallback, useEffect, useMemo, useRef } from 'react';
 import { useFrame } from '@react-three/fiber';
 import * as THREE from 'three';
-
-// Module-level scratch objects — avoids per-feature heap allocations in the CSG loop.
-const _boxCurrent = new THREE.Box3();
-const _boxTool = new THREE.Box3();
 import { useCADStore } from '../../../store/cadStore';
 import { useComponentStore } from '../../../store/componentStore';
 import { GeometryEngine } from '../../../engine/GeometryEngine';
 import type { Feature, Sketch } from '../../../types/cad';
 import { BODY_MATERIAL, SURFACE_MATERIAL, DIM_MATERIAL } from './bodyMaterial';
 import { isComponentVisible } from './componentVisibility';
+
+// Module-level scratch objects — avoids per-feature heap allocations in the CSG loop.
+const _boxCurrent = new THREE.Box3();
+const _boxTool = new THREE.Box3();
+const JOIN_CONTACT_EPSILON = 1e-3;
+
+function boxesTouchOrOverlap(a: THREE.Box3, b: THREE.Box3, eps = JOIN_CONTACT_EPSILON): boolean {
+  return (
+    a.max.x + eps >= b.min.x && b.max.x + eps >= a.min.x &&
+    a.max.y + eps >= b.min.y && b.max.y + eps >= a.min.y &&
+    a.max.z + eps >= b.min.z && b.max.z + eps >= a.min.z
+  );
+}
 
 /**
  * Wraps a single body mesh and pulses an emissive highlight when its bodyId
@@ -377,7 +386,7 @@ export default function ExtrudedBodies() {
         // offset extrusion floating in space), start a new separate body.
         _boxCurrent.setFromBufferAttribute(currentGeom.attributes.position as THREE.BufferAttribute);
         _boxTool.setFromBufferAttribute(toolGeom.attributes.position as THREE.BufferAttribute);
-        if (!_boxCurrent.intersectsBox(_boxTool)) {
+        if (!boxesTouchOrOverlap(_boxCurrent, _boxTool)) {
           commitCurrent();
           currentGeom = toolGeom;
           currentFeatureId = feature.id;

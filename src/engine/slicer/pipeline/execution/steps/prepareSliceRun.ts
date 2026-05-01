@@ -156,7 +156,7 @@ export function prepareSliceRun(
       regularFanHeightFired: false,
       buildVolumeFanHeightFired: false,
     },
-    prevLayerMaterial: [],
+    layerMaterialCache: [],
     previousSeamPoints: [] as THREE.Vector2[],
     currentSeamPoints: [] as THREE.Vector2[],
     seamMemoryLayer: undefined as number | undefined,
@@ -273,5 +273,6 @@ export function prepareSliceGeometryRun(
     totalLayers,
     solidBottom,
     solidTop,
+    layerMaterialCache: [],
   };
 }

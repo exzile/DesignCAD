@@ -5,6 +5,7 @@ import type { Contour } from './slicer-pipeline.types';
 export interface LayerTopologyOptions {
   contours: Contour[];
   optimizeWallOrder: boolean;
+  layerIndex: number;
   currentX: number;
   currentY: number;
   previousLayerMaterial: PCMultiPolygon;
@@ -15,6 +16,13 @@ export interface LayerTopologyOptions {
    * lookahead failed) the topology omits a top-skin region.
    */
   nextLayerMaterial?: PCMultiPolygon;
+  /**
+   * Full material cache for all layers. When present, top skin can be
+   * thickened across multiple future layers instead of only comparing
+   * the current layer with the immediate next layer.
+   */
+  layerMaterialCache?: PCMultiPolygon[];
+  topLayers?: number;
   isFirstLayer: boolean;
   pointInContour: (point: THREE.Vector2, contour: THREE.Vector2[]) => boolean;
   pointInRing: (x: number, y: number, ring: PCRing) => boolean;

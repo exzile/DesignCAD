@@ -112,18 +112,27 @@ export function ComponentNode({ componentId, depth = 0 }: { componentId: string;
     setRenaming(false);
   };
 
+  const beginRename = () => {
+    setNewName(component.name);
+    setRenaming(true);
+  };
+
   return (
     /* --depth is a dynamic CSS custom property for indent — must stay inline */
     <div className="tree-node" style={{ '--depth': depth } as React.CSSProperties}>
       <div
         className={`tree-item component-item ${isActive ? 'active' : ''}`}
+        role="treeitem"
+        tabIndex={0}
         onClick={() => setActiveComponentId(componentId)}
-        onDoubleClick={() => {
-          if (isRoot) {
-            setRenaming(true);
-            setNewName(component.name);
-          } else {
-            setActiveComponentId(componentId);
+        onDoubleClick={(e) => {
+          e.stopPropagation();
+          beginRename();
+        }}
+        onKeyDown={(e) => {
+          if (e.key === 'F2') {
+            e.preventDefault();
+            beginRename();
           }
         }}
       >

@@ -6,6 +6,16 @@ import { EXTRUDE_DEFAULTS } from '../../defaults';
 import type { CADSliceContext } from '../../sliceContext';
 import type { CADState } from '../../state';
 
+const JOIN_CONTACT_EPSILON = 1e-3;
+
+function boxesTouchOrOverlap(a: THREE.Box3, b: THREE.Box3, eps = JOIN_CONTACT_EPSILON): boolean {
+  return (
+    a.max.x + eps >= b.min.x && b.max.x + eps >= a.min.x &&
+    a.max.y + eps >= b.min.y && b.max.y + eps >= a.min.y &&
+    a.max.z + eps >= b.min.z && b.max.z + eps >= a.min.z
+  );
+}
+
 export function createExtrudeCommitActions({ set, get }: CADSliceContext): Partial<CADState> {
   return {
   commitExtrude: () => {
@@ -202,7 +212,7 @@ export function createExtrudeCommitActions({ set, get }: CADSliceContext): Parti
               const efBox = new THREE.Box3().setFromObject(efMesh);
               // Cheap bbox pre-filter. If the boxes don't even touch we can
               // skip the expensive CSG work entirely.
-              if (!proposedBox.intersectsBox(efBox)) {
+              if (!boxesTouchOrOverlap(proposedBox, efBox)) {
                 efMesh.geometry.dispose();
                 continue;
               }
@@ -217,7 +227,7 @@ export function createExtrudeCommitActions({ set, get }: CADSliceContext): Parti
                 const inter = GeometryEngine.csgIntersect(proposedGeomW, efGeomW);
                 const triVerts = (inter.attributes.position as THREE.BufferAttribute | undefined)?.count ?? 0;
                 inter.dispose();
-                if (triVerts > 6) {
+                if (triVerts > 6 || boxesTouchOrOverlap(proposedBox, efBox)) {
                   intersectsAny = true;
                   efGeomW.dispose();
                   break;

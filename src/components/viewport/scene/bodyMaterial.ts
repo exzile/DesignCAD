@@ -2,9 +2,9 @@ import * as THREE from 'three';
 
 /** Shared material for all CSG-evaluated bodies. Module-level singleton — never dispose. */
 export const BODY_MATERIAL = new THREE.MeshStandardMaterial({
-  color: 0x4f8fd8,
-  metalness: 0.08,
-  roughness: 0.58,
+  color: 0xf2a23a,
+  metalness: 0.02,
+  roughness: 0.68,
   side: THREE.DoubleSide,
 });
 

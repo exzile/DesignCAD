@@ -57,10 +57,11 @@ export function SketchesFolder({ componentId }: { componentId?: string }) {
 
   const visibleSketches = useMemo(
     () => sketches.filter((s) => (
+      s.id !== activeSketch?.id &&
       !s.name.startsWith('Press Pull Profile') &&
       (!componentId || s.componentId === componentId)
     )),
-    [componentId, sketches],
+    [activeSketch?.id, componentId, sketches],
   );
   const hasActiveSketch = !!activeSketch &&
     !activeSketch.name.startsWith('Press Pull Profile') &&

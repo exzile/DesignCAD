@@ -4,6 +4,15 @@ import { EXTRUDE_DEFAULTS, REVOLVE_DEFAULTS, getPlaneNormal } from '../defaults'
 import type { CADSliceContext } from '../sliceContext';
 import type { CADState } from '../state';
 
+function upsertSketch(sketches: Sketch[], sketch: Sketch): Sketch[] {
+  const index = sketches.findIndex((candidate) => candidate.id === sketch.id);
+  if (index < 0) return [...sketches, sketch];
+
+  const next = [...sketches];
+  next[index] = sketch;
+  return next;
+}
+
 export function createSketchLifecycleSlice({ set, get }: CADSliceContext) {
   const slice: Partial<CADState> = {
   activeTool: 'select',
@@ -142,9 +151,7 @@ export function createSketchLifecycleSlice({ set, get }: CADSliceContext) {
     const targetQuat = new THREE.Quaternion().setFromRotationMatrix(m);
 
     set({
-      // Pull the sketch out of the completed list and back into editing
       activeSketch: sketch,
-      sketches: sketches.filter((s) => s.id !== id),
       sketchPlaneSelecting: false,
       viewMode: 'sketch',
       activeTool: 'line',
@@ -185,7 +192,7 @@ export function createSketchLifecycleSlice({ set, get }: CADSliceContext) {
       set({
         activeSketch: null,
         sketchPlaneSelecting: false,
-        sketches: [...sketches, activeSketch],
+        sketches: upsertSketch(sketches, activeSketch),
         features: newFeatures,
         viewMode: '3d',
         activeTool: 'select',
@@ -199,7 +206,7 @@ export function createSketchLifecycleSlice({ set, get }: CADSliceContext) {
       set({
         activeSketch: null,
         sketchPlaneSelecting: false,
-        sketches: alreadyHasFeature ? [...sketches, activeSketch] : sketches,
+        sketches: alreadyHasFeature ? upsertSketch(sketches, activeSketch) : sketches,
         viewMode: '3d',
         activeTool: 'select',
         statusMessage: '',
@@ -215,7 +222,7 @@ export function createSketchLifecycleSlice({ set, get }: CADSliceContext) {
     set({
       activeSketch: null,
       sketchPlaneSelecting: false,
-      sketches: wasEditing && activeSketch ? [...sketches, activeSketch] : sketches,
+      sketches: wasEditing && activeSketch ? upsertSketch(sketches, activeSketch) : sketches,
       viewMode: '3d',
       activeTool: 'select',
       statusMessage: 'Sketch cancelled',

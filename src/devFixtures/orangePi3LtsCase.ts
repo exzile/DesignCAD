@@ -255,6 +255,53 @@ function buildOrangePi3LtsCase(
   };
 }
 
+function repairOrangePi3LtsFixtureSketches() {
+  const cadState = useCADStore.getState();
+  const componentState = useComponentStore.getState();
+  const featureSketchIds = new Set(
+    cadState.features
+      .filter((feature) => feature.type === 'sketch' && feature.sketchId?.startsWith('op3lts-'))
+      .map((feature) => feature.sketchId!),
+  );
+  if (featureSketchIds.size === 0) return false;
+
+  const components = Object.values(componentState.components);
+  const caseComponent = components.find((component) => component.name === 'Orange Pi 3 LTS case');
+  const boardComponent = components.find((component) => component.name === 'Orange Pi 3 LTS board');
+  const topComponent = components.find((component) => component.name === 'Top cover');
+  if (!caseComponent || !boardComponent || !topComponent) return false;
+
+  const expected = buildOrangePi3LtsCase(
+    { case: caseComponent.id, board: boardComponent.id, top: topComponent.id },
+    { case: '', board: '', top: '' },
+  );
+  const existingSketchIds = new Set(cadState.sketches.map((sketch) => sketch.id));
+  const missingSketches = expected.sketches.filter(
+    (sketch) => featureSketchIds.has(sketch.id) && !existingSketchIds.has(sketch.id),
+  );
+  if (missingSketches.length === 0) return false;
+
+  useCADStore.setState({
+    sketches: [...cadState.sketches, ...missingSketches],
+    statusMessage: `Restored ${missingSketches.length} missing Orange Pi fixture sketch${missingSketches.length === 1 ? '' : 'es'}`,
+  });
+  useComponentStore.setState((state) => {
+    const componentsById = { ...state.components };
+    for (const sketch of missingSketches) {
+      if (!sketch.componentId) continue;
+      const component = componentsById[sketch.componentId];
+      if (!component || component.sketchIds.includes(sketch.id)) continue;
+      componentsById[sketch.componentId] = {
+        ...component,
+        sketchIds: [...component.sketchIds, sketch.id],
+      };
+    }
+    return { components: componentsById };
+  });
+
+  return true;
+}
+
 export function loadOrangePi3LtsCaseFixture() {
   const url = new URL(window.location.href);
   if (url.searchParams.get('fixture') !== FIXTURE_PARAM) return false;
@@ -371,7 +418,9 @@ export function DevFixtureLoader() {
     const loadAfterHydration = () => {
       const cadReady = !cadPersist || cadPersist.hasHydrated();
       const componentsReady = !componentPersist || componentPersist.hasHydrated();
-      if (cadReady && componentsReady) loadOrangePi3LtsCaseFixture();
+      if (cadReady && componentsReady && !loadOrangePi3LtsCaseFixture()) {
+        repairOrangePi3LtsFixtureSketches();
+      }
     };
 
     const unsubscribers: Array<(() => void) | void> = [];

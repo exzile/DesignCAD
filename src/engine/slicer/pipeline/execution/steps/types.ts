@@ -163,7 +163,7 @@ export interface SliceRun {
   emitter: GCodeEmitter;
   relativeE: boolean;
   layerControlFlags: LayerControlFlags;
-  prevLayerMaterial: PCMultiPolygon;
+  layerMaterialCache: PCMultiPolygon[];
   previousSeamPoints: THREE.Vector2[];
   currentSeamPoints: THREE.Vector2[];
   seamMemoryLayer?: number;
@@ -192,6 +192,7 @@ export type SliceGeometryRun = Pick<
   | 'totalLayers'
   | 'solidBottom'
   | 'solidTop'
+  | 'layerMaterialCache'
   | 'bedCenterX'
   | 'bedCenterY'
 > & {
