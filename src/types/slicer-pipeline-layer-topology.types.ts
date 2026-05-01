@@ -5,24 +5,21 @@ import type { Contour } from './slicer-pipeline.types';
 export interface LayerTopologyOptions {
   contours: Contour[];
   optimizeWallOrder: boolean;
-  layerIndex: number;
   currentX: number;
   currentY: number;
   previousLayerMaterial: PCMultiPolygon;
-  /**
-   * Material polygon of the layer immediately above this one (if any).
-   * Used to compute the "top-skin region" — the part of the current layer
-   * that has empty space above it. When undefined (e.g. last layer or
-   * lookahead failed) the topology omits a top-skin region.
-   */
+  /** Material polygon of the layer ABOVE this one (li+1). When provided,
+   *  `topSkinRegion = currentLayerMaterial − nextLayerMaterial` flags
+   *  per-feature top-solid regions (e.g. tops of bosses inside a model)
+   *  for solid skin emission. Empty/undefined for the topmost layer or
+   *  when the cache isn't populated. */
   nextLayerMaterial?: PCMultiPolygon;
-  /**
-   * Full material cache for all layers. When present, top skin can be
-   * thickened across multiple future layers instead of only comparing
-   * the current layer with the immediate next layer.
-   */
-  layerMaterialCache?: PCMultiPolygon[];
-  topLayers?: number;
+  /** Minimum polygon thickness (≈ `2·area / perimeter`, mm) for a
+   *  `topSkinRegion` polygon to survive. Tessellation noise on curved
+   *  walls produces long thin slivers in `current − next`; below this
+   *  threshold we treat them as noise and drop them. Typical: 1.5 ×
+   *  the layer's nominal infill line width. */
+  topSkinSliverThickness?: number;
   isFirstLayer: boolean;
   pointInContour: (point: THREE.Vector2, contour: THREE.Vector2[]) => boolean;
   pointInRing: (x: number, y: number, ring: PCRing) => boolean;
@@ -32,15 +29,12 @@ export interface LayerTopology {
   workContours: Contour[];
   holesByOuterContour: Map<Contour, THREE.Vector2[][]>;
   currentLayerMaterial: PCMultiPolygon;
+  /** Per-feature top-skin region: parts of `currentLayerMaterial` that
+   *  do NOT have material above (`current − next`). Empty when the layer
+   *  above is unknown or completely covers this layer. Used by
+   *  `emitContourInfill.ts` to promote sub-regions of the infill to
+   *  solid skin even when the layer isn't structurally `isSolidTop`. */
+  topSkinRegion: PCMultiPolygon;
   hasBridgeRegions: boolean;
   isInBridgeRegion: (x: number, y: number) => boolean;
-  /**
-   * 2D regions of this layer where the next layer up has nothing —
-   * i.e. visible top surfaces. `emitContourInfill` treats these as solid
-   * skin even when the layer isn't a globally-flagged "top" layer. Empty
-   * for the last layer (no lookahead) and for layers whose next-layer
-   * material fully covers this layer (no top surface here).
-   */
-  topSkinRegion: PCMultiPolygon;
-  hasTopSkinRegion: boolean;
 }

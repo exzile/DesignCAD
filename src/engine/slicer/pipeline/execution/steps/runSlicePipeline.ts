@@ -4,10 +4,10 @@ import { finalizeGCodeStats, appendEndGCode } from '../../../gcode/footer';
 import { applyPostProcessingScripts } from '../../../gcode/postProcessing';
 import { prepareSliceRun, type ModifierMeshInput } from './prepareSliceRun';
 import { emitLayerStartState, prepareLayerGeometryState, prepareLayerState } from './prepareLayerState';
+import { buildLayerMaterialFromContours } from '../layerTopology';
 import { emitGroupedAndContourWalls } from './emitGroupedAndContourWalls';
 import { emitContourInfill } from './emitContourInfill';
 import { finalizeLayer } from './finalizeLayer';
-import { buildHoleMap, buildLayerMaterial } from '../layerTopology';
 import { loadArachneModule, setArachneStatsLayer } from '../../arachne';
 import { freshWorkerUrl } from '../../../../../workers/freshWorkerUrl';
 import type {
@@ -99,7 +99,6 @@ const TIMING_LABELS: Record<string, string> = {
   'prepare-run': 'Prepare geometry',
   'clipper-warmup': 'Clipper2 warmup',
   'arachne-warmup': 'Arachne warmup',
-  'material-cache': 'Material cache',
   'worker-layer-prep': 'Parallel layer prep',
   'prepare-layer': 'Slice contours',
   'emit-layer-start': 'Layer setup',
@@ -197,7 +196,6 @@ export function serializeGeometryRun(run: SliceRun, layerIndices?: readonly numb
     totalLayers: run.totalLayers,
     solidBottom: run.solidBottom,
     solidTop: run.solidTop,
-    layerMaterialCache: [],  // workers don't need the cache; save serialization cost
     bedCenterX: run.bedCenterX,
     bedCenterY: run.bedCenterY,
   };
@@ -389,22 +387,6 @@ function startLayerPrepWorkerPool(
   };
 }
 
-function buildMaterialCacheEntry(
-  pipeline: unknown,
-  geometryState: SliceLayerGeometryState,
-): SliceRun['layerMaterialCache'][number] {
-  const slicer = pipeline as SlicerExecutionPipeline;
-  const holeMap = buildHoleMap(
-    geometryState.contours,
-    geometryState.contours,
-    (point: THREE.Vector2, contour: THREE.Vector2[]) => slicer.pointInContour(point, contour),
-  );
-  return buildLayerMaterial(
-    geometryState.contours.filter((contour) => contour.isOuter),
-    holeMap,
-  );
-}
-
 export async function runSlicePipeline(
   pipeline: unknown,
   geometries: { geometry: THREE.BufferGeometry; transform: THREE.Matrix4 }[],
@@ -446,24 +428,6 @@ export async function runSlicePipeline(
       addTiming('arachne-warmup', nowMs() - timingStartMs);
     }
   }
-
-  const progressStride = layerProgressReportStride(run.totalLayers);
-  timingStartMs = nowMs();
-  run.layerMaterialCache = new Array(run.totalLayers);
-  for (let li = 0; li < run.totalLayers; li++) {
-    if (slicer.cancelled) throw new Error('Slicing cancelled by user.');
-    if (li === 0 || li === run.totalLayers - 1 || li % progressStride === 0) {
-      slicer.reportProgress('slicing', (li / run.totalLayers) * 30, li, run.totalLayers, `Caching material ${li + 1}/${run.totalLayers}...`);
-    }
-    const geometryState = await prepareLayerGeometryState(pipeline, run, li, {
-      reportProgress: false,
-      yieldToUI: false,
-    });
-    run.layerMaterialCache[li] = geometryState ? buildMaterialCacheEntry(pipeline, geometryState) : [];
-    if (li % progressStride === 0) await slicer.yieldToUI();
-  }
-  addTiming('material-cache', nowMs() - timingStartMs);
-
   let layerPrepPool: LayerPrepPool | null = null;
   let layerPrepWorkerCount = 0;
   let layerPrepPoolStartMs = 0;
@@ -475,7 +439,53 @@ export async function runSlicePipeline(
     void layerPrepPool.done.catch(() => {});
   }
 
+  const progressStride = layerProgressReportStride(run.totalLayers);
   let previousLayerMs = Infinity;
+
+  // ============================================================
+  // Per-feature top-skin pre-pass.
+  //
+  // Build `run.layerMaterialCache[li] = layer-material multipolygon`
+  // for every layer BEFORE the emit loop runs. The emit loop then
+  // looks up `cache[li + 1]` to flag per-feature top-skin regions
+  // (boss tops, mid-model feature caps) — Cura/OrcaSlicer's
+  // `top_surfaces = current_material − next_material` behaviour.
+  //
+  // We piggy-back on whatever path the pool-or-fallback uses to
+  // get layer geometry; the pool returns pre-resolved promises so
+  // calling `getLayer(li)` in the pre-pass is essentially free —
+  // results are reused by the emit loop below.
+  // ============================================================
+  timingStartMs = nowMs();
+  const cacheBuildErrors: number[] = [];
+  for (let li = 0; li < run.totalLayers; li++) {
+    if (slicer.cancelled) throw new Error('Slicing cancelled by user.');
+    let geometryState: SliceLayerGeometryState | null = null;
+    try {
+      geometryState = layerPrepPool
+        ? await layerPrepPool.getLayer(li)
+        : await prepareLayerGeometryState(pipeline, run, li, { reportProgress: false, yieldToUI: false });
+    } catch (err) {
+      cacheBuildErrors.push(li);
+      if (slicer.cancelled) throw err;
+      // Non-fatal: leave cache[li] as undefined; topology will fall
+      // back to the no-next-layer behaviour for this slot.
+      continue;
+    }
+    if (!geometryState) continue;
+    try {
+      run.layerMaterialCache[li] = buildLayerMaterialFromContours(
+        geometryState.contours,
+        (point, contour) => slicer.pointInContour(point, contour),
+      );
+    } catch {
+      cacheBuildErrors.push(li);
+    }
+  }
+  addTiming('top-skin-prepass', nowMs() - timingStartMs);
+  if (cacheBuildErrors.length > 0) {
+    console.warn(`top-skin pre-pass: ${cacheBuildErrors.length} layer(s) skipped`);
+  }
 
   for (let li = 0; li < run.totalLayers; li++) {
     // Per-layer cancellation responsiveness:
@@ -498,7 +508,7 @@ export async function runSlicePipeline(
     if (slicer.cancelled) throw new Error('Slicing cancelled by user.');
     const layerStartMs = typeof performance !== 'undefined' ? performance.now() : Date.now();
     if (li === 0 || li === run.totalLayers - 1 || li % progressStride === 0) {
-      slicer.reportProgress('slicing', 30 + (li / run.totalLayers) * 50, li, run.totalLayers, `Emitting layer ${li + 1}/${run.totalLayers}...`);
+      slicer.reportProgress('slicing', (li / run.totalLayers) * 80, li, run.totalLayers, `Emitting layer ${li + 1}/${run.totalLayers}...`);
     }
     setArachneStatsLayer(li);
     let layer: SliceLayerState | null;

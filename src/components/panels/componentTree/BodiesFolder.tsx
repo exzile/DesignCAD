@@ -2,7 +2,6 @@ import { useState } from 'react';
 import { ChevronRight, ChevronDown, Eye, EyeOff, FolderOpen } from 'lucide-react';
 import { useComponentStore } from '../../../store/componentStore';
 import { BodyNode } from './BodyNode';
-import { isComponentVisible } from '../../viewport/scene/componentVisibility';
 
 /**
  * Collapsible "Bodies" folder in the component tree — mirrors SketchesFolder.
@@ -10,20 +9,16 @@ import { isComponentVisible } from '../../viewport/scene/componentVisibility';
  */
 export function BodiesFolder({ componentId }: { componentId?: string }) {
   const bodies = useComponentStore((s) => s.bodies);
-  const components = useComponentStore((s) => s.components);
-  const component = useComponentStore((s) => (componentId ? s.components[componentId] : undefined));
   const toggleVis = useComponentStore((s) => s.toggleBodyVisibility);
   const [expanded, setExpanded] = useState(true);
 
-  const bodyIds = componentId ? component?.bodyIds ?? [] : Object.keys(bodies);
+  const bodyIds = Object.keys(bodies).filter((id) => !componentId || bodies[id]?.componentId === componentId);
   if (bodyIds.length === 0) return null;
 
-  const componentVisible = isComponentVisible(components, componentId);
-  const allVisible = componentVisible && bodyIds.every((id) => bodies[id]?.visible !== false);
+  const allVisible = bodyIds.every((id) => bodies[id]?.visible !== false);
 
   const handleToggleAll = (e: React.MouseEvent) => {
     e.stopPropagation();
-    if (!componentVisible) return;
     // Toggle all bodies to the opposite of current "allVisible" state
     for (const id of bodyIds) {
       const body = bodies[id];
@@ -40,7 +35,7 @@ export function BodiesFolder({ componentId }: { componentId?: string }) {
         <button
           className="browser-vis-btn"
           onClick={handleToggleAll}
-          title={!componentVisible ? 'Hidden by Component' : allVisible ? 'Hide Bodies' : 'Show Bodies'}
+          title={allVisible ? 'Hide Bodies' : 'Show Bodies'}
         >
           {allVisible ? <Eye size={11} /> : <EyeOff size={11} />}
         </button>
@@ -55,7 +50,7 @@ export function BodiesFolder({ componentId }: { componentId?: string }) {
 
       {/* Body rows */}
       {expanded && bodyIds.map((id) => (
-        <BodyNode key={id} bodyId={id} inheritedVisible={componentVisible} />
+        <BodyNode key={id} bodyId={id} />
       ))}
     </div>
   );

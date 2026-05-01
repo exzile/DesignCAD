@@ -59,30 +59,23 @@ function multiPolygonBounds(material: PCMultiPolygon): { minX: number; minY: num
   return { minX, minY, maxX, maxY };
 }
 
-describe('buildLayerTopology top skin thickening', () => {
-  it('unions future top-skin bands and clips them to the current layer', () => {
+describe('buildLayerTopology top skin regions', () => {
+  it('clips next-layer material from the current layer', () => {
     const layer = contour(0, 0, 10, 10);
     const topology = buildLayerTopology({
       contours: [layer],
       optimizeWallOrder: false,
-      layerIndex: 0,
       currentX: 0,
       currentY: 0,
       previousLayerMaterial: [],
       nextLayerMaterial: mp(0, 0, 8, 10),
-      layerMaterialCache: [
-        mp(0, 0, 10, 10),
-        mp(0, 0, 8, 10),
-        mp(0, 0, 6, 10),
-      ],
-      topLayers: 2,
       isFirstLayer: true,
       pointInContour: (point, points) => pointInRing(point.x, point.y, points.map((p) => [p.x, p.y] as [number, number])),
       pointInRing,
     });
 
-    expect(topology.hasTopSkinRegion).toBe(true);
+    expect(topology.topSkinRegion.length).toBeGreaterThan(0);
     expect(topology.topSkinRegion).toHaveLength(1);
-    expect(multiPolygonBounds(topology.topSkinRegion)).toEqual({ minX: 6, minY: 0, maxX: 10, maxY: 10 });
+    expect(multiPolygonBounds(topology.topSkinRegion)).toEqual({ minX: 8, minY: 0, maxX: 10, maxY: 10 });
   });
 });

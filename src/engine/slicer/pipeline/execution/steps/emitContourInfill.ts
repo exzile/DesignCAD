@@ -1,57 +1,11 @@
 import * as THREE from 'three';
 import type { MultiPolygon as PCMultiPolygon, Ring as PCRing } from 'polygon-clipping';
 import { booleanMultiPolygonClipper2Sync } from '../../../geometry/clipper2Boolean';
-import { offsetPathsClipper2Sync } from '../../../geometry/clipper2Wasm';
 import type { ContourWallData, SlicerExecutionPipeline, SliceLayerState, SliceRun } from './types';
 import type { SliceMove } from '../../../../../types/slicer';
 import { lineWidthForLayer } from './lineWidths';
 import { flipLine } from '../../infill';
 import { subdivideInfillRegionByOverrides } from '../../modifierMeshes';
-
-/**
- * Morphological opening (erode then dilate) on a multi-polygon. Eliminates
- * sliver regions narrower than ~2×delta while preserving wider regions.
- * Used to filter slicing-noise slivers out of `topSkinRegion` before
- * per-region splitting — without this, mesh tessellation of curved walls
- * (cylinders, cones) produces tiny per-Z polygon differences that the
- * multi-layer thickening union accumulates into noise that pollutes
- * top-skin detection.
- *
- * Implementation: convert PCMultiPolygon to flat Vector2[] paths, run
- * batched Clipper2 offset twice (one shrink, one grow), then union the
- * dilated rings to recover canonical PCMultiPolygon hole topology.
- * O(2 WASM calls) per layer regardless of polygon count.
- */
-function morphologicalOpen(
-  mp: PCMultiPolygon,
-  delta: number,
-  contourToRing: (contour: THREE.Vector2[]) => PCRing,
-): PCMultiPolygon {
-  if (delta <= 0 || mp.length === 0) return mp;
-  const paths: THREE.Vector2[][] = [];
-  for (const polygon of mp) {
-    for (const ring of polygon) {
-      // PCRing is closed (last == first); strip duplicate for offset input.
-      const stripLen = ring.length > 1
-        && ring[0][0] === ring[ring.length - 1][0]
-        && ring[0][1] === ring[ring.length - 1][1]
-        ? ring.length - 1
-        : ring.length;
-      if (stripLen < 3) continue;
-      const path: THREE.Vector2[] = new Array(stripLen);
-      for (let i = 0; i < stripLen; i++) path[i] = new THREE.Vector2(ring[i][0], ring[i][1]);
-      paths.push(path);
-    }
-  }
-  if (paths.length === 0) return [];
-  const eroded = offsetPathsClipper2Sync(paths, -delta, { joinType: 'miter' });
-  if (!eroded || eroded.length === 0) return [];
-  const dilated = offsetPathsClipper2Sync(eroded, delta, { joinType: 'miter' });
-  if (!dilated || dilated.length === 0) return [];
-  // Re-canonicalize via union (recovers outer/hole hierarchy from flat paths).
-  const dilatedMP: PCMultiPolygon = dilated.map((path) => [contourToRing(path)]);
-  return booleanMultiPolygonClipper2Sync(dilatedMP, [], 'union') ?? [];
-}
 
 // ARACHNE-9.4A.4: worker awaits Clipper2 load before slicing — see SlicerWorker.ts.
 function requireMP(result: PCMultiPolygon | null, op: string): PCMultiPolygon {
@@ -181,18 +135,84 @@ export function pickBridgeFanSpeed(
   return pp.bridgeFanSpeed3 ?? pp.bridgeFanSpeed2 ?? pp.bridgeFanSpeed ?? 100;
 }
 
+type InfillRegion = { contour: THREE.Vector2[]; holes: THREE.Vector2[][] };
+
+/**
+ * Split each infill region into a "solid" part (intersected with the
+ * layer's per-feature top-skin region) and a "sparse" part (the rest).
+ *
+ * Mirrors OrcaSlicer's `PrintObject::discover_vertical_shells` behaviour:
+ * regions with material above stay sparse, regions WITHOUT material above
+ * (feature tops, boss caps, mid-model surfaces) get promoted to solid skin.
+ *
+ * Returns at most two passes: `forceSolid=false` for the sparse remainder
+ * and `forceSolid=true` for the top-skin intersection. When the
+ * intersection is empty the function returns the sparse pass alone so
+ * the caller can fall through to its existing default behaviour.
+ */
+function splitInfillByTopSkin(
+  baseRegions: InfillRegion[],
+  topSkinRegion: PCMultiPolygon,
+  pipeline: SlicerExecutionPipeline,
+): Array<{ infillRegions: InfillRegion[]; forceSolid: boolean }> {
+  if (baseRegions.length === 0) return [];
+  if (topSkinRegion.length === 0) {
+    return [{ infillRegions: baseRegions, forceSolid: false }];
+  }
+  const solidRegions: InfillRegion[] = [];
+  const sparseRegions: InfillRegion[] = [];
+  for (const region of baseRegions) {
+    if (region.contour.length < 3) continue;
+    const regionMP: PCMultiPolygon = [[
+      pipeline.contourToClosedPCRing(region.contour),
+      ...region.holes.map((h) => pipeline.contourToClosedPCRing(h)),
+    ]];
+    let solidMP: PCMultiPolygon = [];
+    let sparseMP: PCMultiPolygon = [];
+    try {
+      solidMP = requireMP(
+        booleanMultiPolygonClipper2Sync(regionMP, topSkinRegion, 'intersection'),
+        'topSkinIntersect',
+      );
+      sparseMP = requireMP(
+        booleanMultiPolygonClipper2Sync(regionMP, topSkinRegion, 'difference'),
+        'topSkinDifference',
+      );
+    } catch {
+      // On Clipper failure, fall back to treating the whole region as
+      // sparse — safer than emitting double extrusion.
+      sparseRegions.push(region);
+      continue;
+    }
+    for (const poly of solidMP) {
+      if (poly.length === 0 || poly[0].length < 3) continue;
+      const outer = poly[0].slice(0, -1).map(([x, y]) => new THREE.Vector2(x, y));
+      const polyHoles = poly.slice(1)
+        .filter((h) => h.length >= 3)
+        .map((h) => h.slice(0, -1).map(([x, y]) => new THREE.Vector2(x, y)));
+      if (outer.length >= 3) solidRegions.push({ contour: outer, holes: polyHoles });
+    }
+    for (const poly of sparseMP) {
+      if (poly.length === 0 || poly[0].length < 3) continue;
+      const outer = poly[0].slice(0, -1).map(([x, y]) => new THREE.Vector2(x, y));
+      const polyHoles = poly.slice(1)
+        .filter((h) => h.length >= 3)
+        .map((h) => h.slice(0, -1).map(([x, y]) => new THREE.Vector2(x, y)));
+      if (outer.length >= 3) sparseRegions.push({ contour: outer, holes: polyHoles });
+    }
+  }
+  const passes: Array<{ infillRegions: InfillRegion[]; forceSolid: boolean }> = [];
+  if (sparseRegions.length > 0) passes.push({ infillRegions: sparseRegions, forceSolid: false });
+  if (solidRegions.length > 0) passes.push({ infillRegions: solidRegions, forceSolid: true });
+  return passes;
+}
+
 type InfillMoveType = Extract<SliceMove['type'], 'infill' | 'top-bottom' | 'bridge'>;
 type InfillLineSegment = {
   from: THREE.Vector2;
   to: THREE.Vector2;
   boundaryContour?: THREE.Vector2[];
   boundaryHoles?: THREE.Vector2[][];
-  // Suppress contour-walk anchor extrusions between/after this scanline.
-  // Anchor paths add short extrusion stubs along the skin boundary to
-  // bond scanline ends to the wall. On wide skin regions they're invisible
-  // (covered by neighboring scanlines) but on narrow rings/discs (cone
-  // tops, thin annular bands) they emerge as visible dotted artifacts.
-  suppressAnchor?: boolean;
 };
 type RingProjection = { ring: THREE.Vector2[]; seg: number; t: number; point: THREE.Vector2; distSq: number };
 type SolidSkinOrderOptions = {
@@ -428,14 +448,29 @@ function attachSkinBoundary(
   lines: InfillLineSegment[],
   contour: THREE.Vector2[],
   holes: THREE.Vector2[][],
-  suppressAnchor = false,
+  minLength = 0,
 ): InfillLineSegment[] {
-  return lines.map((line) => ({
-    ...line,
-    boundaryContour: contour,
-    boundaryHoles: holes,
-    suppressAnchor,
-  }));
+  // Filter scanlines shorter than `minLength`. Scanlines clipped at a
+  // curved contour boundary can come out shorter than a single bead
+  // width — the renderer then draws each one as a hemisphere-cap blob,
+  // which reads as scattered "dots" in the preview (and prints as
+  // visible blob in real life). Cura/Orca's skin pipeline drops these
+  // via stitching + min-skin-width expansion; we approximate the same
+  // outcome with a direct length filter.
+  const out: InfillLineSegment[] = [];
+  for (const line of lines) {
+    if (minLength > 0) {
+      const dx = line.to.x - line.from.x;
+      const dy = line.to.y - line.from.y;
+      if (dx * dx + dy * dy < minLength * minLength) continue;
+    }
+    out.push({
+      ...line,
+      boundaryContour: contour,
+      boundaryHoles: holes,
+    });
+  }
+  return out;
 }
 
 function ringPathForward(from: RingProjection, to: RingProjection): THREE.Vector2[] {
@@ -589,16 +624,7 @@ export function emitContourInfill(
 ): void {
   const slicer = pipeline as SlicerExecutionPipeline;
   const { pp, mat, triangles, offsetX, offsetY, emitter, gcode } = run;
-  const { li, layerH, isFirstLayer, isSolidBottom, isSolidTop, isTopSurfaceLayer, infillSpeed, topBottomSpeed, hasBridgeRegions, isInBridgeRegion, moves } = layer;
-  // Per-region top-skin splitting. The material cache pre-pass now
-  // produces consistent fully-transformed materials for every layer, so
-  // the topSkinRegion boolean difference is accurate. Each infill region
-  // is split into a solid-skin part (overlapping topSkinRegion) and a
-  // sparse-infill part (the rest). Falls back to layer-wide promotion
-  // when the cache isn't available (parallel-worker safety net).
-  const canSplitPerRegion = !layer.isSolid && layer.hasTopSkinRegion
-    && run.layerMaterialCache.length > 0 && layer.topSkinRegion.length > 0;
-  const layerIsSolid = layer.isSolid || (layer.hasTopSkinRegion && !canSplitPerRegion);
+  const { li, layerH, isFirstLayer, isSolid: layerIsSolid, isSolidBottom, isSolidTop, isTopSurfaceLayer, infillSpeed, topBottomSpeed, hasBridgeRegions, isInBridgeRegion, moves, topSkinRegion } = layer;
 
   // Spiralize / vase mode: keep solid bottom skin (the "base") for the first
   // `bottomLayers` layers so the part has a flat floor, then suppress all
@@ -614,83 +640,21 @@ export function emitContourInfill(
     const layerWallLineWidth = lineWidthForLayer(pp.wallLineWidth, pp, isFirstLayer);
     const adaptiveOuterFilled = outerWallCount === 1 && representativeLineWidth(wallLineWidths[0], layerWallLineWidth) > layerWallLineWidth + 1e-6;
     const innermostWall = adaptiveOuterFilled ? [] : outerWallCount > 0 ? wallSets[outerWallCount - 1] : contour.points;
-    const infillRegions = adaptiveOuterFilled ? [] : (exWalls.infillRegions.length > 0 ? exWalls.infillRegions : (innermostWall.length >= 3 ? [{ contour: innermostWall, holes: infillHoles }] : []));
-    if (infillRegions.length === 0) continue;
+    const baseInfillRegions = adaptiveOuterFilled ? [] : (exWalls.infillRegions.length > 0 ? exWalls.infillRegions : (innermostWall.length >= 3 ? [{ contour: innermostWall, holes: infillHoles }] : []));
+    if (baseInfillRegions.length === 0) continue;
+    // When the layer isn't structurally solid but has a per-feature
+    // top-skin region (regions of THIS layer with no material above),
+    // split each infill region into a solid pass (intersected with the
+    // top-skin) and a sparse pass (the remainder). Each pass runs the
+    // full emit body below with its own `isSolid` and `infillRegions`.
+    const passes = (!layerIsSolid && topSkinRegion && topSkinRegion.length > 0)
+      ? splitInfillByTopSkin(baseInfillRegions, topSkinRegion, slicer)
+      : [{ infillRegions: baseInfillRegions, forceSolid: false }];
 
-    // Per-region splitting: when the cache is populated, split each infill
-    // region into solid-skin parts (overlapping topSkinRegion) and sparse
-    // parts (the rest). Each set is emitted with its own settings.
-    type FillPass = { regions: Array<{ contour: THREE.Vector2[]; holes: THREE.Vector2[][] }>; isSolid: boolean };
-    const fillPasses: FillPass[] = [];
-    if (canSplitPerRegion) {
-      const solidRegions: FillPass['regions'] = [];
-      const sparseRegions: FillPass['regions'] = [];
-      // Apply morphological opening on topSkinRegion ONCE per layer to
-      // eliminate noise slivers from mesh tessellation (curved surfaces
-      // produce slight per-Z polygon differences that the multi-layer
-      // thickening union accumulates). Opening with delta = 0.6 × line
-      // width removes anything narrower than ~1.2 line widths.
-      const lineWidthForFilter = lineWidthForLayer(
-        isTopSurfaceLayer
-          ? (pp.topSurfaceSkinLineWidth ?? pp.topBottomLineWidth ?? pp.infillLineWidth)
-          : (pp.topBottomLineWidth ?? pp.infillLineWidth),
-        pp,
-        isFirstLayer,
-      );
-      // Opening delta tuned for tapered/curved outer surfaces. For a 1° cone
-      // with topLayers=4, the natural top-skin band along the taper is
-      // ~1.4mm wide. We filter any band narrower than 2×openingDelta. At
-      // 1.5×lineWidth (0.6mm), bands under 1.2mm get filtered (handles
-      // tessellation noise). Tapered surfaces produce wider legitimate bands
-      // that still pass — visible scanline-end protrusions are an artifact
-      // of skin emission in narrow rings, so we filter those too even though
-      // the underlying region is geometrically valid.
-      const openingDelta = lineWidthForFilter * 1.5;
-      const openedTopSkin = morphologicalOpen(
-        layer.topSkinRegion,
-        openingDelta,
-        (c) => slicer.contourToClosedPCRing(c),
-      );
-      // If opening collapsed everything, no genuine top-skin remains —
-      // emit the whole layer as sparse.
-      if (openedTopSkin.length === 0) {
-        fillPasses.push({ regions: infillRegions, isSolid: false });
-      } else {
-        for (const region of infillRegions) {
-          try {
-            const regionMP: PCMultiPolygon = [[
-              slicer.contourToClosedPCRing(region.contour),
-              ...region.holes.map((h) => slicer.contourToClosedPCRing(h)),
-            ]];
-            const solidMP = intersectMultiPolygon(regionMP, openedTopSkin);
-            const sparseMP = differenceMultiPolygon(regionMP, openedTopSkin);
-            const solidSubs = solidMP.length > 0 ? slicer.multiPolygonToRegions(solidMP) : [];
-            const sparseSubs = sparseMP.length > 0 ? slicer.multiPolygonToRegions(sparseMP) : [];
-            if (solidSubs.length === 0) {
-              sparseRegions.push(region);
-              continue;
-            }
-            solidRegions.push(...solidSubs);
-            sparseRegions.push(...sparseSubs);
-          } catch {
-            // Boolean op failed — treat entire region as sparse (safe fallback)
-            sparseRegions.push(region);
-          }
-        }
-        if (solidRegions.length > 0) fillPasses.push({ regions: solidRegions, isSolid: true });
-        if (sparseRegions.length > 0) fillPasses.push({ regions: sparseRegions, isSolid: false });
-      }
-      if (fillPasses.length === 0) continue;
-    } else {
-      fillPasses.push({ regions: infillRegions, isSolid: layerIsSolid });
-    }
-
-    for (const fillPass of fillPasses) {
-    // Shadow outer variables with pass-specific values so the existing
-    // generation + emission code works without modification.
-    const isSolid = fillPass.isSolid;
-    // eslint-disable-next-line @typescript-eslint/no-shadow
-    const infillRegions = fillPass.regions;
+    for (const pass of passes) {
+      const infillRegions = pass.infillRegions;
+      if (infillRegions.length === 0) continue;
+      const isSolid = layerIsSolid || pass.forceSolid;
 
     let infillLines: InfillLineSegment[] = [];
     let infillMoveType: InfillMoveType = 'infill';
@@ -701,12 +665,9 @@ export function emitContourInfill(
     // settings — which fall through to infillLineWidth via the normal
     // skin pipeline. When `topSurfaceSkinLayers` is 0 (default), no
     // layer is flagged as a top-surface layer.
-    // Per-region solid pass: use topBottomLineWidth for skin regions even
-    // when the layer isn't structurally isSolidTop (the region IS top skin).
-    const useTopBottomWidth = isSolidTop || (isSolid && !layer.isSolid);
     const baseLineWidth = isTopSurfaceLayer
       ? (pp.topSurfaceSkinLineWidth ?? pp.topBottomLineWidth ?? pp.infillLineWidth)
-      : useTopBottomWidth
+      : isSolidTop
         ? (pp.topBottomLineWidth ?? pp.infillLineWidth)
         : pp.infillLineWidth;
     const lineWidth = lineWidthForLayer(baseLineWidth, pp, isFirstLayer);
@@ -780,57 +741,43 @@ export function emitContourInfill(
               ? pp.bottomPatternInitialLayer
               : (pp.topBottomPattern === 'concentric' ? 'concentric' : 'lines');
         // Auto-switch 'lines' → 'concentric' for narrow skin regions on
-        // structurally-solid layers (top-solid band of a tapered cone, where
-        // the cross-section is a small disc or thin annular ring). 'lines'
-        // produces very short scanline segments in narrow regions that read
-        // as scattered dots/dashes; concentric follows the contour smoothly.
-        // Only applies to full-layer solid emission (layer.isSolid) — not to
-        // per-region split sub-regions, which can be irregular shapes that
-        // the concentric path doesn't handle robustly.
+        // structurally-solid layers. This mirrors OrcaSlicer's behaviour:
+        // FillConcentric uses repeated `offset2_ex(-d, +s/2)` (morpho
+        // closing) so loops in narrow regions terminate cleanly instead
+        // of degenerating into stub scanlines. Small boss-cap tops and
+        // thin annular bands on tapered cones both fall in this bucket.
+        // Threshold uses bbox min dimension (matches the tessellation
+        // metric Cura's `small_top_bottom_width` uses).
         let skinPattern = baseSkinPattern;
-        let regionIsNarrow = false;
         if (baseSkinPattern === 'lines' && layer.isSolid) {
-          let polyArea = Math.abs(slicer.signedArea(safeSkinInput.contour));
-          let polyPerim = 0;
-          const polyContour = safeSkinInput.contour;
-          for (let pi = 0; pi < polyContour.length; pi++) {
-            polyPerim += polyContour[pi].distanceTo(polyContour[(pi + 1) % polyContour.length]);
-          }
-          for (const hole of safeSkinInput.holes) {
-            polyArea -= Math.abs(slicer.signedArea(hole));
-            for (let pi = 0; pi < hole.length; pi++) {
-              polyPerim += hole[pi].distanceTo(hole[(pi + 1) % hole.length]);
-            }
-          }
-          // approxThickness ≈ 2·area/perim → ≈ R−r for annular, ≈ r for disc.
-          // Threshold tuned to catch cone-top annular bands (~2mm) where
-          // 'lines' produces visible scanline-end dotting. Wider skin
-          // regions (baseplate annular ~5mm+) keep their 'lines' fill.
-          const approxThickness = polyPerim > 1e-6 ? (2 * polyArea) / polyPerim : Infinity;
-          if (approxThickness < lineWidth * 8) {
-            skinPattern = 'concentric';
-            regionIsNarrow = true;
-          }
-          // For VERY narrow skin regions (thin cone-tip rings), skip skin
-          // emission entirely. Even concentric produces visible artifacts
-          // when the region is so thin only 1-2 loops fit. The walls plus
-          // upper top-solid layers still cap the model.
-          if (approxThickness < lineWidth * 3) continue;
+          const skinBBox = slicer.contourBBox(safeSkinInput.contour);
+          const minDim = Math.min(skinBBox.maxX - skinBBox.minX, skinBBox.maxY - skinBBox.minY);
+          // 8 line widths (~3.2mm at 0.4mm) — small enough to leave
+          // wide annular skin (cone walls, baseplate) on lines, large
+          // enough to catch boss caps and cone-tip discs.
+          if (minDim < lineWidth * 8) skinPattern = 'concentric';
         }
+        // Drop scanlines shorter than the bead radius (≈0.5×lineWidth).
+        // Below that they render as a single hemisphere-cap "dot" rather
+        // than a proper stadium/capsule. This kills the stub-dots that
+        // appear at the rounded ends of large annular skin bands (the
+        // layer-195 case on a tapered cone). Concentric output is a
+        // continuous loop chain and doesn't need filtering.
+        const skinMinLen = skinPattern === 'lines' ? lineWidth * 0.5 : 0;
         if (pp.topBottomLineDirections && pp.topBottomLineDirections.length > 0) {
           const angleDeg = pp.topBottomLineDirections[li % pp.topBottomLineDirections.length];
           infillLines.push(...attachSkinBoundary(
             slicer.generateScanLines(safeSkinInput.contour, 100, lineWidth, (angleDeg * Math.PI) / 180, 0, safeSkinInput.holes),
             safeSkinInput.contour,
             safeSkinInput.holes,
-            regionIsNarrow,
+            skinMinLen,
           ));
         } else {
           infillLines.push(...attachSkinBoundary(
             slicer.generateLinearInfill(safeSkinInput.contour, 100, lineWidth, li, skinPattern, safeSkinInput.holes),
             safeSkinInput.contour,
             safeSkinInput.holes,
-            regionIsNarrow,
+            skinMinLen,
           ));
         }
       }
@@ -965,31 +912,22 @@ export function emitContourInfill(
     const connectTol = isSolid
       ? solidSkinConnectorLinkLimit(lineWidth)
       : sparseInfillConnectorLinkLimit(lineWidth);
-    // Skip the parallel-scanline reorder when the lines come from concentric
-    // emission in narrow regions (`suppressAnchor` is set on those segments).
-    // The concentric generator emits segments in natural loop order; the
-    // rectilinear sort would scramble that order and trigger spurious
-    // boustrophedon connector hops between non-adjacent loop segments,
-    // which render as visible blue dots all around the perimeter.
-    const skipResort = isSolid && infillLines.length > 0 && infillLines[0].suppressAnchor === true;
-    const sorted = skipResort
-      ? infillLines
-      : isSolid
-        ? sortSolidSkinLinesForEmission(infillLines, lineWidth, { x: emitter.currentX, y: emitter.currentY }, {
-          canTransition: (from, to, previous, next) => {
-            const canUseSkinBoundary = previous.boundaryContour !== undefined
-              && previous.boundaryContour === next.boundaryContour;
-            const boundary = canUseSkinBoundary ? next.boundaryContour! : contour.points;
-            const holes = canUseSkinBoundary ? (next.boundaryHoles ?? []) : infillHoles;
-            if (connect && findSolidSkinContourConnectorPath(from, to, boundary, holes, lineWidth)) return true;
-            return connect
-              && from.distanceTo(to) < connectTol
-              && slicer.segmentInsideMaterial(from, to, boundary, holes);
-          },
-        })
-        : (pp.infillTravelOptimization ?? false)
-          ? slicer.sortInfillLinesNN(infillLines, emitter.currentX, emitter.currentY)
-          : slicer.sortInfillLines(infillLines);
+    const sorted = isSolid
+      ? sortSolidSkinLinesForEmission(infillLines, lineWidth, { x: emitter.currentX, y: emitter.currentY }, {
+        canTransition: (from, to, previous, next) => {
+          const canUseSkinBoundary = previous.boundaryContour !== undefined
+            && previous.boundaryContour === next.boundaryContour;
+          const boundary = canUseSkinBoundary ? next.boundaryContour! : contour.points;
+          const holes = canUseSkinBoundary ? (next.boundaryHoles ?? []) : infillHoles;
+          if (connect && findSolidSkinContourConnectorPath(from, to, boundary, holes, lineWidth)) return true;
+          return connect
+            && from.distanceTo(to) < connectTol
+            && slicer.segmentInsideMaterial(from, to, boundary, holes);
+        },
+      })
+      : (pp.infillTravelOptimization ?? false)
+        ? slicer.sortInfillLinesNN(infillLines, emitter.currentX, emitter.currentY)
+        : slicer.sortInfillLines(infillLines);
     const startExt = pp.infillStartMoveInwardsLength ?? 0;
     const endExt = pp.infillEndMoveInwardsLength ?? 0;
     // Cura "Bridge Skin Density" — apply to bridge lines only (not non-bridge
@@ -1087,13 +1025,17 @@ export function emitContourInfill(
       };
       if (contourPath) {
         emitContourPath(contourPath);
-      } else if (connect && idx > 0 && fromDist < connectTol && slicer.segmentInsideMaterial(connectorFrom, effFrom, connectBoundary, contourConnectHoles)) {
+      } else if (connect && idx > 0 && fromDist > lineWidth * 0.1 && fromDist < connectTol && slicer.segmentInsideMaterial(connectorFrom, effFrom, connectBoundary, contourConnectHoles)) {
         // Boustrophedon connector hop — extrude a short bead at the
         // wall instead of travelling, then push it as a move so the
         // preview tube renderer shows the continuous zigzag (Cura /
         // Orca style) and the per-move extrusion total matches
         // `emitter.totalExtruded`. Without this push, the hop's
         // extrusion vanished from the SliceMove[] stream.
+        // Skip degenerate (sub-tenth-line-width) hops — these arise
+        // between adjacent concentric segments that share a vertex, where
+        // the "hop" is 0mm. Emitting them as zero-length moves rendered
+        // as visible spheres ("blue dots") around the perimeter.
         const hopFromX = emitter.currentX, hopFromY = emitter.currentY;
         layer.layerTime += emitter.extrudeTo(effFrom.x, effFrom.y, thisSpeed, thisLineWidth, layerH).time;
         moves.push({
@@ -1105,7 +1047,7 @@ export function emitContourInfill(
           lineWidth: thisLineWidth,
         });
       } else {
-        if (connect && isSolid && idx > 0 && prevLine && !prevLine.suppressAnchor) {
+        if (connect && isSolid && idx > 0 && prevLine) {
           const prevDx = prevLine.to.x - prevLine.from.x;
           const prevDy = prevLine.to.y - prevLine.from.y;
           const anchorPath = findSolidSkinContourAnchorPath(
@@ -1126,7 +1068,7 @@ export function emitContourInfill(
       layer.layerTime += emitter.extrudeTo(effTo.x, effTo.y, thisSpeed, thisLineWidth, layerH).time;
       moves.push({ type: thisMoveType, from: { x: effFrom.x, y: effFrom.y }, to: { x: effTo.x, y: effTo.y }, speed: thisSpeed, extrusion: emitter.calculateExtrusion(effFrom.distanceTo(effTo), thisLineWidth, layerH), lineWidth: thisLineWidth });
       emitter.currentLayerFlow = flowSaved;
-      if (connect && isSolid && idx === sorted.length - 1 && !line.suppressAnchor) {
+      if (connect && isSolid && idx === sorted.length - 1) {
         const finalAnchorPath = findSolidSkinContourAnchorPath(
           effTo,
           new THREE.Vector2(effTo.x - effFrom.x, effTo.y - effFrom.y),
@@ -1143,6 +1085,6 @@ export function emitContourInfill(
         emitter.currentX = wx; emitter.currentY = wy;
       }
     }
-    } // end fillPass loop
+    } // end pass loop (per-feature top-skin split)
   }
 }

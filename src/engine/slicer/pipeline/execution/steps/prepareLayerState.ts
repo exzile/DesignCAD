@@ -382,18 +382,8 @@ export function emitLayerStartState(
     const adhesionMoves = slicer.generateAdhesion(contours, pp, layerH, run.offsetX, run.offsetY);
     for (const am of adhesionMoves) {
       emitter.travelTo(am.from.x, am.from.y, moves);
-      const segLayerH = am.layerHeight ?? layerH;
-      layerTime += emitter.extrudeTo(am.to.x, am.to.y, am.speed, am.lineWidth, segLayerH).time;
-      // `generateAdhesion` produces SliceMoves with `extrusion: 0` because
-      // the planner has no Emitter; fill in the real value here so the
-      // SliceMove matches the gcode the emitter just wrote. The renderer
-      // filters on `extrusion > 0`, so without this skirt/brim/raft moves
-      // are silently dropped from the preview even though the printer
-      // would lay them down. (Verified 2026-04-30 against gcode parsing
-      // — Layer 0 was missing 123 skirt extrusions until this fix.)
-      const dist = Math.hypot(am.to.x - am.from.x, am.to.y - am.from.y);
-      const realExtrusion = emitter.calculateExtrusion(dist, am.lineWidth, segLayerH);
-      moves.push({ ...am, extrusion: realExtrusion });
+      layerTime += emitter.extrudeTo(am.to.x, am.to.y, am.speed, am.lineWidth, am.layerHeight ?? layerH).time;
+      moves.push(am);
     }
   }
 
@@ -423,19 +413,23 @@ export function emitLayerStartState(
     }
   }
 
-  const previousLayerMaterial = run.layerMaterialCache[li - 1] ?? [];
-  const nextLayerMaterial = run.layerMaterialCache[li + 1];
-
   const topology = buildLayerTopology({
     contours,
     optimizeWallOrder: pp.optimizeWallOrder ?? false,
-    layerIndex: li,
     currentX: emitter.currentX,
     currentY: emitter.currentY,
-    previousLayerMaterial,
-    nextLayerMaterial,
-    layerMaterialCache: run.layerMaterialCache,
-    topLayers: pp.topLayers,
+    previousLayerMaterial: run.prevLayerMaterial,
+    // Lookup the next layer's material from the cache populated by the
+    // pre-pass in `runSlicePipeline.ts`. Empty for the topmost layer or
+    // when the cache isn't populated (worker contexts, fallback paths).
+    nextLayerMaterial: run.layerMaterialCache[geometryState.li + 1],
+    // Filter out tessellation-noise slivers from `topSkinRegion`. Curved
+    // walls (cones, spheres) produce thin shaving-like differences along
+    // the wall in `current − next` even when no real feature-top exists
+    // there; without this filter those slivers become spurious solid-skin
+    // bumps on the wall. Threshold = 1.5 × nominal infill line width
+    // (matches the same metric used elsewhere in the skin pipeline).
+    topSkinSliverThickness: pp.infillLineWidth * 1.5,
     isFirstLayer,
     pointInContour: (point: THREE.Vector2, contour: THREE.Vector2[]) => slicer.pointInContour(point, contour),
     pointInRing: (x: number, y: number, ring: PCRing) => slicer.pointInRing(x, y, ring),

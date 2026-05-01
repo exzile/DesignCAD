@@ -1,25 +1,16 @@
 import { useCallback, useEffect, useMemo, useRef } from 'react';
 import { useFrame } from '@react-three/fiber';
 import * as THREE from 'three';
-import { useCADStore } from '../../../store/cadStore';
-import { useComponentStore } from '../../../store/componentStore';
-import { GeometryEngine } from '../../../engine/GeometryEngine';
-import type { Feature, Sketch } from '../../../types/cad';
-import { BODY_MATERIAL, SURFACE_MATERIAL, DIM_MATERIAL } from './bodyMaterial';
-import { isComponentVisible } from './componentVisibility';
 
 // Module-level scratch objects — avoids per-feature heap allocations in the CSG loop.
 const _boxCurrent = new THREE.Box3();
 const _boxTool = new THREE.Box3();
-const JOIN_CONTACT_EPSILON = 1e-3;
-
-function boxesTouchOrOverlap(a: THREE.Box3, b: THREE.Box3, eps = JOIN_CONTACT_EPSILON): boolean {
-  return (
-    a.max.x + eps >= b.min.x && b.max.x + eps >= a.min.x &&
-    a.max.y + eps >= b.min.y && b.max.y + eps >= a.min.y &&
-    a.max.z + eps >= b.min.z && b.max.z + eps >= a.min.z
-  );
-}
+import { useCADStore } from '../../../store/cadStore';
+import { useComponentStore } from '../../../store/componentStore';
+import { GeometryEngine } from '../../../engine/GeometryEngine';
+import type { Feature, Sketch } from '../../../types/cad';
+import { boxesHaveJoinableContact } from '../../../utils/geometry/boundsContact';
+import { BODY_MATERIAL, SURFACE_MATERIAL, DIM_MATERIAL } from './bodyMaterial';
 
 /**
  * Wraps a single body mesh and pulses an emissive highlight when its bodyId
@@ -184,12 +175,11 @@ export default function ExtrudedBodies() {
   const rollbackIndex = useCADStore((s) => s.rollbackIndex);
   const activeComponentId = useComponentStore((s) => s.activeComponentId);
   const rootComponentId = useComponentStore((s) => s.rootComponentId);
-  const components = useComponentStore((s) => s.components);
 
   const bodiesById = useComponentStore((s) => s.bodies);
 
   // When a non-root component is active, dim features that belong to other components.
-  const editingInPlace = !!activeComponentId && activeComponentId !== rootComponentId && !!components[activeComponentId];
+  const editingInPlace = !!activeComponentId && activeComponentId !== rootComponentId;
 
   // Per-body cloned MeshStandardMaterial cache. Cloned materials are disposed
   // when the appearance changes or the component unmounts. Singletons
@@ -217,25 +207,20 @@ export default function ExtrudedBodies() {
 
   const getMaterial = useCallback(
     (featureComponentId: string | undefined, bodyId: string | undefined, isSurface = false): THREE.Material => {
+      const effectiveComponentId = featureComponentId ?? (bodyId ? bodiesById[bodyId]?.componentId : undefined);
+      if (editingInPlace && effectiveComponentId !== activeComponentId) return DIM_MATERIAL;
       const fallback: THREE.Material = isSurface ? SURFACE_MATERIAL : BODY_MATERIAL;
-      const body = bodyId ? bodiesById[bodyId] : undefined;
-      const ownerComponentId = body?.componentId ?? featureComponentId;
-      if (editingInPlace && ownerComponentId && ownerComponentId !== activeComponentId) return DIM_MATERIAL;
       if (!bodyId) return fallback;
+      const body = bodiesById[bodyId];
       if (!body || !body.material) return fallback;
       const m = body.material;
       // CTX-7: per-body display opacity (independent of material.opacity)
       const displayOpacity = body.opacity ?? 1;
-      // Skip override when body uses a built-in default + no display opacity override.
+      // Skip override when body uses default aluminum + no display opacity override.
       // Color compared case-insensitively so picker output (#b0b8c0) matches the
       // canonical default (#B0B8C0) — otherwise we'd needlessly clone a fresh
       // MeshStandardMaterial for every default-aluminum body just on a case mismatch.
-      const materialColor = m.color.toLowerCase();
-      const isBuiltInDefault =
-        (m.id === 'aluminum' && materialColor === '#b0b8c0') ||
-        (m.id === 'default-blue' && materialColor === '#4f8fd8') ||
-        (m.id === 'warm-plastic' && materialColor === '#f2a23a');
-      if (isBuiltInDefault && m.opacity === 1 && displayOpacity === 1) return fallback;
+      if (m.id === 'aluminum' && m.color.toLowerCase() === '#b0b8c0' && m.opacity === 1 && displayOpacity === 1) return fallback;
       const finalOpacity = m.opacity * displayOpacity;
       const key = `${m.color}|${m.metalness}|${m.roughness}|${m.opacity}|${displayOpacity}`;
       const cached = materialCache.current.get(bodyId);
@@ -270,44 +255,15 @@ export default function ExtrudedBodies() {
     const distance2 = (feature.params.distance2 as number) || distance;
     const direction = ((feature.params.direction as 'positive' | 'negative' | 'symmetric' | 'two-sides') ?? 'positive');
     const profileIndex = feature.params.profileIndex as number | undefined;
-    const profileIndices = feature.params.profileIndices as number[] | undefined;
     const taperAngle = (feature.params.taperAngle as number) ?? 0;
     const startOffset = (feature.params.startType as string) === 'offset'
       ? ((feature.params.startOffset as number) ?? 0)
       : 0;
-    const taperAngle2 = (feature.params.taperAngle2 as number) ?? taperAngle;
-    if (profileIndices && profileIndices.length > 1) {
-      let merged: THREE.BufferGeometry | null = null;
-      for (const index of profileIndices) {
-        const profileSketch = GeometryEngine.createProfileSketch(sketch, index);
-        if (!profileSketch) continue;
-        const mesh = GeometryEngine.buildExtrudeFeatureMesh(
-          profileSketch,
-          distance,
-          direction,
-          taperAngle,
-          startOffset,
-          distance2,
-          taperAngle2,
-        );
-        if (!mesh) continue;
-        const geom = GeometryEngine.bakeMeshWorldGeometry(mesh);
-        mesh.geometry.dispose();
-        if (!merged) {
-          merged = geom;
-        } else {
-          const next = GeometryEngine.csgUnion(merged, geom);
-          merged.dispose();
-          geom.dispose();
-          merged = next;
-        }
-      }
-      return merged ? new THREE.Mesh(merged) : null;
-    }
     const sketchForOp = profileIndex !== undefined
       ? GeometryEngine.createProfileSketch(sketch, profileIndex)
       : sketch;
     if (!sketchForOp) return null;
+    const taperAngle2 = (feature.params.taperAngle2 as number) ?? taperAngle;
     return GeometryEngine.buildExtrudeFeatureMesh(sketchForOp, distance, direction, taperAngle, startOffset, distance2, taperAngle2);
   };
 
@@ -394,7 +350,7 @@ export default function ExtrudedBodies() {
         commitCurrent();
         currentGeom = toolGeom;
         currentFeatureId = feature.id;
-        currentComponentId = feature.componentId;
+        currentComponentId = feature.componentId ?? (feature.bodyId ? bodiesById[feature.bodyId]?.componentId : undefined);
         currentBodyId = feature.bodyId;
         currentExtraBodyIds = (feature.params.extraBodyIds as string[] | undefined) ?? [];
         continue;
@@ -416,15 +372,15 @@ export default function ExtrudedBodies() {
         currentFeatureId = feature.id;
       } else if (op === 'join') {
         // Fusion 360 parity: only merge bodies that actually overlap.
-        // If the join geometry doesn't intersect the current body (e.g. an
-        // offset extrusion floating in space), start a new separate body.
+        // If the join geometry doesn't contact the current body through volume
+        // or a shared face, start a new separate body.
         _boxCurrent.setFromBufferAttribute(currentGeom.attributes.position as THREE.BufferAttribute);
         _boxTool.setFromBufferAttribute(toolGeom.attributes.position as THREE.BufferAttribute);
-        if (!boxesTouchOrOverlap(_boxCurrent, _boxTool)) {
+        if (!boxesHaveJoinableContact(_boxCurrent, _boxTool)) {
           commitCurrent();
           currentGeom = toolGeom;
           currentFeatureId = feature.id;
-          currentComponentId = feature.componentId;
+          currentComponentId = feature.componentId ?? (feature.bodyId ? bodiesById[feature.bodyId]?.componentId : undefined);
           currentBodyId = feature.bodyId;
           currentExtraBodyIds = (feature.params.extraBodyIds as string[] | undefined) ?? [];
         } else {
@@ -445,7 +401,7 @@ export default function ExtrudedBodies() {
   // (renaming a measurement sketch, drawing in a non-extrude sketch, etc.)
   // leave this stable and do not rebuild every body.
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [features, relevantSketchesSig, rollbackIndex]);
+  }, [features, relevantSketchesSig, rollbackIndex, bodiesById]);
 
   useEffect(() => {
     return () => {
@@ -456,11 +412,7 @@ export default function ExtrudedBodies() {
   // Apply dim / appearance materials on pre-built stored meshes in an effect,
   // never in render, so cleanup is guaranteed when Edit In Place exits.
   useEffect(() => {
-    const storedMeshFeatures = features.filter((f) => {
-      if (!isActive(f) || !f.mesh) return false;
-      const ownerComponentId = f.bodyId ? bodiesById[f.bodyId]?.componentId : undefined;
-      return isComponentVisible(components, ownerComponentId ?? f.componentId);
-    });
+    const storedMeshFeatures = features.filter((f) => isActive(f) && f.mesh);
     storedMeshFeatures.forEach((feature) => {
       const mesh = feature.mesh!;
       const isSurface = feature.bodyKind === 'surface';
@@ -468,18 +420,14 @@ export default function ExtrudedBodies() {
       mesh.material = getMaterial(feature.componentId, feature.bodyId, isSurface);
     });
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [features, editingInPlace, activeComponentId, rollbackIndex, bodiesById, components, getMaterial]);
+  }, [features, editingInPlace, activeComponentId, rollbackIndex, bodiesById, getMaterial]);
 
   return (
     <>
       {bodies.map((geom, i) => {
         const fId = featureIds[i];
         const bodyId = featureBodyIds[i];
-        const body = bodyId ? bodiesById[bodyId] : undefined;
-        const ownerComponentId = body?.componentId ?? featureComponentIds[i];
-        if (!isComponentVisible(components, ownerComponentId)) return null;
-        if (bodyId && body?.visible === false) return null;
-        const bodySelectable = bodyId ? (body?.selectable !== false) : true;
+        const bodySelectable = bodyId ? (bodiesById[bodyId]?.selectable !== false) : true;
         return (
           <BodyMesh
             // Always include the index — when a feature's split produces more
@@ -496,9 +444,6 @@ export default function ExtrudedBodies() {
         );
       })}
       {features.filter((f) => f.type === 'revolve' && isActive(f)).map((feature) => {
-        const body = feature.bodyId ? bodiesById[feature.bodyId] : undefined;
-        if (!isComponentVisible(components, body?.componentId ?? feature.componentId)) return null;
-        if (feature.bodyId && body?.visible === false) return null;
         if (feature.params.faceRevolve) {
           return <RevolveItem key={feature.id} feature={feature} sketch={undefined} />;
         }
@@ -510,21 +455,14 @@ export default function ExtrudedBodies() {
           D69 Taper Extrude, D73 Rib). All these set feature.mesh at commit time.
           Material assignment is done in a useEffect below — never in render. */}
       {features.filter((f) => isActive(f) && f.mesh).map((feature) => (
-        !isComponentVisible(
-          components,
-          (feature.bodyId ? bodiesById[feature.bodyId]?.componentId : undefined) ?? feature.componentId,
-        ) || (feature.bodyId && bodiesById[feature.bodyId]?.visible === false)
-          ? null
-          : (
-            <primitive
-              key={feature.id}
-              object={feature.mesh!}
-              onUpdate={(m: THREE.Object3D) => {
-                m.userData.pickable = true;
-                m.userData.featureId = feature.id;
-              }}
-            />
-          )
+        <primitive
+          key={feature.id}
+          object={feature.mesh!}
+          onUpdate={(m: THREE.Object3D) => {
+            m.userData.pickable = true;
+            m.userData.featureId = feature.id;
+          }}
+        />
       ))}
     </>
   );

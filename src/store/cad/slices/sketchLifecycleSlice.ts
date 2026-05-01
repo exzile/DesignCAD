@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import type { Feature, Sketch } from '../../../types/cad';
 import { EXTRUDE_DEFAULTS, REVOLVE_DEFAULTS, getPlaneNormal } from '../defaults';
+import { useComponentStore } from '../../componentStore';
 import type { CADSliceContext } from '../sliceContext';
 import type { CADState } from '../state';
 
@@ -11,6 +12,29 @@ function upsertSketch(sketches: Sketch[], sketch: Sketch): Sketch[] {
   const next = [...sketches];
   next[index] = sketch;
   return next;
+}
+
+function getActiveComponentId(): string | undefined {
+  const componentStore = useComponentStore.getState();
+  return componentStore.activeComponentId ?? componentStore.rootComponentId;
+}
+
+function registerSketchWithComponent(sketch: Sketch) {
+  const componentId = sketch.componentId;
+  if (!componentId) return;
+  useComponentStore.setState((state) => {
+    const component = state.components[componentId];
+    if (!component || component.sketchIds.includes(sketch.id)) return state;
+    return {
+      components: {
+        ...state.components,
+        [componentId]: {
+          ...component,
+          sketchIds: [...component.sketchIds, sketch.id],
+        },
+      },
+    };
+  });
 }
 
 export function createSketchLifecycleSlice({ set, get }: CADSliceContext) {
@@ -41,12 +65,14 @@ export function createSketchLifecycleSlice({ set, get }: CADSliceContext) {
     statusMessage: selecting ? 'Select a plane or planar face to start sketching' : 'Ready',
   }),
   startSketch: (plane) => {
+    const componentId = getActiveComponentId();
     const sketch: Sketch = {
       id: crypto.randomUUID(),
       name: `Sketch ${get().sketches.length + 1}`,
       plane,
       planeNormal: getPlaneNormal(plane),
       planeOrigin: new THREE.Vector3(0, 0, 0),
+      componentId,
       entities: [],
       constraints: [],
       dimensions: [],
@@ -80,6 +106,7 @@ export function createSketchLifecycleSlice({ set, get }: CADSliceContext) {
     // Normalize the face normal once
     const n = normal.clone().normalize();
     const o = origin.clone();
+    const componentId = getActiveComponentId();
 
     const sketch: Sketch = {
       id: crypto.randomUUID(),
@@ -87,6 +114,7 @@ export function createSketchLifecycleSlice({ set, get }: CADSliceContext) {
       plane: 'custom',
       planeNormal: n,
       planeOrigin: o,
+      componentId,
       entities: [],
       constraints: [],
       dimensions: [],
@@ -151,7 +179,9 @@ export function createSketchLifecycleSlice({ set, get }: CADSliceContext) {
     const targetQuat = new THREE.Quaternion().setFromRotationMatrix(m);
 
     set({
+      // Pull the sketch out of the completed list and back into editing
       activeSketch: sketch,
+      sketches: sketches.filter((s) => s.id !== id),
       sketchPlaneSelecting: false,
       viewMode: 'sketch',
       activeTool: 'line',
@@ -168,31 +198,35 @@ export function createSketchLifecycleSlice({ set, get }: CADSliceContext) {
   finishSketch: () => {
     const { activeSketch, sketches, features } = get();
     if (!activeSketch) return;
+    const componentId = activeSketch.componentId ?? getActiveComponentId();
+    const finishedSketch: Sketch = { ...activeSketch, componentId };
 
-    if (activeSketch.entities.length > 0) {
+    if (finishedSketch.entities.length > 0) {
       // Only create a new Feature entry when this sketch doesn't already have one.
       // When editing an existing sketch the feature is already in the timeline.
-      const alreadyHasFeature = features.some((f) => f.sketchId === activeSketch.id);
+      const alreadyHasFeature = features.some((f) => f.sketchId === finishedSketch.id);
       const newFeatures = alreadyHasFeature
         ? features
         : [
             ...features,
             {
               id: crypto.randomUUID(),
-              name: activeSketch.name,
+              name: finishedSketch.name,
               type: 'sketch' as const,
-              sketchId: activeSketch.id,
-              params: { plane: activeSketch.plane },
+              sketchId: finishedSketch.id,
+              componentId,
+              params: { plane: finishedSketch.plane },
               visible: true,
               suppressed: false,
               timestamp: Date.now(),
             },
           ];
+      registerSketchWithComponent(finishedSketch);
 
       set({
         activeSketch: null,
         sketchPlaneSelecting: false,
-        sketches: upsertSketch(sketches, activeSketch),
+        sketches: upsertSketch(sketches, finishedSketch),
         features: newFeatures,
         viewMode: '3d',
         activeTool: 'select',
@@ -202,11 +236,11 @@ export function createSketchLifecycleSlice({ set, get }: CADSliceContext) {
     } else {
       // Empty sketch — just exit without saving to timeline.
       // If editing an existing sketch that had entities before, put it back as-is.
-      const alreadyHasFeature = features.some((f) => f.sketchId === activeSketch.id);
+      const alreadyHasFeature = features.some((f) => f.sketchId === finishedSketch.id);
       set({
         activeSketch: null,
         sketchPlaneSelecting: false,
-        sketches: alreadyHasFeature ? upsertSketch(sketches, activeSketch) : sketches,
+        sketches: alreadyHasFeature ? upsertSketch(sketches, finishedSketch) : sketches,
         viewMode: '3d',
         activeTool: 'select',
         statusMessage: '',
@@ -222,7 +256,7 @@ export function createSketchLifecycleSlice({ set, get }: CADSliceContext) {
     set({
       activeSketch: null,
       sketchPlaneSelecting: false,
-      sketches: wasEditing && activeSketch ? upsertSketch(sketches, activeSketch) : sketches,
+      sketches: wasEditing && activeSketch ? [...sketches, activeSketch] : sketches,
       viewMode: '3d',
       activeTool: 'select',
       statusMessage: 'Sketch cancelled',

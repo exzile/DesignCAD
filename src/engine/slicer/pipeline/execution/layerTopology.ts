@@ -42,7 +42,7 @@ function optimizeContourOrder(
   return [...ordered, ...holes];
 }
 
-export function buildHoleMap(
+function buildHoleMap(
   workContours: Contour[],
   allContours: Contour[],
   pointInContour: (point: THREE.Vector2, contour: THREE.Vector2[]) => boolean,
@@ -62,7 +62,20 @@ export function buildHoleMap(
   return holesByOuterContour;
 }
 
-export function buildLayerMaterial(
+export function buildLayerMaterialFromContours(
+  contours: Contour[],
+  pointInContour: (point: THREE.Vector2, contour: THREE.Vector2[]) => boolean,
+): PCMultiPolygon {
+  // Lightweight wrapper used by the `layerMaterialCache` pre-pass in
+  // `runSlicePipeline.ts`: build the layer's material polygon from a
+  // raw contour list (no walls/infill/topology needed). Mirrors what
+  // `buildLayerTopology` does internally, but skipping the contour
+  // reordering and bridge-region work.
+  const holesByOuterContour = buildHoleMap(contours, contours, pointInContour);
+  return buildLayerMaterial(contours, holesByOuterContour);
+}
+
+function buildLayerMaterial(
   workContours: Contour[],
   holesByOuterContour: Map<Contour, THREE.Vector2[][]>,
 ): PCMultiPolygon {
@@ -155,66 +168,96 @@ function buildBridgeRegionChecker(
   };
 }
 
-function differenceMaterial(subject: PCMultiPolygon, clip: PCMultiPolygon): PCMultiPolygon {
-  if (subject.length === 0) return [];
-  if (clip.length === 0) return subject;
-  const result = booleanMultiPolygonClipper2Sync(subject, clip, 'difference');
-  if (result === null) throw new Error('layerTopology: Clipper2 WASM not loaded');
-  return result;
+function ringSignedArea(ring: PCRing): number {
+  let s = 0;
+  for (let i = 0; i < ring.length - 1; i++) {
+    const [ax, ay] = ring[i];
+    const [bx, by] = ring[i + 1];
+    s += ax * by - bx * ay;
+  }
+  return s * 0.5;
 }
 
-function unionMaterial(a: PCMultiPolygon, b: PCMultiPolygon): PCMultiPolygon {
-  if (a.length === 0) return b;
-  if (b.length === 0) return a;
-  const result = booleanMultiPolygonClipper2Sync(a, b, 'union');
-  if (result === null) throw new Error('layerTopology: Clipper2 WASM not loaded');
-  return result;
+function ringPerimeter(ring: PCRing): number {
+  let p = 0;
+  for (let i = 0; i < ring.length - 1; i++) {
+    const [ax, ay] = ring[i];
+    const [bx, by] = ring[i + 1];
+    p += Math.hypot(bx - ax, by - ay);
+  }
+  return p;
 }
 
-function intersectMaterial(a: PCMultiPolygon, b: PCMultiPolygon): PCMultiPolygon {
-  if (a.length === 0 || b.length === 0) return [];
-  const result = booleanMultiPolygonClipper2Sync(a, b, 'intersection');
-  if (result === null) throw new Error('layerTopology: Clipper2 WASM not loaded');
-  return result;
+/**
+ * Drop polygons from `mp` whose `2·|area| / perimeter` (≈ minimum
+ * thickness) is below `minThickness`. Tessellation noise on curved
+ * walls produces long thin slivers in the `current − next` difference;
+ * this filter removes those without affecting genuine feature-tops
+ * (which always have non-trivial thickness in both axes).
+ */
+function filterSliversFromMultiPolygon(
+  mp: PCMultiPolygon,
+  minThickness: number,
+): PCMultiPolygon {
+  if (minThickness <= 0) return mp;
+  const out: PCMultiPolygon = [];
+  for (const poly of mp) {
+    if (poly.length === 0) continue;
+    const outerRing = poly[0];
+    if (outerRing.length < 4) continue;
+    let area = Math.abs(ringSignedArea(outerRing));
+    let perim = ringPerimeter(outerRing);
+    for (let i = 1; i < poly.length; i++) {
+      area -= Math.abs(ringSignedArea(poly[i]));
+      perim += ringPerimeter(poly[i]);
+    }
+    if (perim < 1e-9 || area < 1e-9) continue;
+    const thickness = (2 * area) / perim;
+    if (thickness >= minThickness) out.push(poly);
+  }
+  return out;
 }
 
 function buildTopSkinRegion(
   currentLayerMaterial: PCMultiPolygon,
-  layerIndex: number,
   nextLayerMaterial: PCMultiPolygon | undefined,
-  layerMaterialCache: PCMultiPolygon[] | undefined,
-  topLayers: number | undefined,
+  sliverThickness: number,
 ): PCMultiPolygon {
+  // Per-feature top-skin: regions where THIS layer has material but the
+  // layer above does NOT. These get promoted to solid skin even when the
+  // layer isn't part of the global `solidTop` band — equivalent to
+  // OrcaSlicer's `top_surfaces = current_material − next_material` in
+  // `PrintObject::discover_vertical_shells`.
+  //
+  // Tessellation noise on curved walls (cones, spheres, cylinders)
+  // produces long thin slivers along the wall in the `current − next`
+  // difference, even when the geometry has no genuine feature-top at
+  // that point. We filter those out by polygon thickness — anything
+  // below `sliverThickness` (typically ~1.5 × lineWidth) is treated as
+  // noise and dropped.
+  if (!nextLayerMaterial || nextLayerMaterial.length === 0) return [];
   if (currentLayerMaterial.length === 0) return [];
-  if (!layerMaterialCache) {
-    if (nextLayerMaterial === undefined) return [];
-    return differenceMaterial(currentLayerMaterial, nextLayerMaterial);
+  let raw: PCMultiPolygon;
+  try {
+    const result = booleanMultiPolygonClipper2Sync(
+      currentLayerMaterial, nextLayerMaterial, 'difference',
+    );
+    if (result === null) throw new Error('layerTopology: Clipper2 WASM not loaded');
+    raw = result;
+  } catch {
+    return [];
   }
-
-  const skinLayerCount = Math.max(1, Math.floor(topLayers ?? 1));
-  let topSkinRegion: PCMultiPolygon = [];
-  for (let k = 0; k < skinLayerCount; k++) {
-    const layerMaterial = layerMaterialCache[layerIndex + k];
-    if (!layerMaterial) continue;
-    const layerAboveMaterial = layerMaterialCache[layerIndex + k + 1];
-    const band = layerAboveMaterial
-      ? differenceMaterial(layerMaterial, layerAboveMaterial)
-      : layerMaterial;
-    topSkinRegion = unionMaterial(topSkinRegion, band);
-  }
-  return intersectMaterial(topSkinRegion, currentLayerMaterial);
+  return filterSliversFromMultiPolygon(raw, sliverThickness);
 }
 
 export function buildLayerTopology({
   contours,
   optimizeWallOrder,
-  layerIndex,
   currentX,
   currentY,
   previousLayerMaterial,
   nextLayerMaterial,
-  layerMaterialCache,
-  topLayers,
+  topSkinSliverThickness,
   isFirstLayer,
   pointInContour,
   pointInRing,
@@ -230,33 +273,17 @@ export function buildLayerTopology({
     isFirstLayer,
     pointInRing,
   );
-
-  // Top-skin region: the part of this layer that's a visible top surface.
-  // With multi-layer thickening (`topLayers > 1` and a material cache),
-  // `buildTopSkinRegion` unions per-transition bands across N future layers:
-  //   topSkinRegion = ∪_{k=0..topLayers-1} (cache[N+k] − cache[N+k+1])
-  // intersected with currentLayerMaterial. Without the cache, falls back
-  // to single-layer comparison: currentLayerMaterial − nextLayerMaterial.
-  let topSkinRegion: PCMultiPolygon = [];
-  try {
-    topSkinRegion = buildTopSkinRegion(
-      currentLayerMaterial,
-      layerIndex,
-      nextLayerMaterial,
-      layerMaterialCache,
-      topLayers,
-    );
-  } catch {
-    topSkinRegion = [];
-  }
-
+  const topSkinRegion = buildTopSkinRegion(
+    currentLayerMaterial,
+    nextLayerMaterial,
+    topSkinSliverThickness ?? 0,
+  );
   return {
     workContours,
     holesByOuterContour,
     currentLayerMaterial,
+    topSkinRegion,
     hasBridgeRegions: bridgeRegions.hasBridgeRegions,
     isInBridgeRegion: bridgeRegions.isInBridgeRegion,
-    topSkinRegion,
-    hasTopSkinRegion: topSkinRegion.length > 0,
   };
 }

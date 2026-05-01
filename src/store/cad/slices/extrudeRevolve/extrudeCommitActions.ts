@@ -333,7 +333,7 @@ export function createExtrudeCommitActions({ set, get }: CADSliceContext): Parti
       const extraBodyIds: string[] = [];
       if (effectiveOperation === 'new-body') {
         const componentStore = useComponentStore.getState();
-        componentId = componentStore.activeComponentId ?? componentStore.rootComponentId;
+        componentId = sourceSketch.componentId ?? componentStore.activeComponentId ?? componentStore.rootComponentId;
         const bodyCount = Object.keys(componentStore.bodies).length + 1;
         const bodyLabel = `${resolvedBodyKind === 'surface' ? 'Surface' : 'Body'} ${bodyCount}`;
         const createdBodyId = componentStore.addBody(componentId, bodyLabel);

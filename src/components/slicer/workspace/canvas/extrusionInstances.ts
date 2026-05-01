@@ -249,10 +249,23 @@ export function buildLayerInstances(opts: BuildLayerInstancesOptions): LayerInst
   // Tight epsilon: prev's `to` matches curr's `from` to float precision —
   // i.e. they're the same point in the wallLoop array.
   const JOIN_EPSILON = 5e-4;
-  // Same set the old chain renderer used for intra-wall continuity. Skin /
-  // infill / bridge / support keep their hard endpoint diameters because
-  // adjacent segments there are independent passes, not one continuous bead.
-  const SMOOTHABLE_TYPES = new Set(['wall-outer', 'wall-inner', 'gap-fill']);
+  // Smoothing happens within type families only — walls smooth with walls,
+  // skin smooths with skin. The original wall family covered wall-outer /
+  // wall-inner / gap-fill (one continuous bead from Arachne). The skin
+  // family covers 'top-bottom': concentric-pattern skin emits a chain of
+  // polygon edges that share endpoints, and without junction smoothing each
+  // capsule's rounded cap renders as a visible bump at every shared vertex
+  // — the "blue dot" artifact users see on cone-top thin rings. Crucially
+  // we don't cross the wall↔skin boundary: the wall ends at its full
+  // diameter and the skin starts at its narrower diameter. JOIN_EPSILON
+  // also gates this, so line-pattern scanlines (whose endpoints don't
+  // match exactly) aren't smoothed.
+  const WALL_FAMILY = new Set(['wall-outer', 'wall-inner', 'gap-fill']);
+  const SKIN_FAMILY = new Set(['top-bottom']);
+  const isSameFamily = (a: string, b: string): boolean => {
+    return (WALL_FAMILY.has(a) && WALL_FAMILY.has(b))
+      || (SKIN_FAMILY.has(a) && SKIN_FAMILY.has(b));
+  };
   let prevExt = -1;
   let prevTo: { x: number; y: number } | null = null;
   let prevType = '';
@@ -322,8 +335,7 @@ export function buildLayerInstances(opts: BuildLayerInstancesOptions): LayerInst
     if (
       prevExt >= 0
       && prevTo !== null
-      && SMOOTHABLE_TYPES.has(m.type)
-      && SMOOTHABLE_TYPES.has(prevType)
+      && isSameFamily(m.type, prevType)
       && Math.abs(prevTo.x - m.from.x) < JOIN_EPSILON
       && Math.abs(prevTo.y - m.from.y) < JOIN_EPSILON
     ) {

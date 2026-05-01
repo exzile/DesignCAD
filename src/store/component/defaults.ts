@@ -5,8 +5,8 @@ export const defaultComponentMaterial: MaterialAppearance = {
   id: 'warm-plastic',
   name: 'Warm Plastic',
   color: '#F2A23A',
-  metalness: 0.02,
-  roughness: 0.68,
+  metalness: 0,
+  roughness: 0.58,
   opacity: 1,
   category: 'plastic',
 };

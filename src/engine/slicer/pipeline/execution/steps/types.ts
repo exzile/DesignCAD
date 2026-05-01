@@ -163,6 +163,15 @@ export interface SliceRun {
   emitter: GCodeEmitter;
   relativeE: boolean;
   layerControlFlags: LayerControlFlags;
+  prevLayerMaterial: PCMultiPolygon;
+  /** Per-layer material polygon cache, populated by a sequential pre-pass
+   *  in `runSlicePipeline.ts` before the main emit loop. `[li]` holds the
+   *  fully-built outer-minus-holes multipolygon for layer `li`. Used by
+   *  `prepareLayerState.ts` to compute `topSkinRegion` (current minus
+   *  next, thickened by `topLayers`) for per-feature top-solid skin
+   *  detection — the bosses/feature-tops Cura/OrcaSlicer mark as solid
+   *  even when the global `solidTop` band hasn't started yet.
+   *  Empty array = cache disabled (worker contexts, fallback paths). */
   layerMaterialCache: PCMultiPolygon[];
   previousSeamPoints: THREE.Vector2[];
   currentSeamPoints: THREE.Vector2[];
@@ -192,7 +201,6 @@ export type SliceGeometryRun = Pick<
   | 'totalLayers'
   | 'solidBottom'
   | 'solidTop'
-  | 'layerMaterialCache'
   | 'bedCenterX'
   | 'bedCenterY'
 > & {

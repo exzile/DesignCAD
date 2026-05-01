@@ -1,8 +1,14 @@
 import type { Sketch, SketchEntity, SketchPoint } from '../../../../types/cad';
 import { EXTRUDE_DEFAULTS } from '../../defaults';
 import type { ExtrudeDirection, ExtrudeOperation } from '../../../../types/cad-extrude.types';
+import { useComponentStore } from '../../../componentStore';
 import type { CADSliceContext } from '../../sliceContext';
 import type { CADState } from '../../state';
+
+function getActiveComponentId(): string | undefined {
+  const componentStore = useComponentStore.getState();
+  return componentStore.activeComponentId ?? componentStore.rootComponentId;
+}
 
 export function createExtrudeSetupActions({ set, get }: CADSliceContext): Partial<CADState> {
   return {
@@ -109,6 +115,7 @@ export function createExtrudeSetupActions({ set, get }: CADSliceContext): Partia
       });
     }
     const { sketches } = get();
+    const componentId = getActiveComponentId();
     const pressPullCount = sketches.filter((s) => s.name.startsWith('Press Pull Profile')).length;
     const sketch: Sketch = {
       id: crypto.randomUUID(),
@@ -116,6 +123,7 @@ export function createExtrudeSetupActions({ set, get }: CADSliceContext): Partia
       plane: 'custom',
       planeNormal: normal.clone().normalize(),
       planeOrigin: centroid.clone(),
+      componentId,
       entities,
       constraints: [],
       dimensions: [],
@@ -154,6 +162,7 @@ export function createExtrudeSetupActions({ set, get }: CADSliceContext): Partia
       });
     }
     const { sketches, extrudeSelectedSketchIds } = get();
+    const componentId = getActiveComponentId();
     const pressPullCount = sketches.filter((s) => s.name.startsWith('Press Pull Profile')).length;
     const sketch: Sketch = {
       id: crypto.randomUUID(),
@@ -161,6 +170,7 @@ export function createExtrudeSetupActions({ set, get }: CADSliceContext): Partia
       plane: 'custom',
       planeNormal: normal.clone().normalize(),
       planeOrigin: centroid.clone(),
+      componentId,
       entities,
       constraints: [],
       dimensions: [],

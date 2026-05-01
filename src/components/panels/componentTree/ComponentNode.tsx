@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useState } from 'react';
 import {
   ChevronRight, ChevronDown, Eye, EyeOff, Box, Layers,
   Plus, Trash2, Copy, Anchor, MoreHorizontal, Circle, Minus, Unlink,
@@ -78,6 +78,7 @@ export function ComponentNode({ componentId, depth = 0 }: { componentId: string;
   const toggleExpanded = useComponentStore((s) => s.toggleExpanded);
   const toggleVisibility = useComponentStore((s) => s.toggleComponentVisibility);
   const activeComponentId = useComponentStore((s) => s.activeComponentId);
+  const rootComponentId = useComponentStore((s) => s.rootComponentId);
   const setActiveComponentId = useComponentStore((s) => s.setActiveComponentId);
   const addComponent = useComponentStore((s) => s.addComponent);
   const removeComponent = useComponentStore((s) => s.removeComponent);
@@ -90,7 +91,6 @@ export function ComponentNode({ componentId, depth = 0 }: { componentId: string;
   const toggleHistoryMode = useCADStore((s) => s.toggleHistoryMode);
 
   const [showContextMenu, setShowContextMenu] = useState(false);
-  const contextMenuRef = useRef<HTMLDivElement | null>(null);
   const [renaming, setRenaming] = useState(false);
   const [newName, setNewName] = useState('');
   const renameComponent = useComponentStore((s) => s.renameComponent);
@@ -102,7 +102,6 @@ export function ComponentNode({ componentId, depth = 0 }: { componentId: string;
   const isRoot = component.parentId === null;
   const hasChildren = component.childIds.length > 0 ||
                       component.bodyIds.length > 0 ||
-                      component.sketchIds.length > 0 ||
                       component.constructionIds.length > 0 ||
                       component.jointIds.length > 0;
 
@@ -113,50 +112,28 @@ export function ComponentNode({ componentId, depth = 0 }: { componentId: string;
     setRenaming(false);
   };
 
-  const beginRename = () => {
-    setNewName(component.name);
-    setRenaming(true);
-  };
-
-  useEffect(() => {
-    if (!showContextMenu) return;
-    const closeIfOutside = (event: PointerEvent) => {
-      if (contextMenuRef.current?.contains(event.target as Node)) return;
-      setShowContextMenu(false);
-    };
-    const closeOnEscape = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') setShowContextMenu(false);
-    };
-    document.addEventListener('pointerdown', closeIfOutside);
-    document.addEventListener('keydown', closeOnEscape);
-    return () => {
-      document.removeEventListener('pointerdown', closeIfOutside);
-      document.removeEventListener('keydown', closeOnEscape);
-    };
-  }, [showContextMenu]);
-
   return (
     /* --depth is a dynamic CSS custom property for indent — must stay inline */
     <div className="tree-node" style={{ '--depth': depth } as React.CSSProperties}>
       <div
         className={`tree-item component-item ${isActive ? 'active' : ''}`}
-        role="treeitem"
-        tabIndex={0}
         onClick={() => setActiveComponentId(componentId)}
-        onDoubleClick={(e) => {
-          e.stopPropagation();
-          beginRename();
-        }}
-        onKeyDown={(e) => {
-          if (e.key === 'F2') {
-            e.preventDefault();
-            beginRename();
+        onDoubleClick={() => {
+          if (isRoot) {
+            setRenaming(true);
+            setNewName(component.name);
+          } else {
+            setActiveComponentId(componentId);
           }
         }}
       >
         <button
           className="browser-vis-btn"
-          onClick={(e) => { e.stopPropagation(); toggleVisibility(componentId); }}
+          onClick={(e) => {
+            e.stopPropagation();
+            if (component.visible && isActive) setActiveComponentId(rootComponentId);
+            toggleVisibility(componentId);
+          }}
           title={component.visible ? `Hide ${component.name}` : `Show ${component.name}`}
           aria-label={component.visible ? `Hide ${component.name}` : `Show ${component.name}`}
         >
@@ -184,7 +161,7 @@ export function ComponentNode({ componentId, depth = 0 }: { componentId: string;
             onClick={(e) => e.stopPropagation()}
           />
         ) : (
-          <span className="tree-name" style={{ opacity: component.visible ? 1 : 0.5 }}>{component.name}</span>
+          <span className="tree-name">{component.name}</span>
         )}
 
         {component.grounded && <Anchor size={10} className="grounded-icon" />}
@@ -193,8 +170,6 @@ export function ComponentNode({ componentId, depth = 0 }: { componentId: string;
           <button
             className="tree-action"
             onClick={(e) => { e.stopPropagation(); setShowContextMenu(!showContextMenu); }}
-            title={`${component.name} actions`}
-            aria-label={`${component.name} actions`}
           >
             <MoreHorizontal size={11} />
           </button>
@@ -203,7 +178,7 @@ export function ComponentNode({ componentId, depth = 0 }: { componentId: string;
 
       {/* Context menu */}
       {showContextMenu && (
-        <div ref={contextMenuRef} className="tree-context-menu" onMouseLeave={() => setShowContextMenu(false)}>
+        <div className="tree-context-menu" onMouseLeave={() => setShowContextMenu(false)}>
           <button onClick={() => { addComponent(componentId); setShowContextMenu(false); }}>
             <Plus size={12} /> New Component
           </button>
