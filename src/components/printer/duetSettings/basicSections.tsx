@@ -22,6 +22,9 @@ import type {
 import type { DuetTransport, PrinterBoardType } from '../../../types/duet';
 import { cameraDisplayUrl, normalizeCameraStreamUrl } from '../../../utils/cameraStreamUrl';
 import { isWebSerialSupported, requestSerialPort } from '../../../services/usb/webSerial';
+import { PRESET_LOOKUP, PRINTER_PRESETS } from './printerPresets';
+import { SerialConsoleSection } from './serialConsoleSection';
+import { SafetyLimitsSection } from './safetySection';
 import { SettingRow, ToggleRow } from './common';
 
 const COMMON_BAUD_RATES = [9600, 19200, 38400, 57600, 115200, 230400, 250000, 500000, 1000000];
@@ -127,6 +130,20 @@ export function ConnectionSection({
   const testDisabled = testing || connected || !ready;
   const connectDisabled = !ready || (isUsb ? connecting : !canConnect);
 
+  const handlePresetChange = (presetId: string) => {
+    const preset = PRESET_LOOKUP.get(presetId);
+    if (!preset || preset.id === 'custom') return;
+    if (preset.boardType) setBoardType(preset.boardType);
+    const patch: Parameters<typeof setConfig>[0] = {};
+    if (preset.serialBaudRate !== undefined) patch.serialBaudRate = preset.serialBaudRate;
+    if (Object.keys(patch).length > 0) setConfig(patch);
+    if (preset.machineConfig) {
+      patchPrefs({
+        machineConfig: { ...prefs.machineConfig, ...preset.machineConfig },
+      });
+    }
+  };
+
   const handleSelectSerialPort = async () => {
     setSerialPickError(null);
     try {
@@ -153,6 +170,25 @@ export function ConnectionSection({
   return (
     <>
       <div className="duet-settings__page-title">Connection</div>
+
+      <SettingRow
+        label="Printer Preset"
+        hint="One-click defaults for common community printers. Patches board type, baud rate, build volume, and kinematics. Pick Custom to leave settings alone."
+        control={
+          <select
+            className="duet-settings__select"
+            defaultValue="custom"
+            onChange={(e) => { handlePresetChange(e.target.value); e.target.value = 'custom'; }}
+            disabled={connected}
+          >
+            {PRINTER_PRESETS.map((p) => (
+              <option key={p.id} value={p.id}>
+                {p.vendor ? `${p.vendor} ${p.name}` : p.name}
+              </option>
+            ))}
+          </select>
+        }
+      />
 
       <SettingRow
         label="Connection Type"
@@ -333,6 +369,16 @@ export function ConnectionSection({
             </div>
           )}
         </div>
+      )}
+
+      {isUsb && portLabel && !connected && (
+        <SerialConsoleSection
+          baudRate={baudRate}
+          vendorId={config.serialVendorId}
+          productId={config.serialProductId}
+          portLabel={portLabel}
+          busy={connecting || testing}
+        />
       )}
 
       <div className="duet-settings__btn-row">
@@ -1140,6 +1186,8 @@ export function BehaviourSection({
         label="Auto-reconnect"
         hint="Automatically reconnect on startup and when the connection drops. Configure interval and retries in the Connection tab."
       />
+
+      <SafetyLimitsSection prefs={prefs} patchPrefs={patchPrefs} />
     </>
   );
 }

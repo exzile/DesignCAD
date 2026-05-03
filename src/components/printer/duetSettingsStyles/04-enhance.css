@@ -570,6 +570,191 @@
   margin-top: 16px;
 }
 
+/* -- Color picker ---------------------------------------------------------- */
+.duet-settings__color-input {
+  width: 56px;
+  height: 32px;
+  padding: 2px;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: var(--bg-input);
+  cursor: pointer;
+}
+.duet-settings__color-input::-webkit-color-swatch-wrapper { padding: 0; }
+.duet-settings__color-input::-webkit-color-swatch { border: none; border-radius: 6px; }
+
+/* -- Empty state ----------------------------------------------------------- */
+.duet-settings__empty {
+  padding: 18px;
+  text-align: center;
+  color: var(--text-muted);
+  border: 1px dashed var(--border);
+  border-radius: 8px;
+  font-size: 12px;
+}
+
+/* -- Icon-only button ----------------------------------------------------- */
+.duet-settings__icon-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--bg-input);
+  color: var(--text-muted);
+  cursor: pointer;
+  transition: background 0.18s ease, color 0.18s ease, border-color 0.18s ease, transform 0.15s ease;
+}
+.duet-settings__icon-btn:hover {
+  background: rgba(120,130,240,0.1);
+  border-color: rgba(120,130,240,0.45);
+  color: var(--accent);
+  transform: translateY(-1px);
+}
+.duet-settings__icon-btn.is-active {
+  background: linear-gradient(135deg, rgba(255,200,80,0.25), rgba(255,200,80,0.08));
+  border-color: rgba(255,200,80,0.6);
+  color: rgb(255,210,100);
+}
+.duet-settings__icon-btn--danger:hover {
+  background: rgba(239,68,68,0.12);
+  border-color: rgba(239,68,68,0.5);
+  color: var(--error);
+}
+
+/* -- Filament cards ------------------------------------------------------- */
+.duet-settings__filament-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: 10px;
+}
+
+.duet-settings__filament-card {
+  display: flex;
+  align-items: stretch;
+  gap: 12px;
+  padding: 12px;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  transition: border-color 0.18s ease, transform 0.18s ease, box-shadow 0.18s ease;
+  animation: duet-fade-up 0.28s ease both;
+}
+.duet-settings__filament-card:hover {
+  border-color: rgba(120,130,240,0.45);
+  transform: translateY(-1px);
+  box-shadow: 0 6px 14px rgba(0,0,0,0.18);
+}
+.duet-settings__filament-card.is-default {
+  border-color: rgba(255,200,80,0.55);
+  box-shadow: inset 0 0 0 1px rgba(255,200,80,0.15);
+}
+
+.duet-settings__filament-swatch {
+  width: 10px;
+  flex-shrink: 0;
+  border-radius: 4px;
+  box-shadow: inset 0 0 0 1px rgba(0,0,0,0.25);
+}
+
+.duet-settings__filament-body {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.duet-settings__filament-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.duet-settings__filament-name {
+  font-weight: 600;
+  font-size: 13px;
+  color: var(--text-primary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.duet-settings__filament-material {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.5px;
+  text-transform: uppercase;
+  padding: 2px 7px;
+  border-radius: 999px;
+  background: rgba(120,130,240,0.16);
+  color: var(--accent);
+  border: 1px solid rgba(120,130,240,0.35);
+}
+
+.duet-settings__filament-stats {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 10px;
+  font-size: 11px;
+  color: var(--text-muted);
+}
+.duet-settings__filament-stats strong {
+  color: var(--text-primary);
+  font-weight: 600;
+  margin-left: 2px;
+}
+
+.duet-settings__filament-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+/* -- Serial diagnostic log ------------------------------------------------ */
+.duet-settings__serial-log {
+  margin: 8px 0 0 0;
+  padding: 10px 12px;
+  height: 200px;
+  overflow-y: auto;
+  font-family: 'JetBrains Mono', 'Consolas', monospace;
+  font-size: 12px;
+  line-height: 1.55;
+  background: rgba(0,0,0,0.35);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  color: var(--text-primary);
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.duet-settings__serial-line {
+  display: flex;
+  gap: 8px;
+}
+
+.duet-settings__serial-prefix {
+  flex-shrink: 0;
+  width: 12px;
+  text-align: center;
+  opacity: 0.55;
+  user-select: none;
+}
+
+.duet-settings__serial-line--out { color: var(--accent); }
+.duet-settings__serial-line--in  { color: var(--text-primary); }
+.duet-settings__serial-line--sys { color: var(--text-muted); font-style: italic; }
+.duet-settings__serial-line--err { color: var(--error); }
+
+.duet-settings__serial-input-row {
+  display: flex;
+  gap: 8px;
+  margin-top: 8px;
+}
+.duet-settings__serial-input-row .duet-settings__input { flex: 1; }
+
 /* -- Reduced motion --------------------------------------------------------- */
 @media (prefers-reduced-motion: reduce) {
   .duet-settings__page *,

@@ -2,6 +2,7 @@ import React from 'react';
 import { compareVersions, findDwcAsset, panelDueBinAssets, pickFirmwareAssets, sortPanelDueAssets, type FirmwareMatch, type GitHubAsset, type GitHubRelease, type PanelDueConfig } from './helpers';
 import { BehaviourSection, CameraSection, ConnectionSection, GeneralSection, NotificationsSection } from './basicSections';
 import { AboutSection, BackupSection, MachineSection } from './infoSections';
+import { FilamentsSection } from './filamentsSection';
 import { FirmwareSection, type AutoUpdateState, type PanelDueFlashed, type PanelDueUpdateState } from './firmwareSections';
 import { PanelDueSection } from './firmwareSections';
 import type { DuetPrefs } from '../../../utils/duetPrefs';
@@ -15,6 +16,7 @@ export type DuetSettingsTabKey =
   | 'behaviour'
   | 'notifications'
   | 'machine'
+  | 'filaments'
   | 'firmware'
   | 'paneldue'
   | 'backup'
@@ -245,6 +247,8 @@ export function SettingsTabContent(props: {
       return <NotificationsSection prefs={prefs} patchPrefs={patchPrefs} />;
     case 'machine':
       return <MachineSection axes={axes} board={board} boardType={boardType} connected={connected} prefs={prefs} patchPrefs={patchPrefs} />;
+    case 'filaments':
+      return <FilamentsSection prefs={prefs} patchPrefs={patchPrefs} />;
     case 'firmware':
       return renderFirmware();
     case 'paneldue':

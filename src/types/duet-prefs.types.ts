@@ -80,6 +80,40 @@ export interface MachineConfig {
   kinematics: KinematicsType;
 }
 
+// ---------------------------------------------------------------------------
+// Filament profiles (app-side; distinct from the Duet 0:/filaments directory)
+// ---------------------------------------------------------------------------
+export type FilamentMaterial = 'PLA' | 'PETG' | 'ABS' | 'TPU' | 'PC' | 'Nylon' | 'ASA' | 'Other';
+
+export interface FilamentProfile {
+  id: string;
+  name: string;
+  material: FilamentMaterial;
+  color: string;                 // hex (#rrggbb)
+  nozzleTemp: number;            // degC
+  bedTemp: number;               // degC
+  chamberTemp: number;           // degC, 0 = unset
+  fanSpeedPercent: number;       // 0-100
+  retractionMm: number;
+  retractionSpeedMmPerSec: number;
+  flowPercent: number;           // 100 = nominal
+  notes: string;
+}
+
+// ---------------------------------------------------------------------------
+// Safety / temperature guard rails. The UI uses these to block or warn
+// before pushing dangerous setpoints to the firmware.
+// ---------------------------------------------------------------------------
+export interface SafetyLimits {
+  maxNozzleTemp: number;         // hard cap
+  maxBedTemp: number;
+  maxChamberTemp: number;
+  highTempWarnThreshold: number; // soft warn before sending
+  warnOnHighTemp: boolean;
+  thermalRunawayPrompt: boolean; // surface a prompt if firmware reports runaway
+  confirmEmergencyStop: boolean; // require a confirm on M112 / E-stop
+}
+
 export interface DuetPrefs {
   // General
   units: Units;
@@ -117,4 +151,9 @@ export interface DuetPrefs {
   customButtons: CustomButton[];
   // Manual machine configuration (used when not connected or for non-auto boards)
   machineConfig: MachineConfig;
+  // Filament profiles
+  filamentProfiles: FilamentProfile[];
+  defaultFilamentProfileId: string;
+  // Safety limits
+  safetyLimits: SafetyLimits;
 }
