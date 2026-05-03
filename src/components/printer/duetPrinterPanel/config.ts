@@ -14,6 +14,7 @@ import {
   TrendingUp,
   Router,
   Plug,
+  Camera,
 } from 'lucide-react';
 import DuetDashboard from '../DuetDashboard';
 import DuetStatus from '../DuetStatus';
@@ -30,9 +31,12 @@ import DuetConfigEditor from '../DuetConfigEditor';
 import DuetAnalytics from '../DuetAnalytics';
 import DuetNetworkAndFirmware from '../DuetNetworkAndFirmware';
 import DuetPlugins from '../DuetPlugins';
+import PrinterFleetDashboard from '../dashboard/PrinterFleetDashboard';
+import CameraDashboardPanel from '../dashboard/CameraDashboardPanel';
 
 export const TABS = [
   { key: 'dashboard' as const, label: 'Dashboard', Icon: LayoutDashboard },
+  { key: 'camera' as const, label: 'Camera', Icon: Camera },
   { key: 'status' as const, label: 'Status', Icon: Activity },
   { key: 'console' as const, label: 'Console', Icon: Terminal },
   { key: 'job' as const, label: 'Job', Icon: Play },
@@ -49,10 +53,12 @@ export const TABS = [
   { key: 'settings' as const, label: 'Settings', Icon: Settings },
 ];
 
-export type TabKey = (typeof TABS)[number]['key'];
+export type TabKey = (typeof TABS)[number]['key'] | 'printers';
 
 export const TAB_COMPONENTS: Record<TabKey, React.ComponentType> = {
+  printers: PrinterFleetDashboard,
   dashboard: DuetDashboard,
+  camera: CameraDashboardPanel,
   status: DuetStatus,
   console: DuetConsole,
   job: DuetJobStatus,

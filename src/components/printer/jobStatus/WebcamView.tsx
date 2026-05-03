@@ -1,6 +1,7 @@
 import { Video } from 'lucide-react';
 import { usePrinterStore } from '../../../store/printerStore';
 import { getDuetPrefs } from '../../../utils/duetPrefs';
+import { cameraDisplayUrl, preferredCameraStreamUrl } from '../../../utils/cameraStreamUrl';
 import '../DuetJobStatus.css';
 
 export function WebcamView() {
@@ -9,7 +10,11 @@ export function WebcamView() {
   if (!service) return null;
 
   const prefs = getDuetPrefs();
-  const webcamUrl = prefs.webcamUrl?.trim() || service.getWebcamUrl();
+  const webcamUrl = cameraDisplayUrl(
+    preferredCameraStreamUrl(prefs, service.getWebcamUrl()),
+    prefs.webcamUsername,
+    prefs.webcamPassword,
+  );
 
   return (
     <div className="job-section">

@@ -16,7 +16,10 @@ function upsertSketch(sketches: Sketch[], sketch: Sketch): Sketch[] {
 
 function getActiveComponentId(): string | undefined {
   const componentStore = useComponentStore.getState();
-  return componentStore.activeComponentId ?? componentStore.rootComponentId;
+  const id = componentStore.activeComponentId ?? componentStore.rootComponentId;
+  // Guard: if the resolved id doesn't exist in the components map, fall back to root.
+  if (id && componentStore.components[id]) return id;
+  return componentStore.rootComponentId;
 }
 
 function registerSketchWithComponent(sketch: Sketch) {

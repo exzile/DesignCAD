@@ -1,6 +1,7 @@
 @import './printerPanelStyles/01-history.css';
 @import './printerPanelStyles/02-overview.css';
 @import './printerPanelStyles/03-dashboard.css';
+@import '/src/components/printer/printerPanelStyles/dashboard/03-fleet.css';
 @import './printerPanelStyles/04-controls.css';
 @import './printerPanelStyles/05-panel.css';
 @import './printerPanelStyles/06-dashboard-layout.css';

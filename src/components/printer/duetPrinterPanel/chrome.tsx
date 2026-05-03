@@ -16,6 +16,17 @@ import {
 import { formatUptime } from '../dashboard/helpers';
 import { colors as COLORS } from '../../../utils/theme';
 import { TABS, type TabKey } from './config';
+import type { PrinterBoardType } from '../../../types/duet';
+
+const BOARD_LABELS: Record<PrinterBoardType, string> = {
+  duet: 'Duet3D Control',
+  klipper: 'Klipper Control',
+  marlin: 'Marlin Control',
+  smoothie: 'Smoothieware Control',
+  grbl: 'grbl Control',
+  repetier: 'Repetier Control',
+  other: 'Printer Control',
+};
 
 type SearchResult = {
   label: string;
@@ -24,6 +35,7 @@ type SearchResult = {
 };
 
 type HeaderProps = {
+  boardType: PrinterBoardType;
   connected: boolean;
   hostname?: string;
   theme: string;
@@ -42,6 +54,7 @@ type HeaderProps = {
 };
 
 export function PanelHeader({
+  boardType,
   connected,
   hostname,
   theme,
@@ -102,7 +115,7 @@ export function PanelHeader({
           <Wifi size={12} /> Connect
         </button>
       )}
-      <span style={{ fontWeight: 600, fontSize: 14, whiteSpace: 'nowrap', marginRight: 4 }}>Duet3D Control</span>
+      <span style={{ fontWeight: 600, fontSize: 14, whiteSpace: 'nowrap', marginRight: 4 }}>{BOARD_LABELS[boardType]}</span>
       {connected && hostname && (
         <span
           style={{
@@ -290,6 +303,7 @@ export function PanelTabBar({
 }
 
 export function PanelBanners({
+  boardType,
   error,
   connected,
   reconnecting,
@@ -297,6 +311,7 @@ export function PanelBanners({
   lastUpdatedText,
   onOpenSettings,
 }: {
+  boardType: PrinterBoardType;
   error: string | null;
   connected: boolean;
   reconnecting: boolean;
@@ -357,7 +372,7 @@ export function PanelBanners({
           <span>
             {hasStaleModel
               ? `Disconnected - showing last known values (updated ${lastUpdatedText}).`
-              : 'Not connected to a Duet3D board.'}
+              : `Not connected to ${boardType === 'duet' ? 'a Duet3D board' : 'printer'}.`}
           </span>
           <div style={{ flex: 1 }} />
           <button

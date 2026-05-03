@@ -1,6 +1,6 @@
-import { useRef, useState, useEffect, useCallback } from 'react';
+import { useRef, useState, useEffect, useCallback, Children } from 'react';
 import { createPortal } from 'react-dom';
-import { ChevronDown, ChevronRight, Check } from 'lucide-react';
+import { ChevronDown, ChevronRight, Check, MoreHorizontal } from 'lucide-react';
 import type { MenuItem } from '../../types/toolbar.types';
 import { useEscapeKey } from '../../hooks/useEscapeKey';
 
@@ -53,27 +53,34 @@ export function FlyoutMenuItem({ item, onClose }: { item: MenuItem; onClose: () 
 
 // ─── Ribbon Section (labeled group with optional flyout dropdown) ─────────
 
-export function RibbonSection({ title, children, menuItems, accentColor }: {
+export function RibbonSection({ title, children, menuItems, accentColor, maxVisible }: {
   title: string;
   children: React.ReactNode;
   menuItems?: MenuItem[];
   accentColor?: string;
+  /** When provided, limits visible inline buttons; extras accessible via overflow button. */
+  maxVisible?: number;
 }) {
   const [menuOpen, setMenuOpen] = useState(false);
   const sectionRef = useRef<HTMLDivElement>(null);
   const labelRef = useRef<HTMLDivElement>(null);
   const menuRef = useRef<HTMLDivElement>(null);
+  const overflowBtnRef = useRef<HTMLButtonElement>(null);
   const [menuPos, setMenuPos] = useState<{ top: number; left: number }>({ top: 0, left: 0 });
 
   const hasFlyout = !!menuItems && menuItems.length > 0;
+  const childArray = Children.toArray(children);
 
-  // Position the portal menu below the label
-  useEffect(() => {
-    if (menuOpen && labelRef.current) {
-      const rect = labelRef.current.getBoundingClientRect();
-      setMenuPos({ top: rect.bottom, left: rect.left });
-    }
-  }, [menuOpen]);
+  const visibleCount = maxVisible !== undefined ? Math.min(maxVisible, childArray.length) : childArray.length;
+  const hasOverflow = hasFlyout && visibleCount < childArray.length;
+  const visibleChildren = hasOverflow ? childArray.slice(0, visibleCount) : childArray;
+
+  // Position the flyout portal below whichever trigger was clicked
+  const openMenu = (triggerEl: HTMLElement) => {
+    const rect = triggerEl.getBoundingClientRect();
+    setMenuPos({ top: rect.bottom, left: rect.left });
+    setMenuOpen(true);
+  };
 
   // Close on click outside
   useEffect(() => {
@@ -96,12 +103,25 @@ export function RibbonSection({ title, children, menuItems, accentColor }: {
 
   return (
     <div className="ribbon-section" ref={sectionRef}>
-      <div className="ribbon-section-content">{children}</div>
+      <div className="ribbon-section-content">
+        {visibleChildren}
+        {hasOverflow && (
+          <button
+            ref={overflowBtnRef}
+            type="button"
+            className={`ribbon-overflow-btn ${menuOpen ? 'active' : ''}`}
+            title="More tools"
+            onClick={() => overflowBtnRef.current && openMenu(overflowBtnRef.current)}
+          >
+            <MoreHorizontal size={14} />
+          </button>
+        )}
+      </div>
       <div
         ref={labelRef}
         className={`ribbon-section-label ${hasFlyout ? 'flyout-trigger' : ''} ${menuOpen ? 'flyout-open' : ''}`}
         style={menuOpen && accentColor ? { background: accentColor, color: '#fff' } as React.CSSProperties : undefined}
-        onClick={() => hasFlyout && setMenuOpen(!menuOpen)}
+        onClick={() => hasFlyout && labelRef.current && openMenu(labelRef.current)}
       >
         {title}
         {hasFlyout && <ChevronDown size={8} className="ribbon-section-chevron" />}

@@ -330,6 +330,21 @@ export interface CADModelingState {
   dimensionToleranceUpper: number;
   dimensionToleranceLower: number;
   pendingDimensionEntityIds: string[];
+  dimensionHoverEntityId: string | null;
+  pendingNewDimensionId: string | null;
+  // Dimension editor overlay (rendered in ViewportPanels, outside the WebGL canvas)
+  sketchDimEditId: string | null;
+  sketchDimEditIsNew: boolean;
+  sketchDimEditValue: string;
+  sketchDimEditScreenX: number;
+  sketchDimEditScreenY: number;
+  sketchDimEditTypeahead: Parameter[];
+  openSketchDimEdit: (id: string, value: string, isNew: boolean) => void;
+  updateSketchDimEditScreen: (x: number, y: number) => void;
+  setSketchDimEditValue: (v: string) => void;
+  setSketchDimEditTypeahead: (items: Parameter[]) => void;
+  commitSketchDimEdit: (rawValue: string) => void;
+  cancelSketchDimEdit: () => void;
   setActiveDimensionType: (t: 'linear' | 'angular' | 'radial' | 'diameter' | 'arc-length' | 'aligned') => void;
   setDimensionOffset: (v: number) => void;
   setDimensionDrivenMode: (v: boolean) => void;

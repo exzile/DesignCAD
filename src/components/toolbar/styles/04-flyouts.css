@@ -104,6 +104,29 @@
   flex-shrink: 0;
 }
 
+/* Overflow "..." button shown inside section content when buttons are hidden */
+.ribbon-overflow-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 52px;
+  border: 1px solid transparent;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+  flex-shrink: 0;
+  transition: background 0.12s, color 0.12s, border-color 0.12s;
+}
+
+.ribbon-overflow-btn:hover,
+.ribbon-overflow-btn.active {
+  background: var(--bg-hover);
+  border-color: var(--border-light);
+  color: var(--text-primary);
+}
+
 /* Sub-menu (appears to the right) */
 .flyout-submenu {
   position: absolute;

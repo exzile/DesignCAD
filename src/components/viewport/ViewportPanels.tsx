@@ -1,12 +1,12 @@
 import CanvasControls from './canvasControls/CanvasControls';
 import SketchPalette from './sketch/SketchPalette';
+import DimensionEditorOverlay from './sketch/DimensionEditorOverlay';
 import MeasurePanel from './panels/MeasurePanel';
 import ExtrudePanel from './panels/ExtrudePanel';
 import RevolvePanel from './panels/RevolvePanel';
 import SweepPanel from './panels/SweepPanel';
 import LoftPanel from './panels/LoftPanel';
 import SketchTextPanel from './sketch/SketchTextPanel';
-import SketchDimensionPanel from './sketch/SketchDimensionPanel';
 import SketchProjectPanel from './sketch/SketchProjectPanel';
 import PatchPanel from './panels/PatchPanel';
 import RuledSurfacePanel from './panels/RuledSurfacePanel';
@@ -38,12 +38,12 @@ export function ViewportPanels() {
       <SketchTransformPanel />
       <SketchMirrorPanel />
       <SketchTextPanel />
-      <SketchDimensionPanel />
       <SketchProjectPanel />
       <ConstructTwoPlanePanel />
       <ConstructThreePlanePanel />
       <AnalysisPanel />
       <ExplodedViewPanel />
+      <DimensionEditorOverlay />
     </>
   );
 }

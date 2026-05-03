@@ -6,7 +6,7 @@ import StatusBar from './components/panels/StatusBar';
 import ExportDialog from './components/dialogs/ExportDialog';
 import DuetPrinterPanel from './components/printer/DuetPrinterPanel';
 import SlicerWorkspace from './components/slicer/SlicerWorkspace';
-import UpdatePanel from './components/updater/UpdatePanel';
+import DuetNotifications from './components/printer/DuetNotifications';
 import { useCADStore } from './store/cadStore';
 import ActiveDialog from './app/ActiveDialog';
 import { DevFixtureLoader } from './devFixtures/orangePi3LtsCase';
@@ -41,7 +41,7 @@ export default function App() {
       {workspaceMode === 'design' && <StatusBar />}
       <ExportDialog />
       <ActiveDialog />
-      <UpdatePanel />
+      <DuetNotifications />
     </div>
   );
 }

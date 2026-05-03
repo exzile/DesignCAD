@@ -1,12 +1,12 @@
 ﻿import React, { useState, useCallback, useMemo, useRef, useEffect } from 'react';
 import {
-  Plug, Settings as SettingsIcon, Palette, ToggleLeft, Bell, Cpu, BadgeInfo,
+  ArrowLeft, Plug, Settings as SettingsIcon, ToggleLeft, Bell, Cpu, BadgeInfo,
   Zap, Download,
-  Monitor,
+  Monitor, Camera,
 } from 'lucide-react';
+import type { PrinterBoardType } from '../../types/duet';
 import { downloadSettings, importSettingsFromFile, type ImportResult } from '../../utils/settingsExport';
 import { usePrinterStore } from '../../store/printerStore';
-import { useThemeStore } from '../../store/themeStore';
 import { SettingsTabContent } from './duetSettings/SettingsTabContent';
 import { useFirmwareUpdate } from './duetSettings/useFirmwareUpdate';
 import { usePanelDue } from './duetSettings/usePanelDue';
@@ -19,19 +19,26 @@ import './DuetSettings.css';
 // ---------------------------------------------------------------------------
 // Tabs
 // ---------------------------------------------------------------------------
-const TABS = [
+const ALL_TABS = [
   { key: 'connection'    as const, label: 'Connection',    Icon: Plug },
   { key: 'general'       as const, label: 'General',       Icon: SettingsIcon },
-  { key: 'appearance'    as const, label: 'Appearance',    Icon: Palette },
+  { key: 'camera'        as const, label: 'Camera',        Icon: Camera },
   { key: 'behaviour'     as const, label: 'Behaviour',     Icon: ToggleLeft },
   { key: 'notifications' as const, label: 'Notifications', Icon: Bell },
   { key: 'machine'       as const, label: 'Machine',       Icon: Cpu },
-  { key: 'firmware'      as const, label: 'Firmware',      Icon: Zap },
-  { key: 'paneldue'      as const, label: 'PanelDue',      Icon: Monitor },
+  { key: 'firmware'      as const, label: 'Firmware',      Icon: Zap,     duetOnly: true },
+  { key: 'paneldue'      as const, label: 'PanelDue',      Icon: Monitor, duetOnly: true },
   { key: 'backup'        as const, label: 'Backup',        Icon: Download },
   { key: 'about'         as const, label: 'About',         Icon: BadgeInfo },
 ];
-type TabKey = (typeof TABS)[number]['key'];
+type TabKey = (typeof ALL_TABS)[number]['key'];
+
+const DUET_BOARD_TYPES: PrinterBoardType[] = ['duet'];
+
+function visibleTabs(boardType: PrinterBoardType) {
+  const isDuet = DUET_BOARD_TYPES.includes(boardType);
+  return ALL_TABS.filter((t) => !('duetOnly' in t && t.duetOnly) || isDuet);
+}
 
 // ---------------------------------------------------------------------------
 // Component
@@ -44,12 +51,7 @@ export default function DuetSettings() {
   const connect = usePrinterStore((s) => s.connect);
   const disconnect = usePrinterStore((s) => s.disconnect);
   const testConnection = usePrinterStore((s) => s.testConnection);
-  const printers = usePrinterStore((s) => s.printers);
   const activePrinterId = usePrinterStore((s) => s.activePrinterId);
-  const addPrinter = usePrinterStore((s) => s.addPrinter);
-  const removePrinter = usePrinterStore((s) => s.removePrinter);
-  const renamePrinter = usePrinterStore((s) => s.renamePrinter);
-  const selectPrinter = usePrinterStore((s) => s.selectPrinter);
   const error = usePrinterStore((s) => s.error);
   const model = usePrinterStore((s) => s.model);
   const uploading = usePrinterStore((s) => s.uploading);
@@ -57,9 +59,10 @@ export default function DuetSettings() {
   const uploadFirmware = usePrinterStore((s) => s.uploadFirmware);
   const installFirmware = usePrinterStore((s) => s.installFirmware);
   const firmwareUpdatePending = usePrinterStore((s) => s.firmwareUpdatePending);
+  const setActiveTab = usePrinterStore((s) => s.setActiveTab);
 
-  const theme = useThemeStore((s) => s.theme);
-  const setTheme = useThemeStore((s) => s.setTheme);
+  const boardType: PrinterBoardType = config.boardType ?? 'duet';
+  const tabs = useMemo(() => visibleTabs(boardType), [boardType]);
 
   // Load persisted prefs once per open
   const [prefs, setPrefs] = useState<DuetPrefs>(() => getDuetPrefs());
@@ -141,6 +144,10 @@ export default function DuetSettings() {
   const [mode, setMode] = useState<'standalone' | 'sbc'>(
     (config as { mode?: 'standalone' | 'sbc' }).mode ?? 'standalone',
   );
+  const setBoardType = useCallback((value: PrinterBoardType) => {
+    setConfig({ boardType: value });
+  }, [setConfig]);
+
   // When the user switches active printer, reload the form fields from the
   // newly-active config. Without this, hostname/password/mode would still
   // show the previous printer's values even though `config` has updated.
@@ -190,38 +197,13 @@ export default function DuetSettings() {
   const board = model.boards?.[0];
   const canConnect = hostname.trim().length > 0 && !connecting;
 
-  const handleAddPrinter = useCallback(() => {
-    const name = window.prompt('Name for new printer:', `Printer ${printers.length + 1}`);
-    if (!name) return;
-    const id = addPrinter(name);
-    selectPrinter(id).catch(() => {});
-  }, [addPrinter, selectPrinter, printers.length]);
-
-  const handleRenamePrinter = useCallback(() => {
-    const current = printers.find((p) => p.id === activePrinterId);
-    if (!current) return;
-    const name = window.prompt('Rename printer:', current.name);
-    if (!name || name === current.name) return;
-    renamePrinter(activePrinterId, name);
-  }, [activePrinterId, printers, renamePrinter]);
-
-  const handleRemovePrinter = useCallback(() => {
-    const current = printers.find((p) => p.id === activePrinterId);
-    if (!current) return;
-    if (printers.length <= 1) {
-      window.alert('At least one printer must remain.');
-      return;
-    }
-    if (!window.confirm(`Remove "${current.name}"? Its saved connection and preferences will be deleted.`)) return;
-    removePrinter(activePrinterId);
-  }, [activePrinterId, printers, removePrinter]);
-
   const pageContent = useMemo(() => (
     <SettingsTabContent
       activePrinterId={activePrinterId}
       autoUpdate={autoUpdate}
       axes={axes}
       board={board}
+      boardType={boardType}
       canConnect={canConnect}
       config={config}
       connected={connected}
@@ -232,7 +214,6 @@ export default function DuetSettings() {
       firmwareInputRef={firmwareInputRef}
       firmwareStatus={firmwareStatus}
       firmwareUpdatePending={firmwareUpdatePending}
-      handleAddPrinter={handleAddPrinter}
       handleAutoUpdate={handleAutoUpdate}
       handleCheckForUpdate={handleCheckForUpdate}
       handleCheckPanelDueUpdate={handleCheckPanelDueUpdate}
@@ -245,8 +226,6 @@ export default function DuetSettings() {
       handleIapUpload={handleIapUpload}
       handleImport={handleImport}
       handlePanelDueInstall={handlePanelDueInstall}
-      handleRemovePrinter={handleRemovePrinter}
-      handleRenamePrinter={handleRenamePrinter}
       handleTest={handleTest}
       handleUpdateDwcOnly={handleUpdateDwcOnly}
       hostname={hostname}
@@ -267,9 +246,8 @@ export default function DuetSettings() {
       password={password}
       patchPrefs={patchPrefs}
       prefs={prefs}
-      printers={printers}
-      selectPrinter={(printerId) => { selectPrinter(printerId).catch(() => {}); }}
       setAutoUpdate={setAutoUpdate}
+      setBoardType={setBoardType}
       setHostname={setHostname}
       setMode={setMode}
       setPanelDueAsset={setPanelDueAsset}
@@ -277,23 +255,28 @@ export default function DuetSettings() {
       setPassword={setPassword}
       setShowPanelDueNotes={setShowPanelDueNotes}
       setShowReleaseNotes={setShowReleaseNotes}
-      setTheme={setTheme}
       showPanelDueNotes={showPanelDueNotes}
       showReleaseNotes={showReleaseNotes}
       tab={tab}
       testResult={testResult}
       testing={testing}
-      theme={theme}
       updateCheck={updateCheck}
       uploadProgress={uploadProgress}
       uploading={uploading}
     />
-  ), [activePrinterId, autoUpdate, axes, board, canConnect, config, connected, connecting, error, firmwareFile, firmwareStatus, firmwareUpdatePending, handleAddPrinter, handleAutoUpdate, handleCheckForUpdate, handleCheckPanelDueUpdate, handleConnect, handleDisconnect, handleFirmwareInstall, handleFirmwareSelect, handleFirmwareUpload, handleIapSelect, handleIapUpload, handlePanelDueInstall, handleRemovePrinter, handleRenamePrinter, handleTest, handleUpdateDwcOnly, hostname, iapFile, iapInputRef, iapStatus, importInputRef, importResult, importing, loadPanelDueInfo, mode, panelDueAsset, panelDueCheck, panelDueFlashed, panelDueInfo, panelDueLogRef, panelDueUpdate, password, patchPrefs, prefs, printers, selectPrinter, setAutoUpdate, setHostname, setMode, setPanelDueAsset, setPanelDueUpdate, setPassword, setShowPanelDueNotes, setShowReleaseNotes, setTheme, showPanelDueNotes, showReleaseNotes, tab, testResult, testing, theme, updateCheck, uploadProgress, uploading]);
+  ), [activePrinterId, autoUpdate, axes, board, boardType, canConnect, config, connected, connecting, error, firmwareFile, firmwareStatus, firmwareUpdatePending, handleAutoUpdate, handleCheckForUpdate, handleCheckPanelDueUpdate, handleConnect, handleDisconnect, handleFirmwareInstall, handleFirmwareSelect, handleFirmwareUpload, handleIapSelect, handleIapUpload, handlePanelDueInstall, handleTest, handleUpdateDwcOnly, hostname, iapFile, iapInputRef, iapStatus, importInputRef, importResult, importing, loadPanelDueInfo, mode, panelDueAsset, panelDueCheck, panelDueFlashed, panelDueInfo, panelDueLogRef, panelDueUpdate, password, patchPrefs, prefs, setAutoUpdate, setBoardType, setHostname, setMode, setPanelDueAsset, setPanelDueUpdate, setPassword, setShowPanelDueNotes, setShowReleaseNotes, showPanelDueNotes, showReleaseNotes, tab, testResult, testing, updateCheck, uploadProgress, uploading]);
 
   return (
     <div className="duet-settings__page">
       <nav className="duet-settings__nav">
-        {TABS.map(({ key, label, Icon }) => (
+        <button
+          className="duet-settings__nav-item duet-settings__nav-back"
+          onClick={() => setActiveTab('printers')}
+        >
+          <ArrowLeft size={15} />
+          Back to Printers
+        </button>
+        {tabs.map(({ key, label, Icon }) => (
           <button
             key={key}
             className={`duet-settings__nav-item${tab === key ? ' is-active' : ''}`}

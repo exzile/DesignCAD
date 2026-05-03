@@ -34,6 +34,14 @@ function HeatProgress({ current, active, state }: { current: number; active: num
   );
 }
 
+function temperatureHeatColor(temp: number): string {
+  if (temp >= 260) return '#ef4444';
+  if (temp >= 190) return '#f97316';
+  if (temp >= 80) return '#f59e0b';
+  if (temp >= 40) return '#22c55e';
+  return '#38bdf8';
+}
+
 export default function ToolSelectorPanel() {
   const model          = usePrinterStore((s) => s.model);
   const sendGCode      = usePrinterStore((s) => s.sendGCode);
@@ -46,14 +54,24 @@ export default function ToolSelectorPanel() {
   const tools         = useMemo(() => model.tools ?? [], [model.tools]);
   const heaters       = model.heat?.heaters ?? [];
   const fans          = model.fans ?? [];
-  const extrudersModel = model.move?.extruders ?? [];
+  const extrudersModel = useMemo(() => model.move?.extruders ?? [], [model.move?.extruders]);
   const currentTool   = model.state?.currentTool ?? -1;
   const hasBed        = (model.heat?.bedHeaters ?? []).some((i) => i >= 0);
 
   const [editingTemps, setEditingTemps] = useState<Record<string, string>>({});
 
-  const handleSelectTool   = useCallback((n: number) => sendGCode(`T${n}`),   [sendGCode]);
+  const handleSelectTool   = useCallback((n: number) => sendGCode(`T${n}`), [sendGCode]);
   const handleDeselectTool = useCallback(()            => sendGCode('T-1'),   [sendGCode]);
+
+  const toolExtruderMap = useMemo(() => {
+    const fallbackExtruders = extrudersModel.map((_, index) => index);
+    return new Map<number, number[]>(tools.map((tool): [number, number[]] => {
+      if (tool.extruders.length > 0) return [tool.number, tool.extruders];
+      if (tool.filamentExtruder >= 0) return [tool.number, [tool.filamentExtruder]];
+      if (fallbackExtruders.length === 1) return [tool.number, fallbackExtruders];
+      return [tool.number, []];
+    }));
+  }, [extrudersModel, tools]);
 
   const applyPreset = useCallback((toolTemp: number, bedTemp: number) => {
     tools.forEach((t) => {
@@ -132,6 +150,7 @@ export default function ToolSelectorPanel() {
         const isActive = tool.number === currentTool;
         const toolName = tool.name || `Tool ${tool.number}`;
         const stateColor = toolStateColor(tool.state);
+        const toolExtruders = toolExtruderMap.get(tool.number) ?? [];
 
         return (
           <div
@@ -143,9 +162,9 @@ export default function ToolSelectorPanel() {
               <button
                 className={`ts-select-btn${isActive ? ' ts-select-btn--active' : ''}`}
                 onClick={() => handleSelectTool(tool.number)}
-                title={`Select ${toolName}`}
+                title={`Activate ${toolName} with T${tool.number}`}
               >
-                T{tool.number}
+                {isActive ? 'Active' : `T${tool.number}`}
               </button>
               <span className="ts-tool-name">{toolName}</span>
               <div className="ts-state-badge" style={{ '--ts-state-color': stateColor } as CSSProperties}>
@@ -178,7 +197,12 @@ export default function ToolSelectorPanel() {
                           H{hIdx}
                           <span className="ts-heater-state-dot" style={{ '--ts-heater-state': heaterStateColor(h.state) } as CSSProperties} />
                         </span>
-                        <span className="ts-heater-current">{h.current.toFixed(1)}&deg;</span>
+                        <span
+                          className="ts-heater-current"
+                          style={{ '--ts-temp-color': temperatureHeatColor(h.current) } as CSSProperties}
+                        >
+                          {h.current.toFixed(1)}&deg;
+                        </span>
                         <input
                           className="ts-input"
                           type="number" step={1}
@@ -224,8 +248,8 @@ export default function ToolSelectorPanel() {
             )}
 
             {/* ---- filament ---- */}
-            {tool.extruders.length > 0 && (() => {
-              const extruderIdx = tool.filamentExtruder >= 0 ? tool.filamentExtruder : tool.extruders[0];
+            {toolExtruders.length > 0 && (() => {
+              const extruderIdx = tool.filamentExtruder >= 0 ? tool.filamentExtruder : toolExtruders[0];
               const loaded = extrudersModel[extruderIdx]?.filament ?? '';
               return (
                 <div className="ts-section">
@@ -263,11 +287,11 @@ export default function ToolSelectorPanel() {
 
             {/* ---- assigned extruders/fans ---- */}
             <div className="ts-assigned-row">
-              {tool.extruders.length > 0 && (
+              {toolExtruders.length > 0 && (
                 <div className="ts-assigned-item">
                   <Droplets size={11} />
                   <span className="ts-assigned-label">Extruders:</span>
-                  <span className="ts-assigned-val">{tool.extruders.join(', ')}</span>
+                  <span className="ts-assigned-val">{toolExtruders.join(', ')}</span>
                 </div>
               )}
               {tool.fans.length > 0 && (

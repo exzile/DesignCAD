@@ -55,3 +55,70 @@
   padding-bottom: 0;
 }
 
+/* Sections wrapper — takes all space except the FINISH SKETCH button */
+.sketch-sections-wrapper {
+  display: flex;
+  align-items: stretch;
+  flex: 1 1 0;
+  min-width: 0;
+  overflow: hidden;
+}
+
+/* FINISH SKETCH / CANCEL area — fixed at right edge of toolbar */
+.sketch-finish-area {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  flex-shrink: 0;
+  padding: 0 8px 0 12px;
+  align-self: stretch;
+  border-left: 1px solid var(--border-light);
+}
+
+.sketch-finish-btn {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0 14px;
+  height: 42px;
+  background: rgba(76, 175, 80, 0.12);
+  color: var(--success, #4caf50);
+  border: 1.5px solid rgba(76, 175, 80, 0.35);
+  border-radius: 4px;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.5px;
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s;
+  white-space: nowrap;
+}
+
+.sketch-finish-btn:hover {
+  background: rgba(76, 175, 80, 0.22);
+  border-color: rgba(76, 175, 80, 0.6);
+}
+
+.sketch-finish-chevron {
+  opacity: 0.6;
+}
+
+.sketch-cancel-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border: 1px solid transparent;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+  transition: background 0.12s, color 0.12s;
+}
+
+.sketch-cancel-btn:hover {
+  background: rgba(244, 67, 54, 0.12);
+  color: #f44336;
+  border-color: rgba(244, 67, 54, 0.3);
+}
+

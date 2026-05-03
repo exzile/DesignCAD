@@ -10,6 +10,7 @@ import {
 import { useDashboardLayout } from '../../store/dashboardLayoutStore';
 import { colors as COLORS } from '../../utils/theme';
 import DashboardCard from './dashboard/DashboardCard';
+import CameraDashboardPanel from './dashboard/CameraDashboardPanel';
 import ViewSettingsPanel from './dashboard/ViewSettingsPanel';
 import { PANEL_DEFS, PANEL_MAP, SpacerBlock } from './duetDashboard/config';
 import { useDashboardEditor } from './duetDashboard/useDashboardEditor';
@@ -138,6 +139,11 @@ export default function DuetDashboard() {
             <button onClick={() => setActiveTab('config')}>
               <FileCode size={16} /> Config
             </button>
+          </div>
+
+          <div className="duet-dash-offline__camera">
+            <div className="duet-dash-offline__camera-title">Camera</div>
+            <CameraDashboardPanel compact />
           </div>
         </div>
       </div>

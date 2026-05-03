@@ -12,6 +12,10 @@ import { useSketchConstraintTool } from './sketchInteraction/hooks/useSketchCons
 import { useSketchInteractionEvents } from './sketchInteraction/hooks/useSketchInteractionEvents';
 import { SketchInteractionHud } from './sketchInteraction/SketchInteractionHud';
 
+const _tmpP0 = new THREE.Vector3();
+const _tmpP1 = new THREE.Vector3();
+const _tmpSeg = new THREE.Vector3();
+
 export default function SketchInteraction() {
   const { camera, gl, raycaster, scene } = useThree();
   const activeTool = useCADStore((s) => s.activeTool);
@@ -88,6 +92,8 @@ export default function SketchInteraction() {
   useEffect(() => { mousePosRef.current = mousePos; }, [mousePos]);
   // D65: snap indicator target
   const [snapTarget, setSnapTarget] = useState<{ worldPos: THREE.Vector3; type: 'endpoint' | 'midpoint' | 'center' | 'intersection' | 'perpendicular' | 'tangent' } | null>(null);
+  // Midpoint hover markers — segments whose midpoint should be shown as a dim triangle
+  const [hoverMidpoints, setHoverMidpoints] = useState<THREE.Vector3[]>([]);
   const previewRef = useRef<THREE.Group>(null);
   // Stable preview materials — created once, never recreated per frame
   const previewMaterial = useRef(new THREE.LineBasicMaterial({
@@ -373,21 +379,62 @@ export default function SketchInteraction() {
     return best;
   }, [activeSketch, snapEnabled, objectSnapEnabled, snapToEndpoint, snapToMidpoint, snapToCenter, snapToIntersection, snapToPerpendicular, snapToTangent, getSketchPlane, scene]);
 
-  const getWorldPoint = useCallback((event: MouseEvent): THREE.Vector3 | null => {
+  // Returns midpoints of all line segments the cursor is hovering near (within HOVER_RADIUS of
+  // the perpendicular foot on the segment). Used to show dim triangle markers before snapping.
+  const HOVER_MIDPOINT_RADIUS = SNAP_RADIUS * 2;
+  const findHoverMidpoints = useCallback((worldPt: THREE.Vector3): THREE.Vector3[] => {
+    if (!activeSketch || (!snapEnabled && !sketchSnapEnabled) || !objectSnapEnabled || !snapToMidpoint) {
+      return [];
+    }
+    const result: THREE.Vector3[] = [];
+    for (const e of activeSketch.entities) {
+      if (
+        (e.type === 'line' || e.type === 'construction-line' || e.type === 'centerline') &&
+        e.points.length >= 2
+      ) {
+        _tmpP0.set(e.points[0].x, e.points[0].y, e.points[0].z);
+        const last = e.points[e.points.length - 1];
+        _tmpP1.set(last.x, last.y, last.z);
+        _tmpSeg.subVectors(_tmpP1, _tmpP0);
+        const segLen2 = _tmpSeg.lengthSq();
+        if (segLen2 < 1e-10) continue;
+        const t = _tmpP1.subVectors(worldPt, _tmpP0).dot(_tmpSeg) / segLen2;
+        if (t < 0 || t > 1) continue;
+        _tmpP1.copy(_tmpP0).addScaledVector(_tmpSeg, t);
+        const dist = worldPt.distanceTo(_tmpP1);
+        if (dist <= HOVER_MIDPOINT_RADIUS) {
+          const last2 = e.points[e.points.length - 1];
+          result.push(new THREE.Vector3(
+            (e.points[0].x + last2.x) * 0.5,
+            (e.points[0].y + last2.y) * 0.5,
+            (e.points[0].z + last2.z) * 0.5,
+          ));
+        }
+      }
+    }
+    return result;
+  }, [activeSketch, snapEnabled, sketchSnapEnabled, objectSnapEnabled, snapToMidpoint]);
+
+  // Raw intersection with the sketch plane — no grid snap applied.
+  // Used for object-snap and hover detection so that non-grid-aligned
+  // points (e.g. midpoints of odd-length lines) are always reachable.
+  const getRawWorldPoint = useCallback((event: MouseEvent): THREE.Vector3 | null => {
     const rect = gl.domElement.getBoundingClientRect();
     const mouse = new THREE.Vector2(
       ((event.clientX - rect.left) / rect.width) * 2 - 1,
       -((event.clientY - rect.top) / rect.height) * 2 + 1
     );
-
     raycaster.setFromCamera(mouse, camera);
     const plane = getSketchPlane();
     const intersection = new THREE.Vector3();
-    const hit = raycaster.ray.intersectPlane(plane, intersection);
+    return raycaster.ray.intersectPlane(plane, intersection) ? intersection : null;
+  }, [camera, gl, raycaster, getSketchPlane]);
 
-    if (hit) return snapToGrid(intersection);
-    return null;
-  }, [camera, gl, raycaster, getSketchPlane, snapToGrid]);
+  const getWorldPoint = useCallback((event: MouseEvent): THREE.Vector3 | null => {
+    const raw = getRawWorldPoint(event);
+    if (!raw) return null;
+    return snapToGrid(raw);
+  }, [getRawWorldPoint, snapToGrid]);
 
   useSketchProjectionTools({
     activeTool,
@@ -436,6 +483,7 @@ export default function SketchInteraction() {
     activeSketch,
     activeTool,
     getWorldPoint,
+    getRawWorldPoint,
     findSnapCandidate,
     addSketchEntity,
     replaceSketchEntities,
@@ -468,6 +516,8 @@ export default function SketchInteraction() {
     setDrawingPoints,
     setMousePos,
     setSnapTarget,
+    findHoverMidpoints,
+    setHoverMidpoints,
     lineArcModeRef,
     drawingConstructionRef,
     planePickPendingRef,
@@ -514,6 +564,7 @@ export default function SketchInteraction() {
         units={units}
         themeColors={themeColors}
         snapTarget={snapTarget}
+        hoverMidpoints={hoverMidpoints}
       />
     </group>
   );

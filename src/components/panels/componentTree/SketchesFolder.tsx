@@ -5,6 +5,7 @@ import { useComponentStore } from '../../../store/componentStore';
 import { SketchContextMenu } from './SketchContextMenu';
 import type { SketchCtxMenu } from './SketchContextMenu';
 
+
 const EMPTY_IDS: string[] = [];
 
 export function SketchesFolder({ componentId }: { componentId?: string }) {
@@ -12,18 +13,28 @@ export function SketchesFolder({ componentId }: { componentId?: string }) {
   // Previously used features.filter('sketch') which is a secondary index and can lag.
   const activeSketch = useCADStore((s) => s.activeSketch);
   const sketches = useCADStore((s) => s.sketches);
-  const editSketch = useCADStore((s) => s.editSketch); // must be before any early return
+  const features = useCADStore((s) => s.features);
+  const renameSketch = useCADStore((s) => s.renameSketch);
+  const toggleFeatureVisibility = useCADStore((s) => s.toggleFeatureVisibility);
   const components = useComponentStore((s) => s.components);
   const activeComponentId = useComponentStore((s) => s.activeComponentId);
   const componentSketchIds = useComponentStore((s) => (
     componentId ? (s.components[componentId]?.sketchIds ?? EMPTY_IDS) : EMPTY_IDS
   ));
   const [expanded, setExpanded] = useState(true);
-  const [sketchVis, setSketchVis] = useState<Record<string, boolean>>({});
   const [ctxMenu, setCtxMenu] = useState<SketchCtxMenu | null>(null);
+  const [renamingId, setRenamingId] = useState<string | null>(null);
+  const [renameDraft, setRenameDraft] = useState('');
+
+  // Index features by sketchId for O(1) visibility lookups
+  const sketchFeatureMap = useMemo(
+    () => new Map(features.filter((f) => f.type === 'sketch' && f.sketchId).map((f) => [f.sketchId!, f])),
+    [features],
+  );
 
   const visibleSketches = useMemo(
     () => sketches.filter((s) => (
+      s.id !== activeSketch?.id &&
       !s.name.startsWith('Press Pull Profile') &&
       (
         !componentId ||
@@ -32,7 +43,7 @@ export function SketchesFolder({ componentId }: { componentId?: string }) {
         (componentId === activeComponentId && (!s.componentId || !components[s.componentId]))
       )
     )),
-    [activeComponentId, componentId, componentSketchIds, components, sketches],
+    [activeComponentId, activeSketch?.id, componentId, componentSketchIds, components, sketches],
   );
   const showActiveSketch = !!activeSketch
     && !activeSketch.name.startsWith('Press Pull Profile')
@@ -45,26 +56,41 @@ export function SketchesFolder({ componentId }: { componentId?: string }) {
   const hasAny = visibleSketches.length > 0 || showActiveSketch;
   if (!hasAny) return null;
 
-  const isVisible = (id: string) => sketchVis[id] !== false;
-  const toggleVis = (id: string, e: React.MouseEvent) => {
+  // Visibility is driven by the actual feature flag, not local state
+  const isVisible = (sketchId: string) => sketchFeatureMap.get(sketchId)?.visible !== false;
+
+  const toggleVis = (sketchId: string, e: React.MouseEvent) => {
     e.stopPropagation();
-    setSketchVis((prev) => ({ ...prev, [id]: !isVisible(id) }));
+    const feature = sketchFeatureMap.get(sketchId);
+    if (feature) toggleFeatureVisibility(feature.id);
   };
 
-  const allVisible = visibleSketches.every((sk) => isVisible(sk.id)) && (!showActiveSketch || isVisible('active'));
+  const allVisible = visibleSketches.every((sk) => isVisible(sk.id));
   const toggleFolderVis = (e: React.MouseEvent) => {
     e.stopPropagation();
     const next = !allVisible;
-    const newVis: Record<string, boolean> = {};
-    visibleSketches.forEach((sk) => { newVis[sk.id] = next; });
-    if (showActiveSketch) newVis['active'] = next;
-    setSketchVis(newVis);
+    visibleSketches.forEach((sk) => {
+      const feature = sketchFeatureMap.get(sk.id);
+      if (feature && feature.visible !== next) toggleFeatureVisibility(feature.id);
+    });
   };
 
   const openCtx = (e: React.MouseEvent, id: string, name: string) => {
     e.preventDefault();
     e.stopPropagation();
     setCtxMenu({ sketchId: id, sketchName: name, x: e.clientX, y: e.clientY });
+  };
+
+  const startRename = (id: string, currentName: string) => {
+    setRenamingId(id);
+    setRenameDraft(currentName);
+  };
+
+  const commitRename = (id: string) => {
+    if (renameDraft.trim() && id !== 'active') {
+      renameSketch(id, renameDraft.trim());
+    }
+    setRenamingId(null);
   };
 
   return (
@@ -96,8 +122,8 @@ export function SketchesFolder({ componentId }: { componentId?: string }) {
               key={sk.id}
               className="browser-row browser-row-child"
               onContextMenu={(e) => openCtx(e, sk.id, sk.name)}
-              onDoubleClick={() => editSketch(sk.id)}
-              title="Double-click to edit"
+              onDoubleClick={() => startRename(sk.id, sk.name)}
+              title="Double-click to rename, right-click to edit"
             >
               <button
                 className="browser-vis-btn"
@@ -112,26 +138,31 @@ export function SketchesFolder({ componentId }: { componentId?: string }) {
                 style={{ color: isVisible(sk.id) ? 'var(--accent)' : 'var(--text-dim)', opacity: isVisible(sk.id) ? 1 : 0.5 }}>
                 <PenTool size={12} />
               </span>
-              {/* opacity is dynamic (visibility state) — must stay inline */}
-              <span className="browser-item-label" style={{ opacity: isVisible(sk.id) ? 1 : 0.5 }}>
-                {sk.name}
-              </span>
+              {renamingId === sk.id ? (
+                <input
+                  className="tree-rename-input"
+                  value={renameDraft}
+                  onChange={(e) => setRenameDraft(e.target.value)}
+                  onBlur={() => commitRename(sk.id)}
+                  onKeyDown={(e) => { if (e.key === 'Enter') commitRename(sk.id); if (e.key === 'Escape') setRenamingId(null); }}
+                  autoFocus
+                  onClick={(e) => e.stopPropagation()}
+                />
+              ) : (
+                <span className="browser-item-label" style={{ opacity: isVisible(sk.id) ? 1 : 0.5 }}>
+                  {sk.name}
+                </span>
+              )}
             </div>
           ))}
 
-          {/* Currently editing sketch */}
+          {/* Currently editing sketch — no visibility toggle while active */}
           {showActiveSketch && activeSketch && (
             <div
               className="browser-row browser-row-child browser-row-active-sketch"
               onContextMenu={(e) => openCtx(e, 'active', activeSketch.name)}
             >
-              <button
-                className="browser-vis-btn"
-                onClick={(e) => toggleVis('active', e)}
-                title={isVisible('active') ? 'Hide' : 'Show'}
-              >
-                {isVisible('active') ? <Eye size={11} /> : <EyeOff size={11} />}
-              </button>
+              <span className="browser-vis-btn" />
               <span className="browser-chevron" />
               <span className="browser-item-icon ct-sketch-active-icon">
                 <PenTool size={12} />

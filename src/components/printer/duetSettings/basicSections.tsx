@@ -1,30 +1,26 @@
 import {
   AlertCircle,
+  Camera,
   CheckCircle,
   Info,
   Loader2,
-  Moon,
-  Pencil,
-  Plus,
-  Sun,
-  Trash2,
+  Save,
   Wifi,
   WifiOff,
 } from 'lucide-react';
-import type { ThemeMode } from '../../../store/themeStore';
+import { useMemo, useState } from 'react';
 import type {
   DateFormat,
   DuetPrefs,
   NotifSeverity,
+  CameraPathPreset,
+  CameraSourceType,
   TemperatureUnit,
   Units,
 } from '../../../utils/duetPrefs';
+import type { PrinterBoardType } from '../../../types/duet';
+import { cameraDisplayUrl, normalizeCameraStreamUrl } from '../../../utils/cameraStreamUrl';
 import { SettingRow, ToggleRow } from './common';
-
-interface PrinterOption {
-  id: string;
-  name: string;
-}
 
 interface TestResultState {
   success: boolean;
@@ -32,26 +28,32 @@ interface TestResultState {
   error?: string;
 }
 
+const BOARD_TYPE_OPTIONS: { value: PrinterBoardType; label: string; hint: string }[] = [
+  { value: 'duet', label: 'Duet (RRF)', hint: 'Duet 2/3 boards running RepRapFirmware' },
+  { value: 'klipper', label: 'Klipper', hint: 'Klipper firmware via Moonraker API' },
+  { value: 'marlin', label: 'Marlin', hint: 'Marlin firmware via OctoPrint or direct serial' },
+  { value: 'smoothie', label: 'Smoothieware', hint: 'Smoothieboard / LPC-based boards' },
+  { value: 'grbl', label: 'grbl', hint: 'grbl-based motion controllers' },
+  { value: 'repetier', label: 'Repetier', hint: 'Repetier-Firmware via Repetier-Server' },
+  { value: 'other', label: 'Other', hint: 'Generic G-code printer' },
+];
+
 interface ConnectionSectionProps {
-  activePrinterId: string;
+  boardType: PrinterBoardType;
   canConnect: boolean;
   config: { hostname: string };
   connected: boolean;
   connecting: boolean;
   error: string | null;
-  handleAddPrinter: () => void;
   handleConnect: () => void;
   handleDisconnect: () => void;
-  handleRemovePrinter: () => void;
-  handleRenamePrinter: () => void;
   handleTest: () => void;
   hostname: string;
   mode: 'standalone' | 'sbc';
   password: string;
   prefs: DuetPrefs;
   patchPrefs: (patch: Partial<DuetPrefs>) => void;
-  printers: PrinterOption[];
-  selectPrinter: (printerId: string) => void;
+  setBoardType: (value: PrinterBoardType) => void;
   setHostname: (value: string) => void;
   setMode: (value: 'standalone' | 'sbc') => void;
   setPassword: (value: string) => void;
@@ -60,81 +62,64 @@ interface ConnectionSectionProps {
 }
 
 export function ConnectionSection({
-  activePrinterId,
+  boardType,
   canConnect,
   config,
   connected,
   connecting,
   error,
-  handleAddPrinter,
   handleConnect,
   handleDisconnect,
-  handleRemovePrinter,
-  handleRenamePrinter,
   handleTest,
   hostname,
   mode,
   password,
   prefs,
   patchPrefs,
-  printers,
-  selectPrinter,
+  setBoardType,
   setHostname,
   setMode,
   setPassword,
   testResult,
   testing,
 }: ConnectionSectionProps) {
+  const isDuet = boardType === 'duet';
   return (
     <>
       <div className="duet-settings__page-title">Connection</div>
 
       <SettingRow
-        label="Printer"
-        hint="Select which printer this workspace connects to. Each printer keeps its own connection info and preferences."
+        label="Board Type"
+        hint={BOARD_TYPE_OPTIONS.find((o) => o.value === boardType)?.hint ?? ''}
         control={
-          <div className="duet-settings__btn-row" style={{ gap: 6, marginTop: 0 }}>
-            <select
-              className="duet-settings__input"
-              style={{ minWidth: 180 }}
-              value={activePrinterId}
-              onChange={(event) => {
-                selectPrinter(event.target.value);
-              }}
-              disabled={connecting}
-            >
-              {printers.map((printer) => (
-                <option key={printer.id} value={printer.id}>
-                  {printer.name}
-                </option>
-              ))}
-            </select>
-            <button className="duet-settings__btn duet-settings__btn--secondary" onClick={handleAddPrinter} title="Add printer" disabled={connecting}>
-              <Plus size={14} /> Add
-            </button>
-            <button className="duet-settings__btn duet-settings__btn--secondary" onClick={handleRenamePrinter} title="Rename printer" disabled={connecting}>
-              <Pencil size={14} /> Rename
-            </button>
-            <button className="duet-settings__btn duet-settings__btn--danger" onClick={handleRemovePrinter} title="Remove printer" disabled={connecting || printers.length <= 1}>
-              <Trash2 size={14} /> Remove
-            </button>
+          <div className="duet-settings__mode-selector">
+            {BOARD_TYPE_OPTIONS.map((opt) => (
+              <button
+                key={opt.value}
+                className={`duet-settings__mode-btn${boardType === opt.value ? ' is-active' : ''}`}
+                onClick={() => setBoardType(opt.value)}
+                disabled={connected}
+              >
+                {opt.label}
+              </button>
+            ))}
           </div>
         }
       />
 
       {connected ? (
         <div className="duet-settings__banner duet-settings__banner--success">
-          <Wifi size={16} /> Connected to Duet3D board at {config.hostname}
+          <Wifi size={16} /> Connected to {BOARD_TYPE_OPTIONS.find((o) => o.value === boardType)?.label ?? 'printer'} at {config.hostname}
         </div>
       ) : (
         <div className="duet-settings__banner duet-settings__banner--info">
-          <Info size={16} /> Connect to your Duet3D board via its REST API
+          <Info size={16} /> {isDuet ? 'Connect to your Duet3D board via its REST API' : `Connect to your ${BOARD_TYPE_OPTIONS.find((o) => o.value === boardType)?.label ?? 'printer'}`}
         </div>
       )}
 
       <SettingRow
         label="Hostname / IP Address"
-        hint="Enter the IP address or hostname of your Duet3D board (without http://)"
+        hint={isDuet ? 'Enter the IP address or hostname of your Duet3D board (without http://)' : 'Enter the IP address or hostname of your printer (without http://)'}
         control={
           <input
             className="duet-settings__input"
@@ -149,7 +134,7 @@ export function ConnectionSection({
 
       <SettingRow
         label="Board Password (optional)"
-        hint="Only required if your board has a password set in config.g (M551)"
+        hint={isDuet ? 'Only required if your board has a password set in config.g (M551)' : 'Only required if your printer interface is password-protected'}
         control={
           <input
             className="duet-settings__input"
@@ -162,24 +147,26 @@ export function ConnectionSection({
         }
       />
 
-      <SettingRow
-        label="Connection Mode"
-        hint={
-          mode === 'standalone'
-            ? 'Connect directly to the Duet board via its built-in WiFi/Ethernet.'
-            : 'Connect via a Single Board Computer running DuetSoftwareFramework.'
-        }
-        control={
-          <div className="duet-settings__mode-selector">
-            <button className={`duet-settings__mode-btn${mode === 'standalone' ? ' is-active' : ''}`} onClick={() => setMode('standalone')} disabled={connected}>
-              Standalone
-            </button>
-            <button className={`duet-settings__mode-btn${mode === 'sbc' ? ' is-active' : ''}`} onClick={() => setMode('sbc')} disabled={connected}>
-              SBC (Raspberry Pi)
-            </button>
-          </div>
-        }
-      />
+      {isDuet && (
+        <SettingRow
+          label="Connection Mode"
+          hint={
+            mode === 'standalone'
+              ? 'Connect directly to the Duet board via its built-in WiFi/Ethernet.'
+              : 'Connect via a Single Board Computer running DuetSoftwareFramework.'
+          }
+          control={
+            <div className="duet-settings__mode-selector">
+              <button className={`duet-settings__mode-btn${mode === 'standalone' ? ' is-active' : ''}`} onClick={() => setMode('standalone')} disabled={connected}>
+                Standalone
+              </button>
+              <button className={`duet-settings__mode-btn${mode === 'sbc' ? ' is-active' : ''}`} onClick={() => setMode('sbc')} disabled={connected}>
+                SBC (Raspberry Pi)
+              </button>
+            </div>
+          }
+        />
+      )}
 
       <div className="duet-settings__btn-row">
         <button className={`duet-settings__btn duet-settings__btn--secondary${testing || connected ? ' duet-settings__btn--disabled' : ''}`} onClick={handleTest} disabled={testing || connected || !hostname.trim()}>
@@ -304,19 +291,6 @@ export function GeneralSection({
         }
       />
       <SettingRow
-        label="Webcam URL"
-        hint="URL for the printer webcam stream. Leave blank to use the default (hostname/webcam/?action=stream)."
-        control={
-          <input
-            className="duet-settings__input"
-            type="text"
-            value={prefs.webcamUrl}
-            onChange={(event) => patchPrefs({ webcamUrl: event.target.value })}
-            placeholder="e.g. http://192.168.1.100:8080/?action=stream"
-          />
-        }
-      />
-      <SettingRow
         label="Temperature Unit"
         hint="Display temperatures in Celsius or Fahrenheit."
         control={
@@ -349,30 +323,613 @@ export function GeneralSection({
   );
 }
 
-export function AppearanceSection({
-  setTheme,
-  theme,
+type CameraTestState =
+  | { status: 'idle' }
+  | { status: 'testing' }
+  | { status: 'success'; url: string }
+  | { status: 'error'; url: string; message: string };
+
+function withCacheBuster(url: string): string {
+  return `${url}${url.includes('?') ? '&' : '?'}_test=${Date.now()}`;
+}
+
+function cameraBaseUrl(address: string, fallbackHostname: string): string {
+  const trimmed = (address.trim() || fallbackHostname.trim());
+  if (trimmed) return normalizeCameraStreamUrl(trimmed);
+  return '';
+}
+
+function cameraAddressFromStreamUrl(streamUrl: string): string {
+  const normalized = normalizeCameraStreamUrl(streamUrl);
+  if (!normalized) return '';
+  try {
+    const parsed = new URL(normalized);
+    return parsed.origin;
+  } catch {
+    return '';
+  }
+}
+
+function cameraOriginFromAddress(address: string, fallbackHostname: string): string {
+  return cameraBaseUrl(address, fallbackHostname).replace(/\/+$/, '');
+}
+
+function cameraRtspHost(address: string, fallbackHostname: string): string {
+  const origin = cameraOriginFromAddress(address, fallbackHostname);
+  if (!origin) return '';
+  try {
+    const parsed = new URL(origin);
+    return parsed.host;
+  } catch {
+    return origin.replace(/^https?:\/\//i, '');
+  }
+}
+
+function amcrestSubStreamUrl(address: string, fallbackHostname: string): string {
+  const base = cameraOriginFromAddress(address, fallbackHostname);
+  return base ? `${base}/cgi-bin/mjpg/video.cgi?channel=1&subtype=1` : '';
+}
+
+function amcrestMainStreamUrl(address: string, fallbackHostname: string): string {
+  const host = cameraRtspHost(address, fallbackHostname);
+  return host ? `rtsp://${host}:554/cam/realmonitor?channel=1&subtype=0` : '';
+}
+
+function cameraStreamCandidates(address: string, streamUrl: string, fallbackHostname: string, pathPreset: CameraPathPreset): string[] {
+  const explicit = streamUrl.trim();
+  if (explicit) return [normalizeCameraStreamUrl(explicit)];
+
+  const base = cameraBaseUrl(address, fallbackHostname).replace(/\/+$/, '');
+  if (!base) return [];
+
+  const genericCandidates = [
+    `${base}/webcam/?action=stream`,
+    `${base}/video.cgi`,
+    `${base}/mjpg/video.mjpg`,
+    `${base}/videostream.cgi`,
+    `${base}/stream`,
+    `${base}/video`,
+  ];
+
+  if (pathPreset !== 'amcrest') return genericCandidates;
+
+  return [
+    `${base}/cgi-bin/mjpg/video.cgi?channel=1&subtype=1`,
+    `${base}/cgi-bin/mjpg/video.cgi?channel=1&subtype=0`,
+    `${base}/cgi-bin/snapshot.cgi?channel=1`,
+    `${base}/cgi-bin/snapshot.cgi`,
+    ...genericCandidates,
+  ];
+}
+
+function cameraTestDisplayUrl(url: string): string {
+  if (!url.startsWith('/camera-proxy')) return url;
+  try {
+    const parsed = new URL(url, window.location.origin);
+    const target = parsed.searchParams.get('url');
+    return target ?? 'Camera proxy stream';
+  } catch {
+    return 'Camera proxy stream';
+  }
+}
+
+async function probeCameraStreamUrl(url: string, timeoutMs = 4500): Promise<void> {
+  const controller = new AbortController();
+  const timeout = window.setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    const response = await fetch(url, {
+      cache: 'no-store',
+      signal: controller.signal,
+    });
+    if (!response.ok) {
+      throw new Error(`HTTP ${response.status}`);
+    }
+
+    const contentType = response.headers.get('content-type')?.toLowerCase() ?? '';
+    if (
+      contentType.includes('multipart/x-mixed-replace') ||
+      contentType.startsWith('image/') ||
+      contentType.includes('octet-stream')
+    ) {
+      return;
+    }
+
+    const reader = response.body?.getReader();
+    if (!reader) {
+      throw new Error(contentType ? `Unexpected content type: ${contentType}` : 'No stream data returned.');
+    }
+    const { value } = await reader.read();
+    reader.releaseLock();
+    if (!value || value.byteLength === 0) {
+      throw new Error('No camera bytes returned.');
+    }
+    const header = new TextDecoder().decode(value.slice(0, Math.min(value.byteLength, 128))).toLowerCase();
+    if (header.includes('--') || header.includes('content-type: image/') || value[0] === 0xff || value[0] === 0x89) {
+      return;
+    }
+    throw new Error(contentType ? `Unexpected content type: ${contentType}` : 'Response was not an image or MJPEG stream.');
+  } finally {
+    window.clearTimeout(timeout);
+  }
+}
+
+export function CameraSection({
+  hostname,
+  patchPrefs,
+  prefs,
 }: {
-  setTheme: (theme: ThemeMode) => void;
-  theme: ThemeMode;
+  hostname: string;
+  patchPrefs: (patch: Partial<DuetPrefs>) => void;
+  prefs: DuetPrefs;
 }) {
+  const savedCameraAddress = prefs.webcamHost || cameraAddressFromStreamUrl(prefs.webcamUrl);
+  const [videoDevices, setVideoDevices] = useState<MediaDeviceInfo[]>([]);
+  const [draftAddress, setDraftAddress] = useState(savedCameraAddress);
+  const [draftSourceType, setDraftSourceType] = useState<CameraSourceType>(prefs.webcamSourceType ?? 'network');
+  const [draftStreamUrl, setDraftStreamUrl] = useState(prefs.webcamUrl);
+  const [draftMainStreamUrl, setDraftMainStreamUrl] = useState(prefs.webcamMainStreamUrl);
+  const [draftUsbDeviceId, setDraftUsbDeviceId] = useState(prefs.webcamUsbDeviceId ?? '');
+  const [draftUsbDeviceLabel, setDraftUsbDeviceLabel] = useState(prefs.webcamUsbDeviceLabel ?? '');
+  const [draftServerUsbDevice, setDraftServerUsbDevice] = useState(prefs.webcamServerUsbDevice ?? '');
+  const [draftStreamPreference, setDraftStreamPreference] = useState(prefs.webcamStreamPreference);
+  const [draftMainStreamProtocol, setDraftMainStreamProtocol] = useState(prefs.webcamMainStreamProtocol);
+  const [draftRtspTransport, setDraftRtspTransport] = useState(prefs.webcamRtspTransport);
+  const [draftPathPreset, setDraftPathPreset] = useState<CameraPathPreset>(prefs.webcamPathPreset ?? 'generic');
+  const [draftUsername, setDraftUsername] = useState(prefs.webcamUsername);
+  const [draftPassword, setDraftPassword] = useState(prefs.webcamPassword);
+  const [testState, setTestState] = useState<CameraTestState>({ status: 'idle' });
+  const [saved, setSaved] = useState(false);
+
+  const resolvedUrl = useMemo(() => normalizeCameraStreamUrl(draftStreamUrl), [draftStreamUrl]);
+  const authenticatedUrl = useMemo(
+    () => cameraDisplayUrl(resolvedUrl, draftUsername, draftPassword),
+    [draftPassword, draftUsername, resolvedUrl],
+  );
+  const hasUnsavedChanges =
+    draftSourceType !== (prefs.webcamSourceType ?? 'network') ||
+    draftAddress !== savedCameraAddress ||
+    draftStreamUrl !== prefs.webcamUrl ||
+    draftMainStreamUrl !== prefs.webcamMainStreamUrl ||
+    draftUsbDeviceId !== (prefs.webcamUsbDeviceId ?? '') ||
+    draftUsbDeviceLabel !== (prefs.webcamUsbDeviceLabel ?? '') ||
+    draftServerUsbDevice !== (prefs.webcamServerUsbDevice ?? '') ||
+    draftStreamPreference !== prefs.webcamStreamPreference ||
+    draftMainStreamProtocol !== prefs.webcamMainStreamProtocol ||
+    draftRtspTransport !== prefs.webcamRtspTransport ||
+    draftPathPreset !== (prefs.webcamPathPreset ?? 'generic') ||
+    draftUsername !== prefs.webcamUsername ||
+    draftPassword !== prefs.webcamPassword;
+
+  const fillAmcrestDefaults = () => {
+    const subUrl = amcrestSubStreamUrl(draftAddress, hostname);
+    const mainUrl = amcrestMainStreamUrl(draftAddress, hostname);
+    if (subUrl) setDraftStreamUrl(subUrl);
+    if (mainUrl) setDraftMainStreamUrl(mainUrl);
+    setDraftMainStreamProtocol('rtsp');
+    setDraftRtspTransport('tcp');
+    setDraftPathPreset('amcrest');
+    setSaved(false);
+    setTestState({ status: 'idle' });
+  };
+
+  const loadBrowserUsbDevices = () => {
+    if (!navigator.mediaDevices?.enumerateDevices) {
+      setTestState({ status: 'error', url: '', message: 'This browser cannot list USB cameras.' });
+      return;
+    }
+    void navigator.mediaDevices.getUserMedia({ video: true, audio: false })
+      .then((stream) => {
+        stream.getTracks().forEach((track) => track.stop());
+        return navigator.mediaDevices.enumerateDevices();
+      })
+      .then((devices) => {
+        const cameras = devices.filter((device) => device.kind === 'videoinput');
+        setVideoDevices(cameras);
+        if (!draftUsbDeviceId && cameras[0]) {
+          setDraftUsbDeviceId(cameras[0].deviceId);
+          setDraftUsbDeviceLabel(cameras[0].label);
+          setSaved(false);
+        }
+        setTestState(cameras.length
+          ? { status: 'idle' }
+          : { status: 'error', url: '', message: 'No USB cameras were found by this browser.' });
+      })
+      .catch(() => {
+        setTestState({ status: 'error', url: '', message: 'Browser camera permission is required to list USB cameras.' });
+      });
+  };
+
+  const handleTestCamera = () => {
+    const candidateUrls = cameraStreamCandidates(draftAddress, draftStreamUrl, hostname, draftPathPreset);
+    if (candidateUrls.length === 0) {
+      setTestState({
+        status: 'error',
+        url: '',
+        message: 'Enter a camera IP/address or a stream URL.',
+      });
+      return;
+    }
+
+    setTestState({ status: 'testing' });
+
+    const attempts = candidateUrls.flatMap((sourceUrl) => {
+      const displayUrl = cameraDisplayUrl(sourceUrl, draftUsername, draftPassword);
+      return [
+        { sourceUrl, testUrl: sourceUrl },
+        { sourceUrl, testUrl: displayUrl },
+        { sourceUrl, testUrl: withCacheBuster(sourceUrl) },
+        { sourceUrl, testUrl: withCacheBuster(displayUrl) },
+      ];
+    }).filter((attempt, index, all) => (
+      attempt.testUrl && all.findIndex((item) => item.testUrl === attempt.testUrl) === index
+    ));
+
+    let index = 0;
+    let lastError = 'The camera URL did not return a loadable image or MJPEG stream.';
+
+    const tryCandidate = async () => {
+      const candidate = attempts[index];
+      try {
+        await probeCameraStreamUrl(candidate.testUrl);
+        setDraftStreamUrl(candidate.sourceUrl);
+        setSaved(false);
+        setTestState({ status: 'success', url: candidate.testUrl });
+      } catch (error) {
+        lastError = error instanceof Error && error.name === 'AbortError'
+          ? 'Camera did not respond before the test timed out.'
+          : 'The camera URL did not return a loadable image or MJPEG stream.';
+        index += 1;
+        if (index < attempts.length) {
+          void tryCandidate();
+          return;
+        }
+        setTestState({ status: 'error', url: candidateUrls[0], message: lastError });
+      }
+    };
+
+    if (attempts.length === 0) {
+      setTestState({
+        status: 'error',
+        url: '',
+        message: 'Enter a camera IP/address or a stream URL.',
+      });
+      return;
+    }
+
+    void tryCandidate();
+  };
+
+  const handleSaveCamera = () => {
+    const savedUrl = draftStreamUrl.trim() ? resolvedUrl : '';
+    setDraftStreamUrl(savedUrl);
+    patchPrefs({
+      webcamSourceType: draftSourceType,
+      webcamHost: draftAddress.trim(),
+      webcamUrl: savedUrl,
+      webcamMainStreamUrl: draftMainStreamUrl.trim(),
+      webcamUsbDeviceId: draftUsbDeviceId,
+      webcamUsbDeviceLabel: draftUsbDeviceLabel,
+      webcamServerUsbDevice: draftServerUsbDevice.trim(),
+      webcamStreamPreference: draftStreamPreference,
+      webcamMainStreamProtocol: draftMainStreamProtocol,
+      webcamRtspTransport: draftRtspTransport,
+      webcamPathPreset: draftPathPreset,
+      webcamUsername: draftUsername.trim(),
+      webcamPassword: draftPassword,
+    });
+    setSaved(true);
+  };
+
   return (
     <>
-      <div className="duet-settings__page-title">Appearance</div>
+      <div className="duet-settings__page-title">Camera</div>
+      <div className="duet-settings__banner duet-settings__banner--info">
+        <Camera size={16} /> Configure a network camera, browser USB camera, or server USB camera for this printer.
+      </div>
+
       <SettingRow
-        label="Theme"
-        hint="Switch between light and dark themes. Applies immediately."
+        label="Camera Source"
+        hint="Network cameras use URLs. Browser USB uses a camera attached to the computer viewing the app. Server USB uses a camera attached to the Orange Pi/server."
         control={
-          <div className="duet-settings__mode-selector">
-            {(['light', 'dark'] as ThemeMode[]).map((mode) => (
-              <button key={mode} className={`duet-settings__mode-btn${theme === mode ? ' is-active' : ''}`} onClick={() => setTheme(mode)}>
-                {mode === 'light' ? <Sun size={14} /> : <Moon size={14} />}
-                {mode}
-              </button>
-            ))}
-          </div>
+          <select
+            className="duet-settings__select"
+            value={draftSourceType}
+            onChange={(event) => {
+              setDraftSourceType(event.target.value as CameraSourceType);
+              setSaved(false);
+              setTestState({ status: 'idle' });
+            }}
+          >
+            <option value="network">Network camera</option>
+            <option value="browser-usb">Browser USB camera</option>
+            <option value="server-usb">Server USB camera</option>
+          </select>
         }
       />
+
+      {draftSourceType === 'browser-usb' && (
+        <>
+          <SettingRow
+            label="Browser USB Camera"
+            hint="This uses the USB camera available to the browser. The browser may ask for camera permission."
+            control={
+              <select
+                className="duet-settings__select"
+                value={draftUsbDeviceId}
+                onChange={(event) => {
+                  const device = videoDevices.find((item) => item.deviceId === event.target.value);
+                  setDraftUsbDeviceId(event.target.value);
+                  setDraftUsbDeviceLabel(device?.label ?? '');
+                  setSaved(false);
+                }}
+              >
+                <option value="">Default browser camera</option>
+                {videoDevices.map((device, index) => (
+                  <option key={device.deviceId} value={device.deviceId}>{device.label || `USB camera ${index + 1}`}</option>
+                ))}
+              </select>
+            }
+          />
+          <div className="duet-settings__btn-row">
+            <button className="duet-settings__btn duet-settings__btn--secondary" onClick={loadBrowserUsbDevices}>
+              <Camera size={14} /> Find Browser Cameras
+            </button>
+          </div>
+        </>
+      )}
+
+      {draftSourceType === 'server-usb' && (
+        <SettingRow
+          label="Server USB Device"
+          hint="For Orange Pi/Linux use paths like /dev/video0. On Windows dev, use a DirectShow camera name such as Integrated Camera."
+          control={
+            <input
+              className="duet-settings__input"
+              type="text"
+              value={draftServerUsbDevice}
+              onChange={(event) => {
+                setDraftServerUsbDevice(event.target.value);
+                setSaved(false);
+              }}
+              placeholder="/dev/video0"
+            />
+          }
+        />
+      )}
+
+      <SettingRow
+        label="Camera Address / IP"
+        hint="Enter the camera IP, hostname, or base URL. Generic cameras use the URLs you enter; presets can fill vendor-specific paths."
+        control={
+          <input
+            className="duet-settings__input"
+            type="text"
+            value={draftAddress}
+            onChange={(event) => {
+              setDraftAddress(event.target.value);
+              setSaved(false);
+              setTestState({ status: 'idle' });
+            }}
+            placeholder="e.g. 192.168.1.55"
+          />
+        }
+      />
+
+      <div className="duet-settings__btn-row">
+        <button className="duet-settings__btn duet-settings__btn--secondary" onClick={fillAmcrestDefaults}>
+          <Camera size={14} /> Fill Amcrest Defaults
+        </button>
+      </div>
+
+      <SettingRow
+        label="Camera Path Preset"
+        hint="Generic keeps the app camera-brand neutral. Pick Amcrest only when you want its default stream paths and PTZ endpoint."
+        control={
+          <select
+            className="duet-settings__select"
+            value={draftPathPreset}
+            onChange={(event) => {
+              setDraftPathPreset(event.target.value as CameraPathPreset);
+              setSaved(false);
+              setTestState({ status: 'idle' });
+            }}
+          >
+            <option value="generic">Generic / custom URLs</option>
+            <option value="amcrest">Amcrest / Dahua-compatible paths</option>
+          </select>
+        }
+      />
+
+      <SettingRow
+        label="Preferred Stream"
+        hint="Use the MJPEG sub stream for dashboard previews. Select main stream when you also configure an H.264 viewer/bridge."
+        control={
+          <select
+            className="duet-settings__select"
+            value={draftStreamPreference}
+            onChange={(event) => {
+              setDraftStreamPreference(event.target.value as DuetPrefs['webcamStreamPreference']);
+              setSaved(false);
+            }}
+          >
+            <option value="sub">Sub stream - MJPEG preview</option>
+            <option value="main">Main stream - H.264 high quality</option>
+          </select>
+        }
+      />
+
+      <SettingRow
+        label="Sub Stream URL"
+        hint="The exact MJPEG/snapshot stream. Leave blank and Test Connection will fill this when it finds a working path."
+        control={
+          <input
+            className="duet-settings__input"
+            type="text"
+            value={draftStreamUrl}
+            onChange={(event) => {
+              setDraftStreamUrl(event.target.value);
+              setSaved(false);
+              setTestState({ status: 'idle' });
+            }}
+            placeholder="e.g. http://192.168.1.55/cgi-bin/mjpg/video.cgi?channel=1&subtype=1"
+          />
+        }
+      />
+
+      <SettingRow
+        label="Main Stream Protocol"
+        hint="Use RTSP for camera main streams, or HLS/HTTP when a camera or bridge provides browser-compatible video."
+        control={
+          <select
+            className="duet-settings__select"
+            value={draftMainStreamProtocol}
+            onChange={(event) => {
+              setDraftMainStreamProtocol(event.target.value as DuetPrefs['webcamMainStreamProtocol']);
+              setSaved(false);
+            }}
+          >
+            <option value="rtsp">RTSP / H.264</option>
+            <option value="hls">HLS / browser video</option>
+            <option value="http">HTTP stream</option>
+          </select>
+        }
+      />
+
+      <SettingRow
+        label="Main Stream URL"
+        hint="High-quality stream URL for this camera. RTSP can be bridged to HLS by the app for the Camera page."
+        control={
+          <input
+            className="duet-settings__input"
+            type="text"
+            value={draftMainStreamUrl}
+            onChange={(event) => {
+              setDraftMainStreamUrl(event.target.value);
+              setSaved(false);
+            }}
+            placeholder="e.g. rtsp://192.168.1.55:554/cam/realmonitor?channel=1&subtype=0"
+          />
+        }
+      />
+
+      {draftMainStreamProtocol === 'rtsp' && (
+        <SettingRow
+          label="RTSP Transport"
+          hint="TCP is usually more reliable on Wi-Fi. UDP can be lower latency on stable wired networks."
+          control={
+            <select
+              className="duet-settings__select"
+              value={draftRtspTransport}
+              onChange={(event) => {
+                setDraftRtspTransport(event.target.value as DuetPrefs['webcamRtspTransport']);
+                setSaved(false);
+              }}
+            >
+              <option value="tcp">TCP</option>
+              <option value="udp">UDP</option>
+            </select>
+          }
+        />
+      )}
+
+      {draftStreamPreference === 'main' && draftMainStreamProtocol === 'rtsp' && (
+        <div className="duet-settings__banner duet-settings__banner--info">
+          <Info size={16} /> Browsers cannot play RTSP/H.264 directly. The MJPEG sub stream remains the dashboard preview until an RTSP bridge is configured.
+        </div>
+      )}
+
+      <SettingRow
+        label="Camera Username"
+        hint="Optional. Use this for cameras that require HTTP basic authentication."
+        control={
+          <input
+            className="duet-settings__input"
+            type="text"
+            value={draftUsername}
+            onChange={(event) => {
+              setDraftUsername(event.target.value);
+              setSaved(false);
+              setTestState({ status: 'idle' });
+            }}
+            placeholder="Camera username"
+            autoComplete="off"
+          />
+        }
+      />
+
+      <SettingRow
+        label="Camera Password"
+        hint="Optional. Stored with this printer's local preferences."
+        control={
+          <input
+            className="duet-settings__input"
+            type="password"
+            value={draftPassword}
+            onChange={(event) => {
+              setDraftPassword(event.target.value);
+              setSaved(false);
+              setTestState({ status: 'idle' });
+            }}
+            placeholder="Camera password"
+            autoComplete="new-password"
+          />
+        }
+      />
+
+      {resolvedUrl && (
+        <div className="duet-settings__camera-preview" aria-label="Camera preview">
+          <img src={authenticatedUrl} alt="Camera stream preview" />
+        </div>
+      )}
+
+      <div className="duet-settings__btn-row">
+        <button
+          className={`duet-settings__btn duet-settings__btn--secondary${testState.status === 'testing' ? ' duet-settings__btn--disabled' : ''}`}
+          onClick={handleTestCamera}
+          disabled={testState.status === 'testing'}
+        >
+          {testState.status === 'testing' ? (
+            <>
+              <Loader2 size={14} className="spin" /> Testing...
+            </>
+          ) : (
+            <>
+              <Camera size={14} /> Test Connection
+            </>
+          )}
+        </button>
+        <button
+          className={`duet-settings__btn duet-settings__btn--primary${!hasUnsavedChanges ? ' duet-settings__btn--disabled' : ''}`}
+          onClick={handleSaveCamera}
+          disabled={!hasUnsavedChanges}
+        >
+          <Save size={14} /> Save Camera Settings
+        </button>
+      </div>
+
+      {testState.status === 'success' && (
+        <div className="duet-settings__banner duet-settings__banner--success">
+          <CheckCircle size={16} />
+          <div>
+            <div className="duet-settings__banner-heading">Camera connected</div>
+            <div className="duet-settings__banner-detail">{cameraTestDisplayUrl(testState.url)}</div>
+          </div>
+        </div>
+      )}
+      {testState.status === 'error' && (
+        <div className="duet-settings__banner duet-settings__banner--error">
+          <AlertCircle size={16} />
+          <div>
+            <div className="duet-settings__banner-heading">Camera test failed</div>
+            <div className="duet-settings__banner-detail">{testState.message}</div>
+          </div>
+        </div>
+      )}
+      {saved && !hasUnsavedChanges && (
+        <div className="duet-settings__banner duet-settings__banner--success">
+          <CheckCircle size={16} /> Camera settings saved for this printer.
+        </div>
+      )}
     </>
   );
 }
@@ -392,14 +949,14 @@ export function BehaviourSection({
         checked={prefs.confirmToolChange}
         onChange={(value) => patchPrefs({ confirmToolChange: value })}
         label="Confirm tool changes"
-        hint="Ask for confirmation before switching the active tool (T command)."
+        hint="Ask for confirmation before switching the active tool."
       />
       <ToggleRow
         id="silent-prompts"
         checked={prefs.silentPrompts}
         onChange={(value) => patchPrefs({ silentPrompts: value })}
         label="Silent prompts"
-        hint="Suppress beeps for routine M291 message box dialogs."
+        hint="Suppress beeps for routine firmware message dialogs."
       />
       <ToggleRow
         id="auto-reconnect"
@@ -439,7 +996,7 @@ export function NotificationsSection({
         checked={prefs.notificationsSound}
         onChange={(value) => patchPrefs({ notificationsSound: value })}
         label="Play sound on beep events"
-        hint="Trigger a short tone when the firmware emits an M300 beep."
+        hint="Trigger a short tone when the firmware emits a beep command."
       />
       <ToggleRow
         id="sound-alert-complete"

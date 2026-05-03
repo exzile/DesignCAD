@@ -4,6 +4,8 @@
 // Connection modes
 export type DuetMode = 'standalone' | 'sbc';
 
+export type PrinterBoardType = 'duet' | 'klipper' | 'marlin' | 'smoothie' | 'grbl' | 'repetier' | 'other';
+
 // Machine state
 export type MachineStatus =
   | 'disconnected'
@@ -392,6 +394,7 @@ export interface DuetConfig {
   hostname: string;
   password: string;
   mode: DuetMode;
+  boardType?: PrinterBoardType;
 }
 
 // Filament monitor (RRF `sensors.filamentMonitors[]`)

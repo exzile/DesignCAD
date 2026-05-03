@@ -19,16 +19,15 @@
 }
 
 .sketch-inline-dimension-editor {
-  position: fixed;
-  z-index: 260;
   display: flex;
   align-items: stretch;
   gap: 4px;
-  padding: 4px;
+  padding: 2px;
   border: 1px solid var(--accent);
   border-radius: 4px;
   background: var(--bg-input);
   box-shadow: 0 4px 14px rgba(0, 0, 0, 0.18);
+  white-space: nowrap;
 }
 
 .sketch-inline-dimension-input {
@@ -63,9 +62,71 @@
 }
 
 .sketch-inline-dimension-action--confirm {
-  background: var(--accent);
-  border-color: var(--accent);
+  background: #16a34a;
+  border-color: #16a34a;
   color: #fff;
+  font-size: 14px;
+}
+
+.sketch-inline-dimension-action--confirm:hover {
+  background: #15803d;
+  border-color: #15803d;
+}
+
+.sketch-inline-dimension-action--cancel {
+  background: var(--bg-primary);
+  border-color: var(--border-light);
+  color: #b91c1c;
+  font-size: 14px;
+}
+
+.sketch-inline-dimension-action--cancel:hover {
+  background: #fef2f2;
+  border-color: #b91c1c;
+}
+
+/* Parameter typeahead dropdown */
+.sketch-dim-typeahead {
+  position: absolute;
+  top: calc(100% + 2px);
+  left: 0;
+  min-width: 100%;
+  margin: 0;
+  padding: 3px;
+  list-style: none;
+  background: #ffffff;
+  border: 1px solid rgba(15, 23, 42, 0.15);
+  border-radius: 5px;
+  box-shadow: 0 6px 18px rgba(15, 23, 42, 0.15);
+  z-index: 10001;
+  white-space: nowrap;
+}
+
+.sketch-dim-typeahead-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 5px 8px;
+  border-radius: 3px;
+  cursor: pointer;
+  font-size: 12px;
+}
+
+.sketch-dim-typeahead-item:hover,
+.sketch-dim-typeahead-item:focus {
+  background: #eff6ff;
+  outline: none;
+}
+
+.sketch-dim-typeahead-name {
+  color: #1e3a8a;
+  font-weight: 600;
+}
+
+.sketch-dim-typeahead-val {
+  color: #64748b;
+  font-size: 11px;
 }
 
 @media (max-width: 820px) {

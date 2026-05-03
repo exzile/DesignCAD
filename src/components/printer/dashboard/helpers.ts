@@ -10,7 +10,7 @@ export const HEATER_CHART_COLORS = [
 export interface HeaterRow {
   label: string;
   index: number;
-  kind: 'bed' | 'chamber' | 'tool';
+  kind: 'bed' | 'chamber' | 'tool' | 'heater';
   toolIndex?: number;
   heaterIndexInTool?: number;
 }
@@ -97,17 +97,25 @@ export function useHeaterRows(): HeaterRow[] {
   const model = usePrinterStore((s) => s.model);
   return useMemo(() => {
     const rows: HeaterRow[] = [];
+    const usedHeaters = new Set<number>();
     const bedHeaters = model.heat?.bedHeaters ?? [];
     bedHeaters.forEach((idx) => {
-      if (idx >= 0) rows.push({ label: `Bed${bedHeaters.length > 1 ? ` ${idx}` : ''}`, index: idx, kind: 'bed' });
+      if (idx >= 0) {
+        rows.push({ label: `Bed${bedHeaters.length > 1 ? ` ${idx}` : ''}`, index: idx, kind: 'bed' });
+        usedHeaters.add(idx);
+      }
     });
     const chamberHeaters = model.heat?.chamberHeaters ?? [];
     chamberHeaters.forEach((idx) => {
-      if (idx >= 0) rows.push({ label: `Chamber${chamberHeaters.length > 1 ? ` ${idx}` : ''}`, index: idx, kind: 'chamber' });
+      if (idx >= 0) {
+        rows.push({ label: `Chamber${chamberHeaters.length > 1 ? ` ${idx}` : ''}`, index: idx, kind: 'chamber' });
+        usedHeaters.add(idx);
+      }
     });
     const tools = model.tools ?? [];
     tools.forEach((tool) => {
       tool.heaters.forEach((hIdx, hi) => {
+        usedHeaters.add(hIdx);
         rows.push({
           label: tool.name || `Tool ${tool.number}${tool.heaters.length > 1 ? ` H${hi}` : ''}`,
           index: hIdx,
@@ -116,6 +124,12 @@ export function useHeaterRows(): HeaterRow[] {
           heaterIndexInTool: hi,
         });
       });
+    });
+    const heaters = model.heat?.heaters ?? [];
+    heaters.forEach((_, idx) => {
+      if (!usedHeaters.has(idx)) {
+        rows.push({ label: `Heater ${idx}`, index: idx, kind: 'heater' });
+      }
     });
     return rows;
   }, [model.heat, model.tools]);

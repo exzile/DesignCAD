@@ -51,6 +51,7 @@ interface UseSketchInteractionEventsParams {
   activeSketch: ReturnType<typeof useCADStore.getState>['activeSketch'];
   activeTool: string;
   getWorldPoint: (event: MouseEvent) => THREE.Vector3 | null;
+  getRawWorldPoint: (event: MouseEvent) => THREE.Vector3 | null;
   findSnapCandidate: (
     worldPt: THREE.Vector3,
     drawStart?: THREE.Vector3 | null,
@@ -96,6 +97,8 @@ interface UseSketchInteractionEventsParams {
         }
       | null,
   ) => void;
+  findHoverMidpoints: (worldPt: THREE.Vector3) => THREE.Vector3[];
+  setHoverMidpoints: (value: THREE.Vector3[]) => void;
   lineArcModeRef: MutableRefObject<boolean>;
   drawingConstructionRef: MutableRefObject<boolean>;
   planePickPendingRef: MutableRefObject<boolean>;
@@ -108,6 +111,7 @@ export function useSketchInteractionEvents({
   activeSketch,
   activeTool,
   getWorldPoint,
+  getRawWorldPoint,
   findSnapCandidate,
   addSketchEntity,
   replaceSketchEntities,
@@ -140,6 +144,8 @@ export function useSketchInteractionEvents({
   setDrawingPoints,
   setMousePos,
   setSnapTarget,
+  findHoverMidpoints,
+  setHoverMidpoints,
   lineArcModeRef,
   drawingConstructionRef,
   planePickPendingRef,
@@ -210,20 +216,24 @@ export function useSketchInteractionEvents({
     const handleMouseMove = (event: MouseEvent) => {
       if (activeTool === 'select') return;
       const drawingPoints = drawingPointsRef.current;
-      const point = getWorldPoint(event);
-      if (!point) return;
+      // Use raw (pre-grid-snap) point for object-snap and hover detection.
+      // Grid snap is only applied as a fallback when no object snap is found,
+      // so non-grid-aligned points like midpoints are always reachable.
+      const rawPoint = getRawWorldPoint(event);
+      if (!rawPoint) return;
       const drawStart =
         drawingPoints.length > 0
           ? new THREE.Vector3(drawingPoints[0].x, drawingPoints[0].y, drawingPoints[0].z)
           : null;
-      const snapCandidate = findSnapCandidate(point, drawStart);
+      const snapCandidate = findSnapCandidate(rawPoint, drawStart);
+      const point = snapCandidate?.worldPos.clone() ?? getWorldPoint(event) ?? rawPoint;
       if (snapCandidate) {
-        setMousePos(snapCandidate.worldPos.clone());
         setSnapTarget(snapCandidate);
       } else {
-        setMousePos(point);
         setSnapTarget(null);
       }
+      setMousePos(point);
+      setHoverMidpoints(findHoverMidpoints(rawPoint));
 
       if (drawingPoints.length > 0) {
         const start = drawingPoints[0];
@@ -303,13 +313,14 @@ export function useSketchInteractionEvents({
         return;
       }
 
-      const point = getWorldPoint(event);
-      if (!point) return;
+      const rawPoint = getRawWorldPoint(event);
+      if (!rawPoint) return;
+      const point = getWorldPoint(event) ?? rawPoint;
       const drawStart =
         drawingPoints.length > 0
           ? new THREE.Vector3(drawingPoints[0].x, drawingPoints[0].y, drawingPoints[0].z)
           : null;
-      const snapCandidate = findSnapCandidate(point, drawStart);
+      const snapCandidate = findSnapCandidate(rawPoint, drawStart);
       const commitPoint = snapCandidate?.worldPos.clone() ?? point.clone();
       const planeNormal = activeSketch.planeNormal.clone().normalize();
       const planeOrigin = activeSketch.planeOrigin;
@@ -399,21 +410,59 @@ export function useSketchInteractionEvents({
         );
         return;
       }
-      if ((event.key === 'a' || event.key === 'A') && ['line', 'construction-line', 'centerline'].includes(activeTool)) {
-        lineArcModeRef.current = !lineArcModeRef.current;
-        const base = `Click to place - ${drawingPoints.length === 0 ? 'start point' : 'next point'}`;
-        setStatusMessage(
-          `${base}${lineArcModeRef.current ? ' [ARC]' : ''}${drawingConstructionRef.current ? ' [CONSTRUCTION]' : ''}`,
-        );
+      // Skip all single-key shortcuts when a text input is focused
+      const activeTag = (document.activeElement as HTMLElement)?.tagName?.toLowerCase();
+      if (activeTag === 'input' || activeTag === 'textarea') return;
+
+      if (event.ctrlKey || event.metaKey || event.altKey) return;
+
+      const k = event.key.toLowerCase();
+
+      // A — toggle arc mode when already in line/construction-line, else switch to 3-pt arc
+      if (k === 'a') {
+        if (['line', 'construction-line', 'centerline'].includes(activeTool)) {
+          lineArcModeRef.current = !lineArcModeRef.current;
+          const base = `Click to place - ${drawingPoints.length === 0 ? 'start point' : 'next point'}`;
+          setStatusMessage(
+            `${base}${lineArcModeRef.current ? ' [ARC]' : ''}${drawingConstructionRef.current ? ' [CONSTRUCTION]' : ''}`,
+          );
+        } else {
+          setDrawingPoints([]);
+          setActiveTool('arc-3point');
+          setStatusMessage('3-Point Arc: click start, end, then point on arc');
+        }
         return;
       }
-      if (event.key === 'x' || event.key === 'X') {
+
+      // X — toggle construction geometry
+      if (k === 'x') {
         drawingConstructionRef.current = !drawingConstructionRef.current;
         setStatusMessage(
           `${activeTool.replace(/-/g, ' ')}${lineArcModeRef.current ? ' [ARC]' : ''}${
             drawingConstructionRef.current ? ' [CONSTRUCTION]' : ''
           }`,
         );
+        return;
+      }
+
+      // Tool hotkeys (Fusion 360 mapping)
+      const toolHotkeys: Record<string, { tool: string; msg: string }> = {
+        l: { tool: 'line',          msg: 'Line: click to place start point' },
+        c: { tool: 'circle',        msg: 'Circle: click center point' },
+        r: { tool: 'rectangle',     msg: 'Rectangle: click first corner' },
+        s: { tool: 'spline',        msg: 'Spline: click to place fit points, right-click to finish' },
+        f: { tool: 'sketch-fillet', msg: 'Sketch Fillet: click near the corner of two lines' },
+        t: { tool: 'trim',          msg: 'Trim: click a segment portion to remove it' },
+        o: { tool: 'sketch-offset', msg: 'Offset: click a line, then click the side to offset towards' },
+        p: { tool: 'sketch-project',msg: 'Project: click a solid face to project its boundary onto the sketch plane' },
+        d: { tool: 'dimension',     msg: 'Dimension: click a line, arc, or two points to add a dimension' },
+      };
+      const hotkey = toolHotkeys[k];
+      if (hotkey) {
+        setDrawingPoints([]);
+        setActiveTool(hotkey.tool as Parameters<typeof setActiveTool>[0]);
+        setStatusMessage(hotkey.msg);
+        return;
       }
     };
 
@@ -559,6 +608,9 @@ export function useSketchInteractionEvents({
     setDrawingPoints,
     setMousePos,
     setSnapTarget,
+    findHoverMidpoints,
+    setHoverMidpoints,
+    getRawWorldPoint,
     lineArcModeRef,
     drawingConstructionRef,
     planePickPendingRef,

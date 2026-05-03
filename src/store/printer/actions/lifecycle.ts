@@ -7,6 +7,15 @@ import type { PrinterStore } from '../../printerStore';
 
 const MAX_TEMPERATURE_HISTORY = 200;
 const MAX_CONSOLE_HISTORY = 500;
+const TRANSIENT_CONNECTION_ERROR_PREFIXES = [
+  'Printer connection issue:',
+  'Connection lost',
+  'Reconnecting...',
+];
+
+function isTransientConnectionError(error: string | null): boolean {
+  return Boolean(error && TRANSIENT_CONNECTION_ERROR_PREFIXES.some((prefix) => error.startsWith(prefix)));
+}
 
 export function createLifecycleActions(
   { get, set }: PrinterStoreApi,
@@ -71,7 +80,12 @@ export function createLifecycleActions(
             history.splice(0, history.length - MAX_TEMPERATURE_HISTORY);
           }
 
-          set({ model, temperatureHistory: history, lastModelUpdate: now });
+          set({
+            model,
+            temperatureHistory: history,
+            lastModelUpdate: now,
+            ...(isTransientConnectionError(state.error) ? { error: null } : {}),
+          });
         });
 
         const files = await service.listFiles('0:/gcodes').catch(() => [] as DuetFileInfo[]);
@@ -96,7 +110,6 @@ export function createLifecycleActions(
           files,
           macros,
           filaments,
-          showPrinter: true,
           error: null,
         });
       } catch (err) {

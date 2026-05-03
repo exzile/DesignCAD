@@ -20,6 +20,7 @@ interface SketchInteractionHudProps {
   units: string;
   themeColors: ThemeColors;
   snapTarget: { worldPos: THREE.Vector3; type: SnapType } | null;
+  hoverMidpoints?: THREE.Vector3[];
 }
 
 export function SketchInteractionHud({
@@ -30,6 +31,7 @@ export function SketchInteractionHud({
   units,
   themeColors,
   snapTarget,
+  hoverMidpoints,
 }: SketchInteractionHudProps) {
   if (!mousePos || !activeSketch) {
     return null;
@@ -159,6 +161,21 @@ export function SketchInteractionHud({
           <div style={lengthLabelStyle}>{radiusHudText}</div>
         </Html>
       )}
+
+      {/* Dim midpoint triangles on hovered segments — visible before the cursor reaches snap radius */}
+      {hoverMidpoints?.filter(mid =>
+        !(snapTarget?.type === 'midpoint' && snapTarget.worldPos.distanceTo(mid) < 0.1)
+      ).map((mid, i) => (
+        <Html key={i} position={mid} center zIndexRange={[290, 0]} style={{ pointerEvents: 'none' }}>
+          <div style={{
+            width: 0, height: 0,
+            borderLeft: '6px solid transparent',
+            borderRight: '6px solid transparent',
+            borderBottom: '11px solid rgba(249,115,22,0.4)',
+            pointerEvents: 'none',
+          }} />
+        </Html>
+      ))}
 
       {snapTarget && (
         <Html position={mousePos} center zIndexRange={[300, 0]} style={{ pointerEvents: 'none' }}>

@@ -153,7 +153,8 @@ export interface CADAnalysisState {
 
   // ── UTL2 — Save / Load ───────────────────────────────────────────────────
   newDocument(): void;
-  saveToFile(): void;
+  getDesignJSON(): string;
+  saveToFile(filename?: string): void;
   loadFromFile(json: string): void;
 
   // ── SLD1 — Rib (dialog-based) ────────────────────────────────────────────

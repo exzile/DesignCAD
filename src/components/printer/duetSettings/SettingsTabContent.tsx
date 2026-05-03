@@ -1,18 +1,17 @@
 import React from 'react';
 import { compareVersions, findDwcAsset, panelDueBinAssets, pickFirmwareAssets, sortPanelDueAssets, type FirmwareMatch, type GitHubAsset, type GitHubRelease, type PanelDueConfig } from './helpers';
-import { AppearanceSection, BehaviourSection, ConnectionSection, GeneralSection, NotificationsSection } from './basicSections';
+import { BehaviourSection, CameraSection, ConnectionSection, GeneralSection, NotificationsSection } from './basicSections';
 import { AboutSection, BackupSection, MachineSection } from './infoSections';
 import { FirmwareSection, type AutoUpdateState, type PanelDueFlashed, type PanelDueUpdateState } from './firmwareSections';
 import { PanelDueSection } from './firmwareSections';
 import type { DuetPrefs } from '../../../utils/duetPrefs';
 import type { ImportResult } from '../../../utils/settingsExport';
-import type { ThemeMode } from '../../../store/themeStore';
-import type { DuetAxis, DuetBoard } from '../../../types/duet';
+import type { DuetAxis, DuetBoard, PrinterBoardType } from '../../../types/duet';
 
 export type DuetSettingsTabKey =
   | 'connection'
   | 'general'
-  | 'appearance'
+  | 'camera'
   | 'behaviour'
   | 'notifications'
   | 'machine'
@@ -25,6 +24,7 @@ export function SettingsTabContent(props: {
   activePrinterId: string | null;
   autoUpdate: { step: AutoUpdateState['step']; progress: number; assetName?: string; error?: string };
   axes: DuetAxis[];
+  boardType: PrinterBoardType;
   board: DuetBoard | undefined;
   canConnect: boolean;
   config: { hostname: string; password?: string; mode?: 'standalone' | 'sbc' };
@@ -36,7 +36,6 @@ export function SettingsTabContent(props: {
   firmwareInputRef: React.RefObject<HTMLInputElement | null>;
   firmwareStatus: { type: 'success' | 'error'; message: string } | null;
   firmwareUpdatePending: boolean;
-  handleAddPrinter: () => void;
   handleAutoUpdate: (fwAsset: GitHubAsset, dwcAsset?: GitHubAsset) => Promise<void>;
   handleCheckForUpdate: () => Promise<void>;
   handleCheckPanelDueUpdate: () => Promise<void>;
@@ -49,8 +48,6 @@ export function SettingsTabContent(props: {
   handleIapUpload: () => Promise<void>;
   handleImport: (e: React.ChangeEvent<HTMLInputElement>) => Promise<void>;
   handlePanelDueInstall: (asset: GitHubAsset) => Promise<void>;
-  handleRemovePrinter: () => void;
-  handleRenamePrinter: () => void;
   handleTest: () => Promise<void>;
   handleUpdateDwcOnly: (dwcAsset: GitHubAsset) => Promise<void>;
   hostname: string;
@@ -71,9 +68,8 @@ export function SettingsTabContent(props: {
   password: string;
   patchPrefs: (patch: Partial<DuetPrefs>) => void;
   prefs: DuetPrefs;
-  printers: Array<{ id: string; name: string }>;
-  selectPrinter: (printerId: string) => void;
   setAutoUpdate: React.Dispatch<React.SetStateAction<{ step: AutoUpdateState['step']; progress: number; assetName?: string; error?: string }>>;
+  setBoardType: (value: PrinterBoardType) => void;
   setHostname: React.Dispatch<React.SetStateAction<string>>;
   setMode: React.Dispatch<React.SetStateAction<'standalone' | 'sbc'>>;
   setPanelDueAsset: React.Dispatch<React.SetStateAction<GitHubAsset | null>>;
@@ -81,28 +77,26 @@ export function SettingsTabContent(props: {
   setPassword: React.Dispatch<React.SetStateAction<string>>;
   setShowPanelDueNotes: React.Dispatch<React.SetStateAction<boolean>>;
   setShowReleaseNotes: React.Dispatch<React.SetStateAction<boolean>>;
-  setTheme: (theme: ThemeMode) => void;
   showPanelDueNotes: boolean;
   showReleaseNotes: boolean;
   tab: DuetSettingsTabKey;
   testResult: { success: boolean; firmwareVersion?: string; error?: string } | null;
   testing: boolean;
-  theme: ThemeMode;
   updateCheck: { loading: boolean; release?: GitHubRelease; dwcRelease?: GitHubRelease; error?: string };
   uploadProgress: number;
   uploading: boolean;
 }) {
   const {
-    activePrinterId, autoUpdate, axes, board, canConnect, config, connected, connecting, downloadSettings, error,
-    firmwareFile, firmwareInputRef, firmwareStatus, firmwareUpdatePending, handleAddPrinter, handleAutoUpdate,
+    activePrinterId, autoUpdate, axes, board, boardType, canConnect, config, connected, connecting, downloadSettings, error,
+    firmwareFile, firmwareInputRef, firmwareStatus, firmwareUpdatePending, handleAutoUpdate,
     handleCheckForUpdate, handleCheckPanelDueUpdate, handleConnect, handleDisconnect, handleFirmwareInstall,
     handleFirmwareSelect, handleFirmwareUpload, handleIapSelect, handleIapUpload, handleImport, handlePanelDueInstall,
-    handleRemovePrinter, handleRenamePrinter, handleTest, handleUpdateDwcOnly, hostname, iapFile, iapInputRef,
+    handleTest, handleUpdateDwcOnly, hostname, iapFile, iapInputRef,
     iapStatus, importInputRef, importResult, importing, loadPanelDueInfo, mode, panelDueAsset, panelDueCheck,
-    panelDueFlashed, panelDueInfo, panelDueLogRef, panelDueUpdate, password, patchPrefs, prefs, printers,
-    selectPrinter, setAutoUpdate, setHostname, setMode, setPanelDueAsset, setPanelDueUpdate, setPassword,
-    setShowPanelDueNotes, setShowReleaseNotes, setTheme, showPanelDueNotes, showReleaseNotes, tab, testResult,
-    testing, theme, updateCheck, uploadProgress, uploading,
+    panelDueFlashed, panelDueInfo, panelDueLogRef, panelDueUpdate, password, patchPrefs, prefs,
+    setAutoUpdate, setBoardType, setHostname, setMode, setPanelDueAsset, setPanelDueUpdate, setPassword,
+    setShowPanelDueNotes, setShowReleaseNotes, showPanelDueNotes, showReleaseNotes, tab, testResult,
+    testing, updateCheck, uploadProgress, uploading,
   } = props;
 
   const renderFirmware = () => {
@@ -202,25 +196,21 @@ export function SettingsTabContent(props: {
     case 'connection':
       return (
         <ConnectionSection
-          activePrinterId={activePrinterId ?? ''}
+          boardType={boardType}
           canConnect={canConnect}
           config={config}
           connected={connected}
           connecting={connecting}
           error={error}
-          handleAddPrinter={handleAddPrinter}
           handleConnect={handleConnect}
           handleDisconnect={handleDisconnect}
-          handleRemovePrinter={handleRemovePrinter}
-          handleRenamePrinter={handleRenamePrinter}
           handleTest={handleTest}
           hostname={hostname}
           mode={mode}
           password={password}
           prefs={prefs}
           patchPrefs={patchPrefs}
-          printers={printers}
-          selectPrinter={selectPrinter}
+          setBoardType={setBoardType}
           setHostname={setHostname}
           setMode={setMode}
           setPassword={setPassword}
@@ -230,14 +220,14 @@ export function SettingsTabContent(props: {
       );
     case 'general':
       return <GeneralSection prefs={prefs} patchPrefs={patchPrefs} />;
-    case 'appearance':
-      return <AppearanceSection theme={theme} setTheme={setTheme} />;
+    case 'camera':
+      return <CameraSection key={activePrinterId ?? 'camera'} hostname={hostname} prefs={prefs} patchPrefs={patchPrefs} />;
     case 'behaviour':
       return <BehaviourSection prefs={prefs} patchPrefs={patchPrefs} />;
     case 'notifications':
       return <NotificationsSection prefs={prefs} patchPrefs={patchPrefs} />;
     case 'machine':
-      return <MachineSection axes={axes} board={board} connected={connected} />;
+      return <MachineSection axes={axes} board={board} boardType={boardType} connected={connected} prefs={prefs} patchPrefs={patchPrefs} />;
     case 'firmware':
       return renderFirmware();
     case 'paneldue':

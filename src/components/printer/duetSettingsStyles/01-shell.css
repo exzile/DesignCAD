@@ -107,11 +107,29 @@
   border-left: 3px solid transparent;
 }
 
+.duet-settings__nav-item:hover {
+  color: var(--text-primary);
+  background: var(--bg-elevated);
+}
+
 .duet-settings__nav-item.is-active {
   color: var(--text-primary);
   background: var(--bg-elevated);
   border-left-color: var(--accent);
   font-weight: 600;
+}
+
+.duet-settings__nav-back {
+  font-size: 12px;
+  color: var(--text-muted);
+  padding: 8px 16px;
+  margin-bottom: 4px;
+  border-bottom: 1px solid var(--border);
+  border-left-color: transparent !important;
+}
+
+.duet-settings__nav-back:hover {
+  color: var(--accent);
 }
 
 /* â”€â”€ Body / content area â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
@@ -180,6 +198,35 @@
 
 .duet-settings__hint--indented {
   margin-left: 26px;
+}
+
+.duet-settings__camera-preview {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  max-width: 1040px;
+  min-height: 360px;
+  height: 420px;
+  overflow: hidden;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: #050505;
+}
+
+.duet-settings__camera-preview img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  background: #050505;
+}
+
+@media (max-width: 720px) {
+  .duet-settings__camera-preview {
+    min-height: 220px;
+    height: 260px;
+  }
 }
 
 /* â”€â”€ Mode selector (standalone/SBC, light/dark theme toggle) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */

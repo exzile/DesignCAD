@@ -43,7 +43,7 @@ export default function AxisMovementPanel() {
   const extraAxes = axisLetters.filter((l) => !PLANAR_AXES.includes(l) && l !== Z_AXIS);
 
   return (
-    <div style={panelStyle()}>
+    <div className="ax-panel" style={panelStyle()}>
 
       {/* Section header */}
       <div style={labelStyle()} className="duet-dash-section-title-row">
@@ -116,81 +116,83 @@ export default function AxisMovementPanel() {
         </div>
       </div>
 
-      <div className="ax-card ax-card--step">
-        <div className="ax-card-label">Step size &mdash; mm</div>
-        <div className="ax-step-row">
-          {jogDistances.map((d) => (
-            <button
-              key={d}
-              className={`ax-step-btn${d === jogDistance ? ' is-active' : ''}`}
-              onClick={() => setJogDistance(d)}
-            >
-              {d}
-            </button>
-          ))}
+      <div className="ax-motion-workspace">
+        <div className="ax-card ax-card--jog">
+          <div className="ax-jog-sections">
+
+            {/* XY */}
+            <div className="ax-jog-section">
+              <div className="ax-card-label" style={{ textAlign: 'center' }}>XY Plane</div>
+              <div className="ax-cross">
+                <button className="ax-cross-btn" style={{ gridArea: 'yp' }}
+                  disabled={!connected} title={`Y +${jogDistance}`}
+                  onClick={() => moveAxis('Y', jogDistance)}>
+                  <ArrowUp size={17} />
+                </button>
+                <button className="ax-cross-btn" style={{ gridArea: 'xn' }}
+                  disabled={!connected} title={`X -${jogDistance}`}
+                  onClick={() => moveAxis('X', -jogDistance)}>
+                  <ArrowLeft size={17} />
+                </button>
+                <button className="ax-cross-home" style={{ gridArea: 'ct' }}
+                  disabled={!connected} title="Home XY"
+                  onClick={() => homeAxes(['X', 'Y'])}>
+                  <Home size={14} />
+                </button>
+                <button className="ax-cross-btn" style={{ gridArea: 'xp' }}
+                  disabled={!connected} title={`X +${jogDistance}`}
+                  onClick={() => moveAxis('X', jogDistance)}>
+                  <ArrowRight size={17} />
+                </button>
+                <button className="ax-cross-btn" style={{ gridArea: 'yn' }}
+                  disabled={!connected} title={`Y -${jogDistance}`}
+                  onClick={() => moveAxis('Y', -jogDistance)}>
+                  <ArrowDown size={17} />
+                </button>
+              </div>
+              <div className="ax-cross-foot">
+                <span style={{ color: AXIS_ACCENT['X'] }}>X</span>
+                <span style={{ color: AXIS_ACCENT['Y'] }}>Y</span>
+              </div>
+            </div>
+
+            {/* Z */}
+            <div className="ax-jog-section">
+              <div className="ax-card-label" style={{ textAlign: 'center' }}>Z Axis</div>
+              <div className="ax-z-col">
+                <button className="ax-z-btn ax-z-btn--up" disabled={!connected}
+                  title={`Z +${jogDistance}`} onClick={() => moveAxis('Z', jogDistance)}>
+                  <ArrowUp size={16} />
+                  <span>Z+</span>
+                </button>
+                <button className="ax-z-home" disabled={!connected}
+                  title="Home Z" onClick={() => homeAxes(['Z'])}>
+                  <Home size={13} />
+                </button>
+                <button className="ax-z-btn ax-z-btn--down" disabled={!connected}
+                  title={`Z -${jogDistance}`} onClick={() => moveAxis('Z', -jogDistance)}>
+                  <ArrowDown size={16} />
+                  <span>Z-</span>
+                </button>
+              </div>
+            </div>
+
+          </div>
         </div>
-      </div>
 
-      <div className="ax-card ax-card--jog">
-        <div className="ax-jog-sections">
-
-          {/* XY */}
-          <div className="ax-jog-section">
-            <div className="ax-card-label" style={{ textAlign: 'center' }}>XY Plane</div>
-            <div className="ax-cross">
-              <button className="ax-cross-btn" style={{ gridArea: 'yp' }}
-                disabled={!connected} title={`Y +${jogDistance}`}
-                onClick={() => moveAxis('Y', jogDistance)}>
-                <ArrowUp size={17} />
+        <div className="ax-card ax-card--step ax-step-rail">
+          <div className="ax-card-label">Step size &mdash; mm</div>
+          <div className="ax-step-row">
+            {jogDistances.map((d) => (
+              <button
+                key={d}
+                className={`ax-step-btn${d === jogDistance ? ' is-active' : ''}`}
+                onClick={() => setJogDistance(d)}
+              >
+                {d}
               </button>
-              <button className="ax-cross-btn" style={{ gridArea: 'xn' }}
-                disabled={!connected} title={`X -${jogDistance}`}
-                onClick={() => moveAxis('X', -jogDistance)}>
-                <ArrowLeft size={17} />
-              </button>
-              <button className="ax-cross-home" style={{ gridArea: 'ct' }}
-                disabled={!connected} title="Home XY"
-                onClick={() => homeAxes(['X', 'Y'])}>
-                <Home size={14} />
-              </button>
-              <button className="ax-cross-btn" style={{ gridArea: 'xp' }}
-                disabled={!connected} title={`X +${jogDistance}`}
-                onClick={() => moveAxis('X', jogDistance)}>
-                <ArrowRight size={17} />
-              </button>
-              <button className="ax-cross-btn" style={{ gridArea: 'yn' }}
-                disabled={!connected} title={`Y -${jogDistance}`}
-                onClick={() => moveAxis('Y', -jogDistance)}>
-                <ArrowDown size={17} />
-              </button>
-            </div>
-            <div className="ax-cross-foot">
-              <span style={{ color: AXIS_ACCENT['X'] }}>X</span>
-              <span style={{ color: AXIS_ACCENT['Y'] }}>Y</span>
-            </div>
+            ))}
           </div>
-
-          {/* Z */}
-          <div className="ax-jog-section">
-            <div className="ax-card-label" style={{ textAlign: 'center' }}>Z Axis</div>
-            <div className="ax-z-col">
-              <button className="ax-z-btn ax-z-btn--up" disabled={!connected}
-                title={`Z +${jogDistance}`} onClick={() => moveAxis('Z', jogDistance)}>
-                <ArrowUp size={16} />
-                <span>Z+</span>
-              </button>
-              <button className="ax-z-home" disabled={!connected}
-                title="Home Z" onClick={() => homeAxes(['Z'])}>
-                <Home size={13} />
-              </button>
-              <button className="ax-z-btn ax-z-btn--down" disabled={!connected}
-                title={`Z -${jogDistance}`} onClick={() => moveAxis('Z', -jogDistance)}>
-                <ArrowDown size={16} />
-                <span>Z-</span>
-              </button>
-            </div>
-          </div>
-
         </div>
       </div>
 

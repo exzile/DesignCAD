@@ -27,10 +27,12 @@
     "graph:serve": "corepack pnpm dlx --allow-build=@ladybugdb/core --allow-build=tree-sitter --allow-build=tree-sitter-typescript --allow-build=tree-sitter-javascript --allow-build=tree-sitter-cpp --allow-build=tree-sitter-c --allow-build=tree-sitter-cli gitnexus@latest serve"
   },
   "dependencies": {
+    "@ffmpeg-installer/ffmpeg": "^1.1.0",
     "@react-three/drei": "^10.7.7",
     "@react-three/fiber": "^9.6.0",
     "@react-three/postprocessing": "^3.0.4",
     "fflate": "^0.8.2",
+    "hls.js": "^1.6.16",
     "lucide-react": "^1.8.0",
     "mathjs": "^15.2.0",
     "opentype.js": "^1.3.4",

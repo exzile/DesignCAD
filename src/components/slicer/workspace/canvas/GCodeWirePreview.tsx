@@ -1,10 +1,8 @@
 import { useEffect, useMemo } from 'react';
 import * as THREE from 'three';
 import type { SliceLayer, SliceResult } from '../../../../types/slicer';
-import type { MoveHoverInfo, PreviewColorMode } from '../../../../types/slicer-preview.types';
+import type { PreviewColorMode } from '../../../../types/slicer-preview.types';
 import { buildColorContext, colorForMove } from './extrusionInstances';
-
-const DEFAULT_FILAMENT_DIAMETER_MM = 1.75;
 
 // ---------------------------------------------------------------------------
 // WireLayerLines — thin line-segment preview for a single layer
@@ -17,8 +15,6 @@ const DEFAULT_FILAMENT_DIAMETER_MM = 1.75;
 
 function WireLayerLines({
   layer,
-  layerHeight,
-  filamentDiameter,
   isCurrentLayer,
   currentLayerMoveCount,
   showTravel,
@@ -28,8 +24,6 @@ function WireLayerLines({
   layerTimeT,
 }: {
   layer: SliceLayer;
-  layerHeight: number;
-  filamentDiameter: number;
   isCurrentLayer: boolean;
   currentLayerMoveCount: number | undefined;
   showTravel: boolean;
@@ -128,7 +122,7 @@ function WireLayerLines({
 
     return { lineGeo: lg, travelGeo: tg, retractGeo: rg };
   }, [
-    layer, layerHeight, filamentDiameter, isCurrentLayer,
+    layer, isCurrentLayer,
     currentLayerMoveCount, showTravel, colorMode, hiddenTypes, layerTimeT,
   ]);
 
@@ -165,7 +159,6 @@ function WireLayerLines({
 
 export function InlineGCodeWirePreview({
   sliceResult,
-  filamentDiameter,
   startLayer,
   currentLayer,
   currentLayerMoveCount,
@@ -196,10 +189,6 @@ export function InlineGCodeWirePreview({
   return (
     <group>
       {layers.map((layer) => {
-        const prevZ = layer.layerIndex > 0
-          ? (sliceResult.layers[layer.layerIndex - 1]?.z ?? 0)
-          : 0;
-        const layerH = Math.max(0.05, layer.z - prevZ);
         const span = Math.max(1e-9, layerTimeRange[1] - layerTimeRange[0]);
         const layerTimeT = colorMode === 'layer-time'
           ? Math.max(0, Math.min(1, (layer.layerTime - layerTimeRange[0]) / span))
@@ -208,8 +197,6 @@ export function InlineGCodeWirePreview({
           <WireLayerLines
             key={layer.layerIndex}
             layer={layer}
-            layerHeight={layerH}
-            filamentDiameter={filamentDiameter ?? DEFAULT_FILAMENT_DIAMETER_MM}
             isCurrentLayer={layer.layerIndex === currentLayer}
             currentLayerMoveCount={currentLayerMoveCount}
             showTravel={showTravel}

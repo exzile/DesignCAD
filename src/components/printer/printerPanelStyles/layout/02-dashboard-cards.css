@@ -36,42 +36,63 @@
 }
 
 /* Ã¢â€â‚¬Ã¢â€â‚¬ Compact axis panel inside dashboard cards Ã¢â€â‚¬Ã¢â€â‚¬ */
-.dc-body .ax-pos-row    { gap: 4px; margin-bottom: 5px; }
-.dc-body .ax-pos-card   { padding: 5px 8px 4px; }
+.dc-body .ax-panel {
+  container-type: size;
+  gap: clamp(4px, 1.2cqh, 10px);
+}
+.dc-body .ax-pos-row    { gap: clamp(4px, 0.9cqw, 8px); margin-bottom: clamp(5px, 1cqh, 10px); }
+.dc-body .ax-pos-card   { padding: clamp(5px, 1.1cqh, 10px) clamp(8px, 1.6cqw, 14px) clamp(4px, 0.9cqh, 8px); }
 .dc-body .ax-pos-card-top { margin-bottom: 2px; }
-.dc-body .ax-pos-value  { font-size: 14px; }
+.dc-body .ax-pos-value  { font-size: clamp(14px, 3.2cqh, 22px); }
 .dc-body .ax-toolbar    { margin-bottom: 4px; gap: 4px; }
 .dc-body .ax-btn        { height: 24px; padding: 0 7px; font-size: 10px; }
-.dc-body .ax-card       { padding: 6px 10px 6px 9px; margin-bottom: 4px; }
+.dc-body .ax-card       { padding: clamp(6px, 1.2cqh, 11px) clamp(10px, 1.8cqw, 15px); margin-bottom: clamp(4px, 0.9cqh, 8px); }
 .dc-body .ax-card-label { margin-bottom: 4px; font-size: 8px; }
 
 /* Step size buttons Ã¢â‚¬â€ slightly smaller */
-.dc-body .ax-step-row { gap: 3px; }
-.dc-body .ax-step-btn { height: 24px; min-width: 34px; max-width: 56px; font-size: 10px; }
+.dc-body .ax-step-row { gap: clamp(3px, 0.8cqw, 7px); }
+.dc-body .ax-step-btn { height: clamp(24px, 5.6cqh, 34px); min-width: clamp(34px, 7cqw, 54px); max-width: none; font-size: clamp(10px, 2.1cqh, 12px); }
 
 /* Jog cross Ã¢â‚¬â€ tighten cells and hide decorative sub-labels/footer */
-.dc-body .ax-jog-sections { gap: 8px; }
+.dc-body .ax-card--jog {
+  flex: 1 1 132px;
+  min-height: 118px;
+  display: flex;
+  flex-direction: column;
+}
+.dc-body .ax-card--jog .ax-jog-sections {
+  flex: 1;
+  min-height: 0;
+  align-items: center;
+}
+.dc-body .ax-jog-sections { gap: clamp(8px, 3cqw, 24px); }
 .dc-body .ax-jog-section .ax-card-label { display: none; }
 .dc-body .ax-cross {
-  grid-template-columns: repeat(3, 32px);
-  grid-template-rows: repeat(3, 32px);
-  gap: 2px;
+  --ax-jog-size: clamp(32px, min(12cqw, 13cqh), 66px);
+  grid-template-columns: repeat(3, var(--ax-jog-size));
+  grid-template-rows: repeat(3, var(--ax-jog-size));
+  gap: clamp(2px, 0.8cqh, 7px);
 }
 .dc-body .ax-cross-foot { display: none; }
 
 /* Z column Ã¢â‚¬â€ match XY cross height */
-.dc-body .ax-z-col  { gap: 2px; }
-.dc-body .ax-z-btn  { width: 40px; height: 36px; font-size: 9px; gap: 1px; }
-.dc-body .ax-z-home { width: 40px; height: 22px; }
+.dc-body .ax-cross-btn svg,
+.dc-body .ax-cross-home svg {
+  width: clamp(16px, 3.5cqh, 24px);
+  height: clamp(16px, 3.5cqh, 24px);
+}
+.dc-body .ax-z-col  { gap: clamp(2px, 0.8cqh, 6px); }
+.dc-body .ax-z-btn  { width: clamp(40px, 10cqw, 62px); height: clamp(36px, 12cqh, 66px); font-size: clamp(9px, 2cqh, 12px); gap: 1px; }
+.dc-body .ax-z-home { width: clamp(40px, 10cqw, 62px); height: clamp(22px, 5.8cqh, 34px); }
 
 /* Quick-move rows Ã¢â‚¬â€ tighter and shorter */
 .dc-body .ax-qm-block { gap: 3px; }
-.dc-body .ax-qm-row   { gap: 2px; }
-.dc-body .ax-qm-btn   { height: 22px; font-size: 9px; }
+.dc-body .ax-qm-row   { gap: clamp(2px, 0.6cqw, 5px); }
+.dc-body .ax-qm-btn   { height: clamp(22px, 4.7cqh, 31px); font-size: clamp(9px, 1.8cqh, 11px); }
 
 /* Baby step Ã¢â‚¬â€ compact display */
-.dc-body .ax-baby-display { padding: 4px 0; }
-.dc-body .ax-baby-num     { font-size: 13px; }
+.dc-body .ax-baby-display { padding: clamp(4px, 1cqh, 8px) 0; }
+.dc-body .ax-baby-num     { font-size: clamp(13px, 2.8cqh, 18px); }
 
 /* Ã¢â€â‚¬Ã¢â€â‚¬ Reset Layout button Ã¢â€â‚¬Ã¢â€â‚¬ */
 .dc-reset-btn {
@@ -380,5 +401,81 @@
   border-color: var(--accent, #6366f1);
   background: rgba(99, 102, 241, 0.18);
   box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.2), inset 0 0 10px rgba(99, 102, 241, 0.1);
+}
+
+.dc-body .ax-motion-workspace {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(68px, clamp(76px, 18cqw, 116px));
+  gap: clamp(6px, 1.4cqw, 12px);
+  align-items: stretch;
+}
+
+.dc-body .ax-step-rail {
+  min-width: 0;
+  margin-bottom: clamp(4px, 0.9cqh, 8px);
+}
+
+.dc-body .ax-step-rail .ax-card-label {
+  justify-content: center;
+  text-align: center;
+}
+
+.dc-body .ax-step-rail .ax-step-row {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: clamp(3px, 0.8cqh, 6px);
+}
+
+.dc-body .ax-step-rail .ax-step-btn {
+  width: 100%;
+  height: clamp(22px, 4.7cqh, 31px);
+  min-width: 0;
+  max-width: none;
+  font-size: clamp(9px, 1.8cqh, 11px);
+}
+
+.dc-body .ax-card--jog {
+  min-width: 0;
+}
+
+.dc-body .ax-jog-sections {
+  justify-content: center;
+  min-width: 0;
+}
+
+.dc-body .ax-jog-section {
+  min-width: 0;
+}
+
+.dc-body .ax-qm-row {
+  display: grid;
+  grid-template-columns: 16px repeat(4, minmax(30px, 1fr)) 5px repeat(4, minmax(30px, 1fr));
+  gap: clamp(2px, 0.6cqw, 5px);
+}
+
+.dc-body .ax-qm-btn {
+  min-width: 0;
+  padding: 0 2px;
+}
+
+@container (max-width: 430px) {
+  .dc-body .ax-motion-workspace {
+    grid-template-columns: 1fr;
+  }
+
+  .dc-body .ax-step-rail .ax-step-row {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .dc-body .ax-qm-row {
+    grid-template-columns: 16px repeat(2, minmax(34px, 1fr)) 5px repeat(2, minmax(34px, 1fr));
+  }
+
+  .dc-body .ax-qm-row .ax-qm-btn:nth-of-type(3),
+  .dc-body .ax-qm-row .ax-qm-btn:nth-of-type(4),
+  .dc-body .ax-qm-row .ax-qm-btn:nth-of-type(7),
+  .dc-body .ax-qm-row .ax-qm-btn:nth-of-type(8) {
+    display: none;
+  }
 }
 

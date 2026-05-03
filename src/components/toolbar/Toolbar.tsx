@@ -87,18 +87,30 @@ export default function Toolbar() {
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
       if (!event.ctrlKey && !event.metaKey) return;
+      const target = event.target as HTMLElement | null;
+      const tagName = target?.tagName?.toLowerCase();
+      if (
+        target?.isContentEditable ||
+        tagName === 'input' ||
+        tagName === 'textarea' ||
+        tagName === 'select'
+      ) {
+        return;
+      }
       if (event.key === 'z' || event.key === 'Z') {
         event.preventDefault();
+        event.stopPropagation();
         if (event.shiftKey) redoAction();
         else undoAction();
       } else if (event.key === 'y' || event.key === 'Y') {
         event.preventDefault();
+        event.stopPropagation();
         redoAction();
       }
     };
 
-    document.addEventListener('keydown', handleKeyDown);
-    return () => document.removeEventListener('keydown', handleKeyDown);
+    window.addEventListener('keydown', handleKeyDown, true);
+    return () => window.removeEventListener('keydown', handleKeyDown, true);
   }, [undoAction, redoAction]);
 
   const handleImport = async (event: React.ChangeEvent<HTMLInputElement>) => {

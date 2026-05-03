@@ -1,5 +1,8 @@
 import type { CADSliceContext } from '../../sliceContext';
 import type { CADState } from '../../state';
+import type { Sketch } from '../../../../types/cad';
+import { evaluateExpression } from '../../../../utils/expressionEval';
+import { applyDimensionResize } from '../../../../engine/dimensionResizeUtils';
 
 export function createSketchUiActions({ set, get }: CADSliceContext): Partial<CADState> {
   return {
@@ -55,6 +58,82 @@ export function createSketchUiActions({ set, get }: CADSliceContext): Partial<CA
   dimensionToleranceUpper: 0.1,
   dimensionToleranceLower: 0.1,
   pendingDimensionEntityIds: [],
+  dimensionHoverEntityId: null,
+  pendingNewDimensionId: null,
+
+  // ─── Dimension editor overlay ──────────────────────────────────────────────
+  sketchDimEditId: null,
+  sketchDimEditIsNew: false,
+  sketchDimEditValue: '',
+  sketchDimEditScreenX: 0,
+  sketchDimEditScreenY: 0,
+  sketchDimEditTypeahead: [],
+  openSketchDimEdit: (id, value, isNew) => {
+    const dim = !isNew ? (get().activeSketch?.dimensions ?? []).find((d) => d.id === id) : null;
+    set({
+      sketchDimEditId: id,
+      sketchDimEditValue: value,
+      sketchDimEditIsNew: isNew,
+      sketchDimEditTypeahead: [],
+      ...(dim ? { pendingDimensionEntityIds: dim.entityIds } : {}),
+    });
+  },
+  updateSketchDimEditScreen: (x, y) => set({ sketchDimEditScreenX: x, sketchDimEditScreenY: y }),
+  setSketchDimEditValue: (v) => set({ sketchDimEditValue: v }),
+  setSketchDimEditTypeahead: (items) => set({ sketchDimEditTypeahead: items }),
+  commitSketchDimEdit: (rawValue) => {
+    const { sketchDimEditId, activeSketch, parameters } = get();
+    if (!sketchDimEditId || !activeSketch) return;
+    const trimmed = rawValue.trim();
+    const asNum = Number.parseFloat(trimmed);
+    const nextValue = Number.isFinite(asNum) && trimmed === String(asNum)
+      ? asNum
+      : (evaluateExpression(trimmed, parameters) ?? NaN);
+    set({ sketchDimEditTypeahead: [] });
+    if (!Number.isFinite(nextValue) || nextValue <= 0) {
+      set({ statusMessage: 'Enter a positive dimension value or parameter name' });
+      return;
+    }
+    const dimension = (activeSketch.dimensions ?? []).find((d) => d.id === sketchDimEditId);
+    if (!dimension) return;
+    const updatedDimension = { ...dimension, value: nextValue };
+    const applyToSketch = (sketch: Sketch): Sketch => {
+      if (sketch.id !== activeSketch.id) return sketch;
+      const withUpdatedDim = {
+        ...sketch,
+        dimensions: (sketch.dimensions ?? []).map((d) =>
+          d.id === sketchDimEditId ? updatedDimension : d,
+        ),
+      };
+      return { ...withUpdatedDim, entities: applyDimensionResize(withUpdatedDim, updatedDimension, nextValue) };
+    };
+    get().pushUndo?.();
+    const nextActiveSketch = applyToSketch(get().activeSketch ?? activeSketch);
+    set({
+      activeSketch: nextActiveSketch,
+      sketches: get().sketches.map(applyToSketch),
+      statusMessage: `Dimension updated: ${nextValue.toFixed(2)}`,
+      pendingNewDimensionId: null,
+      pendingDimensionEntityIds: [],
+      sketchDimEditId: null,
+      sketchDimEditValue: '',
+      sketchDimEditIsNew: false,
+    });
+  },
+  cancelSketchDimEdit: () => {
+    const { sketchDimEditIsNew, pendingNewDimensionId } = get();
+    const wasNew = sketchDimEditIsNew || !!pendingNewDimensionId;
+    set({
+      pendingNewDimensionId: null,
+      pendingDimensionEntityIds: [],
+      sketchDimEditId: null,
+      sketchDimEditValue: '',
+      sketchDimEditIsNew: false,
+      sketchDimEditTypeahead: [],
+    });
+    if (wasNew) get().undo?.();
+  },
+
   setActiveDimensionType: (t) => set({ activeDimensionType: t }),
   setDimensionOffset: (v) => set({ dimensionOffset: v }),
   setDimensionDrivenMode: (v) => set({ dimensionDrivenMode: v }),
@@ -68,9 +147,9 @@ export function createSketchUiActions({ set, get }: CADSliceContext): Partial<CA
       set({ statusMessage: 'Open a sketch first before using the Dimension tool' });
       return;
     }
-    set({ activeTool: 'dimension', pendingDimensionEntityIds: [], statusMessage: 'Dimension â€” click entities to measure' });
+    set({ activeTool: 'dimension', pendingDimensionEntityIds: [], dimensionHoverEntityId: null, statusMessage: 'Dimension â€” click entities to measure' });
   },
-  cancelDimensionTool: () => set({ activeTool: 'select', pendingDimensionEntityIds: [], statusMessage: 'Dimension tool cancelled' }),
+  cancelDimensionTool: () => set({ activeTool: 'select', pendingDimensionEntityIds: [], dimensionHoverEntityId: null, statusMessage: 'Dimension tool cancelled' }),
   addPendingDimensionEntity: (id) => set((state) => ({
     pendingDimensionEntityIds: state.pendingDimensionEntityIds.includes(id)
       ? state.pendingDimensionEntityIds

@@ -17,6 +17,7 @@ import {
   Sliders,
   Star,
   FlaskConical,
+  Camera,
 } from 'lucide-react';
 import type {
   ColSpan,
@@ -45,6 +46,7 @@ import WorkplaceCoordinatesPanel from '../dashboard/WorkplaceCoordinatesPanel';
 import BedCompensationPanel from '../dashboard/BedCompensationPanel';
 import RestorePointsPanel from '../dashboard/RestorePointsPanel';
 import FilamentSensorPanel from '../dashboard/FilamentSensorPanel';
+import CameraDashboardPanel from '../dashboard/CameraDashboardPanel';
 
 export interface PanelDef {
   id: PanelId;
@@ -54,6 +56,7 @@ export interface PanelDef {
 }
 
 export const PANEL_DEFS: PanelDef[] = [
+  { id: 'camera', title: 'Camera', icon: <Camera size={12} />, component: <CameraDashboardPanel compact /> },
   { id: 'tools', title: 'Tools', icon: <Wrench size={12} />, component: <ToolSelectorPanel /> },
   { id: 'tool-offsets', title: 'Tool Offsets', icon: <Sliders size={12} />, component: <ToolOffsetsPanel /> },
   { id: 'workplace', title: 'Workplace Coordinates', icon: <MapPin size={12} />, component: <WorkplaceCoordinatesPanel /> },

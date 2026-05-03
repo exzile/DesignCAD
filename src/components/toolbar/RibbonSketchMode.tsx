@@ -1,3 +1,4 @@
+import { useRef, useState, useEffect } from 'react';
 import {
   PenLine, RectangleHorizontal, Circle, Spline, Hexagon, CircleDot,
   Waypoints, ArrowUpFromLine, Scissors, Download, Type,
@@ -13,6 +14,13 @@ import { RibbonSection } from './FlyoutMenu';
 import { ToolButton } from './ToolButton';
 import type { MenuItem } from '../../types/toolbar.types';
 import type { Tool as CADTool } from '../../types/cad';
+
+// Estimated px consumed by CONFIGURE + INSPECT + INSERT + SELECT sections
+const SMALL_SECTIONS_W = 360;
+// Per-section overhead: 8px*2 padding + 4px buffer + overflow button width
+const SECTION_OVERHEAD = 54; // 20px pad + 34px overflow btn
+// Approximate width per tool button
+const BTN_W = 60;
 
 const ICON_SM = 18;
 
@@ -30,6 +38,22 @@ export function RibbonSketchMode({
   sketchModifyMenuItems,
   sketchConstraintMenuItems,
 }: RibbonSketchModeProps) {
+  const wrapperRef = useRef<HTMLDivElement>(null);
+  const [wrapperWidth, setWrapperWidth] = useState(0);
+
+  useEffect(() => {
+    const el = wrapperRef.current;
+    if (!el) return;
+    const ro = new ResizeObserver(([entry]) => setWrapperWidth(entry.contentRect.width));
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
+
+  // Distribute available width equally across 3 big sections (CREATE, MODIFY, CONSTRAINTS)
+  const maxBigSection: number | undefined = wrapperWidth > 0
+    ? Math.max(1, Math.floor((Math.max(0, wrapperWidth - SMALL_SECTIONS_W) / 3 - SECTION_OVERHEAD) / BTN_W))
+    : undefined;
+
   const activeTool = useCADStore((s) => s.activeTool);
   const setActiveTool = useCADStore((s) => s.setActiveTool);
   const setStatusMessage = useCADStore((s) => s.setStatusMessage);
@@ -46,8 +70,9 @@ export function RibbonSketchMode({
 
   return (
     <>
+      <div ref={wrapperRef} className="sketch-sections-wrapper">
       {/* ── CREATE ─────────────────────────────────── */}
-      <RibbonSection title="CREATE" menuItems={sketchCreateMenuItems} accentColor="#0078d7">
+      <RibbonSection title="CREATE" menuItems={sketchCreateMenuItems} accentColor="#0078d7" maxVisible={maxBigSection}>
         <ToolButton
           icon={<PenLine size={20} />}
           label="Line"
@@ -138,7 +163,7 @@ export function RibbonSketchMode({
       </RibbonSection>
 
       {/* ── MODIFY ─────────────────────────────────── */}
-      <RibbonSection title="MODIFY" menuItems={sketchModifyMenuItems} accentColor="#0078d7">
+      <RibbonSection title="MODIFY" menuItems={sketchModifyMenuItems} accentColor="#0078d7" maxVisible={maxBigSection}>
         <ToolButton icon={<CornerDownRight size={20} />} label="Fillet" onClick={() => { setActiveTool('sketch-fillet' as T); setStatusMessage('Sketch Fillet: click near the corner of two lines'); }} colorClass="icon-blue" />
         <ToolButton icon={<Blend size={20} />} label="Chamfer" onClick={() => { setActiveTool('sketch-chamfer-equal' as T); setStatusMessage('Sketch Chamfer: click near a corner — set distance in palette'); }} colorClass="icon-blue" />
         <ToolButton icon={<Scissors size={20} />} label="Trim" onClick={() => { setActiveTool('trim' as T); setStatusMessage('Trim: click a segment portion to remove it'); }} colorClass="icon-blue" />
@@ -149,7 +174,7 @@ export function RibbonSketchMode({
       </RibbonSection>
 
       {/* ── CONSTRAINTS ────────────────────────────── */}
-      <RibbonSection title="CONSTRAINTS" menuItems={sketchConstraintMenuItems} accentColor="#ff6b00">
+      <RibbonSection title="CONSTRAINTS" menuItems={sketchConstraintMenuItems} accentColor="#ff6b00" maxVisible={maxBigSection}>
         <ToolButton icon={<Ruler size={20} />} label="Dimension" tool="dimension" colorClass="icon-orange" />
         <ToolButton icon={<AlignCenter size={20} />} label="Coincident" active={activeTool === 'constrain-coincident'} onClick={() => { setActiveTool('constrain-coincident' as T); setStatusMessage('Coincident: click two entities to apply constraint'); }} colorClass="icon-orange" />
         <ToolButton icon={<Minus size={20} />} label="Collinear" active={activeTool === 'constrain-collinear'} onClick={() => { setActiveTool('constrain-collinear' as T); setStatusMessage('Collinear: click two lines to apply constraint'); }} colorClass="icon-orange" />
@@ -200,6 +225,7 @@ export function RibbonSketchMode({
       <RibbonSection title="SELECT" accentColor="#555">
         <ToolButton icon={<MousePointer2 size={20} />} label="Select" tool="select" colorClass="icon-blue" />
       </RibbonSection>
+      </div>{/* end sketch-sections-wrapper */}
 
       {/* ── FINISH SKETCH ──────────────────────────── */}
       <div className="sketch-finish-area">

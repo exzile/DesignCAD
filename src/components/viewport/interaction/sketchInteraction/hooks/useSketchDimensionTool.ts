@@ -1,9 +1,10 @@
-import { useEffect } from 'react';
+import { useEffect, useRef } from 'react';
 import * as THREE from 'three';
 import { DimensionEngine } from '../../../../../engine/DimensionEngine';
 import { GeometryEngine } from '../../../../../engine/GeometryEngine';
+import { applyDimensionResize } from '../../../../../engine/dimensionResizeUtils';
 import { useCADStore } from '../../../../../store/cadStore';
-import type { Sketch, SketchEntity } from '../../../../../types/cad';
+import type { Sketch, SketchDimension, SketchEntity } from '../../../../../types/cad';
 
 interface DimensionToolContext {
   activeTool: string;
@@ -18,7 +19,7 @@ interface DimensionToolContext {
   addPendingDimensionEntity: (entityId: string) => void;
   addSketchDimension: (dimension: Parameters<typeof useCADStore.getState> extends never ? never : {
     id: string;
-    type: 'linear' | 'radial' | 'diameter' | 'arc-length' | 'aligned';
+    type: 'linear' | 'angular' | 'radial' | 'diameter' | 'arc-length' | 'aligned';
     entityIds: string[];
     value: number;
     position: { x: number; y: number };
@@ -37,6 +38,7 @@ interface PickedDimensionEntity {
   entity: SketchEntity;
   start?: THREE.Vector3;
   end?: THREE.Vector3;
+  highlightId?: string;
 }
 
 function createNearestEntityFinder(entities: SketchEntity[], origin: THREE.Vector3, t1: THREE.Vector3, t2: THREE.Vector3) {
@@ -47,6 +49,7 @@ function createNearestEntityFinder(entities: SketchEntity[], origin: THREE.Vecto
     start: THREE.Vector3,
     end: THREE.Vector3,
     best: { pick: PickedDimensionEntity | null; distance: number },
+    highlightId = entity.id,
   ) => {
     const delta = end.clone().sub(start);
     const deltaLength = delta.length();
@@ -61,7 +64,7 @@ function createNearestEntityFinder(entities: SketchEntity[], origin: THREE.Vecto
     const distance = worldPoint.distanceTo(closest);
     if (distance < best.distance) {
       best.distance = distance;
-      best.pick = { entity, start, end };
+      best.pick = { entity, start, end, highlightId };
     }
   };
 
@@ -104,7 +107,7 @@ function createNearestEntityFinder(entities: SketchEntity[], origin: THREE.Vecto
           toWorld(p1u, p2v),
         ];
         for (let i = 0; i < corners.length; i += 1) {
-          considerSegment(worldPoint, entity, corners[i], corners[(i + 1) % corners.length], best);
+          considerSegment(worldPoint, entity, corners[i], corners[(i + 1) % corners.length], best, `${entity.id}::edge:${i}`);
         }
         bestDistance = best.distance;
         continue;
@@ -119,105 +122,73 @@ function createNearestEntityFinder(entities: SketchEntity[], origin: THREE.Vecto
         }
       }
     }
+
+    // Second pass: vertex/center proximity wins over a segment if closer.
+    for (const entity of entities) {
+      const checkVertex = (pt: { x: number; y: number; z?: number }, vid: string) => {
+        const vWorld = new THREE.Vector3(pt.x, pt.y, pt.z ?? 0);
+        const d = worldPoint.distanceTo(vWorld);
+        if (d < entityPickRadius && d < best.distance) {
+          best.distance = d;
+          best.pick = { entity, start: vWorld, end: vWorld, highlightId: vid };
+        }
+      };
+      if (
+        (entity.type === 'line' || entity.type === 'construction-line' || entity.type === 'centerline') &&
+        entity.points.length >= 2
+      ) {
+        checkVertex(entity.points[0], `${entity.id}::vertex:0`);
+        checkVertex(entity.points[entity.points.length - 1], `${entity.id}::vertex:${entity.points.length - 1}`);
+      }
+      if ((entity.type === 'circle' || entity.type === 'arc') && entity.points.length >= 1) {
+        checkVertex(entity.points[0], `${entity.id}::center`);
+      }
+    }
+
     return best.pick;
   };
 }
 
-function updateCircleRadius(activeSketchId: string, entityId: string, radius: number) {
+/**
+ * Adds a dimension to the active sketch and immediately resizes entities to match the value.
+ * Single atomic store update so first-creation and subsequent edits behave identically.
+ */
+function commitDimension(
+  dim: SketchDimension,
+  activeSketchId: string,
+  drivenMode: boolean,
+): void {
   const state = useCADStore.getState();
-  const updateSketch = (sketch: Sketch): Sketch => ({
-    ...sketch,
-    entities: sketch.entities.map((entity) =>
-      entity.id === entityId && (entity.type === 'circle' || entity.type === 'arc')
-        ? { ...entity, radius }
-        : entity,
-    ),
+  const sketch = state.activeSketch;
+  if (!sketch || sketch.id !== activeSketchId) return;
+  const existing = sketch.dimensions ?? [];
+  if (existing.some((d) => d.id === dim.id)) return;
+  // Reject semantic duplicates: same entity set + same type + same orientation.
+  const dimEntitiesKey = [...dim.entityIds].sort().join(',');
+  const isDuplicate = existing.some((d) => {
+    if (d.type !== dim.type) return false;
+    if ([...d.entityIds].sort().join(',') !== dimEntitiesKey) return false;
+    const sameOrientation =
+      (d.orientation ?? 'auto') === (dim.orientation ?? 'auto') ||
+      dim.type === 'radial' || dim.type === 'diameter' ||
+      dim.type === 'angular' || dim.type === 'arc-length' || dim.type === 'aligned';
+    return sameOrientation;
   });
+  if (isDuplicate) return;
 
+  state.pushUndo?.();
+  const applyToSketch = (s: Sketch): Sketch => {
+    if (s.id !== activeSketchId) return s;
+    const withDim = { ...s, dimensions: [...(s.dimensions ?? []), dim] };
+    const entities = drivenMode ? withDim.entities : applyDimensionResize(withDim, dim, dim.value);
+    return { ...withDim, entities };
+  };
+  const nextActive = applyToSketch(sketch);
   useCADStore.setState({
-    activeSketch: state.activeSketch?.id === activeSketchId ? updateSketch(state.activeSketch) : state.activeSketch,
-    sketches: state.sketches.map((sketch) => (sketch.id === activeSketchId ? updateSketch(sketch) : sketch)),
+    activeSketch: nextActive,
+    sketches: state.sketches.map(applyToSketch),
   });
-}
-
-function promptForCircleDimension(
-  event: MouseEvent,
-  initialValue: number,
-  onCommit: (value: number) => void,
-) {
-  document.querySelectorAll('.sketch-inline-dimension-input').forEach((node) => node.remove());
-  document.querySelectorAll('.sketch-inline-dimension-editor').forEach((node) => node.remove());
-
-  const editor = document.createElement('div');
-  editor.className = 'sketch-inline-dimension-editor';
-  editor.style.left = `${event.clientX + 10}px`;
-  editor.style.top = `${event.clientY - 16}px`;
-  const input = document.createElement('input');
-  input.type = 'number';
-  input.step = '0.1';
-  input.min = '0.001';
-  input.value = initialValue.toFixed(2);
-  input.className = 'sketch-inline-dimension-input';
-  const confirmButton = document.createElement('button');
-  confirmButton.type = 'button';
-  confirmButton.className = 'sketch-inline-dimension-action sketch-inline-dimension-action--confirm';
-  confirmButton.title = 'Apply dimension';
-  confirmButton.textContent = 'OK';
-  const cancelButton = document.createElement('button');
-  cancelButton.type = 'button';
-  cancelButton.className = 'sketch-inline-dimension-action';
-  cancelButton.title = 'Cancel dimension';
-  cancelButton.textContent = 'X';
-
-  let committed = false;
-  const cleanup = () => {
-    input.removeEventListener('keydown', handleKeyDown);
-    confirmButton.removeEventListener('pointerdown', preventFocusLoss);
-    cancelButton.removeEventListener('pointerdown', preventFocusLoss);
-    confirmButton.removeEventListener('click', handleConfirmClick);
-    cancelButton.removeEventListener('click', handleCancelClick);
-    editor.remove();
-  };
-  const finish = (shouldCommit: boolean) => {
-    if (committed) {
-      return;
-    }
-    committed = true;
-    const value = Number.parseFloat(input.value);
-    cleanup();
-    if (shouldCommit && Number.isFinite(value) && value > 0) {
-      onCommit(value);
-    }
-  };
-  function preventFocusLoss(pointerEvent: PointerEvent) {
-    pointerEvent.preventDefault();
-  }
-  function handleKeyDown(keyEvent: KeyboardEvent) {
-    keyEvent.stopPropagation();
-    if (keyEvent.key === 'Enter') {
-      keyEvent.preventDefault();
-      finish(true);
-    } else if (keyEvent.key === 'Escape') {
-      keyEvent.preventDefault();
-      finish(false);
-    }
-  }
-  function handleConfirmClick() {
-    finish(true);
-  }
-  function handleCancelClick() {
-    finish(false);
-  }
-
-  editor.append(input, confirmButton, cancelButton);
-  document.body.appendChild(editor);
-  input.addEventListener('keydown', handleKeyDown);
-  confirmButton.addEventListener('pointerdown', preventFocusLoss);
-  cancelButton.addEventListener('pointerdown', preventFocusLoss);
-  confirmButton.addEventListener('click', handleConfirmClick);
-  cancelButton.addEventListener('click', handleCancelClick);
-  input.focus();
-  input.select();
+  if (!state.sketchComputeDeferred) state.solveSketch?.();
 }
 
 export function useSketchDimensionTool({
@@ -237,6 +208,11 @@ export function useSketchDimensionTool({
   setStatusMessage,
   gl,
 }: DimensionToolContext): void {
+  const pendingLinearPickRef = useRef<PickedDimensionEntity | null>(null);
+  const pendingLinearSecondPickRef = useRef<PickedDimensionEntity | null>(null);
+  const draggingDimensionRef = useRef<{ dimensionId: string; moved: boolean } | null>(null);
+  const suppressNextClickRef = useRef(false);
+
   useEffect(() => {
     if (!activeSketch || activeTool !== 'dimension') {
       return;
@@ -249,6 +225,115 @@ export function useSketchDimensionTool({
       return { x: delta.dot(t1), y: delta.dot(t2) };
     };
     const findNearestEntity = createNearestEntityFinder(activeSketch.entities, origin, t1, t2);
+    const lineAxis = (pick: PickedDimensionEntity) => {
+      if (!pick.start || !pick.end) return null;
+      const start = to2D(pick.start);
+      const end = to2D(pick.end);
+      return Math.abs(end.x - start.x) >= Math.abs(end.y - start.y) ? 'horizontal' : 'vertical';
+    };
+    const lineIntersection = (
+      a1: { x: number; y: number },
+      a2: { x: number; y: number },
+      b1: { x: number; y: number },
+      b2: { x: number; y: number },
+    ) => {
+      const adx = a2.x - a1.x;
+      const ady = a2.y - a1.y;
+      const bdx = b2.x - b1.x;
+      const bdy = b2.y - b1.y;
+      const denominator = adx * bdy - ady * bdx;
+      if (Math.abs(denominator) < 1e-8) return null;
+      const t = ((b1.x - a1.x) * bdy - (b1.y - a1.y) * bdx) / denominator;
+      return { x: a1.x + t * adx, y: a1.y + t * ady };
+    };
+    const fartherFromVertex = (
+      vertex: { x: number; y: number },
+      start: { x: number; y: number },
+      end: { x: number; y: number },
+    ) => {
+      const startDistance = Math.hypot(start.x - vertex.x, start.y - vertex.y);
+      const endDistance = Math.hypot(end.x - vertex.x, end.y - vertex.y);
+      return endDistance >= startDistance ? end : start;
+    };
+    const computeTwoLineDimension = (
+      firstPick: PickedDimensionEntity,
+      secondPick: PickedDimensionEntity,
+      placementWorld?: THREE.Vector3,
+    ) => {
+      if (!firstPick.start || !firstPick.end || !secondPick.start || !secondPick.end) return null;
+      const firstStart = to2D(firstPick.start);
+      const firstEnd = to2D(firstPick.end);
+      const secondStart = to2D(secondPick.start);
+      const secondEnd = to2D(secondPick.end);
+      const firstAxis = lineAxis(firstPick);
+      const secondAxis = lineAxis(secondPick);
+      if (!firstAxis || firstAxis !== secondAxis) return null;
+      if (firstAxis === 'horizontal') {
+        const y1 = (firstStart.y + firstEnd.y) / 2;
+        const y2 = (secondStart.y + secondEnd.y) / 2;
+        const allX = [firstStart.x, firstEnd.x, secondStart.x, secondEnd.x];
+        const defaultX = Math.min(...allX) - Math.abs(dimensionOffset);
+        const x = placementWorld ? to2D(placementWorld).x : defaultX;
+        return {
+          value: Math.abs(y2 - y1),
+          position: { x, y: (y1 + y2) / 2 },
+          orientation: 'vertical' as const,
+        };
+      }
+      const x1 = (firstStart.x + firstEnd.x) / 2;
+      const x2 = (secondStart.x + secondEnd.x) / 2;
+      const allY = [firstStart.y, firstEnd.y, secondStart.y, secondEnd.y];
+      const defaultY = Math.max(...allY) + Math.abs(dimensionOffset);
+      const y = placementWorld ? to2D(placementWorld).y : defaultY;
+      return {
+        value: Math.abs(x2 - x1),
+        position: { x: (x1 + x2) / 2, y },
+        orientation: 'horizontal' as const,
+      };
+    };
+    const computeAngleDimension = (
+      firstPick: PickedDimensionEntity,
+      secondPick: PickedDimensionEntity,
+      placementWorld?: THREE.Vector3,
+    ) => {
+      if (!firstPick.start || !firstPick.end || !secondPick.start || !secondPick.end) return null;
+      const firstStart = to2D(firstPick.start);
+      const firstEnd = to2D(firstPick.end);
+      const secondStart = to2D(secondPick.start);
+      const secondEnd = to2D(secondPick.end);
+      if (lineAxis(firstPick) === lineAxis(secondPick)) return null;
+      const vertex = lineIntersection(firstStart, firstEnd, secondStart, secondEnd);
+      if (!vertex) return null;
+      const ray1End = fartherFromVertex(vertex, firstStart, firstEnd);
+      const ray2End = fartherFromVertex(vertex, secondStart, secondEnd);
+      const placement = placementWorld ? to2D(placementWorld) : null;
+      const radius = placement
+        ? Math.max(1, Math.hypot(placement.x - vertex.x, placement.y - vertex.y))
+        : Math.max(1, Math.abs(dimensionOffset) * 2);
+      const dimension = DimensionEngine.computeAngleDimension(vertex, ray1End, ray2End, radius);
+      return {
+        value: dimension.value,
+        position: placement ?? dimension.textPosition,
+      };
+    };
+    const dimensionReferenceKey = (type: string, entityIds: string[]) => {
+      const normalizedIds = entityIds.length >= 2 && entityIds.every((id) => id === entityIds[0])
+        ? [entityIds[0]]
+        : [...entityIds].sort();
+      return `${type}:${normalizedIds.join('|')}`;
+    };
+    const hasExistingDimension = (type: string, entityIds: string[]) => {
+      const key = dimensionReferenceKey(type, entityIds);
+      return (activeSketch.dimensions ?? []).some((dimension) =>
+        dimensionReferenceKey(dimension.type, dimension.entityIds) === key,
+      );
+    };
+    const rejectDuplicateDimension = () => {
+      pendingLinearPickRef.current = null;
+      pendingLinearSecondPickRef.current = null;
+      useCADStore.setState({ pendingDimensionEntityIds: [] });
+      setStatusMessage('Dimension already exists for this selection; drag or edit the existing dimension');
+    };
 
     const buildToleranceFields = () =>
       dimensionToleranceMode !== 'none'
@@ -268,6 +353,10 @@ export function useSketchDimensionTool({
       const isCircleDiameter = entity.type === 'circle' && preferDiameterForCircle;
       if (isCircleDiameter) {
         const dimension = DimensionEngine.computeDiameterDimension(center2d.x, center2d.y, entity.radius, 0);
+        if (hasExistingDimension('diameter', [entity.id])) {
+          rejectDuplicateDimension();
+          return true;
+        }
         addSketchDimension({
           id: crypto.randomUUID(),
           type: 'diameter',
@@ -288,6 +377,10 @@ export function useSketchDimensionTool({
         entity.endAngle ?? (2 * Math.PI),
         dimensionOffset,
       );
+      if (hasExistingDimension('radial', [entity.id])) {
+        rejectDuplicateDimension();
+        return true;
+      }
       addSketchDimension({
         id: crypto.randomUUID(),
         type: 'radial',
@@ -302,47 +395,18 @@ export function useSketchDimensionTool({
     };
     void _addCircleOrArcDimension;
 
-    const commitCircleDimension = (entity: SketchEntity, type: 'radial' | 'diameter', value: number) => {
-      if (!entity.radius) {
-        return;
-      }
-      const nextRadius = type === 'diameter' ? value / 2 : value;
-      const center = entity.points[0];
-      const center2d = to2D(new THREE.Vector3(center.x, center.y, center.z));
-      const dimension =
-        type === 'diameter'
-          ? DimensionEngine.computeDiameterDimension(center2d.x, center2d.y, nextRadius, 0)
-          : DimensionEngine.computeArcLengthDimension(
-              center2d.x,
-              center2d.y,
-              nextRadius,
-              entity.startAngle ?? 0,
-              entity.endAngle ?? (2 * Math.PI),
-              dimensionOffset,
-            );
-
-      if (!dimensionDrivenMode) {
-        updateCircleRadius(activeSketch.id, entity.id, nextRadius);
-      }
-
-      addSketchDimension({
-        id: crypto.randomUUID(),
-        type,
-        entityIds: [entity.id],
-        value: type === 'diameter' ? nextRadius * 2 : nextRadius,
-        position: dimension.textPosition,
-        driven: dimensionDrivenMode,
-        ...buildToleranceFields(),
-      });
-      setStatusMessage(
-        type === 'diameter'
-          ? `Diameter dimension added: DIA ${(nextRadius * 2).toFixed(2)}`
-          : `Radial dimension added: r=${nextRadius.toFixed(2)}`,
-      );
+    const fireAndEdit = (dim: SketchDimension, statusMsg: string) => {
+      commitDimension(dim, activeSketch.id, dimensionDrivenMode);
+      useCADStore.setState({ pendingNewDimensionId: dim.id });
+      setStatusMessage(statusMsg);
     };
 
     const handleClick = (event: MouseEvent) => {
       if (event.button !== 0) {
+        return;
+      }
+      if (suppressNextClickRef.current) {
+        suppressNextClickRef.current = false;
         return;
       }
 
@@ -351,19 +415,126 @@ export function useSketchDimensionTool({
         return;
       }
 
-      if (activeDimensionType === 'angular') {
-        setStatusMessage('Angular dimensions coming soon');
-        return;
-      }
-
       const pick = findNearestEntity(worldPoint);
       const entity = pick?.entity ?? null;
 
-      if (activeDimensionType === 'linear' || activeDimensionType === 'aligned') {
+      if (activeDimensionType === 'linear' || activeDimensionType === 'aligned' || activeDimensionType === 'angular') {
+        const currentPending = useCADStore.getState().pendingDimensionEntityIds;
+        const firstPick = pendingLinearPickRef.current;
+        const secondPick = pendingLinearSecondPickRef.current;
+        if (currentPending.length >= 2 && firstPick && secondPick) {
+          const twoLineDimension = computeTwoLineDimension(firstPick, secondPick, worldPoint);
+          if (twoLineDimension) {
+            const entityIds = [
+              firstPick.highlightId ?? firstPick.entity.id,
+              secondPick.highlightId ?? secondPick.entity.id,
+            ];
+            if (hasExistingDimension(activeDimensionType, entityIds)) {
+              rejectDuplicateDimension();
+              return;
+            }
+            fireAndEdit(
+              {
+                id: crypto.randomUUID(),
+                type: activeDimensionType as SketchDimension['type'],
+                entityIds,
+                value: twoLineDimension.value,
+                position: twoLineDimension.position,
+                driven: dimensionDrivenMode,
+                ...(activeDimensionType === 'linear' ? { orientation: twoLineDimension.orientation } : {}),
+                ...buildToleranceFields(),
+              },
+              `${activeDimensionType === 'linear' ? 'Linear' : 'Aligned'} dimension added: ${twoLineDimension.value.toFixed(2)}`,
+            );
+            pendingLinearPickRef.current = null;
+            pendingLinearSecondPickRef.current = null;
+            useCADStore.setState({ pendingDimensionEntityIds: entityIds });
+            return;
+          }
+          const angleDimension = computeAngleDimension(firstPick, secondPick, worldPoint);
+          if (angleDimension) {
+            const entityIds = [
+              firstPick.highlightId ?? firstPick.entity.id,
+              secondPick.highlightId ?? secondPick.entity.id,
+            ];
+            if (hasExistingDimension('angular', entityIds)) {
+              rejectDuplicateDimension();
+              return;
+            }
+            fireAndEdit(
+              {
+                id: crypto.randomUUID(),
+                type: 'angular',
+                entityIds,
+                value: angleDimension.value,
+                position: angleDimension.position,
+                driven: dimensionDrivenMode,
+                ...buildToleranceFields(),
+              },
+              `Angular dimension added: ${angleDimension.value.toFixed(2)}`,
+            );
+            pendingLinearPickRef.current = null;
+            pendingLinearSecondPickRef.current = null;
+            useCADStore.setState({ pendingDimensionEntityIds: entityIds });
+            return;
+          }
+        }
+
+        const isPointPick = (p: PickedDimensionEntity) =>
+          p.start != null && p.end != null && p.start.distanceTo(p.end) < 1e-8;
+
+        if ((activeDimensionType === 'linear' || activeDimensionType === 'aligned') && pick && isPointPick(pick)) {
+          const currentPending2 = useCADStore.getState().pendingDimensionEntityIds;
+          const firstPick2 = pendingLinearPickRef.current;
+          if (currentPending2.length === 0) {
+            pendingLinearPickRef.current = pick;
+            addPendingDimensionEntity(pick.highlightId ?? pick.entity.id);
+            setStatusMessage('Dimension: click the second point');
+            return;
+          }
+          if (firstPick2 && isPointPick(firstPick2) && (pick.highlightId ?? pick.entity.id) !== currentPending2[0]) {
+            const p1 = to2D(firstPick2.start!);
+            const p2 = to2D(pick.start!);
+            const dist = Math.hypot(p2.x - p1.x, p2.y - p1.y);
+            if (dist > 1e-8) {
+              const entityIds = [
+                firstPick2.highlightId ?? firstPick2.entity.id,
+                pick.highlightId ?? pick.entity.id,
+              ];
+              if (hasExistingDimension(activeDimensionType, entityIds)) {
+                rejectDuplicateDimension();
+                return;
+              }
+              const dimension = activeDimensionType === 'linear'
+                ? DimensionEngine.computeLinearDimension(p1, p2, dimensionOffset, dimensionOrientation !== 'auto' ? dimensionOrientation : undefined)
+                : DimensionEngine.computeAlignedDimension(p1, p2, dimensionOffset);
+              fireAndEdit(
+                {
+                  id: crypto.randomUUID(),
+                  type: activeDimensionType as SketchDimension['type'],
+                  entityIds,
+                  value: dimension.value,
+                  position: dimension.textPosition,
+                  driven: dimensionDrivenMode,
+                  ...(activeDimensionType === 'linear' ? { orientation: dimensionOrientation } : {}),
+                  ...buildToleranceFields(),
+                },
+                `${activeDimensionType === 'linear' ? 'Linear' : 'Aligned'} dimension added: ${dimension.value.toFixed(2)}`,
+              );
+              pendingLinearPickRef.current = null;
+              pendingLinearSecondPickRef.current = null;
+              useCADStore.setState({ pendingDimensionEntityIds: [] });
+              return;
+            }
+          }
+        }
+
         if (!entity) {
           setStatusMessage(
             activeDimensionType === 'linear'
               ? 'Dimension: click closer to a line entity'
+              : activeDimensionType === 'angular'
+                ? 'Angular: click closer to a line entity'
               : 'Aligned: click closer to a line entity',
           );
           return;
@@ -372,6 +543,10 @@ export function useSketchDimensionTool({
           const center = entity.points[0];
           const center2d = to2D(new THREE.Vector3(center.x, center.y, center.z));
           const dimension = DimensionEngine.computeDiameterDimension(center2d.x, center2d.y, entity.radius, 0);
+          if (hasExistingDimension('diameter', [entity.id])) {
+            rejectDuplicateDimension();
+            return;
+          }
           addSketchDimension({
             id: crypto.randomUUID(),
             type: 'diameter',
@@ -395,6 +570,10 @@ export function useSketchDimensionTool({
             entity.endAngle ?? (2 * Math.PI),
             dimensionOffset,
           );
+          if (hasExistingDimension('radial', [entity.id])) {
+            rejectDuplicateDimension();
+            return;
+          }
           addSketchDimension({
             id: crypto.randomUUID(),
             type: 'radial',
@@ -408,79 +587,197 @@ export function useSketchDimensionTool({
           return;
         }
 
-        const currentPending = useCADStore.getState().pendingDimensionEntityIds;
-        if (currentPending.length === 0 && pick?.start && pick.end) {
-          const start = to2D(pick.start);
-          const end = to2D(pick.end);
-          const dimension =
-            activeDimensionType === 'linear'
-              ? DimensionEngine.computeLinearDimension(start, end, dimensionOffset)
-              : DimensionEngine.computeAlignedDimension(start, end, dimensionOffset);
-
-          addSketchDimension({
-            id: crypto.randomUUID(),
-            type: activeDimensionType,
-            entityIds: [entity.id],
-            value: dimension.value,
-            position: dimension.textPosition,
-            driven: dimensionDrivenMode,
-            ...(activeDimensionType === 'linear' ? { orientation: dimensionOrientation } : {}),
-            ...buildToleranceFields(),
-          });
+        if (!pick?.start || !pick.end) {
           setStatusMessage(
-            `${activeDimensionType === 'linear' ? 'Linear' : 'Aligned'} dimension added: ${dimension.value.toFixed(2)}`,
+            activeDimensionType === 'linear'
+              ? 'Dimension: click closer to a line segment'
+              : activeDimensionType === 'angular'
+                ? 'Angular: click closer to a line segment'
+              : 'Aligned: click closer to a line segment',
           );
           return;
         }
+
+        // While a newly-placed single-entity edit is open, allow upgrading to two-entity
+        // by clicking a second parallel line — or silently ignore same-entity re-clicks.
+        const { sketchDimEditId: _editId, sketchDimEditIsNew: _editIsNew } = useCADStore.getState();
+        if (_editId && _editIsNew && pendingLinearPickRef.current && activeDimensionType !== 'angular') {
+          const _firstId = pendingLinearPickRef.current.highlightId ?? pendingLinearPickRef.current.entity.id;
+          const _clickedId = pick.highlightId ?? entity.id;
+          if (_clickedId === _firstId) return; // same entity — editor already open, do nothing
+          const _twoLine = computeTwoLineDimension(pendingLinearPickRef.current, pick, worldPoint);
+          if (_twoLine) {
+            const _entityIds = [_firstId, _clickedId];
+            if (!hasExistingDimension(activeDimensionType, _entityIds)) {
+              // Close editor without undo and directly remove the provisional single-entity
+              // dimension by ID. Using undo() is unreliable here because it can leave D1
+              // in the sketch if the undo stack isn't exactly as expected.
+              const _firstDimId = useCADStore.getState().pendingNewDimensionId ?? _editId;
+              useCADStore.setState({
+                pendingNewDimensionId: null,
+                sketchDimEditId: null,
+                sketchDimEditValue: '',
+                sketchDimEditIsNew: false,
+                sketchDimEditTypeahead: [],
+              });
+              useCADStore.getState().removeDimension(_firstDimId);
+              fireAndEdit(
+                {
+                  id: crypto.randomUUID(),
+                  type: activeDimensionType as SketchDimension['type'],
+                  entityIds: _entityIds,
+                  value: _twoLine.value,
+                  position: _twoLine.position,
+                  driven: dimensionDrivenMode,
+                  ...(activeDimensionType === 'linear' ? { orientation: _twoLine.orientation } : {}),
+                  ...buildToleranceFields(),
+                },
+                `${activeDimensionType === 'linear' ? 'Linear' : 'Aligned'} dimension added: ${_twoLine.value.toFixed(2)}`,
+              );
+              pendingLinearPickRef.current = null;
+              pendingLinearSecondPickRef.current = null;
+              useCADStore.setState({ pendingDimensionEntityIds: _entityIds });
+              return;
+            }
+          }
+          // Perpendicular line clicked — try upgrading to angular dimension
+          const _angleResult = computeAngleDimension(pendingLinearPickRef.current, pick, worldPoint);
+          if (_angleResult) {
+            const _entityIds = [_firstId, _clickedId];
+            if (!hasExistingDimension('angular', _entityIds)) {
+              const _firstDimId = useCADStore.getState().pendingNewDimensionId ?? _editId;
+              useCADStore.setState({
+                pendingNewDimensionId: null,
+                sketchDimEditId: null,
+                sketchDimEditValue: '',
+                sketchDimEditIsNew: false,
+                sketchDimEditTypeahead: [],
+              });
+              useCADStore.getState().removeDimension(_firstDimId);
+              fireAndEdit(
+                {
+                  id: crypto.randomUUID(),
+                  type: 'angular',
+                  entityIds: _entityIds,
+                  value: _angleResult.value,
+                  position: _angleResult.position,
+                  driven: dimensionDrivenMode,
+                  ...buildToleranceFields(),
+                },
+                `Angular dimension added: ${_angleResult.value.toFixed(2)}°`,
+              );
+              pendingLinearPickRef.current = null;
+              pendingLinearSecondPickRef.current = null;
+              useCADStore.setState({ pendingDimensionEntityIds: _entityIds });
+              return;
+            }
+          }
+          return; // lines are parallel or intersecting but no valid dimension — ignore
+        }
+
+        // Editor is open for a just-placed dimension (pendingLinearPickRef was cleared
+        // after a successful two-entity upgrade). Block new placements until confirmed/cancelled.
+        if (_editId && _editIsNew) return;
 
         if (currentPending.length === 0) {
-          addPendingDimensionEntity(entity.id);
-          setStatusMessage(
+          if (activeDimensionType === 'angular') {
+            pendingLinearPickRef.current = pick;
+            addPendingDimensionEntity(pick.highlightId ?? entity.id);
+            setStatusMessage('Angular: click the second line');
+            return;
+          }
+          // Linear/aligned: place immediately on first click; keep ref for two-entity upgrade
+          pendingLinearPickRef.current = pick;
+          const _start0 = to2D(pick.start);
+          const _end0 = to2D(pick.end);
+          const _dim0 =
             activeDimensionType === 'linear'
-              ? 'Dimension: click a second line or point to complete'
-              : 'Aligned: click a second entity to complete',
+              ? DimensionEngine.computeLinearDimension(_start0, _end0, dimensionOffset, dimensionOrientation !== 'auto' ? dimensionOrientation : undefined)
+              : DimensionEngine.computeAlignedDimension(_start0, _end0, dimensionOffset);
+          const _entityIds0 = [pick.highlightId ?? entity.id];
+          if (hasExistingDimension(activeDimensionType, _entityIds0)) {
+            rejectDuplicateDimension();
+            return;
+          }
+          fireAndEdit(
+            {
+              id: crypto.randomUUID(),
+              type: activeDimensionType as SketchDimension['type'],
+              entityIds: _entityIds0,
+              value: _dim0.value,
+              position: _dim0.textPosition,
+              driven: dimensionDrivenMode,
+              ...(activeDimensionType === 'linear' ? { orientation: dimensionOrientation } : {}),
+              ...buildToleranceFields(),
+            },
+            `${activeDimensionType === 'linear' ? 'Linear' : 'Aligned'} dimension added: ${_dim0.value.toFixed(2)}`,
           );
+          useCADStore.setState({ pendingDimensionEntityIds: _entityIds0 });
           return;
         }
 
-        const firstEntity = activeSketch.entities.find((candidate) => candidate.id === currentPending[0]);
-        if (!firstEntity || firstEntity.points.length < 2) {
+        if (!firstPick?.start || !firstPick.end) {
           setStatusMessage(
             activeDimensionType === 'linear'
               ? 'Dimension: first entity is invalid, please try again'
+              : activeDimensionType === 'angular'
+                ? 'Angular: first entity is invalid, please try again'
               : 'Aligned: first entity is invalid, please try again',
           );
           useCADStore.setState({ pendingDimensionEntityIds: [] });
           return;
         }
 
-        const startWorld = new THREE.Vector3(firstEntity.points[0].x, firstEntity.points[0].y, firstEntity.points[0].z);
-        const endWorld = new THREE.Vector3(
-          firstEntity.points[firstEntity.points.length - 1].x,
-          firstEntity.points[firstEntity.points.length - 1].y,
-          firstEntity.points[firstEntity.points.length - 1].z,
-        );
-        const start = to2D(startWorld);
-        const end = to2D(endWorld);
+        if (currentPending.length === 1 && (pick.highlightId ?? entity.id) !== currentPending[0]) {
+          const twoLineDimension = computeTwoLineDimension(firstPick, pick);
+          if (twoLineDimension) {
+            pendingLinearSecondPickRef.current = pick;
+            addPendingDimensionEntity(pick.highlightId ?? entity.id);
+            setStatusMessage('Dimension: select location for dimension');
+            return;
+          }
+          const angleDimension = computeAngleDimension(firstPick, pick);
+          if (angleDimension) {
+            pendingLinearSecondPickRef.current = pick;
+            addPendingDimensionEntity(pick.highlightId ?? entity.id);
+            setStatusMessage('Angular: select location for dimension');
+            return;
+          }
+        }
+
+        if (activeDimensionType === 'angular') {
+          setStatusMessage('Angular: click a different non-parallel line');
+          return;
+        }
+
+        const start = to2D(firstPick.start);
+        const end = to2D(firstPick.end);
         const dimension =
           activeDimensionType === 'linear'
             ? DimensionEngine.computeLinearDimension(start, end, dimensionOffset)
             : DimensionEngine.computeAlignedDimension(start, end, dimensionOffset);
+        const entityIds = [firstPick.highlightId ?? firstPick.entity.id];
+        if (hasExistingDimension(activeDimensionType, entityIds)) {
+          rejectDuplicateDimension();
+          return;
+        }
 
-        addSketchDimension({
-          id: crypto.randomUUID(),
-          type: activeDimensionType,
-          entityIds: [currentPending[0], entity.id],
-          value: dimension.value,
-          position: dimension.textPosition,
-          driven: dimensionDrivenMode,
-          ...(activeDimensionType === 'linear' ? { orientation: dimensionOrientation } : {}),
-          ...buildToleranceFields(),
-        });
-        useCADStore.setState({ pendingDimensionEntityIds: [] });
-        setStatusMessage(
+        fireAndEdit(
+          {
+            id: crypto.randomUUID(),
+            type: activeDimensionType as SketchDimension['type'],
+            entityIds,
+            value: dimension.value,
+            position: dimension.textPosition,
+            driven: dimensionDrivenMode,
+            ...(activeDimensionType === 'linear' ? { orientation: dimensionOrientation } : {}),
+            ...buildToleranceFields(),
+          },
           `${activeDimensionType === 'linear' ? 'Linear' : 'Aligned'} dimension added: ${dimension.value.toFixed(2)}`,
         );
+        pendingLinearPickRef.current = null;
+        pendingLinearSecondPickRef.current = null;
+        useCADStore.setState({ pendingDimensionEntityIds: [] });
         return;
       }
 
@@ -489,7 +786,27 @@ export function useSketchDimensionTool({
           setStatusMessage('Dimension: click on a circle or arc');
           return;
         }
-        promptForCircleDimension(event, entity.radius, (value) => commitCircleDimension(entity, 'radial', value));
+        if (hasExistingDimension('radial', [entity.id])) { rejectDuplicateDimension(); return; }
+        {
+          const center = entity.points[0];
+          const center2d = to2D(new THREE.Vector3(center.x, center.y, center.z));
+          const radDim = DimensionEngine.computeArcLengthDimension(
+            center2d.x, center2d.y, entity.radius,
+            entity.startAngle ?? 0, entity.endAngle ?? (2 * Math.PI), dimensionOffset,
+          );
+          fireAndEdit(
+            {
+              id: crypto.randomUUID(),
+              type: 'radial',
+              entityIds: [entity.id],
+              value: entity.radius,
+              position: radDim.textPosition,
+              driven: dimensionDrivenMode,
+              ...buildToleranceFields(),
+            },
+            `Radial dimension added: r=${entity.radius.toFixed(2)}`,
+          );
+        }
         return;
       }
 
@@ -498,7 +815,24 @@ export function useSketchDimensionTool({
           setStatusMessage('Dimension: click on a circle');
           return;
         }
-        promptForCircleDimension(event, entity.radius * 2, (value) => commitCircleDimension(entity, 'diameter', value));
+        if (hasExistingDimension('diameter', [entity.id])) { rejectDuplicateDimension(); return; }
+        {
+          const center = entity.points[0];
+          const center2d = to2D(new THREE.Vector3(center.x, center.y, center.z));
+          const diaPos = DimensionEngine.computeDiameterDimension(center2d.x, center2d.y, entity.radius, 0);
+          fireAndEdit(
+            {
+              id: crypto.randomUUID(),
+              type: 'diameter',
+              entityIds: [entity.id],
+              value: entity.radius * 2,
+              position: diaPos.textPosition,
+              driven: dimensionDrivenMode,
+              ...buildToleranceFields(),
+            },
+            `Diameter dimension added: DIA ${(entity.radius * 2).toFixed(2)}`,
+          );
+        }
         return;
       }
 
@@ -517,6 +851,10 @@ export function useSketchDimensionTool({
           entity.endAngle ?? (2 * Math.PI),
           dimensionOffset,
         );
+        if (hasExistingDimension('arc-length', [entity.id])) {
+          rejectDuplicateDimension();
+          return;
+        }
         addSketchDimension({
           id: crypto.randomUUID(),
           type: 'arc-length',
@@ -529,21 +867,41 @@ export function useSketchDimensionTool({
         setStatusMessage(`Arc length dimension added: ${dimension.value.toFixed(2)}`);
       }
     };
-
     const handleKeyDown = (event: KeyboardEvent) => {
       if (event.key === 'Escape') {
+        pendingLinearPickRef.current = null;
+        pendingLinearSecondPickRef.current = null;
         cancelDimensionTool();
       }
     };
+    const handleHoverMove = (event: MouseEvent) => {
+      const worldPoint = getWorldPoint(event);
+      const pick = worldPoint ? findNearestEntity(worldPoint) : null;
+      const hoverId = pick ? (pick.highlightId ?? pick.entity.id) : null;
+      if (useCADStore.getState().dimensionHoverEntityId !== hoverId) {
+        useCADStore.setState({ dimensionHoverEntityId: hoverId });
+      }
+      canvas.style.cursor = hoverId ? 'crosshair' : '';
+    };
 
     const canvas = gl.domElement;
+    canvas.addEventListener('mousemove', handleHoverMove);
     canvas.addEventListener('click', handleClick);
     window.addEventListener('keydown', handleKeyDown);
     return () => {
+      canvas.removeEventListener('mousemove', handleHoverMove);
       canvas.removeEventListener('click', handleClick);
       window.removeEventListener('keydown', handleKeyDown);
-      document.querySelectorAll('.sketch-inline-dimension-input').forEach((node) => node.remove());
-      document.querySelectorAll('.sketch-inline-dimension-editor').forEach((node) => node.remove());
+      draggingDimensionRef.current = null;
+      canvas.style.cursor = '';
+      useCADStore.setState({ dimensionHoverEntityId: null });
+      // Only clear pending picks when leaving the dimension tool entirely.
+      // Do NOT clear on activeSketch re-runs (e.g. after adding the first dim)
+      // since pendingLinearPickRef is needed for the two-entity upgrade path.
+      if (useCADStore.getState().activeTool !== 'dimension') {
+        pendingLinearPickRef.current = null;
+        pendingLinearSecondPickRef.current = null;
+      }
     };
   }, [
     activeDimensionType,

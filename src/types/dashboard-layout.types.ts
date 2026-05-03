@@ -1,4 +1,5 @@
 export type PanelId =
+  | 'camera'
   | 'tools'
   | 'tool-offsets'
   | 'workplace'

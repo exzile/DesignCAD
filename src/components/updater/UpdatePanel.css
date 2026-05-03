@@ -1,45 +1,18 @@
 .update-panel {
-  position: fixed;
-  right: 12px;
-  bottom: 12px;
-  z-index: 9000;
-  width: min(360px, calc(100vw - 24px));
+  width: 100%;
   color: var(--text-secondary);
   font-size: 12px;
 }
 
-.update-panel-toggle {
-  display: flex;
-  align-items: center;
-  gap: 7px;
-  margin-left: auto;
-  height: 32px;
-  padding: 0 11px;
-  border: 1px solid var(--border);
-  border-radius: 4px;
-  background: var(--bg-secondary);
-  color: var(--text-secondary);
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.28);
-  cursor: pointer;
-}
-
-.update-panel-toggle:hover {
-  background: var(--bg-hover);
-  color: var(--text-primary);
-}
-
-.update-panel-toggle.update-available {
-  border-color: var(--accent);
-  color: var(--accent);
-}
-
 .update-panel-card {
-  margin-top: 8px;
   border: 1px solid var(--border);
   border-radius: 6px;
   background: var(--bg-secondary);
-  box-shadow: 0 12px 34px rgba(0, 0, 0, 0.36);
   overflow: hidden;
+}
+
+.update-panel-card--alert {
+  border-color: var(--accent);
 }
 
 .update-panel-header,

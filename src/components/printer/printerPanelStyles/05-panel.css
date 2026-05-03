@@ -2,3 +2,83 @@
 @import './panel/02-temperature-and-progress.css';
 @import './panel/03-controls-and-webcam.css';
 @import './panel/04-files-help-and-status.css';
+
+.printer-context-strip {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 7px 12px;
+  border-bottom: 1px solid var(--border);
+  background:
+    linear-gradient(90deg, color-mix(in srgb, var(--accent) 14%, transparent), transparent 70%),
+    var(--bg-panel);
+  flex-shrink: 0;
+}
+
+.printer-context-strip__main {
+  display: flex;
+  align-items: baseline;
+  gap: 9px;
+  min-width: 0;
+}
+
+.printer-context-strip__label {
+  color: var(--text-muted);
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+
+.printer-context-strip__main strong {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--text-primary);
+  font-size: 14px;
+  font-weight: 750;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.printer-context-strip__meta {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  color: var(--text-secondary);
+  font-size: 11px;
+}
+
+.printer-context-strip__meta span {
+  max-width: 180px;
+  overflow: hidden;
+  padding: 2px 8px;
+  border: 1px solid var(--border-light);
+  border-radius: 999px;
+  background: var(--bg-elevated);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.printer-context-strip__meta .is-connected {
+  border-color: color-mix(in srgb, #22c55e 44%, var(--border-light));
+  background: color-mix(in srgb, #22c55e 12%, var(--bg-elevated));
+  color: #22c55e;
+}
+
+.printer-context-strip__meta .is-offline {
+  border-color: color-mix(in srgb, #f43f5e 34%, var(--border-light));
+  background: color-mix(in srgb, #f43f5e 10%, var(--bg-elevated));
+  color: #f43f5e;
+}
+
+@media (max-width: 720px) {
+  .printer-context-strip {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .printer-context-strip__meta {
+    flex-wrap: wrap;
+  }
+}

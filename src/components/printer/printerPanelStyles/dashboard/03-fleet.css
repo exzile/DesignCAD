@@ -1,0 +1,805 @@
+.fleet-dashboard {
+  --fleet-blue: #3b82f6;
+  --fleet-teal: #14b8a6;
+  --fleet-green: #22c55e;
+  --fleet-amber: #f59e0b;
+  --fleet-rose: #f43f5e;
+  --fleet-violet: #8b5cf6;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  padding: 14px 14px 8px;
+}
+
+.fleet-dashboard__header {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.fleet-dashboard__eyebrow {
+  margin-bottom: 2px;
+  color: var(--fleet-teal);
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+
+.fleet-dashboard h2 {
+  margin: 0;
+  color: var(--text-primary);
+  font-size: 20px;
+  font-weight: 680;
+}
+
+.fleet-dashboard__header-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.fleet-add-printer-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  min-height: 28px;
+  padding: 0 12px;
+  border: 1px solid color-mix(in srgb, var(--fleet-teal) 34%, var(--border));
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--fleet-teal) 12%, var(--bg-panel));
+  color: var(--fleet-teal);
+  font: inherit;
+  font-size: 12px;
+  font-weight: 650;
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s;
+}
+
+.fleet-add-printer-btn:hover {
+  background: color-mix(in srgb, var(--fleet-teal) 22%, var(--bg-panel));
+  border-color: color-mix(in srgb, var(--fleet-teal) 54%, var(--border));
+}
+
+.fleet-manage-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  min-height: 28px;
+  padding: 0 12px;
+  border: 1px solid color-mix(in srgb, var(--fleet-blue) 34%, var(--border));
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--fleet-blue) 12%, var(--bg-panel));
+  color: var(--fleet-blue);
+  font: inherit;
+  font-size: 12px;
+  font-weight: 650;
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s;
+}
+
+.fleet-manage-btn:hover {
+  background: color-mix(in srgb, var(--fleet-blue) 22%, var(--bg-panel));
+  border-color: color-mix(in srgb, var(--fleet-blue) 54%, var(--border));
+}
+
+.fleet-dashboard__status {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  min-height: 28px;
+  padding: 0 10px;
+  border: 1px solid color-mix(in srgb, var(--fleet-teal) 34%, var(--border));
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--fleet-teal) 10%, var(--bg-panel));
+  color: var(--text-secondary);
+  font-size: 12px;
+  font-weight: 650;
+  text-transform: capitalize;
+}
+
+.fleet-dashboard__dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 999px;
+  box-shadow: 0 0 0 3px color-mix(in srgb, currentColor 18%, transparent);
+}
+
+.fleet-stats {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.fleet-stat {
+  position: relative;
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  align-items: center;
+  gap: 8px;
+  min-height: 48px;
+  padding: 9px 11px;
+  border: 1px solid color-mix(in srgb, var(--fleet-card-color, var(--accent)) 28%, var(--border));
+  border-radius: 8px;
+  background:
+    linear-gradient(90deg, color-mix(in srgb, var(--fleet-card-color, var(--accent)) 13%, transparent), transparent 74%),
+    var(--bg-panel);
+  box-shadow: inset 3px 0 0 var(--fleet-card-color, var(--accent));
+}
+
+.fleet-stat:nth-child(1) { --fleet-card-color: var(--fleet-blue); }
+.fleet-stat:nth-child(2) { --fleet-card-color: var(--fleet-green); }
+.fleet-stat:nth-child(3) { --fleet-card-color: var(--fleet-teal); }
+.fleet-stat:nth-child(4) { --fleet-card-color: var(--fleet-violet); }
+
+.fleet-stat__icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  border-radius: 7px;
+  color: var(--fleet-card-color, var(--accent));
+  background: color-mix(in srgb, var(--fleet-card-color, var(--accent)) 14%, transparent);
+  border: 1px solid color-mix(in srgb, var(--fleet-card-color, var(--accent)) 26%, transparent);
+}
+
+.fleet-stat__label {
+  min-width: 0;
+  color: var(--text-muted);
+  font-size: 11px;
+  font-weight: 650;
+  text-transform: uppercase;
+}
+
+.fleet-stat strong {
+  color: var(--text-primary);
+  font-size: 18px;
+  font-variant-numeric: tabular-nums;
+}
+
+.fleet-printer-row {
+  border: 1px solid color-mix(in srgb, var(--fleet-blue) 18%, var(--border));
+  border-radius: 8px;
+  background: var(--bg-panel);
+  overflow: hidden;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.08);
+}
+
+.fleet-printer-list {
+  display: grid;
+  gap: 10px;
+}
+
+.fleet-printer-row {
+  position: relative;
+  display: grid;
+  grid-template-columns: minmax(180px, 240px) minmax(0, 1fr);
+  min-height: 164px;
+  --printer-accent: var(--fleet-blue);
+}
+
+.fleet-printer-row::before {
+  content: "";
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: 4px;
+  background: var(--printer-accent);
+  z-index: 2;
+}
+
+.fleet-printer-row.is-active {
+  --printer-accent: var(--fleet-teal);
+  border-color: color-mix(in srgb, var(--printer-accent) 54%, var(--border));
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--printer-accent) 25%, transparent), 0 10px 26px rgba(0, 0, 0, 0.1);
+}
+
+.fleet-printer-row__body {
+  display: grid;
+  grid-template-columns: minmax(230px, 1fr) minmax(240px, 1.1fr) minmax(220px, 0.95fr);
+  gap: 10px;
+  align-items: stretch;
+  min-width: 0;
+  padding: 10px;
+}
+
+.fleet-printer-row__main,
+.fleet-printer-row__job,
+.fleet-printer-row__metrics,
+.fleet-printer-row__actions {
+  min-width: 0;
+}
+
+.fleet-printer-row__main {
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.fleet-printer-row__identity {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.fleet-printer-row h3 {
+  margin: 0 0 3px;
+  color: var(--text-primary);
+  font-size: 14px;
+  font-weight: 680;
+}
+
+.fleet-printer-row.is-active h3 {
+  color: color-mix(in srgb, var(--fleet-teal) 72%, var(--text-primary));
+}
+
+.fleet-printer-row__identity span:not(.fleet-printer-row__state) {
+  display: block;
+  max-width: 180px;
+  overflow: hidden;
+  color: var(--text-muted);
+  font-size: 11px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.fleet-printer-row__state {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  flex-shrink: 0;
+  min-height: 22px;
+  padding: 0 7px;
+  border: 1px solid color-mix(in srgb, var(--printer-accent) 32%, var(--border-light));
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--printer-accent) 10%, var(--bg-elevated));
+  color: var(--text-secondary);
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: capitalize;
+}
+
+.fleet-printer-row__job {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 7px;
+  padding: 10px;
+  border: 1px solid color-mix(in srgb, var(--fleet-amber) 24%, var(--border-light));
+  border-radius: 6px;
+  background:
+    linear-gradient(90deg, color-mix(in srgb, var(--fleet-amber) 10%, transparent), transparent 72%),
+    var(--bg-elevated);
+}
+
+.fleet-printer-row__job.is-printing {
+  border-color: color-mix(in srgb, var(--fleet-green) 52%, var(--border-light));
+  background:
+    linear-gradient(90deg, color-mix(in srgb, var(--fleet-green) 14%, transparent), transparent 74%),
+    var(--bg-elevated);
+}
+
+.fleet-printer-row__job-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.fleet-printer-row__job-top span,
+.fleet-printer-row__job-meta {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.fleet-printer-row__job-top span {
+  color: var(--text-primary);
+  font-size: 13px;
+  font-weight: 650;
+}
+
+.fleet-printer-row__job-top strong {
+  flex-shrink: 0;
+  color: var(--fleet-green);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+
+.fleet-printer-row__job-meta {
+  color: var(--text-muted);
+  font-size: 11px;
+}
+
+.fleet-printer-row__job-bar {
+  height: 6px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--fleet-amber) 10%, var(--bg-panel));
+  overflow: hidden;
+  border: 1px solid color-mix(in srgb, var(--fleet-amber) 16%, transparent);
+}
+
+.fleet-printer-row__job-bar span {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: linear-gradient(90deg, var(--fleet-amber), var(--fleet-green));
+  transition: width 0.2s ease;
+}
+
+.fleet-printer-row__metrics {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(92px, 1fr));
+  gap: 6px;
+}
+
+.fleet-printer-row__metrics > div {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  grid-template-areas: "icon label" "icon value";
+  align-items: center;
+  gap: 2px 7px;
+  min-width: 0;
+  padding: 8px;
+  border: 1px solid color-mix(in srgb, var(--metric-color, var(--accent)) 24%, var(--border-light));
+  border-radius: 6px;
+  background: color-mix(in srgb, var(--metric-color, var(--accent)) 8%, var(--bg-elevated));
+}
+
+.fleet-printer-row__metrics > div:nth-child(1) { --metric-color: var(--fleet-rose); }
+.fleet-printer-row__metrics > div:nth-child(2) { --metric-color: var(--fleet-amber); }
+.fleet-printer-row__metrics > div:nth-child(3) { --metric-color: var(--fleet-blue); }
+.fleet-printer-row__metrics > div:nth-child(4) { --metric-color: var(--fleet-violet); }
+
+.fleet-printer-row__metrics svg {
+  grid-area: icon;
+  color: var(--metric-color, var(--text-muted));
+}
+
+.fleet-printer-row__metrics span {
+  grid-area: label;
+  color: var(--text-muted);
+  font-size: 10px;
+  font-weight: 650;
+  text-transform: uppercase;
+}
+
+.fleet-printer-row__metrics strong {
+  grid-area: value;
+  min-width: 0;
+  overflow: hidden;
+  color: var(--text-primary);
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.fleet-printer-row__actions {
+  display: grid;
+  align-content: center;
+  gap: 6px;
+  min-width: 116px;
+}
+
+.fleet-printer-row__actions--inline {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  align-content: stretch;
+  min-width: 0;
+}
+
+.fleet-printer-row__actions button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  min-width: 0;
+  min-height: 28px;
+  padding: 0 7px;
+  border: 1px solid color-mix(in srgb, var(--printer-accent) 22%, var(--border));
+  border-radius: 6px;
+  background: color-mix(in srgb, var(--printer-accent) 7%, var(--bg-elevated));
+  color: var(--text-primary);
+  font: inherit;
+  font-size: 11px;
+  font-weight: 650;
+  cursor: pointer;
+}
+
+.fleet-printer-row__actions button:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--printer-accent) 15%, var(--bg-elevated-hover));
+  border-color: color-mix(in srgb, var(--printer-accent) 42%, var(--border-strong));
+}
+
+.fleet-printer-row__actions button:disabled {
+  cursor: default;
+  opacity: 0.45;
+}
+
+.fleet-printer-row__actions button.is-connected {
+  border-color: color-mix(in srgb, var(--fleet-green) 44%, var(--border-light));
+  background: color-mix(in srgb, var(--fleet-green) 14%, var(--bg-elevated));
+  color: color-mix(in srgb, var(--fleet-green) 74%, var(--text-primary));
+  opacity: 1;
+}
+
+.fleet-camera {
+  position: relative;
+  min-height: 140px;
+  aspect-ratio: 16 / 10;
+  background:
+    linear-gradient(135deg, rgba(20, 184, 166, 0.2), rgba(59, 130, 246, 0.08) 42%, rgba(5, 6, 8, 0.92)),
+    #050608;
+  overflow: hidden;
+}
+
+.fleet-camera::after {
+  content: "";
+  position: absolute;
+  inset: 8px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 6px;
+  pointer-events: none;
+}
+
+.fleet-printer-row .fleet-camera {
+  min-height: 100%;
+  aspect-ratio: auto;
+}
+
+.fleet-camera img {
+  width: 100%;
+  height: 100%;
+  min-height: inherit;
+  display: block;
+  object-fit: cover;
+}
+
+.fleet-camera__empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  width: 100%;
+  height: 100%;
+  min-height: inherit;
+  color: rgba(255, 255, 255, 0.68);
+  font-size: 11px;
+  font-weight: 650;
+  text-align: center;
+}
+
+.fleet-camera__empty svg {
+  color: var(--fleet-teal);
+}
+
+@media (max-width: 1180px) {
+  .fleet-printer-row__body {
+    grid-template-columns: minmax(210px, 1fr) minmax(240px, 1fr);
+  }
+
+  .fleet-printer-row__metrics {
+    grid-column: 1 / 2;
+  }
+
+  .fleet-printer-row__actions {
+    grid-column: 2 / 3;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    min-width: 0;
+  }
+}
+
+@media (max-width: 720px) {
+  .fleet-dashboard {
+    padding: 10px 8px 4px;
+  }
+
+  .fleet-dashboard__header {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .fleet-stats {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .fleet-printer-row {
+    grid-template-columns: 1fr;
+  }
+
+  .fleet-printer-row__body {
+    grid-template-columns: 1fr;
+  }
+
+  .fleet-printer-row__metrics,
+  .fleet-printer-row__actions {
+    grid-column: auto;
+  }
+
+  .fleet-printer-row .fleet-camera {
+    min-height: 150px;
+    aspect-ratio: 16 / 9;
+  }
+}
+
+/* ── Manage Printers Dialog ──────────────────────────────────────────────── */
+
+.fleet-manage-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 9000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0, 0, 0, 0.55);
+  backdrop-filter: blur(4px);
+}
+
+.fleet-manage-dialog {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  width: 420px;
+  max-height: 80vh;
+  border: 1px solid color-mix(in srgb, var(--fleet-blue) 34%, var(--border));
+  border-radius: 12px;
+  background: var(--bg-panel);
+  box-shadow: 0 16px 48px rgba(0, 0, 0, 0.3);
+  overflow: hidden;
+}
+
+.fleet-manage-dialog__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 14px 16px;
+  border-bottom: 1px solid var(--border);
+}
+
+.fleet-manage-dialog__header h3 {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 680;
+  color: var(--text-primary);
+}
+
+.fleet-manage-dialog__close {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+}
+
+.fleet-manage-dialog__close:hover {
+  background: var(--bg-elevated-hover);
+  color: var(--text-primary);
+}
+
+.fleet-manage-dialog__list {
+  flex: 1;
+  overflow-y: auto;
+  padding: 8px 0;
+}
+
+.fleet-manage-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 16px;
+  transition: background 0.1s;
+}
+
+.fleet-manage-row:hover {
+  background: color-mix(in srgb, var(--fleet-blue) 6%, transparent);
+}
+
+.fleet-manage-row.is-active {
+  background: color-mix(in srgb, var(--fleet-teal) 8%, transparent);
+}
+
+.fleet-manage-row.is-active::before {
+  content: "";
+  width: 3px;
+  height: 24px;
+  border-radius: 2px;
+  background: var(--fleet-teal);
+  flex-shrink: 0;
+}
+
+.fleet-manage-row__info {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.fleet-manage-row__name {
+  font-size: 13px;
+  font-weight: 650;
+  color: var(--text-primary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.fleet-manage-row__host {
+  font-size: 11px;
+  color: var(--text-muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.fleet-manage-row__rename {
+  width: 100%;
+  padding: 4px 8px;
+  border: 1px solid var(--fleet-blue);
+  border-radius: 4px;
+  background: var(--bg-elevated);
+  color: var(--text-primary);
+  font: inherit;
+  font-size: 13px;
+  outline: none;
+}
+
+.fleet-manage-row__actions {
+  display: flex;
+  gap: 4px;
+  flex-shrink: 0;
+}
+
+.fleet-manage-row__actions button {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+  transition: background 0.1s, color 0.1s;
+}
+
+.fleet-manage-row__actions button:hover:not(:disabled) {
+  background: var(--bg-elevated-hover);
+  color: var(--text-primary);
+  border-color: var(--border);
+}
+
+.fleet-manage-row__delete:hover:not(:disabled) {
+  color: var(--fleet-rose) !important;
+  border-color: color-mix(in srgb, var(--fleet-rose) 34%, var(--border)) !important;
+  background: color-mix(in srgb, var(--fleet-rose) 10%, transparent) !important;
+}
+
+.fleet-manage-row__actions button:disabled {
+  opacity: 0.3;
+  cursor: not-allowed;
+}
+
+.fleet-manage-dialog__footer {
+  display: flex;
+  justify-content: center;
+  padding: 12px 16px;
+  border-top: 1px solid var(--border);
+}
+
+/* ── Delete Confirmation ─────────────────────────────────────────────────── */
+
+.fleet-manage-confirm-overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0, 0, 0, 0.5);
+  border-radius: inherit;
+}
+
+.fleet-manage-confirm {
+  width: 340px;
+  padding: 20px;
+  border: 1px solid color-mix(in srgb, var(--fleet-rose) 34%, var(--border));
+  border-radius: 10px;
+  background: var(--bg-panel);
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+}
+
+.fleet-manage-confirm__icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 44px;
+  height: 44px;
+  margin: 0 auto 12px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--fleet-rose) 14%, transparent);
+  color: var(--fleet-rose);
+}
+
+.fleet-manage-confirm h4 {
+  margin: 0 0 8px;
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--text-primary);
+  text-align: center;
+}
+
+.fleet-manage-confirm p {
+  margin: 0 0 8px;
+  font-size: 12px;
+  color: var(--text-secondary);
+  line-height: 1.5;
+}
+
+.fleet-manage-confirm__cascade {
+  margin: 0 0 10px;
+  padding-left: 18px;
+  font-size: 12px;
+  color: var(--text-secondary);
+  line-height: 1.7;
+}
+
+.fleet-manage-confirm__cascade strong {
+  color: var(--fleet-rose);
+}
+
+.fleet-manage-confirm__warning {
+  font-weight: 650;
+  color: var(--fleet-rose) !important;
+  font-size: 11px !important;
+  text-align: center;
+}
+
+.fleet-manage-confirm__actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 14px;
+}
+
+.fleet-manage-confirm__actions button {
+  flex: 1;
+  min-height: 32px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--bg-elevated);
+  color: var(--text-primary);
+  font: inherit;
+  font-size: 12px;
+  font-weight: 650;
+  cursor: pointer;
+  transition: background 0.1s;
+}
+
+.fleet-manage-confirm__actions button:hover:not(:disabled) {
+  background: var(--bg-elevated-hover);
+}
+
+.fleet-manage-confirm__actions button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.fleet-manage-confirm__delete {
+  background: var(--fleet-rose) !important;
+  border-color: var(--fleet-rose) !important;
+  color: #fff !important;
+}
+
+.fleet-manage-confirm__delete:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--fleet-rose) 85%, #000) !important;
+}

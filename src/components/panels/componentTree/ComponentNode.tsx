@@ -14,7 +14,7 @@ import { SketchesFolder } from './SketchesFolder';
 // Shows origin point, X/Y/Z axes, and XY/XZ/YZ planes — matching Fusion SDK
 // Component.originConstructionPoint + xConstructionAxis etc.
 function OriginFolder() {
-  const [expanded, setExpanded] = useState(true);
+  const [expanded, setExpanded] = useState(false);
 
   const AXES = [
     { label: 'X Axis', color: '#e53935' },
@@ -100,7 +100,8 @@ export function ComponentNode({ componentId, depth = 0 }: { componentId: string;
   const isExpanded = expandedIds.has(componentId);
   const isActive = activeComponentId === componentId;
   const isRoot = component.parentId === null;
-  const hasChildren = component.childIds.length > 0 ||
+  const hasChildren = isActive ||
+                      component.childIds.length > 0 ||
                       component.bodyIds.length > 0 ||
                       component.sketchIds.length > 0 ||
                       component.constructionIds.length > 0 ||
@@ -191,12 +192,8 @@ export function ComponentNode({ componentId, depth = 0 }: { componentId: string;
           if ((hasChildren || adopted) && !isExpanded) toggleExpanded(componentId);
         }}
         onDoubleClick={() => {
-          if (isRoot) {
-            setRenaming(true);
-            setNewName(component.name);
-          } else {
-            setActiveComponentId(componentId);
-          }
+          setRenaming(true);
+          setNewName(component.name);
         }}
       >
         <button

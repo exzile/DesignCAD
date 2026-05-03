@@ -52,16 +52,17 @@ export function BodyContextMenu({
   bodyName,
   onClose,
   onOpenMaterial,
+  onStartRename,
 }: {
   menu: BodyCtxMenu;
   bodyName: string;
   onClose: () => void;
   onOpenMaterial: () => void;
+  onStartRename: () => void;
 }) {
   const [opacityOpen, setOpacityOpen] = useState(false);
 
   const removeBody         = useComponentStore((s) => s.removeBody);
-  const renameBody         = useComponentStore((s) => s.renameBody);
   const toggleVisibility   = useComponentStore((s) => s.toggleBodyVisibility);
   const isolateBody        = useComponentStore((s) => s.isolateBody);
   const showAllBodies      = useComponentStore((s) => s.showAllBodies);
@@ -111,14 +112,7 @@ export function BodyContextMenu({
     {
       label: 'Rename',
       icon: <MoreHorizontal size={13} />,
-      onClick: () => {
-        const name = window.prompt('Rename body', bodyName);
-        if (name && name.trim()) {
-          renameBody(menu.bodyId, name.trim());
-          setStatusMessage(`Body renamed to "${name.trim()}"`);
-        }
-        onClose();
-      },
+      onClick: () => { onClose(); onStartRename(); },
     },
     { separator: true, label: 'Display Detail Control', icon: <Settings size={13} />, onClick: cs('Display Detail Control') },
     { label: 'Show/Hide', shortcut: 'V', icon: <Eye size={13} />, onClick: () => { toggleVisibility(menu.bodyId); onClose(); } },

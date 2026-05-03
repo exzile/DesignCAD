@@ -59,6 +59,14 @@ export const useComponentStore = create<ComponentStore>()(persist((set, get) => 
         );
       }
     }
+    // After rehydration rootComponentId is the persisted UUID, but activeComponentId
+    // and expandedIds were initialised at module load with a fresh UUID that differs
+    // from the persisted root. Align them to the actual root so new sketches are
+    // assigned to the correct component and the root node renders as expanded.
+    if (state.rootComponentId) {
+      state.activeComponentId = state.rootComponentId;
+      state.expandedIds = new Set([state.rootComponentId]);
+    }
     // Reconstruct THREE.Matrix4 from serialized number[] for occurrences
     for (const occ of Object.values(state.occurrences ?? {})) {
       if (Array.isArray((occ as unknown as { transform: unknown }).transform)) {

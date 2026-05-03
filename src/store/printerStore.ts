@@ -67,7 +67,7 @@ export interface PrinterStore {
 
   showPrinter: boolean;
   showSettings: boolean;
-  activeTab: 'dashboard' | 'status' | 'console' | 'job' | 'history' | 'files' | 'filaments' | 'macros' | 'settings' | 'heightmap' | 'model' | 'config' | 'analytics' | 'network' | 'plugins';
+  activeTab: 'printers' | 'dashboard' | 'camera' | 'status' | 'console' | 'job' | 'history' | 'files' | 'filaments' | 'macros' | 'settings' | 'heightmap' | 'model' | 'config' | 'analytics' | 'network' | 'plugins';
 
   // Plugins (DSF) — list + install/start/stop
   plugins: DuetPluginInfo[];
@@ -205,7 +205,7 @@ export const usePrinterStore = create<PrinterStore>((set, get) => ({
 
   showPrinter: false,
   showSettings: false,
-  activeTab: 'dashboard',
+  activeTab: 'printers',
   error: null,
   jogDistance: 10,
   extrudeAmount: 50,

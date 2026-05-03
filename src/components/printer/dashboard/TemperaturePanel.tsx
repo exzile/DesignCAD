@@ -2,6 +2,7 @@ import { Fragment, useState, useMemo, useCallback } from 'react';
 import type { CSSProperties } from 'react';
 import { Thermometer } from 'lucide-react';
 import { usePrinterStore } from '../../../store/printerStore';
+import type { TemperatureSample } from '../../../types/duet';
 import { colors as COLORS } from '../../../utils/theme';
 import {
   compactPanelInputStyle as inputStyle,
@@ -15,6 +16,17 @@ import {
   useHeaterRows,
   type HeaterRow,
 } from './helpers';
+
+function heaterRowKey(row: HeaterRow): string {
+  return `${row.kind}-${row.index}-${row.toolIndex ?? 'machine'}-${row.heaterIndexInTool ?? 0}`;
+}
+
+function heaterRowColor(row: HeaterRow): string {
+  if (row.kind === 'bed') return '#ef4444';
+  if (row.kind === 'chamber') return '#a855f7';
+  if (row.kind === 'heater') return '#22c55e';
+  return HEATER_CHART_COLORS[(row.index + 1) % HEATER_CHART_COLORS.length];
+}
 
 export default function TemperaturePanel() {
   const model = usePrinterStore((s) => s.model);
@@ -30,7 +42,7 @@ export default function TemperaturePanel() {
   const handleTempSubmit = useCallback((row: HeaterRow, field: 'active' | 'standby') => {
     const key = `${row.index}-${field}`;
     const val = parseFloat(editingTemps[key] ?? '');
-    if (isNaN(val)) return;
+    if (Number.isNaN(val)) return;
     if (row.kind === 'bed') {
       setBedTemp(val);
     } else if (row.kind === 'chamber') {
@@ -64,10 +76,10 @@ export default function TemperaturePanel() {
           const barPct = Math.min(100, Math.max(0, (current / 300) * 100));
 
           return (
-            <Fragment key={row.index}>
+            <Fragment key={heaterRowKey(row)}>
               <span
                 className="duet-dash-heater-label"
-                style={{ '--duet-heater-color': HEATER_CHART_COLORS[row.index % HEATER_CHART_COLORS.length] } as CSSProperties}
+                style={{ '--duet-heater-color': heaterRowColor(row) } as CSSProperties}
               >
                 {row.label}
               </span>
@@ -93,7 +105,7 @@ export default function TemperaturePanel() {
                 onKeyDown={(e) => {
                   if (e.key === 'Enter') {
                     const val = parseFloat(editingTemps[standbyKey] ?? '');
-                    if (!isNaN(val) && row.kind === 'tool' && row.toolIndex !== undefined) {
+                    if (!Number.isNaN(val) && row.kind === 'tool' && row.toolIndex !== undefined) {
                       usePrinterStore.getState().sendGCode(`G10 P${row.toolIndex} R${val}`);
                     }
                     setEditingTemps((prev) => { const n = { ...prev }; delete n[standbyKey]; return n; });
@@ -133,29 +145,48 @@ function TemperatureChart({
   heaters,
 }: {
   rows: HeaterRow[];
-  temperatureHistory: unknown[];
+  temperatureHistory: TemperatureSample[];
   heaters: { current: number; active: number; standby: number; state: string }[];
 }) {
   const W = 600;
-  const H = 160;
-  // Reserve right space for the legend when heaters exist
-  const LEGEND_W = rows.length > 0 ? 130 : 0;
-  const padTop = 10;
-  const padRight = LEGEND_W + 10;
-  const padBottom = 20;
-  const padLeft = 40;
+  const H = 190;
+  const legendWidth = rows.length > 0 ? 136 : 0;
+  const padTop = 14;
+  const padRight = legendWidth + 10;
+  const padBottom = 28;
+  const padLeft = 42;
   const plotW = W - padLeft - padRight;
   const plotH = H - padTop - padBottom;
 
+  const history = temperatureHistory.filter((sample) => sample.heaters?.length);
   const allTemps: number[] = [];
-  const history = temperatureHistory as Array<{ timestamp: number; bed?: { current: number }; tools?: { current: number }[] }>;
-  history.forEach((s) => {
-    if (s.bed) allTemps.push(s.bed.current);
-    s.tools?.forEach((t) => allTemps.push(t.current));
+  history.forEach((sample) => {
+    sample.heaters?.forEach((heater) => {
+      allTemps.push(heater.current);
+      if (heater.active > 0) allTemps.push(heater.active);
+      if (heater.standby > 0) allTemps.push(heater.standby);
+    });
   });
-  heaters.forEach((h) => { allTemps.push(h.current); allTemps.push(h.active); });
-  const maxTemp = Math.max(50, ...allTemps) + 10;
-  const minTemp = Math.max(0, Math.min(0, ...allTemps) - 5);
+  heaters.forEach((heater) => {
+    allTemps.push(heater.current);
+    if (heater.active > 0) allTemps.push(heater.active);
+    if (heater.standby > 0) allTemps.push(heater.standby);
+  });
+
+  const maxTemp = Math.ceil((Math.max(50, ...allTemps) + 10) / 10) * 10;
+  const minTemp = 0;
+  const lastSampleTime = history.at(-1)?.timestamp ?? 0;
+  const firstSampleTime = history[0]?.timestamp ?? lastSampleTime;
+  const visibleWindowMs = 10 * 60 * 1000;
+  const tEnd = lastSampleTime;
+  const tStart = Math.max(firstSampleTime, tEnd - visibleWindowMs);
+  const visibleHistory = history.filter((sample) => sample.timestamp >= tStart);
+  const tRange = Math.max(tEnd - tStart, 1);
+
+  const xScale = useCallback(
+    (timestamp: number) => padLeft + ((timestamp - tStart) / tRange) * plotW,
+    [padLeft, plotW, tRange, tStart],
+  );
 
   const yScale = useCallback(
     (v: number) => padTop + plotH - ((v - minTemp) / (maxTemp - minTemp)) * plotH,
@@ -163,28 +194,42 @@ function TemperatureChart({
   );
 
   const lines = useMemo(() => {
-    const result: { index: number; color: string; points: string }[] = [];
+    const result: { id: string; index: number; color: string; points: string }[] = [];
     rows.forEach((row) => {
       const pts: string[] = [];
-      history.forEach((sample, i) => {
-        let val: number | undefined;
-        if (row.index === 0 && sample.bed) {
-          val = sample.bed.current;
-        } else if (sample.tools && row.index > 0 && sample.tools[row.index - 1]) {
-          val = sample.tools[row.index - 1].current;
-        }
-        if (val !== undefined) {
-          const x = padLeft + (i / Math.max(1, history.length - 1)) * plotW;
-          const y = yScale(val);
-          pts.push(`${x.toFixed(1)},${y.toFixed(1)}`);
+      visibleHistory.forEach((sample) => {
+        const heater = sample.heaters?.find((item) => item.index === row.index);
+        if (heater) {
+          pts.push(`${xScale(sample.timestamp).toFixed(1)},${yScale(heater.current).toFixed(1)}`);
         }
       });
       if (pts.length > 0) {
-        result.push({ index: row.index, color: HEATER_CHART_COLORS[row.index % HEATER_CHART_COLORS.length], points: pts.join(' ') });
+        result.push({
+          id: heaterRowKey(row),
+          index: row.index,
+          color: heaterRowColor(row),
+          points: pts.join(' '),
+        });
       }
     });
     return result;
-  }, [rows, history, plotW, yScale, padLeft]);
+  }, [rows, visibleHistory, xScale, yScale]);
+
+  const latestPoints = useMemo(() => {
+    const latest = visibleHistory.at(-1);
+    if (!latest) return [];
+    return rows.flatMap((row) => {
+      const heater = latest.heaters?.find((item) => item.index === row.index);
+      if (!heater) return [];
+      return [{
+        id: heaterRowKey(row),
+        index: row.index,
+        color: heaterRowColor(row),
+        x: xScale(latest.timestamp),
+        y: yScale(heater.current),
+      }];
+    });
+  }, [rows, visibleHistory, xScale, yScale]);
 
   const yTicks = useMemo(() => {
     const ticks: number[] = [];
@@ -193,45 +238,109 @@ function TemperatureChart({
     return ticks;
   }, [maxTemp]);
 
-  // Legend positioned in right margin: line swatch + label + current temp
-  const legendX = W - LEGEND_W + 4;
+  const xTicks = useMemo(() => {
+    const tickCount = 4;
+    return Array.from({ length: tickCount + 1 }, (_, i) => {
+      const timestamp = tStart + (tRange / tickCount) * i;
+      const secondsAgo = Math.max(0, Math.round((tEnd - timestamp) / 1000));
+      const label = secondsAgo < 60 ? `-${secondsAgo}s` : `-${Math.round(secondsAgo / 60)}m`;
+      return { timestamp, label: i === tickCount ? 'now' : label };
+    });
+  }, [tEnd, tRange, tStart]);
+
+  if (rows.length === 0 || heaters.length === 0) {
+    return (
+      <div className="duet-dash-tempchart-empty">
+        No heaters reported by this printer yet.
+      </div>
+    );
+  }
+
+  const legendX = W - legendWidth + 4;
   const legendRowH = 15;
 
   return (
-    <svg viewBox={`0 0 ${W} ${H}`} className="duet-dash-tempchart">
-      {/* y-axis grid lines */}
-      {yTicks.map((v) => (
-        <g key={v}>
-          <line x1={padLeft} y1={yScale(v)} x2={W - padRight} y2={yScale(v)} stroke={COLORS.panelBorder} strokeWidth={0.5} />
-          <text x={padLeft - 4} y={yScale(v) + 3} fill={COLORS.textDim} fontSize={9} textAnchor="end">{v}</text>
-        </g>
-      ))}
-
-      {/* data lines */}
-      {lines.map((line) => (
-        <polyline key={line.index} fill="none" stroke={line.color} strokeWidth={1.5} points={line.points} strokeLinejoin="round" />
-      ))}
-
-      {/* legend — always rendered inside the SVG when heaters are present */}
-      {rows.map((row, i) => {
-        const color = HEATER_CHART_COLORS[row.index % HEATER_CHART_COLORS.length];
-        const current = heaters[row.index]?.current;
-        const ly = padTop + 4 + i * legendRowH;
-        return (
-          <g key={row.index}>
-            {/* colored line swatch */}
-            <line x1={legendX} y1={ly + 4} x2={legendX + 14} y2={ly + 4} stroke={color} strokeWidth={2.5} strokeLinecap="round" />
-            {/* label */}
-            <text x={legendX + 18} y={ly + 8} fill={COLORS.textDim} fontSize={9}>{row.label}</text>
-            {/* current temperature */}
-            {current !== undefined && (
-              <text x={W - 4} y={ly + 8} fill={color} fontSize={9} textAnchor="end" fontWeight="700">
-                {current.toFixed(1)}°
-              </text>
-            )}
+    <div className="duet-dash-tempchart-shell">
+      <div className="duet-dash-tempchart-meta">
+        <span>Live temperature history</span>
+        <span>{visibleHistory.length} samples / 10 min</span>
+      </div>
+      <svg viewBox={`0 0 ${W} ${H}`} className="duet-dash-tempchart">
+        {yTicks.map((v) => (
+          <g key={v}>
+            <line x1={padLeft} y1={yScale(v)} x2={W - padRight} y2={yScale(v)} stroke={COLORS.panelBorder} strokeWidth={0.5} />
+            <text x={padLeft - 4} y={yScale(v) + 3} fill={COLORS.textDim} fontSize={9} textAnchor="end">{v}</text>
           </g>
-        );
-      })}
-    </svg>
+        ))}
+
+        {xTicks.map((tick) => (
+          <g key={tick.timestamp}>
+            <line x1={xScale(tick.timestamp)} y1={padTop} x2={xScale(tick.timestamp)} y2={padTop + plotH} stroke={COLORS.panelBorder} strokeWidth={0.35} />
+            <text x={xScale(tick.timestamp)} y={H - 9} fill={COLORS.textDim} fontSize={9} textAnchor="middle">{tick.label}</text>
+          </g>
+        ))}
+
+        <line x1={padLeft} y1={padTop + plotH} x2={W - padRight} y2={padTop + plotH} stroke={COLORS.panelBorder} strokeWidth={0.8} />
+
+        {lines.map((line) => (
+          <polyline key={line.id} fill="none" stroke={line.color} strokeWidth={2} points={line.points} strokeLinejoin="round" strokeLinecap="round" />
+        ))}
+
+        {latestPoints.map((point) => (
+          <circle
+            key={`latest-${point.id}`}
+            cx={point.x}
+            cy={point.y}
+            r={3}
+            fill={point.color}
+            stroke={COLORS.bg}
+            strokeWidth={1.5}
+          />
+        ))}
+
+        {rows.map((row) => {
+          const heater = heaters[row.index];
+          if (!heater?.active || heater.active <= 0) return null;
+          const y = yScale(heater.active);
+          const color = heaterRowColor(row);
+          return (
+            <line
+              key={`target-${heaterRowKey(row)}`}
+              x1={padLeft}
+              y1={y}
+              x2={W - padRight}
+              y2={y}
+              stroke={color}
+              strokeWidth={0.8}
+              strokeDasharray="4 5"
+              opacity={0.55}
+            />
+          );
+        })}
+
+        {lines.length === 0 && (
+          <text x={padLeft + plotW / 2} y={padTop + plotH / 2} fill={COLORS.textDim} fontSize={11} textAnchor="middle">
+            Waiting for live temperature samples
+          </text>
+        )}
+
+        {rows.map((row, i) => {
+          const color = heaterRowColor(row);
+          const current = heaters[row.index]?.current;
+          const ly = padTop + 4 + i * legendRowH;
+          return (
+            <g key={heaterRowKey(row)}>
+              <line x1={legendX} y1={ly + 4} x2={legendX + 14} y2={ly + 4} stroke={color} strokeWidth={2.5} strokeLinecap="round" />
+              <text x={legendX + 18} y={ly + 8} fill={COLORS.textDim} fontSize={9}>{row.label}</text>
+              {current !== undefined && (
+                <text x={W - 4} y={ly + 8} fill={color} fontSize={9} textAnchor="end" fontWeight="700">
+                  {current.toFixed(1)}&deg;
+                </text>
+              )}
+            </g>
+          );
+        })}
+      </svg>
+    </div>
   );
 }

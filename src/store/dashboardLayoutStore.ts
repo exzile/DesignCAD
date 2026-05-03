@@ -5,6 +5,7 @@ import type { PanelId, SpacerId, LayoutItem, ColSpan } from '../types/dashboard-
 export type { PanelId, SpacerId, LayoutItem, ColSpan } from '../types/dashboard-layout.types';
 
 export const PANEL_IDS = [
+  'camera',
   'tools',
   'tool-offsets',
   'workplace',
@@ -29,6 +30,8 @@ export function spacerSpan(id: SpacerId): number { return parseInt(id.slice(9), 
 export const VALID_SPANS: ColSpan[] = [3, 4, 6, 8, 12];
 
 const DEFAULT_ORDER: PanelId[] = [
+  // -- Row 1: camera monitor (12) -------------------------------------------
+  'camera',
   // ── Row 1: active tool selector (12) ──────────────────────────────────────
   'tools',
   // ── Row 3: thermal management (8 + 4) ─────────────────────────────────────
@@ -51,6 +54,7 @@ const DEFAULT_ORDER: PanelId[] = [
 
 export const DEFAULT_COLSPANS: Record<PanelId, ColSpan> = {
   // full-width headers / rich card lists
+  'camera':           12,
   'tools':            12,
   // wide panels — charts, jog grid, system info
   'temperature':       8,
@@ -77,6 +81,7 @@ export const DEFAULT_COLSPANS: Record<PanelId, ColSpan> = {
 export const ROW_HEIGHT = 90; // px
 
 export const DEFAULT_ROWSPANS: Record<PanelId, number> = {
+  'camera':            6,
   'tools':             5,
   'temperature':       5,   // heater rows + history chart
   'fans':              3,
@@ -108,6 +113,22 @@ interface DashboardLayoutState {
   reset: () => void;
 }
 
+function migrateDashboardLayout(persistedState: unknown): Partial<DashboardLayoutState> {
+  const state = (persistedState ?? {}) as Partial<DashboardLayoutState>;
+  const persistedOrder = Array.isArray(state.order) ? state.order : DEFAULT_ORDER;
+  const missingPanels = DEFAULT_ORDER.filter((id) => !persistedOrder.includes(id));
+  const rowSpans = { ...DEFAULT_ROWSPANS, ...(state.rowSpans ?? {}) };
+  rowSpans.camera = Math.max(rowSpans.camera ?? 0, DEFAULT_ROWSPANS.camera);
+
+  return {
+    ...state,
+    order: missingPanels.length > 0 ? [...missingPanels, ...persistedOrder] : persistedOrder,
+    colSpans: { ...DEFAULT_COLSPANS, ...(state.colSpans ?? {}) },
+    rowSpans,
+    hidden: state.hidden ?? {},
+  };
+}
+
 export const useDashboardLayout = create<DashboardLayoutState>()(
   persist(
     (set) => ({
@@ -129,6 +150,10 @@ export const useDashboardLayout = create<DashboardLayoutState>()(
       reset: () =>
         set({ order: DEFAULT_ORDER, colSpans: { ...DEFAULT_COLSPANS }, rowSpans: { ...DEFAULT_ROWSPANS }, hidden: {} }),
     }),
-    { name: 'duet-dashboard-layout' },
+    {
+      name: 'duet-dashboard-layout',
+      version: 3,
+      migrate: migrateDashboardLayout,
+    },
   ),
 );

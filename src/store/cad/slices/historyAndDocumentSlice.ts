@@ -433,7 +433,7 @@ export function createHistoryAndDocumentSlice({ set, get }: CADSliceContext) {
     });
   },
 
-  saveToFile: () => {
+  getDesignJSON: () => {
     const state = get();
     const saveObj = {
       version: 1,
@@ -446,15 +446,20 @@ export function createHistoryAndDocumentSlice({ set, get }: CADSliceContext) {
       featureGroups: state.featureGroups,
       historyEnabled: state.historyEnabled,
     };
-    const json = JSON.stringify(saveObj, null, 2);
+    return JSON.stringify(saveObj, null, 2);
+  },
+
+  saveToFile: (filename = 'design.dznd') => {
+    const json = get().getDesignJSON();
     const blob = new Blob([json], { type: 'application/json' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = 'design.dznd';
+    const safeName = filename.endsWith('.dznd') ? filename : `${filename}.dznd`;
+    a.download = safeName;
     a.click();
     URL.revokeObjectURL(url);
-    get().setStatusMessage('Design saved to file');
+    get().setStatusMessage(`Design saved: ${safeName}`);
   },
 
   loadFromFile: (json: string) => {

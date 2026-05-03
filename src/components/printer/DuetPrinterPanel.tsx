@@ -4,7 +4,6 @@ import { usePrinterStore } from '../../store/printerStore';
 import { useThemeStore } from '../../store/themeStore';
 import { getDuetPrefs } from '../../utils/duetPrefs';
 import DuetMessageBox from './DuetMessageBox';
-import DuetNotifications from './DuetNotifications';
 import './DuetAnalytics.css';
 import { type TabKey, TAB_COMPONENTS } from './duetPrinterPanel/config';
 import { PanelBanners, PanelFooter, PanelHeader, PanelTabBar } from './duetPrinterPanel/chrome';
@@ -26,6 +25,10 @@ export default function DuetPrinterPanel({ fullscreen = false }: { fullscreen?: 
   const macros = usePrinterStore((s) => s.macros);
   const filaments = usePrinterStore((s) => s.filaments);
   const printHistory = usePrinterStore((s) => s.printHistory);
+  const printers = usePrinterStore((s) => s.printers);
+  const activePrinterId = usePrinterStore((s) => s.activePrinterId);
+
+  const boardType = (config as { boardType?: import('../../types/duet').PrinterBoardType }).boardType ?? 'duet';
 
   const theme = useThemeStore((s) => s.theme);
   const toggleTheme = useThemeStore((s) => s.toggleTheme);
@@ -201,6 +204,9 @@ export default function DuetPrinterPanel({ fullscreen = false }: { fullscreen?: 
       : null;
 
   const ActiveTabComponent = TAB_COMPONENTS[(activeTab as TabKey)] ?? TAB_COMPONENTS.dashboard;
+  const setPanelTab = (tab: TabKey) => setActiveTab(tab as typeof activeTab);
+  const activePrinter = printers.find((printer) => printer.id === activePrinterId);
+  const isPrintersPage = (activeTab as string) === 'printers';
 
   return (
     <div
@@ -209,10 +215,10 @@ export default function DuetPrinterPanel({ fullscreen = false }: { fullscreen?: 
       className={isNarrow ? 'printer-panel--narrow' : undefined}
     >
       {connected && <DuetMessageBox />}
-      <DuetNotifications />
 
       {!fullscreen && (
         <PanelHeader
+          boardType={boardType}
           connected={connected}
           globalSearch={globalSearch}
           hostname={config.hostname}
@@ -224,7 +230,7 @@ export default function DuetPrinterPanel({ fullscreen = false }: { fullscreen?: 
           onEmergencyStop={handleEmergencyStop}
           onOpenSettings={() => setActiveTab('settings')}
           onResultSelect={(tab) => {
-            setActiveTab(tab);
+            setPanelTab(tab);
             setGlobalSearch('');
             setShowSearchResults(false);
           }}
@@ -242,16 +248,35 @@ export default function DuetPrinterPanel({ fullscreen = false }: { fullscreen?: 
         />
       )}
 
-      <PanelBanners
-        connected={connected}
-        error={error}
-        hasStaleModel={hasStaleModel}
-        lastUpdatedText={lastUpdatedText}
-        reconnecting={reconnecting}
-        onOpenSettings={() => setActiveTab('settings')}
-      />
+      {activeTab !== 'settings' && activeTab !== 'printers' && (
+        <PanelBanners
+          boardType={boardType}
+          connected={connected}
+          error={error}
+          hasStaleModel={hasStaleModel}
+          lastUpdatedText={lastUpdatedText}
+          reconnecting={reconnecting}
+          onOpenSettings={() => setActiveTab('settings')}
+        />
+      )}
 
-      {!fullscreen && <PanelTabBar activeTab={activeTab} onTabChange={setActiveTab} />}
+      {!isPrintersPage && (
+        <div className="printer-context-strip">
+          <div className="printer-context-strip__main">
+            <span className="printer-context-strip__label">Selected Printer</span>
+            <strong>{activePrinter?.name ?? 'Printer'}</strong>
+          </div>
+          <div className="printer-context-strip__meta">
+            <span>{config.hostname || 'No host configured'}</span>
+            <span>{boardType === 'duet' ? (config.mode === 'sbc' ? 'SBC' : 'Standalone') : boardType.charAt(0).toUpperCase() + boardType.slice(1)}</span>
+            <span className={connected ? 'is-connected' : 'is-offline'}>
+              {connected ? machineStatus : 'Offline'}
+            </span>
+          </div>
+        </div>
+      )}
+
+      {!fullscreen && <PanelTabBar activeTab={activeTab as TabKey} onTabChange={setPanelTab} />}
 
       <div
         style={{

@@ -35,7 +35,7 @@ export function createUiActions(api: PrinterStoreApi): Pick<
         if (state.connected || !state.config.hostname) {
           autoReconnectTimer = null;
           autoReconnectAttempts = 0;
-          set({ reconnecting: false });
+          set({ error: null, reconnecting: false });
           return;
         }
 
