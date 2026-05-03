@@ -69,115 +69,100 @@
 # action the assistant can take must exist as an MCP tool first; the chat
 # panel is just a thin client over that surface.
 
-## Phase 1 — MCP server scaffolding
+## Phase 1 — MCP server scaffolding  [DONE 2026-05-03]
 #   New dir: src/services/mcp/
-#   [ ] Add @modelcontextprotocol/sdk dependency + lock CORS to localhost
-#       origins (the server only ever talks to the user's own Claude Code)
-#   [ ] Implement an HTTP + SSE transport bound to a configurable port
-#       (default 5174; the Vite dev server is on 5173, so the two coexist)
-#   [ ] Pairing token: generate a one-time token, surface it in the new
-#       AI Assistant settings tab as a copy-paste line
-#       (`claude mcp add designcad http://localhost:5174/mcp?token=...`).
-#       Server rejects requests without it.
-#   [ ] Lifecycle: server runs only while the DesignCAD tab is open;
-#       reconnects survive HMR; `stop()` on tab close
-#   [ ] Codex-friendly: this whole phase is plumbing — no domain
-#       knowledge required.
+#   [x] @modelcontextprotocol/sdk already present; CORS locked to localhost
+#       in vite.config.ts designCadMcpPlugin (isLocalhostHost + isAllowedLocalOrigin)
+#   [x] HTTP + StreamableHTTPServerTransport on port 5174 (DESIGNCAD_MCP_PORT env override)
+#   [x] Pairing token: crypto.randomBytes(18).toString('base64url'); exposed via
+#       /mcp-control/status pairingLine field; token rotation via /mcp-control/rotate
+#   [x] Lifecycle: heartbeat every 10s from McpBridgeService; server stops after 15s idle;
+#       McpBridgeService.start/stop wired in App.tsx useEffect; relay.closeAll on stopMcpServer
+#   [x] Browser relay: GET /mcp-control/relay (SSE) + POST /mcp-control/relay-result
 
-## Phase 2 — Core tool surface
-#   New dir: src/services/mcp/tools/
-#   Each tool is a thin wrapper over an existing store action so the
-#   assistant can't reach into anything the UI itself can't do. Tools
-#   are typed with zod schemas and registered via a single index.ts.
+## Phase 2 — Core tool surface  [DONE 2026-05-03]
+#   src/services/mcp/tools/index.ts — all handlers; src/services/mcp/McpBridgeService.ts
 #
 #   Document / scene
-#   [ ] list_objects                  — returns id, kind, bbox, transform
-#   [ ] get_object_properties         — full feature/sketch tree for one id
-#   [ ] select_objects                — drives the same selection store
-#   [ ] snapshot_view                 — returns a PNG of the viewport (use
-#                                       the existing exporter; the result is
-#                                       returned as an MCP "image" content
-#                                       item so the model can SEE its work)
+#   [x] list_objects
+#   [x] get_object_properties
+#   [x] select_objects
+#   [x] snapshot_view  (canvas.toDataURL → MCP image content item)
 #
 #   Primitives
-#   [ ] create_box        { x, y, z, position?, rotation? }
-#   [ ] create_cylinder   { radius, height, position?, axis? }
-#   [ ] create_sphere     { radius, position? }
-#   [ ] create_cone       { r1, r2, height, position? }
+#   [x] create_box
+#   [x] create_cylinder
+#   [x] create_sphere
+#   [x] create_cone  (cylinder with radiusTop/radiusBottom)
 #
 #   Sketches
-#   [ ] start_sketch      { plane: 'XY'|'XZ'|'YZ' | object id+face }
-#   [ ] sketch_rect       { x, y, w, h, centered? }
-#   [ ] sketch_circle     { cx, cy, radius }
-#   [ ] sketch_polygon    { points: [[x,y],...] }
-#   [ ] sketch_dimension  { entityId, value }
-#   [ ] finish_sketch
+#   [x] start_sketch
+#   [x] sketch_rect
+#   [x] sketch_circle
+#   [x] sketch_polygon
+#   [x] sketch_dimension
+#   [x] finish_sketch
 #
 #   Features
-#   [ ] extrude_sketch    { sketchId, depth, direction? }
-#   [ ] revolve_sketch    { sketchId, axis, angle? }
-#   [ ] fillet_edges      { objectId, edgeIds[], radius }
-#   [ ] chamfer_edges     { objectId, edgeIds[], distance }
-#   [ ] hole              { face, position, diameter, depth, throughAll? }
+#   [x] extrude_sketch
+#   [x] revolve_sketch
+#   [x] fillet_edges
+#   [x] chamfer_edges
+#   [x] hole
 #
 #   Booleans + transforms
-#   [ ] boolean_union          { idsA[], idsB[] }
-#   [ ] boolean_subtract       { from, tools[] }
-#   [ ] boolean_intersect      { ids[] }
-#   [ ] transform              { id, translate?, rotateDeg?, scale? }
-#   [ ] mirror                 { id, plane }
-#   [ ] linear_pattern         { id, axis, count, spacing }
-#   [ ] circular_pattern       { id, axis, count, totalAngle }
+#   [x] boolean_union
+#   [x] boolean_subtract
+#   [x] boolean_intersect
+#   [x] transform
+#   [x] mirror
+#   [x] linear_pattern
+#   [x] circular_pattern
 #
 #   Export / save
-#   [ ] save_session
-#   [ ] export_stl    { ids?: string[] }
-#   [ ] export_step   { ids?: string[] }
-#   [ ] export_gcode  { profileId? }
-#
-#   Each tool's handler returns a structured result the model can read
-#   ({ created: id, bbox, ... }) so multi-step plans (extrude → fillet)
-#   work without hallucinated ids.
+#   [x] save_session
+#   [x] export_stl    (opens export dialog)
+#   [x] export_step   (opens export dialog)
+#   [x] export_gcode  (switches to prepare workspace)
 
-## Phase 3 — Resources (read-only context for the model)
-#   [ ] designcad://document/summary    — name, units, object count, plate state
-#   [ ] designcad://document/objects    — full object list, JSON
-#   [ ] designcad://document/feature/{id} — feature tree for one object
-#   [ ] designcad://printer/active      — selected printer + machineConfig
-#       (lets the model auto-pick build-volume-appropriate sizes)
+## Phase 3 — Resources  [DONE 2026-05-03]
+#   [x] designcad://document/summary    — units, featureCount, sketchCount, workspaceMode
+#   [x] designcad://document/objects    — full object list, JSON
+#   [x] designcad://document/feature/{id} — feature tree for one object: params, sketch entities+dims, face IDs, bbox
+#   [x] designcad://printer/active      — active printer from printerStore
 
-## Phase 4 — Connection hardening
-#   [ ] Origin check: refuse non-localhost origins
-#   [ ] Token rotation: regenerate from the AI Assistant tab; old token
-#       invalidates immediately
-#   [ ] Per-tool rate limit (low ceiling so a runaway agent can't trash
-#       the document); rate-limit signal surfaces back to the model
-#   [ ] Audit log: every tool call written to a ring buffer visible in
-#       the AI Assistant tab so users can see what the assistant did
+## Phase 4 — Connection hardening  [DONE 2026-05-03]
+#   [x] Origin check: refuse non-localhost origins
+#   [x] Token rotation: regenerate from the AI MCP status badge; old token
+#       invalidates immediately by closing existing MCP sessions
+#   [x] Per-tool rate limit (12 calls / 10s / tool) so a runaway agent can't
+#       trash the document; rate-limit errors surface back to the model
+#   [x] Audit log: every tool call written to an 80-entry ring buffer visible
+#       from the AI MCP status badge activity popover
 
-## Phase 5 — In-app chat panel (BYOK)
-#   New: src/components/ai/AssistantPanel.tsx
-#   New tab in the global side panel — not under printer settings — so
-#   it works without a printer selected.
-#   [ ] AI Assistant settings tab (parallel to Connection / Behaviour):
-#         - Provider: Anthropic (BYOK) | OpenAI (BYOK) | OpenRouter (BYOK)
-#         - Model picker (filtered per provider)
-#         - API key (stored per-installation in localStorage; never sent
-#           anywhere except the chosen provider)
-#         - "Use local Claude Code instead" toggle — when on, the panel
-#           skips API calls and just shows the user the MCP pairing line
-#   [ ] Streaming chat with tool-use, fan-out the same MCP tool registry
-#       as function definitions; on tool call, route to the in-process
-#       MCP handlers (no network round-trip)
-#   [ ] Session log + clear; persist last N turns per project
-#   [ ] Safety: confirm-before-destructive prompt for delete / clear-doc
-#       tools (configurable; off by default for power users)
+## Phase 5 — In-app chat panel (BYOK)  [DONE 2026-05-03]
+#   src/store/aiAssistantStore.ts — provider/model/apiKey/useClaudeCode/confirmDestructive
+#     (persisted); messages/streaming (session only); PROVIDER_MODELS map
+#   src/services/mcp/tools/byokDefs.ts — 29 NeutralTool schemas; toAnthropic/toOpenAI
+#     converters; DESTRUCTIVE_TOOLS set for confirm gate
+#   src/components/ai/AiAssistantPanel.tsx — floating 360px panel, MCP tab + Chat tab
+#     MCP tab: server status, pairing line + copy/rotate, audit log collapsible
+#     Chat tab: settings (provider/model/key/useClaudeCode/confirmDestructive),
+#       streaming Anthropic + OpenAI/OpenRouter SSE, in-process tool dispatch
+#       via TOOL_HANDLERS, tool_result bubbles, stop button, clear chat
+#     "Use Claude Code" mode: skips API, shows pairing hint
+#   src/App.tsx — mounts <AiAssistantPanel /> (fixed position, always in DOM)
+#   src/components/panels/StatusBar.tsx — "AI" toggle button
+#   [x] AI Assistant settings tab
+#   [x] Streaming chat with tool-use (Anthropic + OpenAI/OpenRouter)
+#   [x] Session log + clear
+#   [x] Safety: confirm-before-destructive gate (configurable, off by default)
 
-## Phase 6 — Documentation
-#   [ ] README section: "Use your own Claude with DesignCAD" — covers
+## Phase 6 — Documentation  [DONE 2026-05-03]
+#   [x] README section: "Use your own Claude with DesignCAD" — covers
 #       both the MCP path (Claude Code) and the BYOK chat panel
-#   [ ] Tool reference doc generated from the zod schemas
-#   [ ] Sample transcripts ("design a phone stand", "add 3 mm fillet to
+#   [x] Tool reference doc generated from the zod schemas
+#   [x] Sample transcripts ("design a phone stand", "add 3 mm fillet to
 #       all top edges") in docs/ai-examples.md
 
 # CODEX-FRIENDLY SUBTASKS (parallelizable):

@@ -142,6 +142,52 @@
   line-height: 1.35;
 }
 
+.app-help-group {
+  margin-bottom: 2px;
+}
+
+.app-help-group-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  padding: 7px 10px;
+  border: none;
+  border-radius: 5px;
+  background: transparent;
+  color: var(--text-muted);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.6px;
+  text-transform: uppercase;
+  text-align: left;
+  cursor: pointer;
+  transition: background 0.12s ease, color 0.12s ease;
+}
+
+.app-help-group-header:hover {
+  background: var(--bg-hover);
+  color: var(--text-secondary);
+}
+
+.app-help-group-header.open {
+  color: var(--text-secondary);
+}
+
+.app-help-group-chevron {
+  flex-shrink: 0;
+  opacity: 0.6;
+  transition: transform 0.18s ease;
+}
+
+.app-help-group-header:not(.open) .app-help-group-chevron {
+  transform: rotate(-90deg);
+}
+
+.app-help-group-items {
+  padding-left: 6px;
+}
+
 .app-help-empty {
   padding: 12px;
   color: var(--text-muted);
@@ -209,6 +255,29 @@
   color: var(--text-secondary);
   font-size: 12px;
   line-height: 1.5;
+}
+
+/* Screenshots / figures ---------------------------------------------------- */
+.app-help-figure {
+  margin: 0 0 12px;
+  border: 1px solid var(--border-light);
+  border-radius: 6px;
+  overflow: hidden;
+  background: var(--bg-primary);
+}
+
+.app-help-img {
+  display: block;
+  width: 100%;
+  height: auto;
+}
+
+.app-help-caption {
+  padding: 6px 10px;
+  color: var(--text-muted);
+  font-size: 11px;
+  border-top: 1px solid var(--border-light);
+  background: var(--bg-secondary);
 }
 
 /* Keyboard-shortcut table -------------------------------------------------- */

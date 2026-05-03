@@ -1,4 +1,4 @@
-import { BookOpen, Search, X } from 'lucide-react';
+import { BookOpen, ChevronDown, Search, X } from 'lucide-react';
 import { Fragment, useMemo, useState } from 'react';
 import './AppHelpModal.css';
 
@@ -7,6 +7,7 @@ interface ShortcutEntry { keys: string; action: string }
 interface HelpSection {
   heading: string;
   intro?: string;
+  image?: { src: string; alt: string; caption?: string };
   items?: string[];
   shortcuts?: ShortcutEntry[];
   notes?: string[];
@@ -16,6 +17,7 @@ interface HelpTopic {
   id: string;
   title: string;
   summary: string;
+  group?: string;
   sections: HelpSection[];
 }
 
@@ -68,10 +70,12 @@ const HELP_TOPICS: HelpTopic[] = [
     id: 'design',
     title: 'Design workspace',
     summary: 'Sketches, solid features, components, the timeline, and viewport navigation.',
+    group: 'Design',
     sections: [
       {
         heading: 'Modeling flow',
         intro: 'A typical part starts as a sketch on a plane or planar face, then is built up with solid features.',
+        image: { src: '/help/help-design-overview.png', alt: 'Design workspace showing the ribbon with Create and Modify tools, the component browser, 3D viewport, and timeline', caption: 'Design workspace — browser (left), 3D viewport (centre), timeline (right), ribbon tools (top).' },
         items: [
           'Pick a plane (XY, XZ, YZ) or click an existing flat face, then start a sketch.',
           'Draw 2D geometry, add constraints to lock intent, and dimension to drive size.',
@@ -123,46 +127,128 @@ const HELP_TOPICS: HelpTopic[] = [
   {
     id: 'sketch',
     title: 'Sketching and dimensions',
-    summary: 'Tools, constraints, dimensions, and the exit-and-feature workflow.',
+    summary: 'Every draw tool, constraint type, dimension type, and the exit-and-feature workflow.',
+    group: 'Design',
     sections: [
       {
-        heading: 'Sketch tools',
+        heading: 'Starting a sketch',
+        intro: 'Every sketch lives on a plane. You can sketch on the origin planes (XY, XZ, YZ), a planar face of an existing body, or a custom construction plane.',
+        image: { src: '/help/help-sketch-mode.png', alt: 'Design workspace in sketch mode on the XY plane, with sketch ribbon and palette visible', caption: 'Sketch mode — the ribbon switches to sketch tools and the Sketch Palette floats on the right. The status bar shows the active plane.' },
         items: [
-          'Line — chained line segments. Click to add, Esc to end the chain.',
-          'Rectangle — two-corner or center-and-corner.',
-          'Circle — center+radius, or 3-point.',
-          'Arc — 3-point or center+radius.',
-          'Spline — control-point curve.',
-          'Project — pull edges from existing geometry into the active sketch.',
-          'Fillet / Trim / Offset / Move — refine 2D geometry without leaving the sketch.',
-          'Text — typographic profile that closed-fills for engraving or embossing.',
+          'Click Sketch in the Create ribbon, or press S.',
+          'Pick a plane or planar face — the viewport tilts to an orthographic view aligned to that plane.',
+          'The ribbon switches to the Sketch toolbar with all 2D draw, constrain, and dimension commands.',
+          'A reference frame marks the sketch origin; horizontal and vertical axes are shown as dashed lines.',
+          'To exit sketch mode at any time, click Finish Sketch or press Esc.',
         ],
       },
       {
-        heading: 'Constraints',
-        intro: 'Constraints lock geometric intent so dimensions become the only driver.',
+        heading: 'Line and arc tools',
+        intro: 'The most-used drawing primitives. They chain together automatically in a single command.',
+        image: { src: '/help/help-sketch-ribbon.png', alt: 'Sketch ribbon showing Line, Rectangle, Fillet, Chamfer, Dimension, Coincident, Grid, and Snap tools', caption: 'Sketch ribbon — Draw tools (left), Modify, Constraints, Configure, and Finish Sketch (right).' },
         items: [
-          'Horizontal, Vertical, Parallel, Perpendicular, Tangent, Coincident, Equal, Concentric, Symmetric, Fix.',
-          'Apply a constraint by selecting the entities and clicking the constraint button.',
-          'Over-constrained sketches turn red. Remove the conflicting constraint or dimension to recover.',
-          'Under-constrained entities show in a different colour — they will move freely if a feature drives them.',
+          'Line (L) — click to place the start point, click again for each endpoint. The line chains automatically. Esc ends the chain without closing it.',
+          'Arc — 3-point (click start, end, and a midpoint on the curve) or center+radius (click center, then radius, then arc extent).',
+          'Polyline — a connected chain of line and arc segments. Press A mid-chain to switch between line and arc mode.',
+          'Tangent Arc — draws an arc tangent to the last line or arc segment in the chain.',
+          'Hold Shift while placing to force horizontal or vertical alignment on the current segment.',
+        ],
+      },
+      {
+        heading: 'Rectangle and circle tools',
+        items: [
+          'Rectangle (R) — two-corner: click diagonally opposite corners.',
+          'Center Rectangle — click the center, then a corner. Useful for symmetric parts.',
+          'Circle (C) — center + radius: click center, then drag or type the radius.',
+          '3-Point Circle — click three points on the circumference. Useful when the center is unknown.',
+          '2-Point Circle — click two endpoints of a diameter.',
+          'Ellipse — click the center, set the major radius along one axis, then set the minor radius.',
+        ],
+      },
+      {
+        heading: 'Polygon, slot, and spline',
+        items: [
+          'Polygon — inscribed or circumscribed. Set the number of sides in the dialog (3–96), click the center, then set the radius.',
+          'Slot (straight) — click the two centerline endpoints, then set the width.',
+          'Slot (center-point) — click the center, one endpoint, then the width.',
+          'Arc Slot / 3-Point Arc Slot — the centerline follows an arc path. Three clicks define the arc.',
+          'Spline — control-point curve. Click to place each control handle. The curve passes near the handles.',
+          'Fit-Point Spline — the curve passes exactly through each clicked point. Useful for tracing scanned profiles.',
+          'Conic — a conic section with a controllable Rho value. Rho < 0.5 gives an ellipse, 0.5 a parabola, and > 0.5 a hyperbola.',
+        ],
+      },
+      {
+        heading: 'Editing tools',
+        items: [
+          'Sketch Fillet (F) — click two lines or a corner vertex to insert a tangent arc fillet. Type a radius in the dialog.',
+          'Trim (T) — click a segment to remove it up to the nearest intersecting curves. Works on lines, arcs, circles, and splines.',
+          'Extend — hover over a segment endpoint; click to extend it to the next intersection.',
+          'Offset (O) — select one or more curves, enter a distance, choose inside or outside. Creates a parallel copy at the given distance.',
+          'Mirror — select entities, then pick a mirror line. Creates a symmetric copy; optionally link the originals so both sides update together.',
+          'Move / Copy (M) — translate sketch geometry by a delta vector. Copy mode leaves the originals in place.',
+          'Scale — scale selected entities about a pivot point by a factor.',
+          'Rotate — rotate selected entities about a point by an angle.',
+          'Project (P) — pull edges, vertices, or silhouettes from existing 3D geometry into the sketch plane as reference curves.',
+          'Include 3D Geometry — same as Project but inserts curves as fully editable entities rather than locked references.',
+          'Text — places a typographic profile. Set the string, font, size, and angle in the dialog. Closed letter forms produce filled profiles suitable for embossing or engraving.',
+        ],
+      },
+      {
+        heading: 'Geometric constraints',
+        intro: 'Constraints lock relationships between entities. Select the entities first, then click the constraint button. Constraints turn entities black when fully resolved.',
+        items: [
+          'Horizontal — forces a line to be parallel to the X axis.',
+          'Vertical — forces a line to be parallel to the Y axis.',
+          'Parallel — forces two lines to be parallel to each other.',
+          'Perpendicular — forces two lines to meet at 90°.',
+          'Tangent — forces a line/arc/spline to be tangent to an arc or circle at the contact point.',
+          'Coincident — forces two points (endpoints, arc centers) to share the same location.',
+          'Equal — forces two lines to have the same length, or two arcs/circles to have the same radius.',
+          'Concentric — forces two arcs or circles to share the same center point.',
+          'Symmetric — forces two entities to be mirror images about a chosen axis or line.',
+          'Fix — pins a point or entity to its current absolute position. Use sparingly; dimensions are usually a better driver.',
+          'Collinear — forces two lines to lie on the same infinite line.',
+          'Midpoint — forces a point to remain on the midpoint of a line segment.',
+          'Smooth (G2) — forces a spline junction to have matching curvature (G2 continuity), not just tangency.',
+        ],
+        notes: [
+          'Over-constrained sketches turn red — remove the conflicting constraint or dimension to recover. Right-click the sketch → Show Sketch Doctor to highlight the conflict.',
+          'Under-constrained entities appear in a lighter colour. They can drift when downstream features drive them, causing unexpected rebuilds.',
         ],
       },
       {
         heading: 'Dimensions',
+        intro: 'Press D (or click Sketch Dimension) then click entities to place a driving dimension. The geometry resizes immediately when you accept the value.',
         items: [
-          'Linear, aligned, radial, diameter, and angular dimensions.',
-          'Pick points, edges, circles, arcs, or centers depending on the dimension type.',
-          'Edit a dimension value to resize the underlying geometry; the sketch updates immediately.',
-          'A fully constrained sketch shows in a single colour and is ready for use as a feature profile.',
+          'Linear — click two points, or click a horizontal or vertical line directly. Measures horizontal or vertical extent.',
+          'Aligned — measures the true point-to-point distance regardless of angle, following the line between the two points.',
+          'Radial — click an arc to set its radius.',
+          'Diameter — click a circle (or arc) to set its diameter.',
+          'Angular — click two lines that share a vertex; place the dimension arc on the angle you want to drive.',
+          'Edit a value — double-click any dimension to reopen the editor. You can enter expressions (50/2) or reference named model parameters.',
+          'A fully constrained sketch shows all entities in the same resolved colour (black or dark grey). That sketch is ready to use as a feature profile.',
         ],
       },
       {
-        heading: 'Finishing a sketch',
+        heading: 'Sketch palette and display toggles',
+        image: { src: '/help/help-sketch-palette.png', alt: 'Sketch Palette panel showing Linetype, Look At, Grid & Snap toggles, and Finish Sketch button', caption: 'Sketch Palette — toggle grid, snap, profile shading, constraint visibility, and look-at from here.' },
         items: [
-          'Finish Sketch returns to the Design ribbon. Closed profiles become available to feature commands.',
-          'Open profiles can still be used as paths for Sweep, Pipe, or Rib.',
-          'You can re-edit a sketch later from the tree or the timeline; downstream features rebuild on save.',
+          'Toggle Construction (Q) — switches selected entities to dashed reference lines. Construction geometry participates in constraints and dimensions but is not used as a feature profile.',
+          'Look At — rotates the viewport to look directly at the sketch plane. Helpful when the sketch was started on a tilted face.',
+          'Profile shading — highlights closed regions that form valid extrude profiles with a light fill so you can see which areas the slicer would use.',
+          'Show Constraints — toggles constraint icons on every entity. Useful for diagnosing which relationships are in play.',
+          'Grid Snap — snaps cursor to the sketch grid. Toggle from the palette or the status bar.',
+          'Point Snap — independent snap to sketch points, intersections, midpoints, and centers regardless of grid setting.',
+        ],
+      },
+      {
+        heading: 'Finishing and re-editing',
+        items: [
+          'Finish Sketch returns to the Design ribbon. Closed profiles immediately become available to Extrude, Revolve, Loft, and other feature commands.',
+          'Open profiles can be used as paths for Sweep, Pipe, or Rib.',
+          'To re-edit a sketch, double-click it in the component tree or the timeline, or right-click → Edit Sketch.',
+          'Downstream features rebuild automatically when you finish editing. Roll back the timeline first if you want to inspect the model at an earlier state.',
+          'If a rebuild fails after editing a sketch, the Repair dialog highlights the first feature that cannot resolve and offers to suppress it.',
         ],
       },
     ],
@@ -172,48 +258,110 @@ const HELP_TOPICS: HelpTopic[] = [
     id: 'prepare',
     title: 'Prepare and slicing',
     summary: 'Build plates, printer + material profiles, slicing, preview, and G-code export.',
+    group: 'Prepare',
     sections: [
       {
-        heading: 'Build plate',
+        heading: 'Workspace layout',
+        intro: 'The Prepare workspace has three zones side-by-side, plus a ribbon at the top.',
+        image: { src: '/help/help-prepare-overview.png', alt: 'Full Prepare workspace with a model on the build plate', caption: 'Prepare workspace — objects panel (left), 3D build plate (centre), slicer settings (right).' },
         items: [
-          'Import meshes (STL/OBJ/3MF) or send geometry into Prepare directly from Design.',
-          'Move, Rotate, Scale, and Duplicate parts on the plate. Arrange auto-packs the plate.',
-          'Validate flags overhangs, parts off the bed, and parts intersecting the build volume.',
-          'Each part is independent — translate one without disturbing the rest.',
+          'Objects on Plate panel (left) — the list of every model on the current plate, with per-object controls.',
+          '3D build plate (centre) — interactive 3D viewport where you position and inspect models.',
+          'Slicer Settings panel (right) — all slicing parameters, organised into collapsible groups.',
+          'Ribbon (top) — workspace-level actions: BUILD PLATE, PROFILES, SLICE, and EXPORT.',
+          'Prepare / Preview tabs (below ribbon) — switch between the layout view and the sliced toolpath viewer.',
         ],
       },
       {
-        heading: 'Profiles',
+        heading: 'Ribbon tools',
+        intro: 'The ribbon groups actions into four sections.',
+        image: { src: '/help/help-prepare-ribbon.png', alt: 'Prepare ribbon showing BUILD PLATE, PROFILES, SLICE and EXPORT sections', caption: 'Ribbon — use Add Model, Select, the profile pickers, Slice, and Save G-code from left to right.' },
         items: [
-          'Printer profile — build volume, kinematics, max feedrates and accelerations.',
-          'Material profile — hotend / bed temperatures, fan, retraction, flow.',
-          'The active filament profile (set in 3D Printer → Settings → Filaments) seeds the temperatures the slicer commands.',
-          'Profiles are independent: you can pair any printer with any material profile.',
+          'BUILD PLATE — Add Model (drag-in or browse), Auto Arrange (pack parts efficiently), Clear Plate, and Select tool.',
+          'PROFILES — click the printer profile button to swap printer machines; click the material button to swap filament profiles.',
+          'SLICE — Slice runs the slicer engine; Preview switches to the toolpath viewer (enabled after a slice).',
+          'EXPORT — Save G-code writes the sliced file to disk; Send to Printer pushes it directly to a connected machine.',
+        ],
+      },
+      {
+        heading: 'Adding and arranging models',
+        intro: 'Every model on the plate appears in the Objects on Plate panel.',
+        image: { src: '/help/help-prepare-objects-panel.png', alt: 'Objects on Plate panel listing the models with their dimensions', caption: 'Objects panel — each row shows the model name, size, and per-object action icons.' },
+        items: [
+          'Drag an STL / OBJ / 3MF file directly onto the build plate, or click Add Model in the ribbon.',
+          'Add from CAD sends the active Design geometry straight into Prepare without exporting a file.',
+          'Select a model in the panel or viewport, then use the on-screen gizmo to Move, Rotate, or Scale it.',
+          'Auto Arrange packs all plate objects to minimise footprint; useful before slicing a multi-part job.',
+          'Per-object icon buttons (visible on hover): toggle visibility, lock, centre, reset transform, and delete.',
+          'Check Printability (above viewport) flags parts that are off the bed, intersecting, or at unsupported angles.',
+        ],
+      },
+      {
+        heading: 'Printer and material profiles',
+        intro: 'Two profiles are always active: one for the printer machine, one for the material.',
+        image: { src: '/help/help-prepare-profile.png', alt: 'Profile row showing printer and material profile pickers with a quality preset dropdown', caption: 'Profile row — switch printer and material profile in one click; the quality preset is above.' },
+        items: [
+          'Printer profile — defines the build volume, kinematics type (Cartesian / CoreXY / Delta), max feedrates, and acceleration limits.',
+          'Material profile — defines hotend and bed temperatures, fan speed curve, retraction distance and speed, and flow.',
+          'Quality preset (top of Settings panel) — a named combination of layer height and line widths; pick Standard, Fine, or Draft, or enter custom values.',
+          'Profiles are independent — any printer can be paired with any material profile.',
+          'Create or edit profiles in Settings → Profiles. Changes apply to the current plate immediately.',
+        ],
+      },
+      {
+        heading: 'Slicer settings — BASIC / ADVANCED / EXPERT',
+        intro: 'The Settings panel on the right shows all slicing parameters, grouped into collapsible sections.',
+        image: { src: '/help/help-prepare-settings.png', alt: 'Slicer Settings panel showing QUALITY, LINE WIDTHS, ADAPTIVE LAYERS, WALLS, and INFILL sections', caption: 'Settings panel — switch between BASIC, ADVANCED, and EXPERT tabs to reveal more parameters.' },
+        items: [
+          'QUALITY — Layer Height, First Layer Height. Lower layer heights give finer detail but longer print times.',
+          'LINE WIDTHS — Outer Wall, Inner Wall, Top/Bottom, Support, Infill line widths. Usually 100–120% of nozzle diameter.',
+          'ADAPTIVE LAYERS — automatically vary layer height across the model surface to balance speed and quality.',
+          'WALLS — number of perimeters, seam position, overhangs, ironing, fuzzy skin.',
+          'TOP / BOTTOM — solid layer count, pattern (lines/concentric/Hilbert), and monotonic fill.',
+          'INFILL — density (%), pattern (Grid, Gyroid, Honeycomb, Lightning, …), and gradual infill for strength without weight.',
+          'SUPPORT — enable, angle threshold, type (normal / tree), interface layers, and Z-distance.',
+          'Search box — type any setting name to filter the list instantly.',
+          'The ⓘ icon next to each field opens an explanation tooltip.',
+        ],
+        notes: [
+          'EXPERT tab exposes parameters like seam position scoring, bridge flow, ironing speed, and Arachne variable-width walls. These are safe to ignore until you\'ve dialled in the basics.',
         ],
       },
       {
         heading: 'Slicing',
+        intro: 'Click Slice (ribbon or the blue button at the bottom-left) to generate toolpaths.',
         items: [
-          'Slice generates layer-by-layer toolpaths from the plate and the active profile.',
-          'Progress shows in the bottom status bar; the workspace stays usable while it runs.',
-          'When slicing finishes, the preview opens automatically with the timeline.',
+          'Progress is shown in the status bar at the bottom of the window — the rest of the UI stays responsive.',
+          'Slice time depends on model complexity, layer height, support volume, and the number of objects on the plate.',
+          'When slicing completes the Preview tab activates automatically and the print-time estimate appears.',
+          'Re-slicing after a settings change discards the previous result — there is no incremental update.',
+        ],
+        notes: [
+          'If slicing fails, the console log (browser DevTools) shows the geometry or settings issue. The most common cause is a non-manifold mesh — repair it in Design first.',
         ],
       },
       {
-        heading: 'Preview modes',
+        heading: 'Preview and layer inspection',
+        intro: 'After slicing, switch to the Preview tab to inspect the toolpath before printing.',
+        image: { src: '/help/help-prepare-preview.png', alt: 'Preview tab showing the sliced model with colour-coded toolpaths and a layer slider', caption: 'Preview — colour-coded extrusion paths with a layer slider to step through each layer.' },
         items: [
-          'Model — the original geometry overlay.',
-          'Travel — non-extruding moves, useful for spotting stringing risks.',
-          'Extrusion — only extruding moves, color-coded by feature type (outer/inner wall, infill, top/bottom, bridge, support).',
-          'Layers — scrub one layer at a time with the slider.',
-          'Estimates show print time and material length once the preview is loaded.',
+          'Color mode — cycle through Type (outer wall / inner wall / infill / top/bottom / bridge / support / travel), Speed, Flow, Width, Layer Time, Wall Quality, and Seam.',
+          'Layer slider — drag to inspect any layer. The current layer number and Z-height are shown.',
+          'Travel moves — shown as thin lines when Color mode includes Travel. Long travel jumps often indicate a retraction or sequence issue.',
+          'Print time and filament estimates appear once the preview is loaded; they update if you re-slice with different settings.',
+          'Zoom, orbit, and pan work the same as in the Prepare view — right-drag to orbit, scroll to zoom.',
+        ],
+        notes: [
+          'Sparse infill patterns (Lightning, Gyroid) can look incomplete in preview but print correctly — the preview shows every line the slicer generates.',
         ],
       },
       {
-        heading: 'Export',
+        heading: 'Exporting G-code',
         items: [
-          'Export G-code writes a standard text file you can hand to any printer.',
-          'OrcaSlicer-style ;TYPE: markers are emitted alongside the existing comments so third-party tools (Octoprint plugins, Klipper preview) parse correctly.',
+          'Save G-code (ribbon EXPORT section) writes a standard .gcode file you can copy to an SD card or upload via OctoPrint / Mainsail / Fluidd.',
+          'Send to Printer pushes the file directly to a connected printer and optionally starts the print — the printer must be connected in the 3D Printer workspace first.',
+          'OrcaSlicer-style ;TYPE: markers are included in the G-code so third-party tools (OctoPrint plugins, Klipper preview) parse feature types correctly.',
+          'G-code is a plain text file — you can open it in any text editor to inspect or hand-edit commands.',
         ],
       },
     ],
@@ -222,40 +370,99 @@ const HELP_TOPICS: HelpTopic[] = [
   {
     id: 'printer',
     title: '3D Printer workspace',
-    summary: 'Fleet view, monitor, and per-printer tabs for everything from console to height maps.',
+    summary: 'Fleet view, printer monitor, connection setup, camera previews, and per-printer tools.',
+    group: '3D Printer',
     sections: [
       {
-        heading: 'Printers page',
+        heading: 'Fleet dashboard',
+        intro: 'Open 3D Printer, then click Printers in the ribbon. This is the landing page for every saved machine.',
+        image: { src: '/help/help-printer-fleet.png', alt: 'Printer fleet dashboard with printer card, camera status, monitor, connect, and settings actions', caption: 'Fleet dashboard - each card summarizes one printer and gives quick access to Monitor, Connect, and Settings.' },
         items: [
-          'Use Printers in the 3D Printer ribbon to see all saved printers and their camera previews.',
-          'Each printer keeps its own connection config, preferences, filament profiles, and camera settings.',
-          'Click Monitor on a card to open that printer\'s dashboard without losing the fleet view.',
+          'The top counters show total printers, configured printers, connected printers, and saved camera feeds.',
+          'Each printer card shows camera preview status, printer name, host, connection state, current tool, bed, uptime, and remaining job time.',
+          'Add Printer creates another saved printer profile. Manage lets you rename or delete printers and their optional camera clips.',
+          'Monitor opens the selected printer dashboard. Settings opens that printer\'s connection, camera, behaviour, machine, firmware, and backup panels.',
+          'Connect is disabled until the printer has enough connection details, usually a host/IP for network mode or a selected USB port for Web Serial mode.',
         ],
       },
       {
-        heading: 'Per-printer tabs',
-        intro: 'Once a printer is selected, the side rail exposes:',
+        heading: 'Monitor dashboard',
+        intro: 'Click Monitor on a printer card to inspect a single printer. The dashboard still works as an offline setup surface before a board is connected.',
+        image: { src: '/help/help-printer-monitor.png', alt: 'Printer monitor dashboard with connection panel, files and config shortcuts, and camera panel', caption: 'Monitor dashboard - connection state, printer shortcuts, and the camera panel live together.' },
         items: [
-          'Dashboard — heaters, axes, current job, and quick controls.',
-          'Camera — live feed (works with the per-printer camera config).',
-          'Status / Console — board status and a G-code console with command history.',
-          'Job — file, layer, time-remaining details for the active print.',
-          'History / Analytics — past prints and aggregated stats.',
-          'Files — browse, upload, download, delete files on the printer.',
-          'Filaments — stock library on the board (separate from the app-side Filament Profiles).',
-          'Macros — saved G-code macros you can run with one click.',
-          'Height Map — bed mesh probes and visualisation.',
-          'Model / Config — object-model browser and config.g editor (Duet).',
-          'Network / Plugins — board network status and DSF plugin manager (Duet+SBC).',
-          'Settings — connection, presets, behaviour, safety, filaments, etc.',
+          'The offline state points you to Connection Settings, Files, Config, and Camera so setup is discoverable even before connecting.',
+          'When connected, Dashboard shows heaters, axes, current job, uptime, board status, quick controls, and live model data.',
+          'The context strip names the active printer, host, board mode, and current online/offline state so you can tell which machine you are controlling.',
+          'The bottom footer repeats machine status, current tool, uptime, and progress for quick scanning while switching tabs.',
+          'Open Camera uses the saved per-printer camera profile and expands into the full camera workspace.',
+        ],
+      },
+      {
+        heading: 'Connection settings',
+        intro: 'Settings starts on Connection. Use this panel to identify the firmware, transport, preset, host, password, and reconnect behaviour.',
+        image: { src: '/help/help-printer-connection-settings.png', alt: 'Printer connection settings with preset, network or USB transport, board type, host, password, and connection mode', caption: 'Connection settings - choose a preset, pick Network or USB, fill the required transport fields, then Test Connection.' },
+        items: [
+          'Printer Preset patches common machine defaults such as board type, baud rate, build volume, and kinematics. Custom leaves existing settings alone.',
+          'Connection Type switches between Network and USB. Network uses the firmware HTTP API; USB uses Web Serial from the browser.',
+          'Board Type changes which capabilities DesignCAD expects: Duet/RRF, Klipper, Marlin, Smoothieware, grbl, Repetier, or Other.',
+          'Hostname / IP accepts a plain IP or .local name. Leave http:// off unless the field hint says otherwise.',
+          'Test Connection probes the board without opening the persistent session. Connect starts the actual live session.',
+          'Auto-reconnect can retry dropped network or USB sessions using the configured interval and retry limit.',
+        ],
+      },
+      {
+        heading: 'Settings navigation',
+        intro: 'The left settings rail keeps every printer-specific setup area in one place.',
+        image: { src: '/help/help-printer-settings-navigation.png', alt: 'Printer settings page with left navigation for connection, general, camera, behaviour, notifications, machine, filaments, firmware, PanelDue, backup, and about', caption: 'Settings navigation - every printer has its own saved connection, camera, safety, filament, and backup settings.' },
+        items: [
+          'General stores name, identity, and day-to-day preferences.',
+          'Camera stores network, browser USB, or server USB camera settings for the printer card, monitor, and camera workspace.',
+          'Behaviour includes safety limits, auto-reconnect behaviour, sounds, and operational preferences.',
+          'Notifications controls alert severity, toast duration, sound, and printer event messages.',
+          'Machine stores build volume, kinematics, axes, heaters, and motion-related printer metadata.',
+          'Filaments stores per-printer material presets used by dashboard actions and slicer seeding.',
+          'Firmware, PanelDue, Backup, and About cover firmware-specific features, touchscreen setup, import/export state, and diagnostics.',
+        ],
+      },
+      {
+        heading: 'Per-printer tool tabs',
+        intro: 'After a printer is selected/configured, the ribbon exposes deeper printer tabs:',
+        items: [
+          'Dashboard - heaters, axes, current job, camera summary, and quick controls.',
+          'Camera - live feed, snapshots, recordings, timelapses, overlays, calibration, PTZ, and clip review.',
+          'Status and Console - board status plus a G-code console with command history.',
+          'Job - active file, layer, progress, time remaining, pause/resume/cancel, and print details.',
+          'History and Analytics - previous prints, event history, and aggregate printer performance.',
+          'Files - browse, upload, download, delete, and start files on the printer storage.',
+          'Filaments - board-side filament library and printer-specific app filament profiles.',
+          'Macros - saved G-code macros that can be run from the app.',
+          'Height Map - bed mesh probe data and visualisation.',
+          'Model and Config - object-model browser and config.g editor for Duet/RRF setups.',
+          'Network and Plugins - board network status and Duet Software Framework plugin management where available.',
+          'Settings - connection, presets, camera, behaviour, safety, filaments, firmware, and backup.',
         ],
       },
       {
         heading: 'Connection lifecycle',
+        intro: 'A normal setup session usually goes Settings, Test Connection, Connect, then Monitor.',
+        image: { src: '/help/help-printer-ribbon-navigation.png', alt: 'Connection settings with hostname filled and Test Connection and Connect enabled', caption: 'Ready to connect - once the required fields are filled, Test Connection and Connect become available.' },
         items: [
           'Test Connection probes the board without committing; it reads firmware identity and returns.',
           'Connect opens the persistent session: polling, websocket, or serial reader depending on transport.',
           'Disconnect closes the session cleanly; auto-reconnect (when enabled) takes over on transient drops.',
+          'Emergency Stop sends M112 and should be reserved for real machine faults. The button is disabled until a printer is connected.',
+          'If a connected printer later goes stale, the panel dims live controls and shows the last update age so you do not mistake cached data for live state.',
+        ],
+      },
+      {
+        heading: 'Common workflows',
+        items: [
+          'Add a network printer: Add Printer, Settings, choose a preset, enter Hostname / IP, Test Connection, then Connect.',
+          'Add a USB printer: Settings, Connection Type USB, select a USB port, set baud rate, test with the diagnostic console, then Connect.',
+          'Set up monitoring: configure the Camera tab, save camera settings, return to Printers, then verify the card preview and Monitor camera panel.',
+          'Send a sliced file: export or upload G-code, open Files, select the file, then start the print from the printer panel.',
+          'Tune materials: create per-printer Filament profiles, star the default, and use that default when changing filament or seeding slicer temperatures.',
+          'Back up before experimenting: Settings, Backup, export a settings snapshot, then make firmware, machine, or safety changes.',
         ],
       },
     ],
@@ -264,42 +471,96 @@ const HELP_TOPICS: HelpTopic[] = [
   {
     id: 'connection',
     title: 'Connecting your printer',
-    summary: 'Pick the right transport, fill the right fields, and verify with Test Connection.',
+    summary: 'Open Settings on a printer card, choose Network or USB, pick your firmware, fill in the host, and click Test Connection.',
+    group: '3D Printer',
     sections: [
       {
-        heading: 'Pick a connection type',
-        intro: 'Settings → Connection has a transport toggle:',
+        heading: 'Opening connection settings',
+        intro: 'Connection settings live per-printer. Go to 3D Printer → Printers, find your printer card, click Settings, then choose Connection in the left rail.',
+        image: { src: '/help/help-conn-network-klipper.png', alt: 'Connection settings page with Network and Klipper selected, showing hostname field, password field, and Test Connection button', caption: 'Connection page — pick transport (Network or USB), firmware type, enter the host, then run Test Connection.' },
         items: [
-          'Network — talk to the board over Wi-Fi / Ethernet using the firmware\'s HTTP API.',
-          'USB — talk to the board over Web Serial. Pairs the browser directly with a USB-connected printer (no network needed).',
+          'Each printer saves its own connection settings — configure a Klipper machine and a Duet machine at the same time.',
+          'Settings are stored per-browser. Export a settings bundle via Settings → Backup to move configs to another machine.',
         ],
       },
       {
-        heading: 'Printer presets',
-        intro: 'A preset patches the connection + machine config in one click. Pick Custom to leave settings alone.',
+        heading: 'Step 1 — Apply a printer preset (optional)',
+        intro: 'The Printer Preset dropdown patches board type, baud rate, build volume, and kinematics in one click.',
+        image: { src: '/help/help-conn-preset-row.png', alt: 'Printer preset dropdown showing Custom (no changes) selected', caption: 'Printer Preset — pick your model to pre-fill board type, baud, and build volume. Choose Custom to leave all settings as-is.' },
         items: [
-          'Creality Ender 3 / V2 — Marlin, 220×220×250 (V2: 235×235×250), 115200 baud.',
-          'Voron 2.4 (350) — Klipper, 350×350×350, CoreXY, 250000 baud.',
-          'Prusa MK3S+ / MK4 — Marlin, 250×210×210/220, 115200 baud.',
+          'Creality Ender 3 / V2 — Marlin, 115200 baud, 220×220×250 (V2: 235×235×250).',
+          'Voron 2.4 (350) — Klipper, 250000 baud, 350×350×350, CoreXY.',
+          'Prusa MK3S+ / MK4 — Marlin, 115200 baud, 250×210×210–220.',
           'Bambu A1 — CoreXY, 256×256×256.',
-          'Duet 3 MB6HC — RepRapFirmware reference profile.',
-          'FLSUN Q5 Delta — Marlin, 200×200×200, delta kinematics, 250000 baud.',
+          'Duet 3 MB6HC — RepRapFirmware reference build.',
+          'FLSUN Q5 Delta — Marlin, 250000 baud, 200×200×200, delta kinematics.',
+          'Custom (no changes) — leaves every field exactly as you set it.',
+        ],
+        notes: [
+          'Presets patch the fields but do not save or connect automatically. Adjust any field after applying, then Test or Save.',
         ],
       },
       {
-        heading: 'Network mode fields',
+        heading: 'Step 2 — Pick your board firmware',
+        image: { src: '/help/help-conn-board-types.png', alt: 'Board type row showing Duet (RRF), Klipper, Marlin, Smoothieware, Grbl, Repetier, Other tabs', caption: 'Board type — choose the firmware running on your board. This controls which API and object model the app uses.' },
         items: [
-          'Hostname / IP — the board address. Use either an IP (192.168.1.100) or a .local name (myprinter.local). Leave the http:// prefix off.',
-          'Board Password — only required if the firmware has one set (RepRapFirmware uses M551 to set it).',
-          'Connection Mode (Duet only) — Standalone uses the board\'s built-in HTTP/WS; SBC uses DuetSoftwareFramework on a Raspberry Pi running alongside the board.',
+          'Duet (RRF) — RepRapFirmware 3 on Duet 2/3 boards. Uses the RRF REST + WebSocket API.',
+          'Klipper — Klipper firmware via the Moonraker API. Enter the Moonraker host address.',
+          'Marlin — via OctoPrint, Mainsail, Fluidd, or direct HTTP.',
+          'Smoothieware — Smoothieboard via its HTTP API.',
+          'Grbl — CNC / laser firmware, G-code transport only.',
+          'Repetier — Repetier Server API.',
+          'Other — generic G-code transport for any firmware not listed.',
+        ],
+        notes: [
+          'Choosing the wrong firmware type is the most common setup mistake. Check your board\'s own web UI — the brand logo confirms which firmware it runs.',
+        ],
+      },
+      {
+        heading: 'Step 3 — Network: fill in the host',
+        items: [
+          'Hostname / IP — enter the board address without the http:// prefix. Examples: 192.168.1.100, myprinter.local, klipper.home.',
+          'Board Password — only needed if your firmware requires one. RepRapFirmware sets this via M551 in config.g. Klipper and Marlin leave it blank.',
+          'Use an IP address if .local names are unreliable on your network — some routers block multicast DNS.',
+        ],
+      },
+      {
+        heading: 'Duet (RRF) — Standalone vs SBC',
+        image: { src: '/help/help-conn-network-duet.png', alt: 'Duet (RRF) connection page showing Standalone and SBC (Raspberry Pi) connection mode toggle', caption: 'Duet boards have an extra toggle: Standalone (built-in Ethernet) or SBC (Raspberry Pi running DSF alongside the board).' },
+        items: [
+          'Standalone — the Duet board handles HTTP and WebSocket natively. Most Duet 3 setups without a Pi use this.',
+          'SBC (Raspberry Pi) — DuetSoftwareFramework (DSF) runs on a Pi connected to the board via SBC header. The Pi exposes HTTP on port 80 and a Unix socket on port 8181.',
+          'If unsure, try Standalone first — the Test Connection error message will indicate if DSF is expected.',
+        ],
+      },
+      {
+        heading: 'Step 3 (alt) — USB: select a port',
+        image: { src: '/help/help-conn-usb.png', alt: 'Connection settings in USB mode with USB SERIAL PORT section and Select USB Port button', caption: 'USB mode — click Select USB Port to grant browser access to the printer serial port, then match the baud rate to your firmware.' },
+        items: [
+          'Switch CONNECTION TYPE to USB, then click Select USB Port. The browser shows a chooser — pick your printer.',
+          'The app remembers the granted port by USB vendor/product ID across sessions.',
+          'Baud Rate must match the firmware: Marlin 115200 or 250000, RepRapFirmware 115200, Klipper-USB 250000.',
+          'Requires a Chromium browser (Chrome, Edge, Arc, Brave) over HTTPS or http://localhost.',
+          'Another app holding the port (OctoPrint, PrusaSlicer, pronterface) will block the connection — close it first.',
+        ],
+      },
+      {
+        heading: 'Step 4 — Test Connection, then Connect',
+        image: { src: '/help/help-conn-buttons.png', alt: 'Test Connection and Connect buttons at the bottom of the connection settings form', caption: 'Always run Test Connection before Connect — it confirms host, firmware type, and password without opening a persistent session.' },
+        items: [
+          'Test Connection — probes the board, reads firmware identity, and returns a pass/fail. No persistent session is opened.',
+          'Connect — opens the persistent session. The app starts polling, subscribes to WebSocket events, and unlocks the dashboard.',
+          'A successful test shows firmware version and board name.',
+          '"Connection refused" usually means a wrong IP or the board is off. "Unauthorised" means wrong password.',
         ],
       },
       {
         heading: 'Auto-reconnect',
         items: [
-          'When on, the app retries on the configured interval if the connection drops.',
-          'Tune Reconnect Interval and Max Retries underneath.',
-          'Auto-reconnect works for both Network and USB transports.',
+          'Toggle Enable auto-reconnect at the bottom of the Connection page to retry automatically when the connection drops.',
+          'Works for both Network and USB transports.',
+          'Tune Reconnect Interval and Max Retries to match your network stability.',
+          'Off by default — enable once you\'ve confirmed your settings are stable.',
         ],
       },
     ],
@@ -309,39 +570,58 @@ const HELP_TOPICS: HelpTopic[] = [
     id: 'usb',
     title: 'USB connection (Web Serial)',
     summary: 'Plug the printer into the computer running DesignCAD. No network required.',
+    group: '3D Printer',
     sections: [
       {
-        heading: 'Browser support',
+        heading: 'Requirements',
         items: [
-          'Web Serial works in Chromium-based browsers (Chrome, Edge, Opera, Brave, Arc) over HTTPS or http://localhost.',
-          'Firefox and Safari do not implement Web Serial. The Connection tab will warn you when the API is unavailable.',
+          'Chromium-based browser only: Chrome, Edge, Opera, Brave, or Arc.',
+          'Page must be served over HTTPS or http://localhost — plain http:// remote URLs lack Serial API access.',
+          'Firefox and Safari do not implement Web Serial. The Connection tab shows a warning when the API is unavailable.',
+          'A USB data cable between the computer and the printer control board (not a charge-only cable).',
         ],
       },
       {
-        heading: 'Picking a port',
-        intro: 'Browsers only expose USB ports the user explicitly grants. The first time you click Select USB Port, the browser shows a chooser; pick the one your printer is on.',
+        heading: 'Selecting a port',
+        image: { src: '/help/help-conn-usb-section.png', alt: 'USB SERIAL PORT section showing No port selected with Select USB Port button and 115200 baud dropdown', caption: 'USB Serial Port — click Select USB Port to open the browser chooser, then set the baud rate to match your firmware.' },
         items: [
-          'After the grant, the app remembers the port across sessions by USB vendor / product ID.',
-          'If you swap printers, click Change Port and pick the new one. Clear releases the saved permission entirely.',
-          'Baud rate must match the firmware. Marlin defaults to 115200 or 250000; RepRapFirmware uses 115200; Klipper-USB usually 250000.',
+          'Click Select USB Port — the browser shows a chooser listing available serial devices.',
+          'Pick your printer\'s port. It may show the vendor name (Prusa Research, FTDI) or chip (CH340, CP2102, ATmega16U2).',
+          'After granting, the app stores the USB vendor/product ID and auto-selects the port next time.',
+          'Click Change Port to switch printers. Click Clear to release the saved permission entirely.',
+        ],
+        notes: [
+          'If the chooser is empty, check the cable is a data cable and the board is powered on. Try a different USB port on your computer.',
+        ],
+      },
+      {
+        heading: 'Baud rate',
+        items: [
+          'The baud rate must exactly match the value compiled into the firmware.',
+          'Marlin — 115200 (default) or 250000. Check Configuration.h → BAUDRATE.',
+          'RepRapFirmware — 115200.',
+          'Klipper USB — 250000 (the virtual serial port typically uses this regardless of setting).',
+          'Garbled output or no response to M115 usually means the baud rate is wrong — try the other common value.',
         ],
       },
       {
         heading: 'Diagnostic console',
-        intro: 'Below the port row, the Diagnostic Console lets you open a temporary connection to verify the port and baud before committing to Connect.',
+        intro: 'The Diagnostic Console in Settings → Connection → USB lets you open a raw serial session before committing to a full Connect.',
         items: [
-          'Click Open Port to attach. The console logs system events and any banner the firmware prints.',
-          'Type a G-code in the input bar and press Enter. > shows what you sent, < shows the reply, ! marks errors, · marks system messages.',
-          'Useful first commands: M115 (firmware identity), M105 (temperatures), M119 (endstop status).',
-          'Close Port releases the connection so the main Connect can claim it.',
+          'Click Open Port to attach. The terminal shows firmware banners and system events.',
+          'Type G-code in the input bar and press Enter. > = sent, < = reply, ! = error, · = system event.',
+          'Run M115 first — the firmware identity response confirms baud and port are correct.',
+          'Run M105 (temperatures) and M119 (endstop states) to verify the board is alive.',
+          'Click Close Port before clicking Connect — only one process can own the serial port at a time.',
         ],
       },
       {
-        heading: 'Caveats',
+        heading: 'Limitations',
         items: [
-          'Browser permissions are origin-scoped: a port you granted on http://localhost:5173 won\'t be visible at a different port.',
-          'Object-model based features (file lists, the live dashboard graphs) are network-only — USB mode focuses on G-code transport.',
-          'Closing the browser tab closes the serial connection. Reopen the tab and Connect again.',
+          'USB mode is G-code transport only. File listings, dashboard graphs, height maps, and object-model browsers require network.',
+          'Browser permissions are origin-scoped — a port granted at http://localhost:5173 is not visible at a different origin.',
+          'Closing the browser tab closes the serial connection. Reopen and click Connect to restore.',
+          'Some 8-bit boards (Mega 2560 with CH340) reset when the serial port opens. The app waits ~1.5 s before sending — this is normal.',
         ],
       },
     ],
@@ -350,38 +630,100 @@ const HELP_TOPICS: HelpTopic[] = [
   {
     id: 'camera',
     title: 'Camera setup',
-    summary: 'Wire a network or USB camera to a printer card, the dashboard, and the job view.',
+    summary: 'Configure network, browser USB, or server USB cameras for printer cards, monitoring, capture, and print review.',
+    group: '3D Printer',
     sections: [
       {
-        heading: 'Camera source',
+        heading: 'Where camera settings live',
+        intro: 'Open 3D Printer, click Settings on the printer card, then choose Camera in the left settings rail.',
+        image: { src: '/help/help-camera-settings.png', alt: 'Camera settings tab with source, stream, credentials, test, and save controls', caption: 'Camera settings - choose a source, fill stream details, test the feed, then save the per-printer camera profile.' },
         items: [
-          'Network — IP / Wi-Fi camera reachable over HTTP / RTSP.',
-          'Browser USB — webcam plugged into the computer viewing the app. Browser asks for camera permission.',
-          'Server USB — webcam plugged into the host running DesignCAD on (e.g.) an Orange Pi.',
+          'Camera settings are stored per printer, so each printer card can use a different camera, credentials, stream quality, and path preset.',
+          'The printer does not have to be connected before you configure the camera. You can test and save camera settings while the board is offline.',
+          'After saving, the fleet card, dashboard camera panel, and Open Camera view all read from the saved values.',
         ],
       },
       {
-        heading: 'Discovery',
+        heading: 'Choose the right source',
         items: [
-          'Enter just the camera IP / hostname in Camera Address / IP, then click Test Connection.',
-          'The app probes common MJPEG and snapshot paths and fills Sub Stream URL when one works.',
-          'Pick Amcrest / Dahua-compatible paths in Camera Path Preset to bias the probe toward those defaults.',
-          'Credentials are optional and only used when the camera requires HTTP basic auth.',
+          'Network camera - an IP camera, Wi-Fi camera, Raspberry Pi camera bridge, OctoPrint webcam endpoint, or any URL reachable by the browser over HTTP/HLS/RTSP.',
+          'Browser USB camera - a webcam attached to the computer viewing DesignCAD. The browser will ask for camera permission when the Camera page starts using it.',
+          'Server USB camera - a webcam attached to the machine running the DesignCAD server, such as an Orange Pi near the printer. Use this when the browser is on a laptop but the camera is plugged into the printer host.',
+          'Use one camera source per printer. Switch the source later if you move the camera from the browser machine to the printer host.',
         ],
       },
       {
-        heading: 'Streams',
+        heading: 'Network camera discovery',
+        intro: 'For most IP cameras, start with the simplest possible address and let DesignCAD probe the common paths.',
         items: [
-          'Sub stream — the MJPEG feed used in dashboard previews and the printer card.',
-          'Main stream — high-resolution RTSP/HLS feed used by the standalone Camera page.',
-          'Browsers cannot play RTSP directly; the app bridges RTSP to HLS where supported.',
+          'Enter only the host in Camera Address / IP, for example 192.168.1.55, printercam.local, or http://192.168.1.55.',
+          'Leave Sub Stream URL blank on the first pass, then click Test Connection. A successful probe fills the MJPEG/snapshot URL for you.',
+          'For Amcrest or Dahua-compatible cameras, click Fill Amcrest Defaults or set Camera Path Preset to Amcrest / Dahua-compatible paths. That seeds the common MJPEG, RTSP, and PTZ endpoints.',
+          'Use Generic / custom URLs for OctoPrint, Mainsail, Fluidd, camera-streamer, mjpg-streamer, custom Nginx routes, and non-Amcrest cameras.',
+          'Camera Username and Camera Password are only for cameras that require HTTP basic authentication. They are stored with this printer profile in local preferences.',
         ],
       },
       {
-        heading: 'Saving',
+        heading: 'Sub stream vs main stream',
         items: [
-          'Save Camera Settings persists the discovered URLs and credentials per printer.',
-          'If the browser can open a stream URL but DesignCAD cannot, paste the same URL into Sub Stream URL and re-test.',
+          'Preferred Stream controls which feed the camera panel tries first: Sub stream for light MJPEG previews, or Main stream for high-quality video.',
+          'Sub Stream URL should be browser-renderable HTTP/MJPEG or a snapshot/MJPEG endpoint. This is what the fleet card and dashboard preview use most often.',
+          'Main Stream URL is for high-quality video. RTSP/H.264 is common on IP cameras; HLS/HTTP works when your camera or bridge already exposes a browser-compatible stream.',
+          'If Main Stream Protocol is RTSP, TCP is usually best on Wi-Fi because it is more tolerant of packet loss. UDP can be lower latency on a stable wired network.',
+          'Browsers cannot play RTSP directly. DesignCAD can route RTSP through its local RTSP-to-HLS bridge where the server supports it, while MJPEG remains the reliable dashboard preview path.',
+        ],
+      },
+      {
+        heading: 'Testing and saving',
+        items: [
+          'Click Test Connection before saving. The test checks whether the configured URL returns a loadable image or MJPEG stream.',
+          'If Test Connection fills Sub Stream URL, review the generated URL and then click Save Camera Settings.',
+          'Save Camera Settings is disabled until the draft differs from the saved camera profile.',
+          'If a stream opens in a normal browser tab but the test fails, paste that exact URL into Sub Stream URL and test again.',
+          'If the dashboard preview is blank after a successful test, make sure you saved the settings. The preview uses saved values, not unsaved draft fields.',
+        ],
+      },
+      {
+        heading: 'Dashboard camera panel',
+        intro: 'Click Monitor on a printer card to see the camera panel in context with printer state and job controls.',
+        image: { src: '/help/help-camera-dashboard.png', alt: 'Printer monitor dashboard with camera panel and open camera action', caption: 'Dashboard camera panel - once a stream is saved, this area shows the preview, capture status, and quick camera actions.' },
+        items: [
+          'The compact dashboard panel shows connection health, the current stream status, saved clip size, active job context, and the Open Camera action.',
+          'Open Camera expands into the full camera workspace with quality controls, snapshots, recording, timelapse, overlays, calibration, and saved clip management.',
+          'The fleet card uses the same saved camera profile for its small live preview, so fixing the dashboard camera usually fixes the card preview too.',
+          'Recording and timelapse clips save locally in the browser using IndexedDB. Deleting a printer can also delete its associated camera clips.',
+        ],
+      },
+      {
+        heading: 'Full camera workspace tools',
+        items: [
+          'Quality - switch between SD/sub stream and HD/main stream. HD may start the local RTSP bridge when the main stream is RTSP.',
+          'Snapshots - capture still images for first-layer checks, finish evidence, or troubleshooting.',
+          'Recordings and timelapses - save short clips, print evidence, or reviewable timelapses tied to the active printer/job.',
+          'Markers and tags - flag moments such as warping, stringing, layer shift, blobs, adhesion problems, and under-extrusion.',
+          'Overlays - grid, crosshair, flip, rotation, and calibration aids help line up the camera with the bed.',
+          'PTZ controls - available for Amcrest / Dahua-compatible paths; use the Amcrest preset before trying pan, tilt, zoom, or home.',
+        ],
+      },
+      {
+        heading: 'Common setup recipes',
+        items: [
+          'Amcrest/Dahua IP camera: choose Network camera, enter the camera IP, click Fill Amcrest Defaults, add credentials if required, Test Connection, then Save Camera Settings.',
+          'OctoPrint webcam: choose Network camera, keep Generic / custom URLs, paste the webcam stream URL into Sub Stream URL, Test Connection, then save.',
+          'Mainsail/Fluidd/camera-streamer: choose Network camera, paste the browser-viewable stream or snapshot URL into Sub Stream URL, set Main Stream URL only if you have an HLS/RTSP high-quality feed.',
+          'Laptop webcam: choose Browser USB camera, save, then open the Camera page and approve the browser camera permission prompt when it appears.',
+          'Orange Pi/server webcam: choose Server USB camera, pick or enter the server USB device, save, then use Open Camera to view the bridged feed.',
+        ],
+      },
+      {
+        heading: 'Troubleshooting camera setup',
+        items: [
+          'If Test Connection fails, open the same URL directly in the browser first. If the browser cannot load it, check camera power, network, IP address, credentials, and CORS/proxy setup.',
+          'If the test works but the preview does not, click Save Camera Settings and refresh the dashboard panel.',
+          'If HTTP works but HTTPS does not, avoid mixed-content browser blocking by using the same scheme as the app deployment or a server-side bridge.',
+          'If RTSP HD does not start, confirm the DesignCAD server can reach the camera, then try RTSP Transport TCP before UDP.',
+          'If Browser USB shows no devices, use a Chromium browser on HTTPS or localhost, close other apps that may own the webcam, and grant camera permission when prompted.',
+          'If PTZ buttons do nothing, confirm the camera is Amcrest / Dahua-compatible, the path preset is Amcrest, and credentials have permission to control PTZ.',
         ],
       },
     ],
@@ -391,6 +733,7 @@ const HELP_TOPICS: HelpTopic[] = [
     id: 'filaments',
     title: 'Filament profiles',
     summary: 'Per-printer profiles that store the temps, fan, retraction, and flow you reach for most often.',
+    group: '3D Printer',
     sections: [
       {
         heading: 'What a profile holds',
@@ -428,6 +771,7 @@ const HELP_TOPICS: HelpTopic[] = [
     id: 'safety',
     title: 'Safety limits',
     summary: 'Guard rails on temperature and emergency commands.',
+    group: '3D Printer',
     sections: [
       {
         heading: 'Temperature caps',
@@ -462,6 +806,7 @@ const HELP_TOPICS: HelpTopic[] = [
     id: 'files',
     title: 'Files and settings bundles',
     summary: 'Documents, settings, and how they\'re saved.',
+    group: 'Reference',
     sections: [
       {
         heading: 'Documents',
@@ -493,6 +838,7 @@ const HELP_TOPICS: HelpTopic[] = [
     id: 'updates',
     title: 'Notifications and updates',
     summary: 'The bell aggregates printer alerts and site update status.',
+    group: 'Reference',
     sections: [
       {
         heading: 'Notifications',
@@ -516,9 +862,104 @@ const HELP_TOPICS: HelpTopic[] = [
   },
 
   {
+    id: 'ai',
+    title: 'AI Assistant & MCP',
+    summary: 'Chat with an AI directly in the app, or connect Claude Code via MCP to control DesignCAD from your terminal.',
+    group: 'Reference',
+    sections: [
+      {
+        heading: 'Opening the AI panel',
+        intro: 'The AI panel is available in every workspace. Three ways to open it:',
+        image: { src: '/help/help-topbar.png', alt: 'Top bar showing the AI button and green AI MCP badge', caption: 'Top bar — click "AI" to open the panel. The green "AI MCP" badge confirms the server is running.' },
+        items: [
+          'Click the AI button in the top bar (between the workspace selector and the AI MCP badge).',
+          'In the Prepare workspace, click the AI button in the bottom action bar.',
+          'In the 3D Printer workspace, click the AI button in the bottom action bar.',
+        ],
+        notes: [
+          'The panel floats over the viewport and has two tabs — MCP and Chat.',
+          'The green "AI MCP" badge in the top bar means the local MCP server is running and ready for Claude Code to connect.',
+        ],
+      },
+      {
+        heading: 'MCP tab — connect Claude Code',
+        intro: 'The MCP tab lets you wire Claude Code (the Anthropic CLI) into DesignCAD. Once connected, any Claude Code conversation can call tools that drive the app directly.',
+        image: { src: '/help/help-ai-mcp.png', alt: 'AI panel MCP tab showing the server status and Claude Code config command', caption: 'MCP tab — copy the config command and paste it into Claude Code Settings → MCP Servers.' },
+        items: [
+          'Copy the Claude Code Config command shown in the panel — it looks like: claude mcp add designcad http://localhost:5174/mcp?token=...',
+          'In your terminal, open Claude Code Settings → MCP Servers and paste the command, then restart Claude Code.',
+          'Return to the MCP tab — the "MCP Server Running :5174" indicator confirms the server is active.',
+          'The Recent Tool Calls list at the bottom logs every tool call Claude Code has made, so you can audit what the AI changed.',
+          'The copy button (two squares) copies the config command. The refresh button regenerates the token if it needs to be rotated.',
+        ],
+        notes: [
+          'The MCP server only accepts connections from localhost — it is not exposed to the network.',
+          'Restarting the app regenerates the token; update the Claude Code MCP config if you see 401 errors.',
+        ],
+      },
+      {
+        heading: 'Chat tab — in-app AI chat (BYOK)',
+        intro: 'The Chat tab is a built-in chat interface that runs fully in your browser. It is Bring Your Own Key (BYOK) — your API key is stored locally and never sent to DesignCAD servers.',
+        image: { src: '/help/help-ai-chat.png', alt: 'AI panel Chat tab with message input and empty state prompt', caption: 'Chat tab — set your provider and API key in Global Settings to unlock the chat input.' },
+        items: [
+          'Go to Global Settings → AI to set your provider (Anthropic, OpenAI, or compatible), model, and API key.',
+          'Once a key is configured, the chat input unlocks and you can type messages directly.',
+          'The AI can call the same tools as Claude Code via MCP — camera moves, slice stats, printer control — without leaving the panel.',
+          'Conversation history is kept in-session; a new page load starts a fresh thread.',
+        ],
+        notes: [
+          'Your API key is stored in browser localStorage and sent directly to the provider\'s API — not through DesignCAD servers.',
+        ],
+      },
+      {
+        heading: 'What the AI can do — Design workspace',
+        items: [
+          'List and select bodies, faces, edges, and sketches.',
+          'Read geometry properties: volume, surface area, bounding box, mass, material.',
+          'Create and modify sketch entities, constraints, and dimensions.',
+          'Call solid features: Extrude, Revolve, Fillet, Chamfer, Shell, and more.',
+        ],
+      },
+      {
+        heading: 'What the AI can do — Prepare workspace',
+        image: { src: '/help/help-prepare-workspace.png', alt: 'Prepare workspace showing the 3D build plate and slicer tools', caption: 'Prepare workspace — the AI can position objects, set camera views, slice, and read print stats.' },
+        items: [
+          'List plate objects, read and set position, rotation, and scale.',
+          'Move, duplicate, delete, and reset transforms on plate objects.',
+          'Set camera presets (isometric, top, front, right) and fit the view to the build plate.',
+          'Focus the camera on a specific object by ID.',
+          'Trigger a slice, read slice stats, and detect potential print issues.',
+          'Set preview color mode (by type, speed, flow, width, layer-time, wall quality, or seam).',
+          'Cut an object by an axis-aligned plane or a custom point + normal.',
+          'Read the active printer and material profile.',
+        ],
+      },
+      {
+        heading: 'What the AI can do — 3D Printer workspace',
+        image: { src: '/help/help-printer-workspace.png', alt: '3D Printer workspace showing the printer fleet dashboard', caption: '3D Printer workspace — the AI can connect, monitor temperatures, move axes, and control print jobs.' },
+        items: [
+          'Connect and disconnect a configured printer.',
+          'Read live status: temperatures, axes, fans, active job, and print progress.',
+          'Set tool and bed temperatures (and wait for target).',
+          'Home axes, move to absolute or relative positions.',
+          'Set feed-rate override (print speed percent) and flow-rate override per extruder.',
+          'Control part-cooling fans.',
+          'Pause, resume, and cancel the active print job.',
+          'List files on the printer SD card, upload G-code, and start a print by filename.',
+          'Send raw G-code commands for diagnostics.',
+          'Run named macros stored on the printer.',
+          'Report filament runout sensor state and initiate a filament change.',
+          'Send an emergency stop (M112) — works even when not connected.',
+        ],
+      },
+    ],
+  },
+
+  {
     id: 'shortcuts',
     title: 'Keyboard shortcuts',
     summary: 'A consolidated list of the keys the menus assign in each workspace.',
+    group: 'Reference',
     sections: [
       {
         heading: 'Design — Create',
@@ -593,6 +1034,7 @@ const HELP_TOPICS: HelpTopic[] = [
     id: 'tips',
     title: 'Tips and tricks',
     summary: 'Habits that pay off on real projects.',
+    group: 'Reference',
     sections: [
       {
         heading: 'Modeling',
@@ -626,6 +1068,7 @@ const HELP_TOPICS: HelpTopic[] = [
     id: 'troubleshooting',
     title: 'Troubleshooting',
     summary: 'First-pass fixes when something doesn\'t work.',
+    group: 'Reference',
     sections: [
       {
         heading: 'General',
@@ -688,6 +1131,9 @@ function renderShortcutKeys(keys: string) {
 export function AppHelpModal({ onClose }: { onClose: () => void }) {
   const [activeTopicId, setActiveTopicId] = useState(HELP_TOPICS[0].id);
   const [query, setQuery] = useState('');
+  const [expandedGroups, setExpandedGroups] = useState<Set<string>>(
+    () => new Set(['Design', 'Prepare', '3D Printer', 'Reference']),
+  );
 
   const filteredTopics = useMemo(() => {
     const needle = query.trim().toLowerCase();
@@ -696,9 +1142,12 @@ export function AppHelpModal({ onClose }: { onClose: () => void }) {
       const haystack = [
         topic.title,
         topic.summary,
+        topic.group ?? '',
         ...topic.sections.flatMap((section) => [
           section.heading,
           section.intro ?? '',
+          section.image?.alt ?? '',
+          section.image?.caption ?? '',
           ...(section.items ?? []),
           ...(section.shortcuts ?? []).flatMap((s) => [s.keys, s.action]),
           ...(section.notes ?? []),
@@ -708,7 +1157,35 @@ export function AppHelpModal({ onClose }: { onClose: () => void }) {
     });
   }, [query]);
 
-  const activeTopic = filteredTopics.find((topic) => topic.id === activeTopicId) ?? filteredTopics[0] ?? HELP_TOPICS[0];
+  const groupedNav = useMemo(() => {
+    const result: Array<{ group: string | null; topics: HelpTopic[] }> = [];
+    for (const topic of filteredTopics) {
+      const g = topic.group ?? null;
+      const last = result[result.length - 1];
+      if (last && last.group === g) {
+        last.topics.push(topic);
+      } else {
+        result.push({ group: g, topics: [topic] });
+      }
+    }
+    return result;
+  }, [filteredTopics]);
+
+  const activeTopic = filteredTopics.find((topic) => topic.id === activeTopicId) ?? filteredTopics[0];
+
+  const visibleExpandedGroups = useMemo(() => {
+    if (!query.trim()) return expandedGroups;
+    return new Set(filteredTopics.map((t) => t.group).filter(Boolean) as string[]);
+  }, [expandedGroups, filteredTopics, query]);
+
+  function toggleGroup(group: string) {
+    setExpandedGroups((prev) => {
+      const next = new Set(prev);
+      if (next.has(group)) next.delete(group);
+      else next.add(group);
+      return next;
+    });
+  }
 
   return (
     <div className="app-help-overlay" role="presentation" onMouseDown={onClose}>
@@ -738,28 +1215,69 @@ export function AppHelpModal({ onClose }: { onClose: () => void }) {
 
         <div className="app-help-body">
           <nav className="app-help-nav" aria-label="Help topics">
-            {filteredTopics.map((topic) => (
-              <button
-                key={topic.id}
-                className={`app-help-topic-btn${topic.id === activeTopic.id ? ' active' : ''}`}
-                onClick={() => setActiveTopicId(topic.id)}
-              >
-                <span>{topic.title}</span>
-                <small>{topic.summary}</small>
-              </button>
-            ))}
+            {groupedNav.map(({ group, topics }) =>
+              group === null ? (
+                // Ungrouped topics (Getting started) — always visible
+                <Fragment key="ungrouped">
+                  {topics.map((topic) => (
+                    <button
+                      key={topic.id}
+                      className={`app-help-topic-btn${topic.id === activeTopic?.id ? ' active' : ''}`}
+                      onClick={() => setActiveTopicId(topic.id)}
+                    >
+                      <span>{topic.title}</span>
+                      <small>{topic.summary}</small>
+                    </button>
+                  ))}
+                </Fragment>
+              ) : (
+                // Collapsible group section
+                <div key={group} className="app-help-group">
+                  <button
+                    className={`app-help-group-header${visibleExpandedGroups.has(group) ? ' open' : ''}`}
+                    onClick={() => toggleGroup(group)}
+                    aria-expanded={visibleExpandedGroups.has(group)}
+                  >
+                    <span>{group}</span>
+                    <ChevronDown size={13} className="app-help-group-chevron" />
+                  </button>
+                  {visibleExpandedGroups.has(group) && (
+                    <div className="app-help-group-items">
+                      {topics.map((topic) => (
+                        <button
+                          key={topic.id}
+                          className={`app-help-topic-btn${topic.id === activeTopic?.id ? ' active' : ''}`}
+                          onClick={() => setActiveTopicId(topic.id)}
+                        >
+                          <span>{topic.title}</span>
+                          <small>{topic.summary}</small>
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              ),
+            )}
             {filteredTopics.length === 0 && (
               <div className="app-help-empty">No help topics match that search.</div>
             )}
           </nav>
 
           <article className="app-help-content">
-            <h3>{activeTopic.title}</h3>
-            <p className="app-help-summary">{activeTopic.summary}</p>
-            {activeTopic.sections.map((section) => (
+            {activeTopic ? (
+              <>
+                <h3>{activeTopic.title}</h3>
+                <p className="app-help-summary">{activeTopic.summary}</p>
+                {activeTopic.sections.map((section) => (
               <section key={section.heading} className="app-help-section">
                 <h4>{section.heading}</h4>
                 {section.intro && <p className="app-help-intro">{section.intro}</p>}
+                {section.image && (
+                  <figure className="app-help-figure">
+                    <img src={section.image.src} alt={section.image.alt} className="app-help-img" />
+                    {section.image.caption && <figcaption className="app-help-caption">{section.image.caption}</figcaption>}
+                  </figure>
+                )}
                 {section.items && section.items.length > 0 && (
                   <ul>
                     {section.items.map((item) => (
@@ -793,7 +1311,11 @@ export function AppHelpModal({ onClose }: { onClose: () => void }) {
                   </div>
                 )}
               </section>
-            ))}
+                ))}
+              </>
+            ) : (
+              <div className="app-help-empty">No help content matches that search.</div>
+            )}
           </article>
         </div>
       </div>

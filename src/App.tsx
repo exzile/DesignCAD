@@ -1,3 +1,4 @@
+import { useEffect } from 'react';
 import Toolbar from './components/toolbar/Toolbar';
 import Viewport from './components/viewport/Viewport';
 import Timeline from './components/panels/Timeline';
@@ -10,6 +11,8 @@ import DuetNotifications from './components/printer/DuetNotifications';
 import { useCADStore } from './store/cadStore';
 import ActiveDialog from './app/ActiveDialog';
 import { DevFixtureLoader } from './devFixtures/orangePi3LtsCase';
+import { McpBridgeService } from './services/mcp/McpBridgeService';
+import AiAssistantPanel from './components/ai/AiAssistantPanel';
 import './App.css';
 
 function WorkspaceContent() {
@@ -33,6 +36,11 @@ function WorkspaceContent() {
 export default function App() {
   const workspaceMode = useCADStore((s) => s.workspaceMode);
 
+  useEffect(() => {
+    McpBridgeService.start();
+    return () => McpBridgeService.stop();
+  }, []);
+
   return (
     <div className="app">
       <DevFixtureLoader />
@@ -42,6 +50,7 @@ export default function App() {
       <ExportDialog />
       <ActiveDialog />
       <DuetNotifications />
+      <AiAssistantPanel />
     </div>
   );
 }

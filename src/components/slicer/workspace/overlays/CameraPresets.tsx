@@ -4,6 +4,8 @@ import './CameraPresets.css';
 export type CameraPreset = 'iso' | 'top' | 'front' | 'right';
 
 export const cameraPresetEvent = 'slicer:set-camera-preset';
+export const cameraFitEvent = 'slicer:fit-camera';
+export const cameraFocusObjectEvent = 'slicer:focus-object';
 
 function fire(preset: CameraPreset) {
   window.dispatchEvent(new CustomEvent(cameraPresetEvent, { detail: preset }));

@@ -1,12 +1,13 @@
 import { useState, useRef, useEffect, useCallback, useId } from 'react';
 import {
   Save, FolderOpen, Undo2, Redo2, FileUp, Download,
-  Moon, Sun, Bell, HelpCircle, Settings,
+  Moon, Sun, Bell, HelpCircle, Settings, Bot,
   FilePlus, FileX, ChevronRight, SlidersHorizontal, X,
 } from 'lucide-react';
 import { useCADStore } from '../../store/cadStore';
 import { useComponentStore } from '../../store/componentStore';
 import { useThemeStore } from '../../store/themeStore';
+import { PROVIDER_MODELS, useAiAssistantStore, type AiProvider } from '../../store/aiAssistantStore';
 import {
   openBundle, saveBundleAs, saveBundleSlice,
   useProjectFileStore,
@@ -14,6 +15,7 @@ import {
 import type { BundleSlice } from '../../types/settings-io.types';
 import UpdatePanel from '../updater/UpdatePanel';
 import { AppHelpModal } from '../help/AppHelpModal';
+import McpStatusBadge from '../ai/McpStatusBadge';
 
 import type { RefObject, ChangeEvent } from 'react';
 
@@ -26,6 +28,18 @@ interface QuickAccessBarProps {
 export function QuickAccessBar({ fileInputRef, loadFileInputRef, onImport }: QuickAccessBarProps) {
   const toggleTheme = useThemeStore((s) => s.toggleTheme);
   const theme = useThemeStore((s) => s.theme);
+  const aiPanelOpen = useAiAssistantStore((s) => s.panelOpen);
+  const toggleAiPanel = useAiAssistantStore((s) => s.togglePanel);
+  const aiProvider = useAiAssistantStore((s) => s.provider);
+  const aiModel = useAiAssistantStore((s) => s.model);
+  const aiApiKey = useAiAssistantStore((s) => s.apiKey);
+  const aiUseClaudeCode = useAiAssistantStore((s) => s.useClaudeCode);
+  const aiConfirmDestructive = useAiAssistantStore((s) => s.confirmDestructive);
+  const setAiProvider = useAiAssistantStore((s) => s.setProvider);
+  const setAiModel = useAiAssistantStore((s) => s.setModel);
+  const setAiApiKey = useAiAssistantStore((s) => s.setApiKey);
+  const setAiUseClaudeCode = useAiAssistantStore((s) => s.setUseClaudeCode);
+  const setAiConfirmDestructive = useAiAssistantStore((s) => s.setConfirmDestructive);
 
   const setStatusMessage = useCADStore((s) => s.setStatusMessage);
   const undoStackLength = useCADStore((s) => s.undoStack.length);
@@ -86,6 +100,7 @@ export function QuickAccessBar({ fileInputRef, loadFileInputRef, onImport }: Qui
   const [fileMenuOpen, setFileMenuOpen] = useState(false);
   const [notificationsOpen, setNotificationsOpen] = useState(false);
   const [globalSettingsOpen, setGlobalSettingsOpen] = useState(false);
+  const [globalSettingsTab, setGlobalSettingsTab] = useState<'general' | 'ai'>('general');
   const [helpOpen, setHelpOpen] = useState(false);
   const [hasUpdateAlert, setHasUpdateAlert] = useState(false);
   // null = modal hidden; 'new' / 'close' = modal showing with action-specific copy
@@ -127,11 +142,10 @@ export function QuickAccessBar({ fileInputRef, loadFileInputRef, onImport }: Qui
   const saveAsInputId = useId();
   const fileMenuRef = useRef<HTMLDivElement>(null);
   const notificationsRef = useRef<HTMLDivElement>(null);
-  const globalSettingsRef = useRef<HTMLDivElement>(null);
 
   // Close the file menu when clicking outside
   useEffect(() => {
-    if (!fileMenuOpen && !notificationsOpen && !globalSettingsOpen) return;
+    if (!fileMenuOpen && !notificationsOpen) return;
     const handler = (e: MouseEvent) => {
       const target = e.target as Node;
       if (fileMenuRef.current && !fileMenuRef.current.contains(target)) {
@@ -140,13 +154,19 @@ export function QuickAccessBar({ fileInputRef, loadFileInputRef, onImport }: Qui
       if (notificationsRef.current && !notificationsRef.current.contains(target)) {
         setNotificationsOpen(false);
       }
-      if (globalSettingsRef.current && !globalSettingsRef.current.contains(target)) {
-        setGlobalSettingsOpen(false);
-      }
     };
     document.addEventListener('mousedown', handler);
     return () => document.removeEventListener('mousedown', handler);
-  }, [fileMenuOpen, globalSettingsOpen, notificationsOpen]);
+  }, [fileMenuOpen, notificationsOpen]);
+
+  useEffect(() => {
+    if (!globalSettingsOpen) return;
+    const handler = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setGlobalSettingsOpen(false);
+    };
+    window.addEventListener('keydown', handler);
+    return () => window.removeEventListener('keydown', handler);
+  }, [globalSettingsOpen]);
 
   const closeMenu = () => setFileMenuOpen(false);
 
@@ -178,7 +198,9 @@ export function QuickAccessBar({ fileInputRef, loadFileInputRef, onImport }: Qui
   const toggleAutoSave = () => {
     setAutoSave(v => {
       const next = !v;
-      try { localStorage.setItem('dznd-autosave', String(next)); } catch {}
+      try { localStorage.setItem('dznd-autosave', String(next)); } catch {
+        // Local storage can be unavailable in restricted browser contexts.
+      }
       return next;
     });
   };
@@ -475,6 +497,16 @@ export function QuickAccessBar({ fileInputRef, loadFileInputRef, onImport }: Qui
         </span>
       </div>
       <div className="ribbon-quick-right">
+        <button
+          type="button"
+          className={`quick-ai-toggle${aiPanelOpen ? ' active' : ''}`}
+          onClick={toggleAiPanel}
+          title="Toggle AI Assistant"
+        >
+          <Bot size={13} aria-hidden="true" />
+          <span>AI</span>
+        </button>
+        <McpStatusBadge />
         <button className="ribbon-quick-btn" title="Toggle theme" onClick={toggleTheme}>
           {theme === 'light' ? <Moon size={14} /> : <Sun size={14} />}
         </button>
@@ -501,59 +533,179 @@ export function QuickAccessBar({ fileInputRef, loadFileInputRef, onImport }: Qui
         <button className="ribbon-quick-btn" title="Help" onClick={() => setHelpOpen(true)}>
           <HelpCircle size={14} />
         </button>
-        <div className="quick-popover-root" ref={globalSettingsRef}>
-          <button
-            className="ribbon-quick-btn"
-            title="Global settings"
-            onClick={() => {
-              setGlobalSettingsOpen((value) => !value);
-              setNotificationsOpen(false);
-            }}
-          >
-            <Settings size={14} />
-          </button>
-          {globalSettingsOpen && (
-            <div className="quick-popover quick-settings-popover">
-              <div className="quick-popover-title">Global Settings</div>
-              <button className="quick-popover-action" onClick={toggleTheme}>
-                {theme === 'light' ? <Moon size={14} /> : <Sun size={14} />}
-                <span>{theme === 'light' ? 'Dark theme' : 'Light theme'}</span>
-              </button>
-              <button className="quick-popover-action" onClick={handleLoadSettings}>
-                <FolderOpen size={14} />
-                <span>Load settings</span>
-              </button>
-              <button className="quick-popover-action" onClick={handleSaveSettingsAs}>
-                <Save size={14} />
-                <span>Save settings as</span>
-              </button>
-              {isDesign && (
-                <div className="quick-popover-action" style={{ cursor: 'default' }}>
-                  <Save size={14} style={{ opacity: 0.5 }} />
-                  <span style={{ flex: 1 }}>Auto-save every</span>
-                  <select
-                    className="settings-interval-select"
-                    value={autoSaveInterval}
-                    onChange={(e) => {
-                      const v = Number(e.target.value);
-                      setAutoSaveInterval(v);
-                      try { localStorage.setItem('dznd-autosave-interval', String(v)); } catch {}
-                    }}
-                    onClick={(e) => e.stopPropagation()}
-                  >
-                    <option value={15}>15s</option>
-                    <option value={30}>30s</option>
-                    <option value={60}>1 min</option>
-                    <option value={120}>2 min</option>
-                    <option value={300}>5 min</option>
-                  </select>
-                </div>
-              )}
-            </div>
-          )}
-        </div>
+        <button
+          className="ribbon-quick-btn"
+          title="Global settings"
+          onClick={() => {
+            setGlobalSettingsOpen(true);
+            setGlobalSettingsTab('general');
+            setNotificationsOpen(false);
+          }}
+        >
+          <Settings size={14} />
+        </button>
       </div>
       {helpOpen && <AppHelpModal onClose={() => setHelpOpen(false)} />}
+
+      {globalSettingsOpen && (
+        <div className="global-settings-overlay" onClick={() => setGlobalSettingsOpen(false)}>
+          <div className="global-settings-modal" onClick={(e) => e.stopPropagation()}>
+            <div className="global-settings-header">
+              <div className="global-settings-icon">
+                <Settings size={16} />
+              </div>
+              <div>
+                <div className="global-settings-title">Global Settings</div>
+                <div className="global-settings-subtitle">Application preferences and AI assistant configuration</div>
+              </div>
+              <button
+                type="button"
+                className="global-settings-close"
+                onClick={() => setGlobalSettingsOpen(false)}
+                title="Close settings"
+              >
+                <X size={15} />
+              </button>
+            </div>
+
+            <div className="global-settings-body">
+              <nav className="global-settings-nav" aria-label="Global settings sections">
+                <button
+                  type="button"
+                  className={`global-settings-nav-item ${globalSettingsTab === 'general' ? 'active' : ''}`}
+                  onClick={() => setGlobalSettingsTab('general')}
+                >
+                  <Settings size={15} />
+                  <span>General</span>
+                </button>
+                <button
+                  type="button"
+                  className={`global-settings-nav-item ${globalSettingsTab === 'ai' ? 'active' : ''}`}
+                  onClick={() => setGlobalSettingsTab('ai')}
+                >
+                  <Bot size={15} />
+                  <span>AI Assistant</span>
+                </button>
+              </nav>
+
+              <div className="global-settings-content">
+                {globalSettingsTab === 'general' && (
+                  <section className="global-settings-section">
+                    <div className="global-settings-section-title">General</div>
+                    <div className="global-settings-section-copy">Theme, settings bundles, and design workspace save preferences.</div>
+                    <div className="global-settings-grid">
+                      <button className="global-settings-action" onClick={toggleTheme}>
+                        {theme === 'light' ? <Moon size={15} /> : <Sun size={15} />}
+                        <span>{theme === 'light' ? 'Dark theme' : 'Light theme'}</span>
+                      </button>
+                      <button className="global-settings-action" onClick={handleLoadSettings}>
+                        <FolderOpen size={15} />
+                        <span>Load settings</span>
+                      </button>
+                      <button className="global-settings-action" onClick={handleSaveSettingsAs}>
+                        <Save size={15} />
+                        <span>Save settings as</span>
+                      </button>
+                      {isDesign && (
+                        <label className="global-settings-field inline">
+                          <span>Auto-save interval</span>
+                          <select
+                            className="settings-interval-select"
+                            value={autoSaveInterval}
+                            onChange={(e) => {
+                              const v = Number(e.target.value);
+                              setAutoSaveInterval(v);
+                              try { localStorage.setItem('dznd-autosave-interval', String(v)); } catch {
+                                // Local storage can be unavailable in restricted browser contexts.
+                              }
+                            }}
+                          >
+                            <option value={15}>15s</option>
+                            <option value={30}>30s</option>
+                            <option value={60}>1 min</option>
+                            <option value={120}>2 min</option>
+                            <option value={300}>5 min</option>
+                          </select>
+                        </label>
+                      )}
+                    </div>
+                  </section>
+                )}
+
+                {globalSettingsTab === 'ai' && (
+                  <section className="global-settings-section">
+                    <div className="global-settings-section-title">AI Assistant</div>
+                    <div className="global-settings-section-copy">Choose whether chat uses Claude Code MCP or your own provider API key.</div>
+                    <div className="global-settings-grid">
+                      <div className="global-settings-field inline full">
+                        <span>Use Claude Code MCP</span>
+                        <label className="tp-toggle">
+                          <input
+                            type="checkbox"
+                            checked={aiUseClaudeCode}
+                            onChange={(e) => setAiUseClaudeCode(e.target.checked)}
+                          />
+                          <span className="tp-toggle-track" />
+                        </label>
+                      </div>
+                      {!aiUseClaudeCode && (
+                        <>
+                          <label className="global-settings-field">
+                            <span>Provider</span>
+                            <select
+                              className="settings-wide-select"
+                              value={aiProvider}
+                              onChange={(e) => setAiProvider(e.target.value as AiProvider)}
+                            >
+                              <option value="anthropic">Anthropic</option>
+                              <option value="openai">OpenAI</option>
+                              <option value="openrouter">OpenRouter</option>
+                            </select>
+                          </label>
+                          <label className="global-settings-field">
+                            <span>Model</span>
+                            <select
+                              className="settings-wide-select"
+                              value={aiModel}
+                              onChange={(e) => setAiModel(e.target.value)}
+                            >
+                              {PROVIDER_MODELS[aiProvider].map((modelName) => (
+                                <option key={modelName} value={modelName}>{modelName}</option>
+                              ))}
+                            </select>
+                          </label>
+                          <label className="global-settings-field full">
+                            <span>API key</span>
+                            <input
+                              type="password"
+                              className="settings-api-key"
+                              value={aiApiKey}
+                              onChange={(e) => setAiApiKey(e.target.value)}
+                              placeholder="Stored locally"
+                              autoComplete="off"
+                            />
+                          </label>
+                        </>
+                      )}
+                      <div className="global-settings-field inline full">
+                        <span>Confirm destructive ops</span>
+                        <label className="tp-toggle">
+                          <input
+                            type="checkbox"
+                            checked={aiConfirmDestructive}
+                            onChange={(e) => setAiConfirmDestructive(e.target.checked)}
+                          />
+                          <span className="tp-toggle-track" />
+                        </label>
+                      </div>
+                    </div>
+                  </section>
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* ── Save Design modal ── */}
       {saveAsOpen && (

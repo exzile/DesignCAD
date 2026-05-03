@@ -121,7 +121,7 @@ function ManagePrintersDialog({
   const [deleting, setDeleting] = useState(false);
 
   useEffect(() => {
-    if (!confirmDeleteId) { setClipCount(null); return; }
+    if (!confirmDeleteId) return;
     let cancelled = false;
     countClipsForPrinter(confirmDeleteId).then((n) => { if (!cancelled) setClipCount(n); });
     return () => { cancelled = true; };
@@ -143,6 +143,7 @@ function ManagePrintersDialog({
     await deleteClipsForPrinter(confirmDeleteId);
     await onDelete(confirmDeleteId);
     setDeleting(false);
+    setClipCount(null);
     setConfirmDeleteId(null);
   }, [confirmDeleteId, onDelete]);
 
@@ -187,7 +188,10 @@ function ManagePrintersDialog({
                   title={printers.length <= 1 ? 'Cannot delete last printer' : 'Delete printer'}
                   className="fleet-manage-row__delete"
                   disabled={printers.length <= 1}
-                  onClick={() => setConfirmDeleteId(printer.id)}
+                  onClick={() => {
+                    setClipCount(null);
+                    setConfirmDeleteId(printer.id);
+                  }}
                 >
                   <Trash2 size={13} />
                 </button>
@@ -203,7 +207,15 @@ function ManagePrintersDialog({
         </div>
 
         {confirmDeleteId && deleteTarget && (
-          <div className="fleet-manage-confirm-overlay" onClick={() => !deleting && setConfirmDeleteId(null)}>
+          <div
+            className="fleet-manage-confirm-overlay"
+            onClick={() => {
+              if (!deleting) {
+                setClipCount(null);
+                setConfirmDeleteId(null);
+              }
+            }}
+          >
             <div className="fleet-manage-confirm" onClick={(e) => e.stopPropagation()}>
               <div className="fleet-manage-confirm__icon">
                 <AlertTriangle size={28} />
@@ -225,7 +237,14 @@ function ManagePrintersDialog({
               </ul>
               <p className="fleet-manage-confirm__warning">This action cannot be undone.</p>
               <div className="fleet-manage-confirm__actions">
-                <button type="button" disabled={deleting} onClick={() => setConfirmDeleteId(null)}>
+                <button
+                  type="button"
+                  disabled={deleting}
+                  onClick={() => {
+                    setClipCount(null);
+                    setConfirmDeleteId(null);
+                  }}
+                >
                   Cancel
                 </button>
                 <button type="button" className="fleet-manage-confirm__delete" disabled={deleting} onClick={() => { void confirmDelete(); }}>

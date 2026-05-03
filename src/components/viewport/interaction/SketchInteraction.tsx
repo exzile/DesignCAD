@@ -413,7 +413,7 @@ export default function SketchInteraction() {
       }
     }
     return result;
-  }, [activeSketch, snapEnabled, sketchSnapEnabled, objectSnapEnabled, snapToMidpoint]);
+  }, [activeSketch, snapEnabled, sketchSnapEnabled, objectSnapEnabled, snapToMidpoint, HOVER_MIDPOINT_RADIUS]);
 
   // Raw intersection with the sketch plane — no grid snap applied.
   // Used for object-snap and hover detection so that non-grid-aligned

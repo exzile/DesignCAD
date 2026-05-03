@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { OrbitControls } from '@react-three/drei';
 import { useThree } from '@react-three/fiber';
 import * as THREE from 'three';
-import { cameraPresetEvent, type CameraPreset } from '../overlays/CameraPresets';
+import { cameraPresetEvent, cameraFitEvent, cameraFocusObjectEvent, type CameraPreset } from '../overlays/CameraPresets';
 import { useSlicerStore } from '../../../../store/slicerStore';
 import type { MoveHoverInfo } from '../../../../types/slicer-preview.types';
 import { buildMoveTimeline } from './previewTimeline';
@@ -144,6 +144,72 @@ export function SlicerWorkspaceScene() {
     window.addEventListener(cameraPresetEvent, handler);
     return () => window.removeEventListener(cameraPresetEvent, handler);
   }, [camera, controls, invalidate, bv.x, bv.y, bv.z]);
+
+  // Fit-to-plate: compute the union AABB of all visible objects and frame it.
+  useEffect(() => {
+    const handler = () => {
+      const objects = useSlicerStore.getState().plateObjects.filter((o) => !o.hidden);
+      if (objects.length === 0) return;
+      let minX = Infinity, minY = Infinity, minZ = Infinity;
+      let maxX = -Infinity, maxY = -Infinity, maxZ = -Infinity;
+      for (const obj of objects) {
+        const sx = Math.abs(obj.scale?.x ?? 1);
+        const sy = Math.abs(obj.scale?.y ?? 1);
+        const sz = Math.abs(obj.scale?.z ?? 1);
+        const { min: bmin, max: bmax } = obj.boundingBox;
+        const cx = obj.position.x + ((bmin.x + bmax.x) / 2) * sx;
+        const cy = obj.position.y + ((bmin.y + bmax.y) / 2) * sy;
+        const cz = obj.position.z + ((bmin.z + bmax.z) / 2) * sz;
+        const hx = ((bmax.x - bmin.x) / 2) * sx;
+        const hy = ((bmax.y - bmin.y) / 2) * sy;
+        const hz = ((bmax.z - bmin.z) / 2) * sz;
+        minX = Math.min(minX, cx - hx); maxX = Math.max(maxX, cx + hx);
+        minY = Math.min(minY, cy - hy); maxY = Math.max(maxY, cy + hy);
+        minZ = Math.min(minZ, cz - hz); maxZ = Math.max(maxZ, cz + hz);
+      }
+      const center = new THREE.Vector3((minX + maxX) / 2, (minY + maxY) / 2, (minZ + maxZ) / 2);
+      const span = Math.max(maxX - minX, maxY - minY, maxZ - minZ, 50);
+      const dist = span * 1.8;
+      const pos = center.clone().add(new THREE.Vector3(dist * 0.6, -dist * 0.6, dist * 0.5));
+      camera.position.copy(pos);
+      camera.up.set(0, 0, 1);
+      camera.lookAt(center);
+      if (controls) { controls.target.copy(center); controls.update(); }
+      invalidate();
+    };
+    window.addEventListener(cameraFitEvent, handler);
+    return () => window.removeEventListener(cameraFitEvent, handler);
+  }, [camera, controls, invalidate]);
+
+  // Focus-object: frame a single plate object by ID.
+  useEffect(() => {
+    const handler = (ev: Event) => {
+      const { id } = (ev as CustomEvent<{ id: string }>).detail;
+      const obj = useSlicerStore.getState().plateObjects.find((o) => o.id === id);
+      if (!obj) return;
+      const sx = Math.abs(obj.scale?.x ?? 1);
+      const sy = Math.abs(obj.scale?.y ?? 1);
+      const sz = Math.abs(obj.scale?.z ?? 1);
+      const { min: bmin, max: bmax } = obj.boundingBox;
+      const cx = obj.position.x + ((bmin.x + bmax.x) / 2) * sx;
+      const cy = obj.position.y + ((bmin.y + bmax.y) / 2) * sy;
+      const cz = obj.position.z + ((bmin.z + bmax.z) / 2) * sz;
+      const hx = ((bmax.x - bmin.x) / 2) * sx;
+      const hy = ((bmax.y - bmin.y) / 2) * sy;
+      const hz = ((bmax.z - bmin.z) / 2) * sz;
+      const center = new THREE.Vector3(cx, cy, cz);
+      const span = Math.max(hx, hy, hz) * 2;
+      const dist = Math.max(span, 30) * 2.5;
+      const pos = center.clone().add(new THREE.Vector3(dist * 0.6, -dist * 0.6, dist * 0.5));
+      camera.position.copy(pos);
+      camera.up.set(0, 0, 1);
+      camera.lookAt(center);
+      if (controls) { controls.target.copy(center); controls.update(); }
+      invalidate();
+    };
+    window.addEventListener(cameraFocusObjectEvent, handler);
+    return () => window.removeEventListener(cameraFocusObjectEvent, handler);
+  }, [camera, controls, invalidate]);
 
   // Build the full move timeline once per slice result. Shared by
   // NozzleSimulator and the sim-state lookup below so we pay the O(n) build

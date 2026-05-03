@@ -1,10 +1,11 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   Send, Play, Pause, X, Clapperboard,
-  SkipBack, RotateCcw, Gauge, Scissors, Magnet, Download,
+  SkipBack, RotateCcw, Gauge, Scissors, Magnet, Download, Bot,
 } from 'lucide-react';
 import { useSlicerStore } from '../../../../store/slicerStore';
 import { usePrinterStore } from '../../../../store/printerStore';
+import { useAiAssistantStore } from '../../../../store/aiAssistantStore';
 import { validatePlate } from '../../../../store/slicer/plateValidation';
 import { formatSlicerLength, formatSlicerTime } from './format';
 import './SlicerWorkspaceBottomBar.css';
@@ -29,6 +30,8 @@ export function SlicerWorkspaceBottomBar() {
   const sectionZ = useSlicerStore((s) => s.previewSectionZ);
   const setSectionEnabled = useSlicerStore((s) => s.setPreviewSectionEnabled);
   const setSectionZ = useSlicerStore((s) => s.setPreviewSectionZ);
+  const aiPanelOpen = useAiAssistantStore((s) => s.panelOpen);
+  const toggleAiPanel = useAiAssistantStore((s) => s.togglePanel);
 
   const simEnabled = useSlicerStore((s) => s.previewSimEnabled);
   const simPlaying = useSlicerStore((s) => s.previewSimPlaying);
@@ -293,6 +296,15 @@ export function SlicerWorkspaceBottomBar() {
           )}
         </div>
       )}
+
+      <button
+        type="button"
+        className={`slicer-bottom-bar__btn slicer-bottom-bar__btn--ai${aiPanelOpen ? ' is-active' : ''}`}
+        onClick={toggleAiPanel}
+        title="Toggle AI Assistant"
+      >
+        <Bot size={14} /> AI
+      </button>
     </div>
   );
 }

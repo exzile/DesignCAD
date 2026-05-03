@@ -22,6 +22,7 @@ DesignCAD brings a professional CAD-style workflow into a web app that can run l
 - [Feature Highlights](#feature-highlights)
 - [Tech Stack](#tech-stack)
 - [Quick Start](#quick-start)
+- [Use Your Own Claude With DesignCAD](#use-your-own-claude-with-designcad)
 - [Development Scripts](#development-scripts)
 - [Project Layout](#project-layout)
 - [Production Builds](#production-builds)
@@ -121,6 +122,20 @@ Open:
 ```text
 http://localhost:5173
 ```
+
+## Use Your Own Claude With DesignCAD
+
+DesignCAD can expose the active browser session as a local MCP server so users can drive CAD actions with their own assistant subscription. In development, start the app with `npm run dev`, open `http://localhost:5173`, then use the AI MCP status badge in the status bar to copy the pairing command:
+
+```text
+claude mcp add designcad http://localhost:5174/mcp?token=...
+```
+
+The browser tab must stay open because tool calls are relayed into the running DesignCAD session. The MCP server is localhost-only, protected by a pairing token, rate-limited per tool, and includes an activity log in the status badge. Rotate the token from the badge if a pairing line is shared accidentally.
+
+The MCP surface includes document inspection, primitive creation, sketches, common feature operations, booleans, transforms, exports, viewport snapshots, and read-only resources. See [docs/ai-mcp-tools.md](docs/ai-mcp-tools.md) for the tool reference and [docs/ai-examples.md](docs/ai-examples.md) for sample assistant transcripts.
+
+An optional BYOK in-app chat panel is planned as a thin client over the same MCP tool surface for users who prefer Anthropic, OpenAI, or OpenRouter API keys inside the app. API keys should remain per-installation secrets and should only be sent to the selected provider.
 
 ## Development Scripts
 
