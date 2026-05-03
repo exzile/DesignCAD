@@ -389,12 +389,26 @@ export interface ConsoleEntry {
   content: string;
 }
 
+// Transport — how the app reaches the controller board.
+//   'network' = HTTP/WS to a Duet/SBC/Klipper/Marlin host
+//   'usb'     = Web Serial direct to a USB-connected board
+export type DuetTransport = 'network' | 'usb';
+
 // Duet connection config
 export interface DuetConfig {
   hostname: string;
   password: string;
   mode: DuetMode;
   boardType?: PrinterBoardType;
+
+  // USB / Web Serial fields. Optional and only meaningful when transport='usb'.
+  // serialPortLabel is a human-readable identifier; serialVendorId/ProductId
+  // are used to re-match a previously-granted port from navigator.serial.getPorts().
+  transport?: DuetTransport;
+  serialBaudRate?: number;
+  serialPortLabel?: string;
+  serialVendorId?: number;
+  serialProductId?: number;
 }
 
 // Filament monitor (RRF `sensors.filamentMonitors[]`)

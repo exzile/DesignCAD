@@ -6,7 +6,7 @@ import { FirmwareSection, type AutoUpdateState, type PanelDueFlashed, type Panel
 import { PanelDueSection } from './firmwareSections';
 import type { DuetPrefs } from '../../../utils/duetPrefs';
 import type { ImportResult } from '../../../utils/settingsExport';
-import type { DuetAxis, DuetBoard, PrinterBoardType } from '../../../types/duet';
+import type { DuetAxis, DuetBoard, DuetTransport, PrinterBoardType } from '../../../types/duet';
 
 export type DuetSettingsTabKey =
   | 'connection'
@@ -27,7 +27,16 @@ export function SettingsTabContent(props: {
   boardType: PrinterBoardType;
   board: DuetBoard | undefined;
   canConnect: boolean;
-  config: { hostname: string; password?: string; mode?: 'standalone' | 'sbc' };
+  config: {
+    hostname: string;
+    password?: string;
+    mode?: 'standalone' | 'sbc';
+    transport?: DuetTransport;
+    serialBaudRate?: number;
+    serialPortLabel?: string;
+    serialVendorId?: number;
+    serialProductId?: number;
+  };
   connected: boolean;
   connecting: boolean;
   downloadSettings: typeof import('../../../utils/settingsExport').downloadSettings;
@@ -70,6 +79,13 @@ export function SettingsTabContent(props: {
   prefs: DuetPrefs;
   setAutoUpdate: React.Dispatch<React.SetStateAction<{ step: AutoUpdateState['step']; progress: number; assetName?: string; error?: string }>>;
   setBoardType: (value: PrinterBoardType) => void;
+  setConfigPatch: (patch: {
+    transport?: DuetTransport;
+    serialBaudRate?: number;
+    serialPortLabel?: string;
+    serialVendorId?: number;
+    serialProductId?: number;
+  }) => void;
   setHostname: React.Dispatch<React.SetStateAction<string>>;
   setMode: React.Dispatch<React.SetStateAction<'standalone' | 'sbc'>>;
   setPanelDueAsset: React.Dispatch<React.SetStateAction<GitHubAsset | null>>;
@@ -94,7 +110,7 @@ export function SettingsTabContent(props: {
     handleTest, handleUpdateDwcOnly, hostname, iapFile, iapInputRef,
     iapStatus, importInputRef, importResult, importing, loadPanelDueInfo, mode, panelDueAsset, panelDueCheck,
     panelDueFlashed, panelDueInfo, panelDueLogRef, panelDueUpdate, password, patchPrefs, prefs,
-    setAutoUpdate, setBoardType, setHostname, setMode, setPanelDueAsset, setPanelDueUpdate, setPassword,
+    setAutoUpdate, setBoardType, setConfigPatch, setHostname, setMode, setPanelDueAsset, setPanelDueUpdate, setPassword,
     setShowPanelDueNotes, setShowReleaseNotes, showPanelDueNotes, showReleaseNotes, tab, testResult,
     testing, updateCheck, uploadProgress, uploading,
   } = props;
@@ -211,6 +227,7 @@ export function SettingsTabContent(props: {
           prefs={prefs}
           patchPrefs={patchPrefs}
           setBoardType={setBoardType}
+          setConfig={setConfigPatch}
           setHostname={setHostname}
           setMode={setMode}
           setPassword={setPassword}

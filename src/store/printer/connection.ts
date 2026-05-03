@@ -4,7 +4,8 @@ import type { DuetConfig } from '../../types/duet';
 export async function testDuetConnection(
   config: DuetConfig,
 ): Promise<{ success: boolean; firmwareVersion?: string; error?: string }> {
-  if (!config.hostname) {
+  const isUsb = config.transport === 'usb';
+  if (!isUsb && !config.hostname) {
     return { success: false, error: 'No hostname configured' };
   }
 

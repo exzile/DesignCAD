@@ -5,6 +5,7 @@ import {
   Info,
   Loader2,
   Save,
+  Usb,
   Wifi,
   WifiOff,
 } from 'lucide-react';
@@ -18,9 +19,12 @@ import type {
   TemperatureUnit,
   Units,
 } from '../../../utils/duetPrefs';
-import type { PrinterBoardType } from '../../../types/duet';
+import type { DuetTransport, PrinterBoardType } from '../../../types/duet';
 import { cameraDisplayUrl, normalizeCameraStreamUrl } from '../../../utils/cameraStreamUrl';
+import { isWebSerialSupported, requestSerialPort } from '../../../services/usb/webSerial';
 import { SettingRow, ToggleRow } from './common';
+
+const COMMON_BAUD_RATES = [9600, 19200, 38400, 57600, 115200, 230400, 250000, 500000, 1000000];
 
 interface TestResultState {
   success: boolean;
@@ -41,7 +45,14 @@ const BOARD_TYPE_OPTIONS: { value: PrinterBoardType; label: string; hint: string
 interface ConnectionSectionProps {
   boardType: PrinterBoardType;
   canConnect: boolean;
-  config: { hostname: string };
+  config: {
+    hostname: string;
+    transport?: DuetTransport;
+    serialBaudRate?: number;
+    serialPortLabel?: string;
+    serialVendorId?: number;
+    serialProductId?: number;
+  };
   connected: boolean;
   connecting: boolean;
   error: string | null;
@@ -54,12 +65,24 @@ interface ConnectionSectionProps {
   prefs: DuetPrefs;
   patchPrefs: (patch: Partial<DuetPrefs>) => void;
   setBoardType: (value: PrinterBoardType) => void;
+  setConfig: (patch: {
+    transport?: DuetTransport;
+    serialBaudRate?: number;
+    serialPortLabel?: string;
+    serialVendorId?: number;
+    serialProductId?: number;
+  }) => void;
   setHostname: (value: string) => void;
   setMode: (value: 'standalone' | 'sbc') => void;
   setPassword: (value: string) => void;
   testResult: TestResultState | null;
   testing: boolean;
 }
+
+const TRANSPORT_OPTIONS: { value: DuetTransport; label: string; Icon: typeof Wifi; hint: string }[] = [
+  { value: 'network', label: 'Network', Icon: Wifi, hint: 'Connect over Wi-Fi or Ethernet via the board\'s HTTP API.' },
+  { value: 'usb',     label: 'USB',     Icon: Usb,  hint: 'Connect a USB-attached printer board through Web Serial (Chrome / Edge).' },
+];
 
 export function ConnectionSection({
   boardType,
@@ -77,6 +100,7 @@ export function ConnectionSection({
   prefs,
   patchPrefs,
   setBoardType,
+  setConfig,
   setHostname,
   setMode,
   setPassword,
@@ -84,9 +108,58 @@ export function ConnectionSection({
   testing,
 }: ConnectionSectionProps) {
   const isDuet = boardType === 'duet';
+  const transport: DuetTransport = config.transport ?? 'network';
+  const isUsb = transport === 'usb';
+  const baudRate = config.serialBaudRate ?? 115200;
+  const portLabel = config.serialPortLabel ?? '';
+  const webSerialOk = isWebSerialSupported();
+  const [serialPickError, setSerialPickError] = useState<string | null>(null);
+
+  const handleSelectSerialPort = async () => {
+    setSerialPickError(null);
+    try {
+      const { info } = await requestSerialPort();
+      setConfig({
+        serialPortLabel: info.label,
+        serialVendorId: info.vendorId,
+        serialProductId: info.productId,
+      });
+    } catch (err) {
+      const msg = (err as Error).message || 'Could not request a serial port.';
+      // User cancellation is a NotFoundError; don't treat it as a failure.
+      if (!/no port selected|user cancelled/i.test(msg)) {
+        setSerialPickError(msg);
+      }
+    }
+  };
+
+  const handleClearSerialPort = () => {
+    setSerialPickError(null);
+    setConfig({ serialPortLabel: '', serialVendorId: undefined, serialProductId: undefined });
+  };
+
   return (
     <>
       <div className="duet-settings__page-title">Connection</div>
+
+      <SettingRow
+        label="Connection Type"
+        hint={TRANSPORT_OPTIONS.find((o) => o.value === transport)?.hint ?? ''}
+        control={
+          <div className="duet-settings__mode-selector">
+            {TRANSPORT_OPTIONS.map(({ value, label, Icon }) => (
+              <button
+                key={value}
+                className={`duet-settings__mode-btn${transport === value ? ' is-active' : ''}`}
+                onClick={() => setConfig({ transport: value })}
+                disabled={connected}
+              >
+                <Icon size={13} /> {label}
+              </button>
+            ))}
+          </div>
+        }
+      />
 
       <SettingRow
         label="Board Type"
@@ -109,93 +182,194 @@ export function ConnectionSection({
 
       {connected ? (
         <div className="duet-settings__banner duet-settings__banner--success">
-          <Wifi size={16} /> Connected to {BOARD_TYPE_OPTIONS.find((o) => o.value === boardType)?.label ?? 'printer'} at {config.hostname}
+          {isUsb ? <Usb size={16} /> : <Wifi size={16} />}
+          {isUsb
+            ? <span>Connected via USB ({portLabel || 'serial port'}) @ {baudRate} baud</span>
+            : <span>Connected to {BOARD_TYPE_OPTIONS.find((o) => o.value === boardType)?.label ?? 'printer'} at {config.hostname}</span>
+          }
         </div>
       ) : (
         <div className="duet-settings__banner duet-settings__banner--info">
-          <Info size={16} /> {isDuet ? 'Connect to your Duet3D board via its REST API' : `Connect to your ${BOARD_TYPE_OPTIONS.find((o) => o.value === boardType)?.label ?? 'printer'}`}
+          <Info size={16} />
+          {isUsb
+            ? 'Pick a USB serial port your printer is plugged into and choose a baud rate.'
+            : isDuet ? 'Connect to your Duet3D board via its REST API'
+                     : `Connect to your ${BOARD_TYPE_OPTIONS.find((o) => o.value === boardType)?.label ?? 'printer'}`}
         </div>
       )}
 
-      <SettingRow
-        label="Hostname / IP Address"
-        hint={isDuet ? 'Enter the IP address or hostname of your Duet3D board (without http://)' : 'Enter the IP address or hostname of your printer (without http://)'}
-        control={
-          <input
-            className="duet-settings__input"
-            type="text"
-            value={hostname}
-            onChange={(event) => setHostname(event.target.value)}
-            placeholder="192.168.1.100 or myprinter.local"
-            disabled={connected}
-          />
-        }
-      />
-
-      <SettingRow
-        label="Board Password (optional)"
-        hint={isDuet ? 'Only required if your board has a password set in config.g (M551)' : 'Only required if your printer interface is password-protected'}
-        control={
-          <input
-            className="duet-settings__input"
-            type="password"
-            value={password}
-            onChange={(event) => setPassword(event.target.value)}
-            placeholder="Leave blank if no password is set"
-            disabled={connected}
-          />
-        }
-      />
-
-      {isDuet && (
-        <SettingRow
-          label="Connection Mode"
-          hint={
-            mode === 'standalone'
-              ? 'Connect directly to the Duet board via its built-in WiFi/Ethernet.'
-              : 'Connect via a Single Board Computer running DuetSoftwareFramework.'
-          }
-          control={
-            <div className="duet-settings__mode-selector">
-              <button className={`duet-settings__mode-btn${mode === 'standalone' ? ' is-active' : ''}`} onClick={() => setMode('standalone')} disabled={connected}>
-                Standalone
-              </button>
-              <button className={`duet-settings__mode-btn${mode === 'sbc' ? ' is-active' : ''}`} onClick={() => setMode('sbc')} disabled={connected}>
-                SBC (Raspberry Pi)
-              </button>
+      {isUsb && !webSerialOk && (
+        <div className="duet-settings__banner duet-settings__banner--warning">
+          <AlertCircle size={16} />
+          <div>
+            <div className="duet-settings__banner-heading">Web Serial unavailable</div>
+            <div className="duet-settings__banner-detail">
+              This browser doesn't expose <code>navigator.serial</code>. USB connections work in Chrome, Edge, and Opera over HTTPS or localhost.
             </div>
-          }
-        />
+          </div>
+        </div>
+      )}
+
+      {!isUsb && (
+        <>
+          <SettingRow
+            label="Hostname / IP Address"
+            hint={isDuet ? 'Enter the IP address or hostname of your Duet3D board (without http://)' : 'Enter the IP address or hostname of your printer (without http://)'}
+            control={
+              <input
+                className="duet-settings__input"
+                type="text"
+                value={hostname}
+                onChange={(event) => setHostname(event.target.value)}
+                placeholder="192.168.1.100 or myprinter.local"
+                disabled={connected}
+              />
+            }
+          />
+
+          <SettingRow
+            label="Board Password (optional)"
+            hint={isDuet ? 'Only required if your board has a password set in config.g (M551)' : 'Only required if your printer interface is password-protected'}
+            control={
+              <input
+                className="duet-settings__input"
+                type="password"
+                value={password}
+                onChange={(event) => setPassword(event.target.value)}
+                placeholder="Leave blank if no password is set"
+                disabled={connected}
+              />
+            }
+          />
+
+          {isDuet && (
+            <SettingRow
+              label="Connection Mode"
+              hint={
+                mode === 'standalone'
+                  ? 'Connect directly to the Duet board via its built-in WiFi/Ethernet.'
+                  : 'Connect via a Single Board Computer running DuetSoftwareFramework.'
+              }
+              control={
+                <div className="duet-settings__mode-selector">
+                  <button className={`duet-settings__mode-btn${mode === 'standalone' ? ' is-active' : ''}`} onClick={() => setMode('standalone')} disabled={connected}>
+                    Standalone
+                  </button>
+                  <button className={`duet-settings__mode-btn${mode === 'sbc' ? ' is-active' : ''}`} onClick={() => setMode('sbc')} disabled={connected}>
+                    SBC (Raspberry Pi)
+                  </button>
+                </div>
+              }
+            />
+          )}
+        </>
+      )}
+
+      {isUsb && (
+        <div className="duet-settings__section">
+          <div className="duet-settings__section-title">USB Serial Port</div>
+
+          <SettingRow
+            label="Serial Port"
+            hint={portLabel
+              ? 'A USB device has been authorised for this printer. The same port will be re-used on connect.'
+              : 'No port has been picked yet. Click below to pick the USB device your printer is on. Browsers only expose ports the user explicitly grants.'}
+            control={
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                <code className="duet-settings__mono" style={{ flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                  {portLabel || 'No port selected'}
+                </code>
+                <button
+                  className={`duet-settings__btn duet-settings__btn--secondary${connected || !webSerialOk ? ' duet-settings__btn--disabled' : ''}`}
+                  onClick={handleSelectSerialPort}
+                  disabled={connected || !webSerialOk}
+                >
+                  <Usb size={14} /> {portLabel ? 'Change Port' : 'Select USB Port'}
+                </button>
+                {portLabel && !connected && (
+                  <button
+                    className="duet-settings__btn duet-settings__btn--secondary"
+                    onClick={handleClearSerialPort}
+                  >
+                    Clear
+                  </button>
+                )}
+              </div>
+            }
+          />
+
+          <SettingRow
+            label="Baud Rate"
+            hint="Match the baud configured in your firmware. Marlin defaults to 115200 or 250000; RepRapFirmware uses 115200."
+            control={
+              <select
+                className="duet-settings__select"
+                value={baudRate}
+                onChange={(event) => setConfig({ serialBaudRate: Number(event.target.value) })}
+                disabled={connected}
+              >
+                {COMMON_BAUD_RATES.map((rate) => (
+                  <option key={rate} value={rate}>{rate.toLocaleString()} baud</option>
+                ))}
+              </select>
+            }
+          />
+
+          {serialPickError && (
+            <div className="duet-settings__banner duet-settings__banner--error">
+              <AlertCircle size={16} /> {serialPickError}
+            </div>
+          )}
+        </div>
       )}
 
       <div className="duet-settings__btn-row">
-        <button className={`duet-settings__btn duet-settings__btn--secondary${testing || connected ? ' duet-settings__btn--disabled' : ''}`} onClick={handleTest} disabled={testing || connected || !hostname.trim()}>
-          {testing ? (
+        {(() => {
+          const usbReady = isUsb && webSerialOk && !!portLabel;
+          const networkReady = !isUsb && hostname.trim().length > 0;
+          const ready = usbReady || networkReady;
+          const testDisabled = testing || connected || !ready;
+          const connectDisabled = !ready || (isUsb ? connecting : !canConnect);
+          return (
             <>
-              <Loader2 size={14} className="spin" /> Testing...
-            </>
-          ) : (
-            'Test Connection'
-          )}
-        </button>
+              <button
+                className={`duet-settings__btn duet-settings__btn--secondary${testDisabled ? ' duet-settings__btn--disabled' : ''}`}
+                onClick={handleTest}
+                disabled={testDisabled}
+              >
+                {testing ? (
+                  <>
+                    <Loader2 size={14} className="spin" /> Testing...
+                  </>
+                ) : (
+                  'Test Connection'
+                )}
+              </button>
 
-        {connected ? (
-          <button className="duet-settings__btn duet-settings__btn--danger" onClick={handleDisconnect}>
-            <WifiOff size={14} /> Disconnect
-          </button>
-        ) : (
-          <button className={`duet-settings__btn duet-settings__btn--primary${!canConnect ? ' duet-settings__btn--disabled' : ''}`} onClick={handleConnect} disabled={!canConnect}>
-            {connecting ? (
-              <>
-                <Loader2 size={14} className="spin" /> Connecting...
-              </>
-            ) : (
-              <>
-                <Wifi size={14} /> Connect
-              </>
-            )}
-          </button>
-        )}
+              {connected ? (
+                <button className="duet-settings__btn duet-settings__btn--danger" onClick={handleDisconnect}>
+                  <WifiOff size={14} /> Disconnect
+                </button>
+              ) : (
+                <button
+                  className={`duet-settings__btn duet-settings__btn--primary${connectDisabled ? ' duet-settings__btn--disabled' : ''}`}
+                  onClick={handleConnect}
+                  disabled={connectDisabled}
+                >
+                  {connecting ? (
+                    <>
+                      <Loader2 size={14} className="spin" /> Connecting...
+                    </>
+                  ) : (
+                    <>
+                      {isUsb ? <Usb size={14} /> : <Wifi size={14} />} Connect
+                    </>
+                  )}
+                </button>
+              )}
+            </>
+          );
+        })()}
       </div>
 
       {testResult && (

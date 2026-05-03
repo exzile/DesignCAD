@@ -1,0 +1,573 @@
+/* =============================================================================
+   DuetSettings — visual polish layer
+   Adds gradients, animations, transitions, and modernized form/nav styling
+   on top of the BEM base in 01-shell.css. Keeps theme-variable based colours.
+   ============================================================================= */
+
+/* -- Animations ------------------------------------------------------------- */
+@keyframes duet-spin {
+  to { transform: rotate(360deg); }
+}
+
+@keyframes duet-fade-up {
+  from { opacity: 0; transform: translateY(8px); }
+  to   { opacity: 1; transform: translateY(0);    }
+}
+
+@keyframes duet-fade-in {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+
+@keyframes duet-slide-in {
+  from { opacity: 0; transform: translateX(-12px); }
+  to   { opacity: 1; transform: translateX(0);     }
+}
+
+@keyframes duet-pulse-dot {
+  0%,100% { box-shadow: 0 0 0 0 rgba(34,197,94,0.55); }
+  50%     { box-shadow: 0 0 0 6px rgba(34,197,94,0);   }
+}
+
+@keyframes duet-shimmer {
+  0%   { background-position: -200% 0; }
+  100% { background-position:  200% 0; }
+}
+
+/* Global spinner (Loader2 icons in connection / camera tabs use className="spin") */
+.duet-settings__page .spin,
+.duet-settings__page svg.spin {
+  animation: duet-spin 0.85s linear infinite;
+  transform-origin: center;
+}
+
+/* -- Page shell ------------------------------------------------------------- */
+.duet-settings__page {
+  background:
+    radial-gradient(1100px 600px at 12% -10%, rgba(120,130,240,0.07), transparent 55%),
+    radial-gradient(900px 500px at 110% 110%, rgba(70,190,180,0.05), transparent 60%),
+    var(--bg-panel);
+}
+
+/* -- Nav sidebar ------------------------------------------------------------ */
+.duet-settings__nav {
+  width: 210px;
+  padding: 10px 8px;
+  gap: 2px;
+  background:
+    linear-gradient(180deg, rgba(120,130,240,0.04), transparent 220px),
+    var(--bg-panel);
+  border-right: 1px solid var(--border);
+}
+
+.duet-settings__nav-item {
+  position: relative;
+  border-radius: 8px;
+  border-left: none;
+  padding: 9px 12px;
+  margin: 0;
+  gap: 11px;
+  transition:
+    background-color 0.18s ease,
+    color 0.18s ease,
+    transform 0.18s ease,
+    box-shadow 0.18s ease;
+  overflow: hidden;
+}
+
+.duet-settings__nav-item > svg {
+  flex-shrink: 0;
+  width: 16px;
+  height: 16px;
+  padding: 4px;
+  box-sizing: content-box;
+  border-radius: 6px;
+  background: rgba(255,255,255,0.04);
+  border: 1px solid rgba(255,255,255,0.05);
+  color: var(--text-muted);
+  transition:
+    background 0.2s ease,
+    color 0.2s ease,
+    border-color 0.2s ease,
+    transform 0.2s ease;
+}
+
+.duet-settings__nav-item:hover {
+  background: rgba(120,130,240,0.08);
+  color: var(--text-primary);
+  transform: translateX(2px);
+}
+
+.duet-settings__nav-item:hover > svg {
+  background: rgba(120,130,240,0.18);
+  border-color: rgba(120,130,240,0.35);
+  color: var(--accent);
+  transform: scale(1.05);
+}
+
+.duet-settings__nav-item.is-active {
+  background: linear-gradient(135deg, rgba(120,130,240,0.20), rgba(120,130,240,0.06));
+  color: var(--text-primary);
+  border-left: none;
+  box-shadow: inset 0 0 0 1px rgba(120,130,240,0.25);
+}
+
+.duet-settings__nav-item.is-active::before {
+  content: '';
+  position: absolute;
+  left: 4px;
+  top: 18%;
+  bottom: 18%;
+  width: 3px;
+  border-radius: 999px;
+  background: var(--accent);
+  box-shadow: 0 0 10px rgba(120,130,240,0.85);
+  animation: duet-fade-in 0.25s ease;
+}
+
+.duet-settings__nav-item.is-active > svg {
+  background: linear-gradient(135deg, rgba(120,130,240,0.45), rgba(120,130,240,0.18));
+  border-color: rgba(120,130,240,0.55);
+  color: #fff;
+}
+
+.duet-settings__nav-back {
+  margin: 0 0 8px 0;
+  padding: 8px 12px;
+  border-radius: 8px;
+  border-bottom: none;
+  font-size: 12px;
+  background: transparent;
+  border: 1px dashed transparent;
+  transition: background 0.18s ease, color 0.18s ease, border-color 0.18s ease, transform 0.18s ease;
+}
+
+.duet-settings__nav-back > svg {
+  background: transparent;
+  border-color: transparent;
+  padding: 0;
+  color: inherit;
+}
+
+.duet-settings__nav-back:hover {
+  color: var(--accent);
+  background: rgba(120,130,240,0.07);
+  border-color: rgba(120,130,240,0.35);
+  transform: translateX(-2px);
+}
+
+.duet-settings__nav-back:hover > svg {
+  color: var(--accent);
+}
+
+/* -- Body / content area ---------------------------------------------------- */
+.duet-settings__body {
+  padding: 18px 24px 24px;
+  gap: 14px;
+  scroll-behavior: smooth;
+}
+
+/* Per-tab container: each tab content fades up when it mounts */
+.duet-settings__tab-pane {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  animation: duet-fade-up 0.28s ease both;
+  min-width: 0;
+}
+
+/* -- Page title (now a small hero row) -------------------------------------- */
+.duet-settings__page-title {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 18px;
+  font-weight: 700;
+  letter-spacing: 0.2px;
+  margin: 0 0 4px 0;
+  padding-bottom: 12px;
+  border-bottom: 1px solid var(--border);
+  color: var(--text-primary);
+}
+
+.duet-settings__page-title::before {
+  content: '';
+  width: 4px;
+  height: 22px;
+  border-radius: 2px;
+  background: linear-gradient(180deg, var(--accent), rgba(120,130,240,0.4));
+  box-shadow: 0 0 8px rgba(120,130,240,0.4);
+}
+
+/* -- Form group ------------------------------------------------------------- */
+.duet-settings__form-group {
+  gap: 6px;
+  animation: duet-fade-up 0.32s ease both;
+}
+
+.duet-settings__label {
+  font-size: 11px;
+  letter-spacing: 0.6px;
+  color: var(--text-muted);
+}
+
+/* -- Inputs / selects ------------------------------------------------------- */
+.duet-settings__input,
+.duet-settings__select {
+  padding: 9px 12px;
+  border-radius: 8px;
+  background: var(--bg-input);
+  border: 1px solid var(--border);
+  transition:
+    border-color 0.18s ease,
+    box-shadow 0.18s ease,
+    background-color 0.18s ease;
+}
+
+.duet-settings__input:hover:not(:disabled),
+.duet-settings__select:hover:not(:disabled) {
+  border-color: rgba(120,130,240,0.45);
+}
+
+.duet-settings__input:focus,
+.duet-settings__select:focus {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px rgba(120,130,240,0.18);
+  background: var(--bg-input);
+}
+
+.duet-settings__input:disabled,
+.duet-settings__select:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.duet-settings__select {
+  appearance: none;
+  -webkit-appearance: none;
+  background-image:
+    linear-gradient(45deg, transparent 50%, var(--text-muted) 50%),
+    linear-gradient(135deg, var(--text-muted) 50%, transparent 50%);
+  background-position:
+    calc(100% - 16px) 50%,
+    calc(100% - 11px) 50%;
+  background-size: 5px 5px, 5px 5px;
+  background-repeat: no-repeat;
+  padding-right: 30px;
+}
+
+/* -- Mode selector (tab-style buttons) -------------------------------------- */
+.duet-settings__mode-selector {
+  border-radius: 8px;
+  background: var(--bg-input);
+  padding: 3px;
+  gap: 2px;
+  border: 1px solid var(--border);
+}
+
+.duet-settings__mode-btn {
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text-muted);
+  padding: 7px 12px;
+  transition:
+    background 0.2s ease,
+    color 0.2s ease,
+    transform 0.18s ease,
+    box-shadow 0.2s ease;
+}
+
+.duet-settings__mode-btn:hover:not(:disabled):not(.is-active) {
+  color: var(--text-primary);
+  background: rgba(255,255,255,0.04);
+}
+
+.duet-settings__mode-btn.is-active {
+  background: linear-gradient(135deg, var(--accent), rgba(120,130,240,0.75));
+  color: #fff;
+  box-shadow: 0 4px 12px rgba(120,130,240,0.25);
+  transform: translateY(-1px);
+}
+
+.duet-settings__mode-btn:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+/* -- Buttons ---------------------------------------------------------------- */
+.duet-settings__btn {
+  position: relative;
+  padding: 9px 16px;
+  border-radius: 8px;
+  font-size: 13px;
+  letter-spacing: 0.2px;
+  transition:
+    background 0.2s ease,
+    border-color 0.2s ease,
+    color 0.2s ease,
+    transform 0.18s ease,
+    box-shadow 0.2s ease,
+    opacity 0.2s ease;
+  will-change: transform;
+}
+
+.duet-settings__btn:not(.duet-settings__btn--disabled):hover {
+  transform: translateY(-1px);
+}
+
+.duet-settings__btn:not(.duet-settings__btn--disabled):active {
+  transform: translateY(0);
+}
+
+.duet-settings__btn--primary {
+  background: linear-gradient(135deg, var(--accent), rgba(120,130,240,0.78));
+  box-shadow: 0 4px 12px rgba(120,130,240,0.22);
+}
+
+.duet-settings__btn--primary:not(.duet-settings__btn--disabled):hover {
+  box-shadow: 0 8px 18px rgba(120,130,240,0.32);
+  filter: brightness(1.05);
+}
+
+.duet-settings__btn--secondary {
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+}
+
+.duet-settings__btn--secondary:not(.duet-settings__btn--disabled):hover {
+  border-color: rgba(120,130,240,0.5);
+  color: var(--accent);
+  background: rgba(120,130,240,0.08);
+}
+
+.duet-settings__btn--danger {
+  background: linear-gradient(135deg, var(--error), rgba(239,68,68,0.78));
+  box-shadow: 0 4px 12px rgba(239,68,68,0.22);
+}
+
+.duet-settings__btn--danger:not(.duet-settings__btn--disabled):hover {
+  box-shadow: 0 8px 18px rgba(239,68,68,0.32);
+  filter: brightness(1.05);
+}
+
+.duet-settings__btn--disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+  box-shadow: none !important;
+  transform: none !important;
+  filter: none !important;
+}
+
+/* -- Banners ---------------------------------------------------------------- */
+.duet-settings__banner {
+  padding: 11px 14px;
+  border-radius: 8px;
+  border: 1px solid transparent;
+  animation: duet-fade-up 0.28s ease both;
+  align-items: flex-start;
+  line-height: 1.45;
+}
+
+.duet-settings__banner > svg {
+  flex-shrink: 0;
+  margin-top: 1px;
+}
+
+.duet-settings__banner--success {
+  background:
+    linear-gradient(135deg, rgba(34,197,94,0.16), rgba(34,197,94,0.06));
+  border-color: rgba(34,197,94,0.35);
+}
+
+.duet-settings__banner--success > svg:first-child {
+  border-radius: 50%;
+  animation: duet-pulse-dot 2.2s ease-out infinite;
+}
+
+.duet-settings__banner--error {
+  background:
+    linear-gradient(135deg, rgba(239,68,68,0.16), rgba(239,68,68,0.05));
+  border-color: rgba(239,68,68,0.35);
+}
+
+.duet-settings__banner--info {
+  background:
+    linear-gradient(135deg, rgba(120,130,240,0.14), rgba(120,130,240,0.04));
+  border-color: rgba(120,130,240,0.35);
+}
+
+.duet-settings__banner--warning {
+  background:
+    linear-gradient(135deg, rgba(234,179,8,0.16), rgba(234,179,8,0.05));
+  border-color: rgba(234,179,8,0.35);
+}
+
+/* -- Section card ----------------------------------------------------------- */
+.duet-settings__section {
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 16px 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  transition:
+    border-color 0.2s ease,
+    box-shadow 0.2s ease,
+    transform 0.2s ease;
+  animation: duet-fade-up 0.32s ease both;
+  position: relative;
+  overflow: hidden;
+}
+
+.duet-settings__section::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, rgba(120,130,240,0.4), transparent);
+  opacity: 0;
+  transition: opacity 0.25s ease;
+}
+
+.duet-settings__section:hover {
+  border-color: rgba(120,130,240,0.35);
+  box-shadow: 0 6px 18px rgba(0,0,0,0.18);
+}
+
+.duet-settings__section:hover::before {
+  opacity: 1;
+}
+
+.duet-settings__section-title {
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 0.4px;
+  text-transform: uppercase;
+  color: var(--text-muted);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0 0 4px 0;
+}
+
+.duet-settings__section-title::before {
+  content: '';
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--accent);
+  box-shadow: 0 0 8px rgba(120,130,240,0.7);
+}
+
+/* -- Checkbox / toggle row -------------------------------------------------- */
+.duet-settings__checkbox-row {
+  gap: 12px;
+  padding: 6px 2px;
+  cursor: pointer;
+}
+
+.duet-settings__checkbox {
+  position: relative;
+  width: 36px;
+  height: 20px;
+  appearance: none;
+  -webkit-appearance: none;
+  background: var(--bg-input);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  cursor: pointer;
+  outline: none;
+  transition:
+    background 0.22s ease,
+    border-color 0.22s ease,
+    box-shadow 0.22s ease;
+  flex-shrink: 0;
+}
+
+.duet-settings__checkbox::after {
+  content: '';
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: var(--text-muted);
+  transition: transform 0.22s ease, background 0.22s ease;
+}
+
+.duet-settings__checkbox:hover:not(:disabled) {
+  border-color: rgba(120,130,240,0.5);
+}
+
+.duet-settings__checkbox:focus-visible {
+  box-shadow: 0 0 0 3px rgba(120,130,240,0.25);
+}
+
+.duet-settings__checkbox:checked {
+  background: linear-gradient(135deg, var(--accent), rgba(120,130,240,0.75));
+  border-color: rgba(120,130,240,0.7);
+}
+
+.duet-settings__checkbox:checked::after {
+  background: #fff;
+  transform: translateX(16px);
+}
+
+.duet-settings__checkbox:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.duet-settings__checkbox-label {
+  font-weight: 500;
+  color: var(--text-primary);
+}
+
+.duet-settings__hint--indented {
+  margin-left: 48px;
+}
+
+/* -- Camera preview --------------------------------------------------------- */
+.duet-settings__camera-preview {
+  border-radius: 10px;
+  border: 1px solid var(--border);
+  box-shadow: 0 8px 22px rgba(0,0,0,0.35), inset 0 0 0 1px rgba(255,255,255,0.04);
+  transition: box-shadow 0.25s ease, transform 0.25s ease;
+}
+
+.duet-settings__camera-preview:hover {
+  box-shadow: 0 12px 30px rgba(0,0,0,0.5), inset 0 0 0 1px rgba(120,130,240,0.35);
+  transform: translateY(-1px);
+}
+
+/* -- Button row ------------------------------------------------------------- */
+.duet-settings__btn-row {
+  gap: 10px;
+  margin-top: 4px;
+}
+
+/* -- Reduced motion --------------------------------------------------------- */
+@media (prefers-reduced-motion: reduce) {
+  .duet-settings__page *,
+  .duet-settings__page *::before,
+  .duet-settings__page *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+  }
+}
+
+/* -- Compact layout for narrow viewports ------------------------------------ */
+@media (max-width: 720px) {
+  .duet-settings__nav { width: 64px; padding: 8px 4px; }
+  .duet-settings__nav-item { justify-content: center; padding: 9px 6px; font-size: 0; gap: 0; }
+  .duet-settings__nav-item > svg { width: 18px; height: 18px; }
+  .duet-settings__nav-back { font-size: 0; padding: 8px 6px; }
+  .duet-settings__nav-back > svg { width: 16px; height: 16px; }
+  .duet-settings__body { padding: 14px 14px 18px; }
+  .duet-settings__page-title { font-size: 16px; }
+}

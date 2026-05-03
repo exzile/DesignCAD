@@ -23,7 +23,13 @@ export function defaultPrinter(): SavedPrinter {
   return {
     id: genPrinterId(),
     name: 'Printer 1',
-    config: { hostname: '', password: '', mode: 'standalone' },
+    config: {
+      hostname: '',
+      password: '',
+      mode: 'standalone',
+      transport: 'network',
+      serialBaudRate: 115200,
+    },
     prefs: { ...DEFAULT_PREFS },
   };
 }

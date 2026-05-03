@@ -148,6 +148,10 @@ export default function DuetSettings() {
     setConfig({ boardType: value });
   }, [setConfig]);
 
+  const setConfigPatch = useCallback((patch: Parameters<typeof setConfig>[0]) => {
+    setConfig(patch);
+  }, [setConfig]);
+
   // When the user switches active printer, reload the form fields from the
   // newly-active config. Without this, hostname/password/mode would still
   // show the previous printer's values even though `config` has updated.
@@ -164,8 +168,12 @@ export default function DuetSettings() {
     error?: string;
   } | null>(null);
 
+  const isUsbTransport = config.transport === 'usb';
+
   const handleTest = useCallback(async () => {
-    setConfig({ hostname: hostname.trim(), password });
+    if (!isUsbTransport) {
+      setConfig({ hostname: hostname.trim(), password });
+    }
     setTesting(true);
     setTestResult(null);
     try {
@@ -180,13 +188,15 @@ export default function DuetSettings() {
     } finally {
       setTesting(false);
     }
-  }, [hostname, password, setConfig, testConnection]);
+  }, [hostname, isUsbTransport, password, setConfig, testConnection]);
 
   const handleConnect = useCallback(async () => {
-    setConfig({ hostname: hostname.trim(), password });
+    if (!isUsbTransport) {
+      setConfig({ hostname: hostname.trim(), password });
+    }
     setTestResult(null);
     await connect();
-  }, [hostname, password, setConfig, connect]);
+  }, [hostname, isUsbTransport, password, setConfig, connect]);
 
   const handleDisconnect = useCallback(async () => {
     setTestResult(null);
@@ -248,6 +258,7 @@ export default function DuetSettings() {
       prefs={prefs}
       setAutoUpdate={setAutoUpdate}
       setBoardType={setBoardType}
+      setConfigPatch={setConfigPatch}
       setHostname={setHostname}
       setMode={setMode}
       setPanelDueAsset={setPanelDueAsset}
@@ -264,7 +275,7 @@ export default function DuetSettings() {
       uploadProgress={uploadProgress}
       uploading={uploading}
     />
-  ), [activePrinterId, autoUpdate, axes, board, boardType, canConnect, config, connected, connecting, error, firmwareFile, firmwareStatus, firmwareUpdatePending, handleAutoUpdate, handleCheckForUpdate, handleCheckPanelDueUpdate, handleConnect, handleDisconnect, handleFirmwareInstall, handleFirmwareSelect, handleFirmwareUpload, handleIapSelect, handleIapUpload, handlePanelDueInstall, handleTest, handleUpdateDwcOnly, hostname, iapFile, iapInputRef, iapStatus, importInputRef, importResult, importing, loadPanelDueInfo, mode, panelDueAsset, panelDueCheck, panelDueFlashed, panelDueInfo, panelDueLogRef, panelDueUpdate, password, patchPrefs, prefs, setAutoUpdate, setBoardType, setHostname, setMode, setPanelDueAsset, setPanelDueUpdate, setPassword, setShowPanelDueNotes, setShowReleaseNotes, showPanelDueNotes, showReleaseNotes, tab, testResult, testing, updateCheck, uploadProgress, uploading]);
+  ), [activePrinterId, autoUpdate, axes, board, boardType, canConnect, config, connected, connecting, error, firmwareFile, firmwareStatus, firmwareUpdatePending, handleAutoUpdate, handleCheckForUpdate, handleCheckPanelDueUpdate, handleConnect, handleDisconnect, handleFirmwareInstall, handleFirmwareSelect, handleFirmwareUpload, handleIapSelect, handleIapUpload, handlePanelDueInstall, handleTest, handleUpdateDwcOnly, hostname, iapFile, iapInputRef, iapStatus, importInputRef, importResult, importing, loadPanelDueInfo, mode, panelDueAsset, panelDueCheck, panelDueFlashed, panelDueInfo, panelDueLogRef, panelDueUpdate, password, patchPrefs, prefs, setAutoUpdate, setBoardType, setConfigPatch, setHostname, setMode, setPanelDueAsset, setPanelDueUpdate, setPassword, setShowPanelDueNotes, setShowReleaseNotes, showPanelDueNotes, showReleaseNotes, tab, testResult, testing, updateCheck, uploadProgress, uploading]);
 
   return (
     <div className="duet-settings__page">
@@ -287,7 +298,9 @@ export default function DuetSettings() {
           </button>
         ))}
       </nav>
-      <div className="duet-settings__body">{pageContent}</div>
+      <div className="duet-settings__body">
+        <div key={tab} className="duet-settings__tab-pane">{pageContent}</div>
+      </div>
     </div>
   );
 }

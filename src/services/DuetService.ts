@@ -48,6 +48,11 @@ import {
   simulateFileCommand,
   startPrintCommand,
 } from './duet/machineControls';
+import {
+  WebSerialConnection,
+  findGrantedPort,
+  isWebSerialSupported,
+} from './usb/webSerial';
 
 /**
  * Comprehensive Duet3D API service supporting both standalone (RepRapFirmware)
@@ -63,11 +68,16 @@ export class DuetService {
   private reconnectTimer: ReturnType<typeof setTimeout> | null = null;
   private pollTimer: ReturnType<typeof setInterval> | null = null;
   private pollInFlight = false;
+  private serial: WebSerialConnection | null = null;
   private static readonly POLL_INTERVAL = 250;
   private static readonly RECONNECT_DELAY = 2000;
 
   constructor(config: DuetConfig) {
     this.config = config;
+  }
+
+  private get isUsbTransport(): boolean {
+    return this.config.transport === 'usb';
   }
 
   onModelUpdate(callback: (model: Partial<DuetObjectModel>) => void): () => void {
@@ -111,6 +121,10 @@ export class DuetService {
   async connect(): Promise<boolean> {
     try {
       if (this.connected) return true;
+
+      if (this.isUsbTransport) {
+        return await this.connectSerial();
+      }
 
       if (this.config.mode === 'sbc') {
         // DSF uses a simple password query param on connect
@@ -164,6 +178,15 @@ export class DuetService {
     this.stopPolling();
     this.closeWebSocket();
 
+    if (this.isUsbTransport) {
+      try { await this.serial?.close(); } catch { /* best-effort */ }
+      this.serial = null;
+      this.connected = false;
+      this.objectModel = {};
+      this.emit('disconnected', null);
+      return;
+    }
+
     try {
       if (this.connected) {
         if (this.config.mode === 'sbc') {
@@ -210,6 +233,70 @@ export class DuetService {
     }
   }
 
+
+  /**
+   * Open a Web Serial connection to a USB-attached printer board.
+   * Re-uses a previously granted port matching the saved vendor/product IDs;
+   * otherwise asks the user to pick one. Once open, sends M115 to read the
+   * firmware banner and seeds the objectModel so the UI can show "connected".
+   */
+  private async connectSerial(): Promise<boolean> {
+    try {
+      if (!isWebSerialSupported()) {
+        throw new Error('Web Serial is not supported by this browser. Use Chrome/Edge over HTTPS, or http://localhost.');
+      }
+
+      const port = await findGrantedPort(this.config.serialVendorId, this.config.serialProductId);
+      if (!port) {
+        throw new Error('No USB printer port has been granted. Click "Select USB Port" in settings first.');
+      }
+
+      const baudRate = this.config.serialBaudRate ?? 115200;
+      this.serial = new WebSerialConnection(baudRate);
+      await this.serial.open(port);
+
+      // Many boards drive RST low on DTR toggle when the port opens — give the
+      // bootloader a moment to hand control to the firmware before we talk.
+      await new Promise((r) => setTimeout(r, 1500));
+
+      // Marlin / RepRapFirmware / Klipper-USB / grbl all answer to M115 with a
+      // firmware identification line. Best-effort: an empty reply is fine.
+      let firmwareVersion: string | undefined;
+      let boardName: string | undefined;
+      try {
+        const reply = await this.serial.sendGCode('M115', 3000);
+        const fwMatch = reply.match(/FIRMWARE_NAME:([^\s]+(?:\s[^\s:]+)*?)(?=\s+[A-Z_]+:|$)/i);
+        const machineMatch = reply.match(/MACHINE_TYPE:([^\s]+(?:\s[^\s:]+)*?)(?=\s+[A-Z_]+:|$)/i);
+        if (fwMatch) firmwareVersion = fwMatch[1].trim();
+        if (machineMatch) boardName = machineMatch[1].trim();
+      } catch {
+        // Silent boards (grbl awaiting "$$") still count as connected.
+      }
+
+      // Seed the object model so the UI shows the firmware identifier and the
+      // store's connected state stays consistent with the network path.
+      const seed = {
+        boards: [{
+          firmwareVersion: firmwareVersion ?? 'USB serial',
+          firmwareName: firmwareVersion,
+          name: boardName ?? this.config.serialPortLabel ?? 'USB printer',
+        }],
+      } as unknown as Record<string, unknown>;
+      this.applyModelPatch(seed);
+
+      this.connected = true;
+      this.emit('connected', null);
+      this.emit('modelUpdate', this.objectModel);
+
+      return true;
+    } catch (err) {
+      this.connected = false;
+      try { await this.serial?.close(); } catch { /* best-effort */ }
+      this.serial = null;
+      this.emit('error', err);
+      return false;
+    }
+  }
 
   private connectWebSocket(): void {
     if (this.ws) {
@@ -345,6 +432,7 @@ export class DuetService {
     key?: string,
     flags?: string
   ): Promise<Partial<DuetObjectModel>> {
+    if (this.isUsbTransport) return this.objectModel;
     return getObjectModelRequest(
       this.config,
       this.baseUrl,
@@ -369,6 +457,11 @@ export class DuetService {
   // G-Code execution
 
   async sendGCode(code: string): Promise<string> {
+    if (this.isUsbTransport) {
+      if (!this.serial?.isOpen()) throw new Error('Serial port is not open.');
+      return this.serial.sendGCode(code);
+    }
+
     if (this.config.mode === 'sbc') {
       const url = `${this.baseUrl}/machine/code`;
       const res = await fetchOrThrow(url, {
@@ -400,6 +493,7 @@ export class DuetService {
    *  until the command finishes and returns its full output, so callers don't
    *  need to drain a buffer separately. */
   async pollReply(): Promise<string> {
+    if (this.isUsbTransport) return '';
     if (this.config.mode === 'sbc') return '';
     try {
       const url = `${this.baseUrl}/rr_reply`;
@@ -503,6 +597,7 @@ export class DuetService {
 
 
   async listFiles(directory: string): Promise<DuetFileInfo[]> {
+    if (this.isUsbTransport) return [];
     return listFilesRequest(this.fileApiContext, directory);
   }
 
