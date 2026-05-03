@@ -23,7 +23,8 @@ export function createLifecycleActions(
   return {
     connect: async () => {
       const { config, service: existingService, connecting } = get();
-      if (!config.hostname) {
+      const isUsb = config.transport === 'usb';
+      if (!isUsb && !config.hostname) {
         set({ error: 'No hostname configured' });
         return;
       }

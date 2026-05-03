@@ -189,6 +189,89 @@
   line-height: 1.5;
 }
 
+.app-help-intro {
+  margin: 0 0 10px;
+  color: var(--text-secondary);
+  font-size: 13px;
+  line-height: 1.55;
+}
+
+.app-help-notes {
+  margin-top: 10px;
+}
+
+.app-help-note {
+  margin: 0 0 6px;
+  padding: 8px 12px;
+  border-left: 3px solid var(--accent);
+  border-radius: 0 6px 6px 0;
+  background: color-mix(in srgb, var(--accent) 8%, transparent);
+  color: var(--text-secondary);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+/* Keyboard-shortcut table -------------------------------------------------- */
+.app-help-shortcuts {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 4px 0 0;
+  font-size: 13px;
+}
+
+.app-help-shortcuts thead th {
+  padding: 6px 10px;
+  text-align: left;
+  color: var(--text-muted);
+  font-weight: 600;
+  font-size: 11px;
+  letter-spacing: 0.5px;
+  text-transform: uppercase;
+  border-bottom: 1px solid var(--border-light);
+}
+
+.app-help-shortcuts tbody tr {
+  transition: background 0.15s ease;
+}
+
+.app-help-shortcuts tbody tr:hover {
+  background: color-mix(in srgb, var(--accent) 6%, transparent);
+}
+
+.app-help-shortcuts td {
+  padding: 8px 10px;
+  border-bottom: 1px solid var(--border-light);
+  color: var(--text-secondary);
+  vertical-align: middle;
+}
+
+.app-help-shortcuts td:first-child {
+  width: 1%;
+  white-space: nowrap;
+}
+
+.app-help-shortcuts kbd {
+  display: inline-block;
+  padding: 2px 8px;
+  min-width: 18px;
+  text-align: center;
+  font-family: 'JetBrains Mono', 'Consolas', monospace;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-primary);
+  background: var(--bg-primary);
+  border: 1px solid var(--border);
+  border-bottom-width: 2px;
+  border-radius: 4px;
+  box-shadow: 0 1px 0 rgba(0, 0, 0, 0.1);
+}
+
+.app-help-kbd-sep {
+  margin: 0 4px;
+  color: var(--text-muted);
+  font-size: 11px;
+}
+
 @media (max-width: 760px) {
   .app-help-overlay {
     padding: 10px;

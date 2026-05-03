@@ -1,6 +1,3 @@
-
-
-
 # ============================================================================
 # REMAINING WORK — multi-session architectural items
 # ============================================================================
@@ -32,208 +29,166 @@
 # the per-object framework above to express which meshes participate.
 #
 # Affected:
-#   - extensiveStitching      (non-coplanar gap closure across meshes)
-#   - mergedMeshesOverlap     (multi-mesh pre-processing)
-#   - removeMeshIntersection  (boolean cleanup between meshes)
-#   - alternateMeshRemoval    (sequenced multi-mesh boolean)
+#   [ ] extensiveStitching      (non-coplanar gap closure across meshes)
+#   [ ] mergedMeshesOverlap     (multi-mesh pre-processing)
+#   [ ] removeMeshIntersection  (boolean cleanup between meshes)
+#   [ ] alternateMeshRemoval    (sequenced multi-mesh boolean)
 
 
 # ============================================================================
 # REMAINING WORK — single-feature items, deferred for stated reasons
 # ============================================================================
 
-## Layer-material cache pre-pass  (architectural — unlocks per-region top-skin + multi-layer thickening)
-# The current top-skin detection uses a lightweight 1-layer lookahead in
-# `emitLayerStartState` (slice + classify + buildMaterial only). The
-# current-layer material goes through full prep (modifier meshes,
-# horizontal expansion, hole horizontal expansion, mold mode, shrinkage
-# compensation, elephant-foot compensation). The boolean
-# `currentLayerMaterial − nextLayerMaterial` therefore picks up
-# systematic differences from those transforms as spurious top-skin
-# regions. Layer-wide solid promotion works around this but is
-# approximate. Fixing it requires a pre-pass that builds every layer's
-# material with the full transform pipeline and caches it, so the
-# lookahead reads consistent data.
-#
-# STATUS: layer-wide top-skin promotion is the working baseline. All
-# items below are needed to unlock per-region splitting and multi-layer
-# thickening (topLayers band).
-#
-# --- Step 1: Add `layerMaterialCache` to SliceRun ---
-#   File: src/engine/slicer/pipeline/execution/steps/types.ts
-#   [x] Add `layerMaterialCache: PCMultiPolygon[]` field to `SliceRun`
-#   [x] Add it to `SliceGeometryRun` Pick list (parallel workers need it)
-#   [x] Initialize to `[]` in `prepareSliceRun.ts`
-#
-# --- Step 2: Build the cache pre-pass ---
-#   File: src/engine/slicer/pipeline/execution/steps/runSlicePipeline.ts
-#   File: src/engine/slicer/pipeline/execution/steps/prepareLayerState.ts
-#   [x] Extract the geometry-prep transforms from `prepareLayerGeometryState`
-#       into a reusable helper (or call `prepareLayerGeometryState` directly
-#       with `{ reportProgress: false, yieldToUI: false }` and stash its
-#       material). The key transforms that must run:
-#         - sliceTrianglesAtZ + connectSegments + classifyContours
-#         - closeContourGaps (slicingClosingRadius)
-#         - small-feature filtering (minimumPolygonCircumference, smallHoleMaxSize)
-#         - modifier-mesh composition (buildModifierRegionsForLayer + cutting_mesh)
-#         - shrinkage compensation (shrinkageCompensationXY)
-#         - hole horizontal expansion (holeHorizontalExpansion)
-#         - horizontal expansion (xy_offset + elephantFootCompensation)
-#         - mold mode (moldEnabled)
-#         - buildHoleMap + buildLayerMaterial
-#   [x] In `runSlicePipeline`, add a loop BEFORE the main emit loop:
-#         run.layerMaterialCache = new Array(run.totalLayers);
-#         for (let li = 0; li < run.totalLayers; li++) {
-#           const geo = await prepareLayerGeometryState(pipeline, run, li, opts);
-#           if (!geo) { run.layerMaterialCache[li] = []; continue; }
-#           const holeMap = buildHoleMap(geo.contours, geo.contours, ...);
-#           run.layerMaterialCache[li] = buildLayerMaterial(
-#             geo.contours.filter(c => c.isOuter), holeMap);
-#         }
-#       Consider parallel layer-prep workers for this pre-pass too (the
-#       existing worker pool already runs prepareLayerGeometryState).
-#   [x] Add a timing bucket `'material-cache'` for the pre-pass
-#   [x] Report progress during pre-pass (`Caching material ${li}/${total}...`)
-#
-# --- Step 3: Replace inline lookahead with cache reads ---
-#   File: src/engine/slicer/pipeline/execution/steps/prepareLayerState.ts
-#   [x] Remove the ~30-line inline lookahead block in `emitLayerStartState`
-#       (lines 441-468 that re-slice at layer N+1's Z)
-#   [x] Replace with: `const nextLayerMaterial = run.layerMaterialCache?.[li + 1];`
-#   [x] Also replace `run.prevLayerMaterial` usage with cache read:
-#       `previousLayerMaterial: run.layerMaterialCache?.[li - 1] ?? []`
-#       This makes bridge detection consistent too (currently uses the
-#       stale `run.prevLayerMaterial` field set by finalizeLayer).
-#   [x] Remove `prevLayerMaterial` field from SliceRun (dead after cache)
-#   [x] Remove `run.prevLayerMaterial = layer.currentLayerMaterial` from
-#       finalizeLayer.ts
-#
-# --- Step 4: Multi-layer top-skin thickening ---  DONE 2026-05-01
-#   File: src/engine/slicer/pipeline/execution/layerTopology.ts
-#   Audit 2026-05-01: our output.gcode has 4 solid-fill blocks vs Orca's 82
-#   on the same counterbore reference model — most of that gap is the
-#   missing 4-layer thickening (each per-feature top becomes 1 layer thick
-#   in our output instead of Orca's 4).
-#   [x] Accept new option `topLayersCount` / `bottomLayersCount` and the
-#       full `layerMaterialCache` array (currently buildTopSkinRegion takes
-#       only nextLayerMaterial — single-layer)
-#   [x] Compute thickened topSkinRegion:
-#         topSkinRegion = ∅
-#         for k in 0..(topLayers-1):
-#           if cache[N+k] exists and cache[N+k+1] exists:
-#             band_k = cache[N+k] − cache[N+k+1]
-#           elif cache[N+k] exists:
-#             band_k = cache[N+k]  (last layer → entire material is top)
-#           else: continue
-#           topSkinRegion = union(topSkinRegion, band_k)
-#         topSkinRegion = intersect(topSkinRegion, currentLayerMaterial)
-#         filter slivers via existing filterSliversFromMultiPolygon
-#       This gives a 4-layer thick solid band (matching Cura/Orca topLayers=4)
-#   [x] Mirror for bottom: bottomSkinRegion = union of (cache[N-k] −
-#       cache[N-k-1]) for k=0..bottomLayers-1, intersected with current.
-#       Wire into emitContourInfill split alongside topSkinRegion.
-#   [x] Update LayerTopologyOptions type to accept nextLayerMaterial
-#   [x] Update callers in prepareLayerState.ts
-#
-# --- Step 5: Per-region splitting in emitContourInfill ---
+## Bridge skin classification — preview / gcode test
 #   File: src/engine/slicer/pipeline/execution/steps/emitContourInfill.ts
-#   [x] Replace the layer-wide `isSolid = layer.isSolid || layer.hasTopSkinRegion`
-#       with per-region splitting:
-#         for each infillRegion:
-#           solidPart = intersect(infillRegion, topSkinRegion)
-#           sparsePart = difference(infillRegion, topSkinRegion)
-#           emit solidPart with solid-skin settings
-#           emit sparsePart with sparse-infill settings
-#   [x] Guard: only do per-region splitting when `layerMaterialCache` is
-#       populated; fall back to layer-wide promotion otherwise (safety net
-#       for parallel-worker path where cache might not be ready)
-#
-# --- Step 6: Verification ---
-#   [x] Run `npm run verify` (tsc -b && vitest run) — all 451 slicer tests pass
-#   [x] Slice the user's counterbore model — verified 2026-05-01 in dev
-#       preview. Counterbore (adjustable_support_foot_base_v2): 199 layers,
-#       185,477 SliceMoves, 8.12 MB gcode.
-#       Solid-fill blocks: 4 (pre-Step-4) → 17 (post-Step-4). Multi-layer
-#       thickening confirmed firing — each per-feature top now spans the
-#       configured topLayers band instead of one isolated layer.
-#       Total move count 185k is comfortably between the 156k pre-cache
-#       baseline and the 326k worst case (no false-positive promotion).
-#       Remaining gap to Orca's 82 solid blocks is per-region-split
-#       granularity (we union regions before emit; Orca emits per
-#       contour) — natural ceiling of the layer-wide approach, captured
-#       in this file's audit comment.
-#   [x] Run `npx gitnexus detect_changes` before committing — 2026-05-01:
-#       scope = emitContourInfill / emitLayerStartState / prepareSliceRun /
-#       LayerTopologyOptions / LayerTopology. All additive: optional new
-#       fields + new ;TYPE: emit lines + lastBridgeTypeMarker tracker.
-#       "Critical" rating reflects process-fan-out from hot symbols, not
-#       breakage. 451 slicer tests pass.
-#   [x] gcode/SliceMove parity check — verified 2026-05-01: 170,969
-#       extrude SliceMoves vs 178,030 gcode G1 extrudes (ratio 1.04 — the
-#       4% delta is expected emitter path-splitting: arc segments,
-#       boustrophedon connector hops, layer-start ramps).
-#       ;TYPE: marker counts in gcode: Outer wall=437, Inner wall=1792,
-#       Internal solid infill=17, Sparse infill=40. No bridge / Top
-#       surface / Bottom surface markers (this model has no bridges and
-#       topSurfaceSkinLayers / bottomSurfaceSkinLayers are 0 — Cura
-#       defaults — so the markers are dormant by design).
-#
-# CODEX-FRIENDLY SUBTASKS (can be parallelized):
-#   Step 1 is pure type changes — safe for Codex.
-#   Step 3 (cache reads replacing inline lookahead) is safe for Codex once
-#   Step 2 lands the cache field population.
-#   Steps 4-5 depend on each other and on Steps 1-3; keep sequential.
-#
-# --- Step 7: OrcaSlicer-style ;TYPE: gcode markers ---
-#   Currently we emit only `; Solid fill` / `; Infill` / `; Outer wall`
-#   text comments. OrcaSlicer/Cura use `;TYPE:Top surface`, `;TYPE:
-#   Bottom surface`, `;TYPE:Internal solid infill`, `;TYPE:Sparse infill`,
-#   `;TYPE:Outer wall`, `;TYPE:Inner wall`, `;TYPE:Internal Bridge`.
-#   Many third-party preview/post-processing tools (Octoprint plugins,
-#   Klipper preview, etc.) parse these markers. Add alongside our
-#   existing comments — don't replace.
-#   [x] Add ;TYPE: emit before each block in emitContourInfill.ts
-#       (Solid fill → 'Top surface' for isTopSurfaceLayer / 'Bottom
-#        surface' for isBottomSurfaceLayer / 'Internal solid infill'
-#        otherwise; Infill → 'Sparse infill')
-#   [x] Add ;TYPE: emit in emitGroupedAndContourWalls.ts (already has
-#       ;TYPE markers per current gcode audit — verify it's complete)
-#   No tests needed beyond a snapshot diff against the reference
-#   orcaslicer.gcode marker structure (informational; not an action item).
-#
-# --- Step 8: Bridge skin classification ---
-#   File: src/engine/slicer/pipeline/execution/steps/emitContourInfill.ts
-#   emitContourInfill already detects bridge regions via
-#   layer.hasBridgeRegions / isInBridgeRegion, but emits them as plain
-#   `top-bottom` moves. Should tag as 'bridge' move type so the
-#   bridgeFanSpeed override fires + renderer shows bridge color.
-#   [x] Inline per-line bridge classification already in place — bridge
-#       move-type / speed / flow are switched in the emit loop based on
-#       isInBridgeRegion(midpoint). The InfillLineSegment.type refactor
-#       is structurally equivalent and unnecessary.
-#   [x] Verify bridge fan-speed override (pickBridgeFanSpeed) still
-#       fires on bridge entry/exit transitions
-#   [x] Add ;TYPE:Internal Bridge marker (depends on Step 7) — emitted
-#       on bridge entry, restored to pass marker on exit, tracker reset
-#       at every pass boundary via run.lastBridgeTypeMarker
+# Inline per-line bridge classification is already wired (move-type / speed /
+# flow switch on isInBridgeRegion(midpoint), bridgeFanSpeed override fires
+# on entry/exit, ;TYPE:Internal Bridge marker emits on bridge entry and
+# restores on exit). The remaining gap is verification — there's no
+# regression test yet that pins down the behaviour end-to-end.
 #   [ ] Test: layer with overhang region produces bridge moves with
 #       correct color in preview + bridge fan speed in gcode
 
-## Maximum Skin Angle for Expansion  (`maxSkinAngleForExpansion`)  DONE 2026-05-01
-# Cura's setting (default 90°, i.e. effectively off in default profiles).
-# When lowered, top/bottom skin expansion is skipped in regions whose
-# underlying surface slope exceeds the threshold — protects narrow skin
-# slivers near near-vertical walls from being expanded into nothing.
+
+# ============================================================================
+# AI ASSISTANT — MCP server + optional in-app chat  (architectural, multi-session)
+# ============================================================================
+# Goal: let users drive DesignCAD with their own Claude / Codex / OpenAI
+# subscription. Open-source-friendly: no Anthropic API spend on our side,
+# no shared key. Two consumption paths:
+#   (a) MCP server inside DesignCAD that exposes CAD tools. The user runs
+#       Claude Code locally and adds DesignCAD as an MCP server — chat
+#       happens in their terminal/IDE, geometry shows up in the running
+#       browser session. Subscription quota covers it because Claude Code
+#       is the authenticated client.
+#   (b) BYOK chat panel inside DesignCAD as a fallback for users who don't
+#       run Claude Code. The same MCP tool surface is reused as the
+#       function-call schema for the BYOK path so we don't ship two APIs.
 #
-# Implemented as: per-layer steep-slope shadow MP (mirror of the existing
-# overhang-shadow built for infillOverhangAngle) is built on entry to the
-# solid-skin branch; per-region intersection with the shadow toggles the
-# allowExpand flag → falls through to skinOverlap-only (no totalExpand).
-# isSteepSlopeForSkinExpansion is a pure helper with unit tests covering
-# the 90° early-out, 0/45/60/80° thresholds, exact-equality boundary, and
-# absolute-slope semantics. Default 90° = no-op; verified in dev preview
-# (counterbore re-slice produced identical 199 layers / 17 solid blocks /
-# 185k moves / 8.12 MB gcode as the pre-change run).
+# Rule of the road: the MCP server is the source of truth. Every CAD
+# action the assistant can take must exist as an MCP tool first; the chat
+# panel is just a thin client over that surface.
+
+## Phase 1 — MCP server scaffolding
+#   New dir: src/services/mcp/
+#   [ ] Add @modelcontextprotocol/sdk dependency + lock CORS to localhost
+#       origins (the server only ever talks to the user's own Claude Code)
+#   [ ] Implement an HTTP + SSE transport bound to a configurable port
+#       (default 5174; the Vite dev server is on 5173, so the two coexist)
+#   [ ] Pairing token: generate a one-time token, surface it in the new
+#       AI Assistant settings tab as a copy-paste line
+#       (`claude mcp add designcad http://localhost:5174/mcp?token=...`).
+#       Server rejects requests without it.
+#   [ ] Lifecycle: server runs only while the DesignCAD tab is open;
+#       reconnects survive HMR; `stop()` on tab close
+#   [ ] Codex-friendly: this whole phase is plumbing — no domain
+#       knowledge required.
+
+## Phase 2 — Core tool surface
+#   New dir: src/services/mcp/tools/
+#   Each tool is a thin wrapper over an existing store action so the
+#   assistant can't reach into anything the UI itself can't do. Tools
+#   are typed with zod schemas and registered via a single index.ts.
+#
+#   Document / scene
+#   [ ] list_objects                  — returns id, kind, bbox, transform
+#   [ ] get_object_properties         — full feature/sketch tree for one id
+#   [ ] select_objects                — drives the same selection store
+#   [ ] snapshot_view                 — returns a PNG of the viewport (use
+#                                       the existing exporter; the result is
+#                                       returned as an MCP "image" content
+#                                       item so the model can SEE its work)
+#
+#   Primitives
+#   [ ] create_box        { x, y, z, position?, rotation? }
+#   [ ] create_cylinder   { radius, height, position?, axis? }
+#   [ ] create_sphere     { radius, position? }
+#   [ ] create_cone       { r1, r2, height, position? }
+#
+#   Sketches
+#   [ ] start_sketch      { plane: 'XY'|'XZ'|'YZ' | object id+face }
+#   [ ] sketch_rect       { x, y, w, h, centered? }
+#   [ ] sketch_circle     { cx, cy, radius }
+#   [ ] sketch_polygon    { points: [[x,y],...] }
+#   [ ] sketch_dimension  { entityId, value }
+#   [ ] finish_sketch
+#
+#   Features
+#   [ ] extrude_sketch    { sketchId, depth, direction? }
+#   [ ] revolve_sketch    { sketchId, axis, angle? }
+#   [ ] fillet_edges      { objectId, edgeIds[], radius }
+#   [ ] chamfer_edges     { objectId, edgeIds[], distance }
+#   [ ] hole              { face, position, diameter, depth, throughAll? }
+#
+#   Booleans + transforms
+#   [ ] boolean_union          { idsA[], idsB[] }
+#   [ ] boolean_subtract       { from, tools[] }
+#   [ ] boolean_intersect      { ids[] }
+#   [ ] transform              { id, translate?, rotateDeg?, scale? }
+#   [ ] mirror                 { id, plane }
+#   [ ] linear_pattern         { id, axis, count, spacing }
+#   [ ] circular_pattern       { id, axis, count, totalAngle }
+#
+#   Export / save
+#   [ ] save_session
+#   [ ] export_stl    { ids?: string[] }
+#   [ ] export_step   { ids?: string[] }
+#   [ ] export_gcode  { profileId? }
+#
+#   Each tool's handler returns a structured result the model can read
+#   ({ created: id, bbox, ... }) so multi-step plans (extrude → fillet)
+#   work without hallucinated ids.
+
+## Phase 3 — Resources (read-only context for the model)
+#   [ ] designcad://document/summary    — name, units, object count, plate state
+#   [ ] designcad://document/objects    — full object list, JSON
+#   [ ] designcad://document/feature/{id} — feature tree for one object
+#   [ ] designcad://printer/active      — selected printer + machineConfig
+#       (lets the model auto-pick build-volume-appropriate sizes)
+
+## Phase 4 — Connection hardening
+#   [ ] Origin check: refuse non-localhost origins
+#   [ ] Token rotation: regenerate from the AI Assistant tab; old token
+#       invalidates immediately
+#   [ ] Per-tool rate limit (low ceiling so a runaway agent can't trash
+#       the document); rate-limit signal surfaces back to the model
+#   [ ] Audit log: every tool call written to a ring buffer visible in
+#       the AI Assistant tab so users can see what the assistant did
+
+## Phase 5 — In-app chat panel (BYOK)
+#   New: src/components/ai/AssistantPanel.tsx
+#   New tab in the global side panel — not under printer settings — so
+#   it works without a printer selected.
+#   [ ] AI Assistant settings tab (parallel to Connection / Behaviour):
+#         - Provider: Anthropic (BYOK) | OpenAI (BYOK) | OpenRouter (BYOK)
+#         - Model picker (filtered per provider)
+#         - API key (stored per-installation in localStorage; never sent
+#           anywhere except the chosen provider)
+#         - "Use local Claude Code instead" toggle — when on, the panel
+#           skips API calls and just shows the user the MCP pairing line
+#   [ ] Streaming chat with tool-use, fan-out the same MCP tool registry
+#       as function definitions; on tool call, route to the in-process
+#       MCP handlers (no network round-trip)
+#   [ ] Session log + clear; persist last N turns per project
+#   [ ] Safety: confirm-before-destructive prompt for delete / clear-doc
+#       tools (configurable; off by default for power users)
+
+## Phase 6 — Documentation
+#   [ ] README section: "Use your own Claude with DesignCAD" — covers
+#       both the MCP path (Claude Code) and the BYOK chat panel
+#   [ ] Tool reference doc generated from the zod schemas
+#   [ ] Sample transcripts ("design a phone stand", "add 3 mm fillet to
+#       all top edges") in docs/ai-examples.md
+
+# CODEX-FRIENDLY SUBTASKS (parallelizable):
+#   Phase 1 (server + transport + token) is pure plumbing.
+#   Phase 2 tool wrappers are 1:1 with existing store actions — each
+#   tool is independent and can be done in parallel batches by feature
+#   group (primitives / sketches / features / booleans / export).
+#   Phase 3 resources are read-only and don't depend on Phase 2.
+#   Phase 4 is sequential after 1-3.
+#   Phase 5 depends on 1-4 being feature-complete.
+#   Phase 6 is the last step; do it after the surface stabilises.
 
 
 # ============================================================================

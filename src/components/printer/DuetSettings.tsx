@@ -2,7 +2,7 @@
 import {
   ArrowLeft, Plug, Settings as SettingsIcon, ToggleLeft, Bell, Cpu, BadgeInfo,
   Zap, Download,
-  Monitor, Camera,
+  Monitor, Camera, Droplet,
 } from 'lucide-react';
 import type { PrinterBoardType } from '../../types/duet';
 import { downloadSettings, importSettingsFromFile, type ImportResult } from '../../utils/settingsExport';
@@ -26,6 +26,7 @@ const ALL_TABS = [
   { key: 'behaviour'     as const, label: 'Behaviour',     Icon: ToggleLeft },
   { key: 'notifications' as const, label: 'Notifications', Icon: Bell },
   { key: 'machine'       as const, label: 'Machine',       Icon: Cpu },
+  { key: 'filaments'     as const, label: 'Filaments',     Icon: Droplet },
   { key: 'firmware'      as const, label: 'Firmware',      Icon: Zap,     duetOnly: true },
   { key: 'paneldue'      as const, label: 'PanelDue',      Icon: Monitor, duetOnly: true },
   { key: 'backup'        as const, label: 'Backup',        Icon: Download },
@@ -164,8 +165,12 @@ export default function DuetSettings() {
     error?: string;
   } | null>(null);
 
+  const isUsbTransport = config.transport === 'usb';
+
   const handleTest = useCallback(async () => {
-    setConfig({ hostname: hostname.trim(), password });
+    if (!isUsbTransport) {
+      setConfig({ hostname: hostname.trim(), password });
+    }
     setTesting(true);
     setTestResult(null);
     try {
@@ -180,13 +185,15 @@ export default function DuetSettings() {
     } finally {
       setTesting(false);
     }
-  }, [hostname, password, setConfig, testConnection]);
+  }, [hostname, isUsbTransport, password, setConfig, testConnection]);
 
   const handleConnect = useCallback(async () => {
-    setConfig({ hostname: hostname.trim(), password });
+    if (!isUsbTransport) {
+      setConfig({ hostname: hostname.trim(), password });
+    }
     setTestResult(null);
     await connect();
-  }, [hostname, password, setConfig, connect]);
+  }, [hostname, isUsbTransport, password, setConfig, connect]);
 
   const handleDisconnect = useCallback(async () => {
     setTestResult(null);
@@ -248,6 +255,7 @@ export default function DuetSettings() {
       prefs={prefs}
       setAutoUpdate={setAutoUpdate}
       setBoardType={setBoardType}
+      setConfigPatch={setConfig}
       setHostname={setHostname}
       setMode={setMode}
       setPanelDueAsset={setPanelDueAsset}
@@ -264,7 +272,7 @@ export default function DuetSettings() {
       uploadProgress={uploadProgress}
       uploading={uploading}
     />
-  ), [activePrinterId, autoUpdate, axes, board, boardType, canConnect, config, connected, connecting, error, firmwareFile, firmwareStatus, firmwareUpdatePending, handleAutoUpdate, handleCheckForUpdate, handleCheckPanelDueUpdate, handleConnect, handleDisconnect, handleFirmwareInstall, handleFirmwareSelect, handleFirmwareUpload, handleIapSelect, handleIapUpload, handlePanelDueInstall, handleTest, handleUpdateDwcOnly, hostname, iapFile, iapInputRef, iapStatus, importInputRef, importResult, importing, loadPanelDueInfo, mode, panelDueAsset, panelDueCheck, panelDueFlashed, panelDueInfo, panelDueLogRef, panelDueUpdate, password, patchPrefs, prefs, setAutoUpdate, setBoardType, setHostname, setMode, setPanelDueAsset, setPanelDueUpdate, setPassword, setShowPanelDueNotes, setShowReleaseNotes, showPanelDueNotes, showReleaseNotes, tab, testResult, testing, updateCheck, uploadProgress, uploading]);
+  ), [activePrinterId, autoUpdate, axes, board, boardType, canConnect, config, connected, connecting, error, firmwareFile, firmwareStatus, firmwareUpdatePending, handleAutoUpdate, handleCheckForUpdate, handleCheckPanelDueUpdate, handleConnect, handleDisconnect, handleFirmwareInstall, handleFirmwareSelect, handleFirmwareUpload, handleIapSelect, handleIapUpload, handlePanelDueInstall, handleTest, handleUpdateDwcOnly, hostname, iapFile, iapInputRef, iapStatus, importInputRef, importResult, importing, loadPanelDueInfo, mode, panelDueAsset, panelDueCheck, panelDueFlashed, panelDueInfo, panelDueLogRef, panelDueUpdate, password, patchPrefs, prefs, setAutoUpdate, setBoardType, setConfig, setHostname, setMode, setPanelDueAsset, setPanelDueUpdate, setPassword, setShowPanelDueNotes, setShowReleaseNotes, showPanelDueNotes, showReleaseNotes, tab, testResult, testing, updateCheck, uploadProgress, uploading]);
 
   return (
     <div className="duet-settings__page">
@@ -287,7 +295,9 @@ export default function DuetSettings() {
           </button>
         ))}
       </nav>
-      <div className="duet-settings__body">{pageContent}</div>
+      <div className="duet-settings__body">
+        <div key={tab} className="duet-settings__tab-pane">{pageContent}</div>
+      </div>
     </div>
   );
 }
