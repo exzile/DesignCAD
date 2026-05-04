@@ -11,8 +11,8 @@ import './KlipperTabs.css';
 
 const FIRMWARE_SUPPORT: Record<string, { supported: boolean; note: string }> = {
   duet: {
-    supported: false,
-    note: 'Duet RRF does not currently support mid-print object exclusion via G-code. The M486 command used by Marlin is not available on RepRapFirmware.',
+    supported: true,
+    note: 'RepRapFirmware 3.5+ supports M486 object cancellation. Set your printer\'s board type to "Duet" in Settings to get the dedicated Exclude Object UI.',
   },
   marlin: {
     supported: true,
