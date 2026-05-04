@@ -55,7 +55,12 @@ function ComponentRow({
   );
 }
 
-export default function KlipperUpdateManager() {
+/**
+ * When `embedded` is true the component renders only the card content
+ * (no outer klipper-tab wrapper or tab-bar) so UpdateManager.tsx can
+ * include it inline inside its own tab body.
+ */
+export default function KlipperUpdateManager({ embedded = false }: { embedded?: boolean } = {}) {
   const connected = usePrinterStore((s) => s.connected);
   const config = usePrinterStore((s) => s.config);
 
@@ -109,7 +114,21 @@ export default function KlipperUpdateManager() {
     }
   }, [service, refresh]);
 
+  const components = status?.components ?? {};
+  const entries = Object.entries(components);
+  const updatableCount = entries.filter(([, c]) => (c.commits_behind?.length ?? 0) > 0 || c.is_dirty).length;
+
   if (!connected) {
+    if (embedded) {
+      return (
+        <div className="klipper-card">
+          <div className="klipper-card-header">Moonraker Components</div>
+          <div className="klipper-card-body" style={{ color: 'var(--text-muted)', fontSize: 12 }}>
+            Not connected to Klipper — component update status unavailable.
+          </div>
+        </div>
+      );
+    }
     return (
       <div className="klipper-tab">
         <div className="klipper-disconnected">
@@ -120,9 +139,45 @@ export default function KlipperUpdateManager() {
     );
   }
 
-  const components = status?.components ?? {};
-  const entries = Object.entries(components);
-  const updatableCount = entries.filter(([, c]) => (c.commits_behind?.length ?? 0) > 0 || c.is_dirty).length;
+  // Embedded mode: render only the content cards, no outer wrapper
+  if (embedded) {
+    return (
+      <>
+        {error && (
+          <div className="klipper-card" style={{ borderColor: '#ef4444' }}>
+            <div className="klipper-card-body" style={{ color: '#ef4444', fontSize: 12 }}>
+              <AlertCircle size={13} style={{ display: 'inline', marginRight: 4 }} />{error}
+            </div>
+          </div>
+        )}
+        <div className="klipper-card">
+          <div className="klipper-card-header">
+            Moonraker Components
+            {updatableCount > 0 && (
+              <span className="klipper-badge warn" style={{ marginLeft: 6 }}>{updatableCount} update{updatableCount !== 1 ? 's' : ''}</span>
+            )}
+            <div style={{ flex: 1 }} />
+            <button className="klipper-btn" style={{ marginLeft: 'auto' }} onClick={() => refresh(true)} disabled={loading || updatingComponent !== null}>
+              <RefreshCw size={12} className={loading ? 'spin' : ''} />
+            </button>
+          </div>
+          <div className="klipper-card-body" style={{ padding: 0 }}>
+            <table className="klipper-table">
+              <thead><tr><th>Component</th><th>Current</th><th>Latest</th><th>Status</th><th></th></tr></thead>
+              <tbody>
+                {entries.length === 0 && (
+                  <tr><td colSpan={5} style={{ textAlign: 'center', padding: 12, color: 'var(--text-muted)' }}>{loading ? 'Loading…' : 'No components'}</td></tr>
+                )}
+                {entries.map(([name, comp]) => (
+                  <ComponentRow key={name} name={name} comp={comp} onUpdate={handleUpdate} updating={updatingComponent === name} />
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </>
+    );
+  }
 
   return (
     <div className="klipper-tab">

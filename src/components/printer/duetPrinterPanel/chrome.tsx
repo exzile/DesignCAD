@@ -15,7 +15,7 @@ import {
 } from 'lucide-react';
 import { formatUptime } from '../dashboard/helpers';
 import { colors as COLORS } from '../../../utils/theme';
-import { TABS, KLIPPER_ONLY_TABS, type TabKey } from './config';
+import { TABS, KLIPPER_ONLY_TABS, DUET_ONLY_TABS, type TabKey } from './config';
 import type { PrinterBoardType } from '../../../types/duet';
 
 const BOARD_LABELS: Record<PrinterBoardType, string> = {
@@ -263,9 +263,11 @@ export function PanelTabBar({
   boardType: PrinterBoardType;
   onTabChange: (tab: TabKey) => void;
 }) {
-  const visibleTabs = TABS.filter(
-    ({ key }) => !KLIPPER_ONLY_TABS.has(key) || boardType === 'klipper',
-  );
+  const visibleTabs = TABS.filter(({ key }) => {
+    if (KLIPPER_ONLY_TABS.has(key) && boardType !== 'klipper') return false;
+    if (DUET_ONLY_TABS.has(key) && boardType === 'klipper') return false;
+    return true;
+  });
 
   return (
     <div

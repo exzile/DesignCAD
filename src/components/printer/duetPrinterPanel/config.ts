@@ -10,7 +10,6 @@ import {
   History,
   Braces,
   Settings,
-  FlaskConical,
   TrendingUp,
   Router,
   Plug,
@@ -30,7 +29,6 @@ import DuetPrintHistory from '../DuetPrintHistory';
 import DuetFileManager from '../DuetFileManager';
 import DuetFilamentManager from '../DuetFilamentManager';
 import DuetMacros from '../DuetMacros';
-import DuetHeightMap from '../DuetHeightMap';
 import DuetObjectModelBrowser from '../DuetObjectModelBrowser';
 import DuetSettings from '../DuetSettings';
 import DuetConfigEditor from '../DuetConfigEditor';
@@ -39,14 +37,15 @@ import DuetNetworkAndFirmware from '../DuetNetworkAndFirmware';
 import DuetPlugins from '../DuetPlugins';
 import PrinterFleetDashboard from '../dashboard/PrinterFleetDashboard';
 import CameraDashboardPanel from '../dashboard/CameraDashboardPanel';
-import KlipperExcludeObject from '../KlipperExcludeObject';
-import KlipperUpdateManager from '../KlipperUpdateManager';
-import KlipperPowerDevices from '../KlipperPowerDevices';
-import KlipperBedMesh from '../KlipperBedMesh';
-import KlipperInputShaper from '../KlipperInputShaper';
-import KlipperPressureAdvance from '../KlipperPressureAdvance';
-import KlipperSpoolman from '../KlipperSpoolman';
-import KlipperTimelapse from '../KlipperTimelapse';
+import BedMap from '../BedMap';
+// Universal cross-firmware tabs
+import ExcludeObject from '../ExcludeObject';
+import UpdateManager from '../UpdateManager';
+import PowerDevices from '../PowerDevices';
+import InputShaper from '../InputShaper';
+import PressureAdvance from '../PressureAdvance';
+import SpoolManager from '../SpoolManager';
+import Timelapse from '../Timelapse';
 
 export const TABS = [
   { key: 'dashboard' as const, label: 'Dashboard', Icon: LayoutDashboard },
@@ -57,37 +56,46 @@ export const TABS = [
   { key: 'history' as const, label: 'History', Icon: History },
   { key: 'analytics' as const, label: 'Analytics', Icon: TrendingUp },
   { key: 'files' as const, label: 'Files', Icon: FolderOpen },
-  { key: 'filaments' as const, label: 'Filaments', Icon: FlaskConical },
+  // Duet-only: reads 0:/filaments via Duet file API
+  { key: 'filaments' as const, label: 'Filaments', Icon: FileCode },
   { key: 'macros' as const, label: 'Macros', Icon: FileCode },
-  { key: 'heightmap' as const, label: 'Height Map', Icon: Grid3x3 },
+  // Unified: DuetHeightMap / KlipperBedMesh / MarlinBedLevel by boardType
+  { key: 'heightmap' as const, label: 'Bed Map', Icon: Grid3x3 },
+  // Duet-only: RRF/DSF object model browser
   { key: 'model' as const, label: 'Model', Icon: Braces },
   { key: 'config' as const, label: 'Config', Icon: FileCode },
   { key: 'network' as const, label: 'Network', Icon: Router },
+  // Duet SBC only: DSF plugin manager
   { key: 'plugins' as const, label: 'Plugins', Icon: Plug },
   { key: 'settings' as const, label: 'Settings', Icon: Settings },
-  // Klipper-specific tabs
-  { key: 'klipper-exclude' as const, label: 'Exclude Object', Icon: Layers },
-  { key: 'klipper-updates' as const, label: 'Updates', Icon: ArrowUpCircle },
-  { key: 'klipper-power' as const, label: 'Power', Icon: Zap },
-  { key: 'klipper-bedmesh' as const, label: 'Bed Mesh', Icon: Grid3x3 },
-  { key: 'klipper-shaper' as const, label: 'Input Shaper', Icon: Cpu },
-  { key: 'klipper-pa' as const, label: 'Press. Advance', Icon: TrendingUp },
-  { key: 'klipper-spoolman' as const, label: 'Spoolman', Icon: Package },
-  { key: 'klipper-timelapse' as const, label: 'Timelapse', Icon: Film },
+  // ── Universal cross-firmware tabs ────────────────────────────────────────────
+  // Each has a Klipper-specific path and a firmware-agnostic workaround path
+  { key: 'exclude-object' as const, label: 'Exclude Object', Icon: Layers },
+  { key: 'updates' as const, label: 'Updates', Icon: ArrowUpCircle },
+  { key: 'power' as const, label: 'Power', Icon: Zap },
+  { key: 'input-shaper' as const, label: 'Input Shaper', Icon: Cpu },
+  { key: 'pressure-advance' as const, label: 'Press. Advance', Icon: TrendingUp },
+  { key: 'spool-manager' as const, label: 'Spools', Icon: Package },
+  { key: 'timelapse' as const, label: 'Timelapse', Icon: Film },
 ];
 
 export type TabKey = (typeof TABS)[number]['key'] | 'printers';
 
-/** Keys of tabs that only appear when connected to a Klipper printer. */
-export const KLIPPER_ONLY_TABS = new Set<TabKey>([
-  'klipper-exclude',
-  'klipper-updates',
-  'klipper-power',
-  'klipper-bedmesh',
-  'klipper-shaper',
-  'klipper-pa',
-  'klipper-spoolman',
-  'klipper-timelapse',
+/**
+ * Tabs that only appear for Klipper printers.
+ * All previously-Klipper-only features now have universal implementations,
+ * so this set is empty. Preserved for future truly-Klipper-only additions.
+ */
+export const KLIPPER_ONLY_TABS = new Set<TabKey>([]);
+
+/**
+ * Tabs that only make sense for Duet-based printers.
+ * Hidden when boardType === 'klipper' (or other non-Duet firmware).
+ */
+export const DUET_ONLY_TABS = new Set<TabKey>([
+  'filaments', // reads 0:/filaments via Duet file API — no Moonraker equivalent
+  'model',     // RRF/DSF object model — Klipper has no equivalent endpoint
+  'plugins',   // DSF SBC plugin manager — not present on Klipper
 ]);
 
 export const TAB_COMPONENTS: Record<TabKey, React.ComponentType> = {
@@ -102,18 +110,18 @@ export const TAB_COMPONENTS: Record<TabKey, React.ComponentType> = {
   files: DuetFileManager,
   filaments: DuetFilamentManager,
   macros: DuetMacros,
-  heightmap: DuetHeightMap,
+  heightmap: BedMap,             // unified — delegates to Klipper / Marlin / Duet internally
   model: DuetObjectModelBrowser,
   config: DuetConfigEditor,
   network: DuetNetworkAndFirmware,
   plugins: DuetPlugins,
   settings: DuetSettings,
-  'klipper-exclude': KlipperExcludeObject,
-  'klipper-updates': KlipperUpdateManager,
-  'klipper-power': KlipperPowerDevices,
-  'klipper-bedmesh': KlipperBedMesh,
-  'klipper-shaper': KlipperInputShaper,
-  'klipper-pa': KlipperPressureAdvance,
-  'klipper-spoolman': KlipperSpoolman,
-  'klipper-timelapse': KlipperTimelapse,
+  // Universal cross-firmware tabs
+  'exclude-object': ExcludeObject,
+  updates: UpdateManager,
+  power: PowerDevices,
+  'input-shaper': InputShaper,
+  'pressure-advance': PressureAdvance,
+  'spool-manager': SpoolManager,
+  timelapse: Timelapse,
 };
