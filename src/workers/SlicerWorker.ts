@@ -75,7 +75,11 @@ type ChildWorkerMessage =
   | { type: 'cancelled'; requestId: number }
   | { type: 'error'; requestId: number; message: string };
 
-type SliceResultWithTool = SliceResult & { extruderIndex?: number };
+type SliceResultWithTool = SliceResult & {
+  extruderIndex?: number;
+  /** Plate-object names belonging to this slice group, used to emit M486 labels. */
+  objectNames?: string[];
+};
 
 function toolChangeLines(result: SliceResultWithTool): string[] {
   const tool = result.extruderIndex;
@@ -171,6 +175,46 @@ function mergeSliceResults(results: SliceResultWithTool[]): SliceResult {
     };
   }
   return merged;
+}
+
+/**
+ * Wrap each group's G-code with M486 object-label markers so slicers that
+ * support CANCEL_OBJECTS (Klipper, Marlin 2.0.9+, RRF 3.5+) can cancel
+ * individual objects mid-print.
+ *
+ * Format emitted (PrusaSlicer/Marlin/RRF compatible):
+ *   M486 T<groupCount>
+ *   M486 S0 A"<group 0 names>"
+ *   ... group 0 gcode ...
+ *   M486 S-1
+ *   M486 S1 A"<group 1 names>"
+ *   ... group 1 gcode ...
+ *   M486 S-1
+ *
+ * Only emitted when at least one group carries a non-empty objectName —
+ * i.e. the user has named objects on the plate (not all are the default
+ * unnamed fallback).  Returns the input array unchanged when there are no
+ * names so un-named plates don't get spurious M486 lines.
+ */
+function injectM486Labels(results: SliceResultWithTool[]): SliceResultWithTool[] {
+  const hasNames = results.some((r) => r.objectNames && r.objectNames.length > 0);
+  if (!hasNames) return results;
+
+  const labeled = results.map((r, i) => {
+    const label = r.objectNames && r.objectNames.length > 0
+      ? r.objectNames.join(' / ')
+      : `Object ${i}`;
+    return {
+      ...r,
+      gcode: `M486 S${i} A"${label}"\n${r.gcode}\nM486 S-1`,
+    };
+  });
+
+  // M486 T<n> must appear before any S<id> marker — prepend it to the
+  // first group so it lands at the very start of the merged output.
+  labeled[0] = { ...labeled[0], gcode: `M486 T${results.length}\n${labeled[0].gcode}` };
+
+  return labeled;
 }
 
 function getHardwareConcurrency(): number {
@@ -313,6 +357,8 @@ async function runSliceGroupsInWorkerPool(
     );
     const extruderIndex = effectivePrintProfile.extruderIndex;
     if (typeof extruderIndex === 'number') results[index].extruderIndex = extruderIndex;
+    const poolNames = geos.map((g) => g.objectName ?? '').filter(Boolean);
+    if (poolNames.length) results[index].objectNames = poolNames;
 
     await runNext();
   }
@@ -376,6 +422,8 @@ async function runSliceGroupsSequentially(
     const result = await slicer.slice(geosForSlice, modifierMeshesForSlice) as SliceResultWithTool;
     const extruderIndex = effectivePrintProfile.extruderIndex;
     if (typeof extruderIndex === 'number') result.extruderIndex = extruderIndex;
+    const seqNames = geos.map((g) => g.objectName ?? '').filter(Boolean);
+    if (seqNames.length) result.objectNames = seqNames;
     if (cancelRequested) throw new Error('Slicing cancelled');
     results.push(result);
   }
@@ -551,6 +599,8 @@ self.onmessage = async (e: MessageEvent<WorkerMessage>) => {
         const result = await slicer.slice(geosForSlice, modifierMeshesForSlice) as SliceResultWithTool;
         const extruderIndex = effectivePrintProfile.extruderIndex;
         if (typeof extruderIndex === 'number') result.extruderIndex = extruderIndex;
+        const inlineNames = geos.map((g) => g.objectName ?? '').filter(Boolean);
+        if (inlineNames.length) result.objectNames = inlineNames;
         if (cancelRequested) throw new Error('Slicing cancelled');
         resultsSequential.push(result);
       }
@@ -562,7 +612,7 @@ self.onmessage = async (e: MessageEvent<WorkerMessage>) => {
         disposeGeometries(geometries);
         return;
       }
-      const merged = mergeSliceResults(results);
+      const merged = mergeSliceResults(injectM486Labels(results));
       activeSlicer = null;
       if (activeRequestId === requestId) self.postMessage({ type: 'complete', requestId, result: merged });
       disposeGeometries(geometries);

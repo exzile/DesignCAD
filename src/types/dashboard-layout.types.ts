@@ -16,7 +16,8 @@ export type PanelId =
   | 'macros'
   | 'custom-buttons'
   | 'system-info'
-  | 'filament-sensors';
+  | 'filament-sensors'
+  | 'object-cancel';
 
 // Spacer placeholder — encodes its column span in the ID, e.g. '__spacer_6'
 export type SpacerId = `__spacer_${number}`;
